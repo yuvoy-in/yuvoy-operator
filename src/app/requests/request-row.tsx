@@ -28,7 +28,27 @@ import { cn } from "@/lib/cn";
  * closed set from the contract; the traveller reads a sentence derived from
  * it, which always says nothing was charged.
  */
-export function RequestRow({ request }: { request: OpenRequest }) {
+export function RequestRow({
+  request,
+  canAnswer,
+}: {
+  request: OpenRequest;
+  /**
+   * OWNER or MANAGER. The contract refuses the write, not the read:
+   * `POST /requests/{id}/accept` is 403 "STAFF cannot commit seats".
+   *
+   * The buttons are disabled rather than left live. The page already says so
+   * at the top, but a banner and a working button disagree, and the one that
+   * gets believed is the button — a staff member taps Accept, waits on one bar
+   * of signal, and reads a refusal about their role while a clock runs down on
+   * a traveller. Same call as the grant ceiling below: the refusal is knowable
+   * from what is already on screen, so it is said here rather than fetched.
+   *
+   * The 403 handling in `actions.ts` stays regardless. A Server Action is a
+   * public POST endpoint, and roles change between a render and a tap.
+   */
+  canAnswer: boolean;
+}) {
   const [state, act, pending] = useActionState<RequestActionState, FormData>(
     async (prev, form) =>
       form.get("intent") === "decline"
@@ -39,7 +59,7 @@ export function RequestRow({ request }: { request: OpenRequest }) {
   const [declining, setDeclining] = useState(false);
 
   const urgency = urgencyOf(request.minutesToAnswer);
-  const grantable = canGrant(request);
+  const grantable = canAnswer && canGrant(request);
   const short = (request.seatsGrantable ?? 0) < (request.guests ?? 0);
 
   if (state.granted) {
@@ -166,8 +186,8 @@ export function RequestRow({ request }: { request: OpenRequest }) {
           <button
             type="button"
             onClick={() => setDeclining(true)}
-            disabled={pending}
-            className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+            disabled={pending || !canAnswer}
+            className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5 disabled:cursor-not-allowed disabled:opacity-55"
           >
             Decline
           </button>

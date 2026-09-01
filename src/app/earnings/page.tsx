@@ -40,6 +40,44 @@ export default async function EarningsPage({
   const { token, me } = await requireOperator();
   const { month } = await searchParams;
 
+  /*
+    Refused before the request, not after it.
+
+    `GET /earnings` is "Requires OWNER or MANAGER" and answers 403 to a staff
+    login, and this page used to make the call anyway. The throw landed on the
+    error boundary, which says "That did not load — try again" — false, and
+    unactionable: retrying will never work, because nothing went wrong.
+
+    The contract's own reasoning is the copy: "a staff member who can see
+    today's manifest does not need the margin on it." Same call as the queue in
+    O9 and the seats in capacity — say it first rather than let somebody meet a
+    refusal they cannot read.
+  */
+  if (!me.canManage) {
+    return (
+      <main className="bg-cream text-forest min-h-dvh">
+        <div className="container-page max-w-2xl py-8">
+          <Link
+            href="/today"
+            className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
+          >
+            ← The day
+          </Link>
+          <p className="eyebrow text-terra-deep mt-6">The money</p>
+          <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+            Earnings
+          </h1>
+          <div className="mt-6">
+            <Problem
+              title="Earnings are for an owner or a manager"
+              body="A staff login runs the day — today's manifest, who has arrived — and does not carry what the business is owed. Ask an owner or a manager if you need the figure."
+            />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   // 0 = this month, 1 = last. Validated rather than trusted: it arrives in a URL.
   const monthsAgo = month === "last" ? 1 : 0;
   const { from, to } = monthRange(monthsAgo, await now());

@@ -435,7 +435,19 @@ for (const f of walk(APP)) {
  * it stays true when the contract moves. `pnpm contract:check` guarantees this
  * file is the pinned document byte for byte.
  */
+/**
+ * Two role gates, read out of the contract rather than written down here.
+ *
+ *   - **OWNER only** — a 403 whose description names OWNER. Four endpoints:
+ *     both team writes, the bank change, and the brake.
+ *   - **OWNER or MANAGER** (`canManage`) — an operation that says "Requires
+ *     OWNER or MANAGER", or whose 403 says "STAFF cannot …".
+ *
+ * `pnpm contract:check` guarantees this file is the pinned document byte for
+ * byte, so parsing it is safe and it stays true when the contract moves.
+ */
 const OWNER_ONLY = [];
+const NEEDS_MANAGE = [];
 {
   const lines = readFileSync(
     join(ROOT, "contracts", "operator-openapi.yaml"),
@@ -444,47 +456,99 @@ const OWNER_ONLY = [];
 
   let path = null;
   let method = null;
+  let opStart = -1;
+
+  /** Everything indented under the current operation. */
+  const operationBlock = (from) => {
+    let block = "";
+    for (let j = from + 1; j < lines.length; j++) {
+      if (/^ {4}[a-z]+:\s*$/.test(lines[j])) break;
+      if (/^ {2}\/\S*:\s*$/.test(lines[j])) break;
+      if (/^ {2}[a-z]+:\s*$/.test(lines[j])) break;
+      block += "\n" + lines[j];
+    }
+    return block;
+  };
+
+  const finish = () => {
+    if (opStart < 0 || !path || !method) return;
+    const block = operationBlock(opStart);
+    const upper = method.toUpperCase();
+
+    // A 403 block that names OWNER: OWNER only, and a MANAGER also gets it.
+    const four03 = block.match(
+      /\n {8}"403":[\s\S]*?(?=\n {8}"\d{3}":|\n {4}[a-z]+:|$)/,
+    );
+    if (four03 && /\bOWNER\b/.test(four03[0])) {
+      OWNER_ONLY.push({ method: upper, path });
+    } else if (
+      /Requires OWNER or MANAGER/.test(block) ||
+      /STAFF cannot/.test(block)
+    ) {
+      NEEDS_MANAGE.push({ method: upper, path });
+    }
+    opStart = -1;
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const p = lines[i].match(/^ {2}(\/\S*):\s*$/);
     if (p) {
+      finish();
       path = p[1];
       method = null;
       continue;
     }
     const m = lines[i].match(/^ {4}(get|post|put|patch|delete):\s*$/);
     if (m) {
+      finish();
       method = m[1];
+      opStart = i;
       continue;
     }
-    if (!/^ {8}"403":/.test(lines[i]) || !path || !method) continue;
-
-    // Collect the 403's own description block, stopping at the next status,
-    // the next method or the next path.
-    let block = lines[i];
-    for (let j = i + 1; j < lines.length; j++) {
-      if (/^ {8}"\d{3}":/.test(lines[j])) break;
-      if (/^ {4}[a-z]+:\s*$/.test(lines[j])) break;
-      if (/^ {2}\/\S*:\s*$/.test(lines[j])) break;
-      block += "\n" + lines[j];
-    }
-    // The contract writes role names in capitals. A 403 that names OWNER is a
-    // 403 a MANAGER also receives.
-    if (/\bOWNER\b/.test(block)) {
-      OWNER_ONLY.push({ method: method.toUpperCase(), path });
-    }
   }
+  finish();
 }
 
-if (OWNER_ONLY.length === 0) {
+if (OWNER_ONLY.length === 0 || NEEDS_MANAGE.length === 0) {
   /*
     A check that silently verified nothing would pass forever while saying
     nothing true — the same failure the contract drift checker avoids by
     reading its path from PINNED rather than assuming it.
   */
   problems.push(
-    `scripts/qa.mjs: found no OWNER-only endpoints in the contract. The ` +
-      `parse has broken, and this check is now asserting nothing.`,
+    `scripts/qa.mjs: the contract parse found ${OWNER_ONLY.length} OWNER-only ` +
+      `and ${NEEDS_MANAGE.length} manager-only endpoints. One of those is ` +
+      `zero, so this check is now asserting nothing.`,
   );
+}
+
+/**
+ * Every module a page can reach, following imports through Server Actions.
+ *
+ * Attribution is what makes these checks useful: `/earnings` does not call
+ * `GET /earnings` itself — `lib/money/fetch.ts` does — so a per-file check
+ * would demand a role gate inside a fetch helper, which is the one place it
+ * does not belong. Walking forward from the page puts the requirement where
+ * the decision is made.
+ *
+ * Granularity is per MODULE, not per symbol: a page importing one function
+ * from a file is credited with every endpoint that file calls. That is why a
+ * gate on `"OWNER"` satisfies the `canManage` requirement below — it is
+ * strictly stronger — rather than the two being checked independently.
+ */
+function reachableFrom(entry) {
+  const seen = new Set();
+  const queue = [entry];
+  while (queue.length) {
+    const file = queue.shift();
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+    for (const spec of importsOf(file)) {
+      const next = resolveImport(file, spec);
+      if (next && !seen.has(next)) queue.push(next);
+    }
+  }
+  return [...seen];
 }
 
 /** The route family a file belongs to — `src/app/payouts`, not one file. */
@@ -495,38 +559,56 @@ function segmentOf(file) {
   return first.endsWith(".tsx") ? APP : join(APP, first);
 }
 
-const ownerSegments = new Map();
-for (const f of files) {
-  const s = code(f);
-  for (const { method, path } of OWNER_ONLY) {
-    if (!s.includes(`${method}("${path}"`)) continue;
-    const seg = segmentOf(f);
-    if (!ownerSegments.has(seg)) ownerSegments.set(seg, []);
-    ownerSegments.get(seg).push(`${method} ${path}`);
-  }
-}
+const pages = walk(APP).filter((f) => /[/\\]page\.tsx$/.test(f));
 
-for (const [seg, endpoints] of ownerSegments) {
-  const inSegment = files.filter(
-    (f) => f === seg || f.startsWith(seg + "/") || f.startsWith(seg + "\\"),
+for (const page of pages) {
+  const graph = reachableFrom(page);
+  const source = graph.map(code).join("\n");
+  const segment = segmentOf(page);
+  const segmentFiles = files.filter(
+    (f) =>
+      f === segment ||
+      f.startsWith(segment + "/") ||
+      f.startsWith(segment + "\\"),
   );
-  const named = endpoints.join(", ");
+  const segmentSource = segmentFiles.map(code).join("\n");
 
-  for (const f of inSegment) {
-    if (/\bcanManage\b/.test(code(f))) {
+  const gatesOnOwner = /"OWNER"|'OWNER'/.test(segmentSource);
+  const gatesOnManage = /\bcanManage\b/.test(segmentSource);
+
+  const ownerCalls = OWNER_ONLY.filter(({ method, path }) =>
+    source.includes(`${method}("${path}"`),
+  ).map(({ method, path }) => `${method} ${path}`);
+
+  const manageCalls = NEEDS_MANAGE.filter(({ method, path }) =>
+    source.includes(`${method}("${path}"`),
+  ).map(({ method, path }) => `${method} ${path}`);
+
+  if (ownerCalls.length) {
+    if (gatesOnManage) {
       problems.push(
-        `${rel(f)}: uses \`canManage\` in a route that calls ${named}, which ` +
-          `the contract marks OWNER only. \`canManage\` is OWNER **or** ` +
-          `MANAGER — gate on \`roles.includes("OWNER")\`.`,
+        `${rel(segment)}: decides on \`canManage\` while reaching ` +
+          `${ownerCalls.join(", ")}, which the contract marks OWNER only. ` +
+          `\`canManage\` is OWNER **or** MANAGER — gate on ` +
+          `\`roles.includes("OWNER")\`.`,
+      );
+    }
+    if (!gatesOnOwner) {
+      problems.push(
+        `${rel(segment)}: reaches ${ownerCalls.join(", ")} (OWNER only in the ` +
+          `contract) but nothing in this route checks for the OWNER role. The ` +
+          `server refuses it with a 403 the operator has to read after the fact.`,
       );
     }
   }
 
-  if (!inSegment.some((f) => /"OWNER"|'OWNER'/.test(code(f)))) {
+  if (manageCalls.length && !gatesOnManage && !gatesOnOwner) {
     problems.push(
-      `${rel(seg)}: calls ${named} (OWNER only in the contract) but nothing ` +
-        `in this route checks for the OWNER role. The server will refuse it ` +
-        `with a 403 the operator has to read after the fact.`,
+      `${rel(segment)}: reaches ${manageCalls.join(", ")} (OWNER or MANAGER in ` +
+        `the contract) but nothing in this route checks \`canManage\`. A staff ` +
+        `login meets a 403 it cannot act on — and if the read itself is ` +
+        `refused, an error boundary saying "try again" about a refusal that ` +
+        `will never succeed.`,
     );
   }
 }

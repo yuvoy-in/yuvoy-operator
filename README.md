@@ -142,6 +142,34 @@ expires unanswered is a traveller told no by a timer.
   only and `OperatorBooking` carries no money fields, so "why is _this_ booking less"
   cannot be answered yet. Raised on `yuvoy-api` rather than worked around.
 
+### What each role is offered, and where the refusal is said
+
+`canManage` is OWNER **or** MANAGER, and the contract names exactly which
+endpoints need it: capacity, closed dates, earnings, listing edits, calling off
+a departure, and answering a seat request. Four screens branch on it, and until
+`yuvoy-operator#14` **none of those branches had ever been rendered** — the mock
+knew one identity, so the `!canManage` half of each was written from the
+contract and shipped unexercised.
+
+One rule decides all of them, the one the capacity ceiling states: **the refusal
+is knowable from what is already on screen, so it is said there** — not fetched,
+and not discovered after a tap on one bar of signal.
+
+- **`/today`** offers a staff phone the day and the seats, and not earnings,
+  payouts or team. "The crew phone goes out on the boat and gets left on a
+  bench."
+- **`/requests`** shows staff the queue — a request nobody sees is a request
+  that expires — and **disables Accept and Decline**. A banner and a working
+  button disagree, and the one that gets believed is the button.
+- **`/capacity`** shows the numbers and refuses the changes.
+- **`/earnings` now refuses before the request rather than after it.** It used
+  to call `GET /earnings` regardless; the 403 threw, landed on the error
+  boundary, and said "That did not load — try again". False, and unactionable:
+  nothing had gone wrong and retrying would never work.
+
+`pnpm qa` reads both role gates out of the contract and fails a route that
+reaches a gated endpoint without checking for the role.
+
 ### What O3 can say, and what the contract will not let it
 
 O3 asks for the states between signing up and taking bookings, and for the
@@ -294,7 +322,7 @@ left (so the terminal outcomes are reachable), one that has not, and one called 
 pnpm verify          # the pre-push gate — all nine steps below, in order
 pnpm qa              # the static sweep on its own
 pnpm tokens:check    # design tokens against yuvoy-app (canonical)
-pnpm test:e2e        # 116 e2e tests, incl. axe on every route
+pnpm test:e2e        # 130 e2e tests, incl. axe on every route
 ```
 
 ```
@@ -325,6 +353,13 @@ the architecture above quietly stops being the architecture:
    from the defect above rather than from a principle. A boundary is opt-in in
    Next and its absence is silent by design — the fallback is a working page
    that says nothing true.
+
+Checks 5 and 6 walk each page's whole import graph rather than one file, because
+`/earnings` does not call `GET /earnings` itself — `lib/money/fetch.ts` does —
+and a per-file rule would demand a role gate inside a fetch helper, which is the
+one place it does not belong. Attribution is per module, not per symbol, which is
+why a gate on `"OWNER"` satisfies the `canManage` requirement: it is strictly
+stronger.
 
 Each was verified by breaking it on purpose and watching the check fail.
 

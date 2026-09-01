@@ -86,7 +86,11 @@ export default async function RequestsPage() {
           ) : (
             <ul className="space-y-3">
               {requests.map((request) => (
-                <RequestRow key={request.id} request={request} />
+                <RequestRow
+                  key={request.id}
+                  request={request}
+                  canAnswer={me.canManage}
+                />
               ))}
             </ul>
           )}
