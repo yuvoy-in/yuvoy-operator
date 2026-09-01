@@ -60,7 +60,9 @@ well-meaning commit from showing one the day it does.
 | O1, O3–O9, O11 | Signup, approval, payouts, team, profile, listings, reels, capacity, earnings | Not started |
 
 O10 first because the brief says so: _"If you build one screen well, build the
-manifest."_ It is the screen an operator opens at 6am.
+manifest."_ It is the screen an operator opens at 6am. O9 second because it is the one
+with a clock: a traveller is waiting on the other end of every row, and a request that
+expires unanswered is a traveller told no by a timer.
 
 ### What O10 does, and the rules baked into it
 
@@ -79,6 +81,29 @@ manifest."_ It is the screen an operator opens at 6am.
   403, because a 403 confirms the row exists. The client does not distinguish them
   either.
 - **Every target is 56px**, not the traveller app's 44px. A wet fingertip spreads.
+
+### What O9 does, and the rules baked into it
+
+- **The server's order is not ours to change.** Requests arrive sorted by how soon each
+  expires, not by when they arrived, because the queue's job is to stop requests dying.
+  Re-sorting by experience or party size undoes the one thing it is for.
+- **`minutesToAnswer` comes from the server and is never re-derived.** Two clients
+  computing "37 minutes left" from a timestamp disagree by however far apart their clocks
+  are, and this is a number an operator decides on.
+- **The ceiling disables the button rather than explaining a 409.** `seatsGrantable` sits
+  beside the decision, because "accept with no sense of what is left is a decision made
+  blind".
+- **Accepting is one tap; declining is two and asks why.** A decline is cheap for the
+  operator and final for the traveller — that asymmetry earns a confirming step. The
+  reason is the contract's closed set, and the traveller reads a sentence derived from it
+  that always says nothing was charged.
+- **Accepting does not revalidate the queue.** It would re-render the list, unmount the
+  row and take the confirmation with it — so the operator would tap Accept, watch the row
+  vanish, and never learn the traveller still has to pay. That is the exact
+  misunderstanding the screen exists to prevent, produced by the cache call meant to keep
+  it fresh. Declining does revalidate: there is no post-state to show.
+- **STAFF see the queue and are told they cannot answer it**, up front. The contract
+  refuses the write, not the read, and finding that out after choosing a reason is worse.
 
 ## Run it
 

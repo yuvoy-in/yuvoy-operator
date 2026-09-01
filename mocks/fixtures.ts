@@ -149,3 +149,120 @@ export const SLOTS: MockSlot[] = [
 ];
 
 export const DEV_CODE = "424242";
+
+export interface MockRequest {
+  id: string;
+  slotId: string;
+  experience: string;
+  guests: number;
+  startsAt: string;
+  timezone: string;
+  requestedAt: string;
+  expiresAt: string;
+  contactName: string;
+  seatsGrantable: number;
+  minutesToAnswer: number;
+}
+
+/**
+ * Requests, chosen to put every decision on the screen at once.
+ *
+ * Ordered soonest-to-expire, because that is how the endpoint returns them and
+ * a mock that returns them in another order lets a client ship a sort the API
+ * does not have.
+ *
+ * `minutesToAnswer` is a fixed number rather than derived from `expiresAt`.
+ * The contract computes it server-side precisely so every client agrees, and a
+ * fixture that recomputes it locally would hide a client that re-derives it.
+ *
+ * **Two of these are never answered by any test, and four are split one pair
+ * per Playwright project.** Answering a request mutates state in the Next
+ * server process, which both projects share — so a fixture two tests can both
+ * touch is a race in the FIXTURE, and softening the assertions to survive it
+ * would be the wrong repair. The untouched pair is what the ordering and
+ * ceiling assertions read.
+ */
+export const REQUESTS: MockRequest[] = [
+  // Never answered. The urgent one the day's banner and the ordering read.
+  {
+    id: "req_urgent",
+    slotId: "slot_late_morning",
+    experience: "Snorkel trip to Elephant Beach",
+    guests: 2,
+    startsAt: todayAt("23:30"),
+    timezone: TZ,
+    requestedAt: todayAt("05:10"),
+    expiresAt: todayAt("07:10"),
+    contactName: "Reuben Mathai",
+    seatsGrantable: 6,
+    minutesToAnswer: 24,
+  },
+  {
+    id: "req_accept_mobile",
+    slotId: "slot_late_morning",
+    experience: "Snorkel trip to Elephant Beach",
+    guests: 4,
+    startsAt: todayAt("23:30"),
+    timezone: TZ,
+    requestedAt: todayAt("04:00"),
+    expiresAt: todayAt("10:00"),
+    contactName: "Ingrid Sorensen",
+    seatsGrantable: 6,
+    minutesToAnswer: 175,
+  },
+  {
+    id: "req_accept_desktop",
+    slotId: "slot_late_morning",
+    experience: "Snorkel trip to Elephant Beach",
+    guests: 3,
+    startsAt: todayAt("23:30"),
+    timezone: TZ,
+    requestedAt: todayAt("04:05"),
+    expiresAt: todayAt("10:05"),
+    contactName: "Kwame Boateng",
+    seatsGrantable: 6,
+    minutesToAnswer: 180,
+  },
+  {
+    // Never answered. Cannot be granted: the party is larger than what is
+    // left, so the accept button is disabled rather than offered and answered
+    // with a 409.
+    id: "req_over_ceiling",
+    slotId: "slot_dawn",
+    experience: "Try-dive at Nemo Reef",
+    guests: 5,
+    startsAt: todayAt("06:45"),
+    timezone: TZ,
+    requestedAt: todayAt("03:30"),
+    expiresAt: todayAt("18:00"),
+    contactName: "Tomas Lindqvist",
+    seatsGrantable: 3,
+    minutesToAnswer: 420,
+  },
+  {
+    id: "req_decline_mobile",
+    slotId: "slot_late_morning",
+    experience: "Snorkel trip to Elephant Beach",
+    guests: 1,
+    startsAt: todayAt("23:30", 1),
+    timezone: TZ,
+    requestedAt: todayAt("02:00"),
+    expiresAt: todayAt("20:00", 1),
+    contactName: "Aditi Bose",
+    seatsGrantable: 6,
+    minutesToAnswer: 1_800,
+  },
+  {
+    id: "req_decline_desktop",
+    slotId: "slot_late_morning",
+    experience: "Snorkel trip to Elephant Beach",
+    guests: 1,
+    startsAt: todayAt("23:30", 1),
+    timezone: TZ,
+    requestedAt: todayAt("02:05"),
+    expiresAt: todayAt("20:05", 1),
+    contactName: "Yuki Tanabe",
+    seatsGrantable: 6,
+    minutesToAnswer: 1_805,
+  },
+];

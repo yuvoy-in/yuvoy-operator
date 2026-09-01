@@ -200,3 +200,129 @@ for (const route of ["/sign-in", "/today", "/today/slot_dawn"]) {
     expect(results.violations).toEqual([]);
   });
 }
+
+/* ============================================================ O9 · requests */
+
+/**
+ * Requests that no test answers, so their assertions cannot be raced.
+ *
+ * Answering mutates state in the Next server process, which both Playwright
+ * projects share. The mutating tests below take one fixture each, per project;
+ * everything that reads the queue reads these two.
+ */
+const NEVER_ANSWERED = {
+  urgent: "Reuben Mathai",
+  overCeiling: "Tomas Lindqvist",
+};
+
+/** The party this project may answer, so the two never collide. */
+function mine(testInfo: { project: { name: string } }) {
+  return testInfo.project.name === "mobile"
+    ? { accept: "Ingrid Sorensen", decline: "Aditi Bose" }
+    : { accept: "Kwame Boateng", decline: "Yuki Tanabe" };
+}
+
+test("the day surfaces requests, because a request nobody sees expires", async ({
+  page,
+}) => {
+  await signIn(page);
+  const banner = page.getByRole("link", { name: /request(s)? waiting/ });
+  await expect(banner).toBeVisible();
+  // `req_urgent` is never answered, so "within the hour" is always true.
+  await expect(banner).toContainText("within the hour");
+});
+
+test("requests arrive soonest-to-expire, and that order is not ours to change", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/requests");
+
+  // The endpoint orders by how soon each expires, "because the queue's job is
+  // to stop requests dying". Re-sorting by anything undoes what it is for.
+  //
+  // Asserted as RELATIVE position of two requests nothing answers, rather than
+  // as the whole list — the list legitimately shrinks as the other tests run.
+  const rows = page.locator("li").filter({ hasText: /min left|h left|d left/ });
+  const names = await rows.locator("p.text-lg").allTextContents();
+
+  const urgentAt = names.indexOf(NEVER_ANSWERED.urgent);
+  const ceilingAt = names.indexOf(NEVER_ANSWERED.overCeiling);
+  expect(
+    urgentAt,
+    "the urgent request should be listed",
+  ).toBeGreaterThanOrEqual(0);
+  expect(ceilingAt, "the later request should be listed").toBeGreaterThan(
+    urgentAt,
+  );
+});
+
+test("a request that cannot be granted does not offer an accept", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/requests");
+
+  // 5 guests against 3 grantable seats. Accepting answers 409
+  // grant_ceiling_exceeded, so the button is disabled rather than offered.
+  const row = page
+    .locator("li")
+    .filter({ hasText: NEVER_ANSWERED.overCeiling });
+  await expect(row).toContainText("not enough for this party");
+  await expect(row.getByRole("button", { name: "Accept" })).toBeDisabled();
+  // Declining is still available — that is the whole point of the screen.
+  await expect(row.getByRole("button", { name: "Decline" })).toBeEnabled();
+});
+
+test("accepting says what the traveller actually has now", async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await page.goto("/requests");
+
+  const who = mine(testInfo).accept;
+  const row = page.locator("li").filter({ hasText: who });
+  await row.getByRole("button", { name: "Accept" }).click();
+
+  // Accepting is not the end: they hold seats with a clock and must still pay.
+  // An operator who reads "accepted" as "booked" will not chase it.
+  await expect(page.getByText(`Seats granted to ${who}`)).toBeVisible();
+  await expect(page.getByText("still have to pay")).toBeVisible();
+
+  // And it leaves the queue.
+  await page.reload();
+  await expect(page.getByText(who)).toHaveCount(0);
+});
+
+test("declining takes a second tap and asks why", async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await page.goto("/requests");
+
+  const who = mine(testInfo).decline;
+  const row = page.locator("li").filter({ hasText: who });
+  await row.getByRole("button", { name: "Decline" }).click();
+
+  // A decline is cheap for the operator and final for the traveller, which is
+  // the asymmetry that earns a confirming step.
+  await expect(row.getByRole("group", { name: "Why?" })).toBeVisible();
+  await expect(row.getByText("nothing was charged")).toBeVisible();
+
+  await row.getByRole("radio", { name: "Not running that day" }).check();
+  await row.getByRole("button", { name: "Decline" }).click();
+
+  await expect(page.getByText(who)).toHaveCount(0);
+});
+
+test("/requests has no accessibility violations", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/requests");
+  await page.waitForLoadState("networkidle");
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+
+  expect(results.violations).toEqual([]);
+});

@@ -1,6 +1,12 @@
 import { http, HttpResponse } from "msw";
 import { apiBaseUrl } from "../src/lib/api/server-client";
-import { DEV_CODE, OPERATOR, SLOTS, type MockParty } from "./fixtures";
+import {
+  DEV_CODE,
+  OPERATOR,
+  REQUESTS,
+  SLOTS,
+  type MockParty,
+} from "./fixtures";
 
 /**
  * The operator API, mocked.
@@ -27,10 +33,13 @@ const url = (path: string) => `${apiBaseUrl()}${path}`;
 const SESSION_TOKEN = "opsess_mock_a1b2c3d4e5f6";
 
 let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
+/** Requests that have been answered. An answered one is not open any more. */
+let answered: Record<string, "active" | "released"> = {};
 
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
   attendance = {};
+  answered = {};
 }
 
 function envelope(code: string, message: string, status: number) {
@@ -185,6 +194,80 @@ export const handlers = [
       },
     });
   }),
+
+  /* ------------------------------------------------------------ requests - */
+
+  http.get(url("/requests"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    // Answered requests leave the queue. Ordered soonest-to-expire, which is
+    // the endpoint's own order and the whole shape of the screen.
+    return HttpResponse.json({
+      requests: REQUESTS.filter((r) => !answered[r.id]).sort(
+        (a, b) => a.minutesToAnswer - b.minutesToAnswer,
+      ),
+    });
+  }),
+
+  http.post(url("/requests/:id/accept"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const open = REQUESTS.find((r) => r.id === id);
+    if (!open) return envelope("not_found", "No such request.", 404);
+
+    // Already answered, or out of time. One code for both, as the contract has
+    // it — the operator's next move is the same either way: look again.
+    if (answered[id]) {
+      return envelope("request_not_open", "Already answered.", 409);
+    }
+
+    /*
+      The ceiling is enforced here rather than assumed. A mock that grants
+      anything lets a client ship without the disabled state, and the first
+      time an operator meets it is on a dock with a full boat.
+    */
+    if (open.guests > open.seatsGrantable) {
+      return envelope(
+        "grant_ceiling_exceeded",
+        "That would put more people on the departure than it holds.",
+        409,
+      );
+    }
+
+    answered[id] = "active";
+    return HttpResponse.json({
+      id,
+      state: "active",
+      // The traveller now holds seats with a clock on them and must pay.
+      holdExpiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    });
+  }),
+
+  http.post(url("/requests/:id/decline"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    if (!REQUESTS.some((r) => r.id === id)) {
+      return envelope("not_found", "No such request.", 404);
+    }
+    if (answered[id]) {
+      return envelope("request_not_open", "Already answered.", 409);
+    }
+
+    const { reasonCode } = (await request.json()) as { reasonCode?: string };
+    if (!reasonCode) {
+      return envelope("bad_request", "reasonCode is required.", 400);
+    }
+
+    answered[id] = "released";
+    return HttpResponse.json({ id, state: "released", holdExpiresAt: null });
+  }),
+
+  /* ---------------------------------------------------------- attendance - */
 
   http.post(url("/bookings/:id/attendance"), async ({ request, params }) => {
     const failed = requireSession(request);

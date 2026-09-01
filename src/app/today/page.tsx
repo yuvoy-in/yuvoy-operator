@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import { listSlots } from "@/lib/day/manifest";
+import { listOpenRequests } from "@/lib/day/requests";
+import { urgencyOf } from "@/lib/day/request-types";
 import { marketDays, marketTime } from "@/lib/format/market-time";
 import { Empty } from "@/components/ui/states";
 import { SignOutButton } from "@/components/chrome/sign-out-button";
@@ -33,11 +35,25 @@ export default async function TodayPage({
   const { token, me } = await requireOperator();
   const { day } = await searchParams;
 
+  // Started before the slots are awaited, so the two overlap.
+  const openRequests = listOpenRequests(token).catch(() => []);
+
   const { today, tomorrow } = await marketDays();
   // Only ever today or tomorrow from the UI, but the value arrives in a URL,
   // so it is validated rather than trusted.
   const date = /^\d{4}-\d{2}-\d{2}$/.test(day ?? "") ? day! : today;
   const slots = await listSlots(token, date, date);
+
+  /*
+    Requests are fetched here too, because the day is the screen an operator
+    opens and a request nobody sees is a request that expires. Deliberately
+    not awaited in sequence with the slots — the two are independent, and on
+    one bar of signal a serial fetch doubles the wait for no reason.
+  */
+  const requests = await openRequests;
+  const urgent = requests.filter(
+    (r) => urgencyOf(r.minutesToAnswer) === "critical",
+  ).length;
 
   return (
     <main className="bg-cream text-forest min-h-dvh">
@@ -51,6 +67,21 @@ export default async function TodayPage({
           </div>
           <SignOutButton />
         </div>
+
+        {requests.length > 0 ? (
+          <Link
+            href="/requests"
+            className="rounded-edge border-terra-deep bg-cream-deep mt-6 flex items-center justify-between gap-4 border-2 p-4"
+          >
+            <span className="text-base font-bold">
+              {requests.length} request{requests.length === 1 ? "" : "s"}{" "}
+              waiting
+            </span>
+            <span className="label text-terra-deep shrink-0">
+              {urgent > 0 ? `${urgent} within the hour` : "Answer"} →
+            </span>
+          </Link>
+        ) : null}
 
         <nav className="mt-6 flex gap-2" aria-label="Which day">
           <DayLink label="Today" href="/today" active={date === today} />
