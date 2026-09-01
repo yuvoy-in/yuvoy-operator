@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignInForm } from "./sign-in-form";
 import { readSessionToken } from "@/lib/auth/session";
@@ -37,7 +38,25 @@ export default async function SignInPage() {
           the validation and two places that have to stay truthful about what
           applying means. See yuvoy-operator#2.
         */}
+        {/*
+          The other door. Somebody invited to an existing business has a code
+          but no account yet, and typing it into the sign-in form above would
+          fail with a message about a code that "did not work" — which is true
+          and useless. O5's accept flow is a different endpoint and mints no
+          session, so it gets its own page.
+        */}
         <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
+          Been invited to join a business?{" "}
+          <Link
+            href="/join"
+            className="text-terra-deep tap-target font-bold underline underline-offset-4"
+          >
+            Accept your invitation
+          </Link>
+          . You accept first, then sign in here.
+        </p>
+
+        <p className="text-forest/70 mt-4 text-sm">
           Not on Yuvoy yet?{" "}
           <a
             href="https://yuvoy.in/operators"

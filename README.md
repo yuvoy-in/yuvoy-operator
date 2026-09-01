@@ -53,12 +53,16 @@ well-meaning commit from showing one the day it does.
 
 ## Built so far
 
-|           | Screen                                          | State                                                                  |
-| --------- | ----------------------------------------------- | ---------------------------------------------------------------------- |
-| **O2**    | Operator signs in — phone, code, session        | **Built**                                                              |
-| **O10**   | The day, and today's manifest                   | **Built**                                                              |
-| O3, O5–O8 | Approval states, team, profile, listings, reels | Not started                                                            |
-| O1        | Operator signs up                               | **Closed** — `yuvoy.in/operators` already does it; sign-in links to it |
+|           | Screen                                    | State                                                                  |
+| --------- | ----------------------------------------- | ---------------------------------------------------------------------- |
+| **O2**    | Operator signs in — phone, code, session  | **Built**                                                              |
+| **O4**    | Payout details                            | **Built**                                                              |
+| **O5**    | Team access, and accepting an invitation  | **Built**                                                              |
+| **O9**    | Seat requests and capacity                | **Built**                                                              |
+| **O10**   | The day, and today's manifest             | **Built**                                                              |
+| **O11**   | Earnings                                  | **Built**                                                              |
+| O3, O6–O8 | Approval states, profile, listings, reels | Not started                                                            |
+| O1        | Operator signs up                         | **Closed** — `yuvoy.in/operators` already does it; sign-in links to it |
 
 O10 first because the brief says so: _"If you build one screen well, build the
 manifest."_ It is the screen an operator opens at 6am. O9 second because it is the one
@@ -137,6 +141,46 @@ expires unanswered is a traveller told no by a timer.
   only and `OperatorBooking` carries no money fields, so "why is _this_ booking less"
   cannot be answered yet. Raised on `yuvoy-api` rather than worked around.
 
+### What O5 does, and the two claims underneath it
+
+- **An invitation is not a person.** `GET /team` returns "active people and
+  unaccepted invitations, in one list", and on a pending row **`id` is the
+  invitation, not a user**. They are rendered as two lists: a code sitting on
+  somebody's phone grants nothing, has no "last seen" worth reading, and is
+  _revoked_ rather than removed.
+- **Removing somebody ends their access now**, and the screen says so in those
+  words. "Marking a user removed while leaving a 14-day session alive is the
+  difference between 'we removed them' and 'we removed them a fortnight from
+  now', and the reason somebody is removed in a hurry is usually that the
+  fortnight matters."
+- **Removing does not revalidate.** Third time this rule has decided a screen:
+  re-rendering the list makes the row vanish and takes the confirmation with
+  it, so the operator learns nothing about _when_ access ended. The row becomes
+  its own confirmation. Inviting **does** revalidate — the pending row it
+  produces says more than a message could, and the form does not unmount.
+- **OWNER, not `canManage`.** `canManage` is OWNER _or_ MANAGER and gates
+  capacity, closed dates, earnings and listing edits. Both team writes are 403
+  "OWNER only". The two are one word apart, so `pnpm qa` now reads the
+  OWNER-only endpoints out of the contract and fails a route that calls one
+  while deciding on `canManage`.
+- **There is no Owner to invite, and the form says why.** "The owner is the
+  person whose bank account this is, and that is not a thing one login should
+  be able to hand to a phone number."
+- **`cannot_invite` is one message, and stays one.** A number already belonging
+  to any operator is refused identically to every other failure, "so this
+  endpoint cannot be used to find out which businesses are on Yuvoy". A client
+  that guessed between the causes would rebuild the oracle the server refuses
+  to be — so this one does not guess, and the mock does not either.
+- **Accepting is a different door.** `POST /team/accept` is unauthenticated by
+  design and **mints no session**: `/join` says so plainly and sends them to
+  sign in, because a screen that implied otherwise leaves somebody tapping a
+  portal that keeps asking them to sign in.
+- **The list cannot show a phone number.** `TeamMember` carries none, so a
+  pending row is a name with nothing to check a typo against — and an invitation
+  sent to a wrong number is one a stranger can accept. The invite confirmation
+  echoes what was typed, and the gap is raised on `yuvoy-api` rather than
+  papered over.
+
 ### Capacity, and the three refusals that matter
 
 - **Seats cannot go below what is already sold.** Not "should not" — the database refuses
@@ -163,9 +207,24 @@ pnpm install
 pnpm dev                 # http://localhost:3200, everything mocked
 ```
 
-Sign in with any phone number in E.164 (`+919000000101`). The mocked
-`POST /auth/otp` returns a `devCode` — the real API does too, outside production —
-and the sign-in screen shows it in a mocked build. The code is `424242`.
+**Sign in as whichever role you want to see.** The mock resolves the session
+token against the team fixture rather than a constant, so the number decides who
+you are — which is the only way a portal about three levels of access can be
+exercised at all. The code is `424242` for everybody.
+
+| Number          | Who         | Role    |
+| --------------- | ----------- | ------- |
+| `+919000000101` | Priya Raut  | OWNER   |
+| `+919000000102` | Dev Kapoor  | MANAGER |
+| `+919000000103` | Arun Biswas | STAFF   |
+
+A number nobody on the account owns gets the same 401 as a wrong code — the same
+rule `POST /auth/otp` follows, and the reason it does not tell you which numbers
+exist. Removing somebody ends their session for free, because the lookup simply
+stops finding them.
+
+`+919000000104` has an unaccepted invitation waiting: accept it at `/join` and
+then sign in with it.
 
 Three departures are fixtured for _today_, not for a fixed date: one that has already
 left (so the terminal outcomes are reachable), one that has not, and one called off.
@@ -176,14 +235,14 @@ left (so the terminal outcomes are reachable), one that has not, and one called 
 pnpm verify          # the pre-push gate — all nine steps below, in order
 pnpm qa              # the static sweep on its own
 pnpm tokens:check    # design tokens against yuvoy-app (canonical)
-pnpm test:e2e        # 28 e2e tests, incl. axe on every route
+pnpm test:e2e        # 112 e2e tests, incl. axe on every route
 ```
 
 ```
 typecheck · lint · format · qa · tokens · test · contract:check · build · e2e
 ```
 
-**`pnpm qa` guards four things the compiler cannot**, and all four are ways the
+**`pnpm qa` guards six things the compiler cannot**, and all six are ways the
 architecture above quietly stops being the architecture:
 
 1. **A route handler under `src/app`** — see the proxy note. There is no allowlist
@@ -193,6 +252,16 @@ architecture above quietly stops being the architecture:
 3. **A Server Action that never calls `requireOperator()`.** An action is a public POST
    endpoint with a generated name — Next checks the origin, not who is asking.
 4. **A traveller phone number** anywhere (O12, above).
+5. **A page that is not `force-dynamic`.** Two things depend on it and both are
+   silent when it stops being true: every screen here is a live answer, and
+   `OPERATOR_API_URL` is only safe to mark Sensitive in Vercel because nothing
+   reads it at build time. Static generation is opt-OUT in Next, so this is an
+   absence rather than a mistake. One exemption — the root redirect, which
+   reads nothing — and it revokes itself the moment that file imports `@/lib`.
+6. **An OWNER-only endpoint gated on `canManage`.** The OWNER-only list is
+   parsed out of `contracts/operator-openapi.yaml` rather than written down, so
+   it stays true when the contract moves, and the check fails loudly if the
+   parse ever finds nothing.
 
 Each was verified by breaking it on purpose and watching the check fail.
 

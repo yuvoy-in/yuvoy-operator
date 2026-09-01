@@ -100,7 +100,11 @@ export default async function TodayPage({
             Seats and closed dates →
           </Link>
           {/* Earnings is OWNER/MANAGER only; a staff member sees a 403 rather
-              than a page, so the link is not offered to them. */}
+              than a page, so the link is not offered to them. Payout details
+              and Team are OWNER-only to CHANGE but readable by a manager, so
+              they sit behind the same gate as the link list rather than a
+              stricter one — the pages themselves say what a manager may do. A
+              staff phone on a boat needs the manifest and nothing else. */}
           {me.canManage ? (
             <>
               {" · "}
@@ -116,6 +120,13 @@ export default async function TodayPage({
                 className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
               >
                 Payout details →
+              </Link>
+              {" · "}
+              <Link
+                href="/team"
+                className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
+              >
+                Team access →
               </Link>
             </>
           ) : null}

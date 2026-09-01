@@ -7,9 +7,15 @@
  * screen is the one thing a manifest fixture must never be.
  */
 
+/*
+  `GET /me` is "who am I and what may I do", so `name` is the PERSON, not the
+  business — `operatorId` is the business. The two were the same value here
+  until O5 put the signed-in user in a list beside their colleagues, where a
+  row named after the dive shop reads as a shared login rather than an owner.
+*/
 export const OPERATOR = {
   id: "usr_havelock_owner",
-  name: "Nemo Reef Divers",
+  name: "Priya Raut",
   roles: ["OWNER"],
   operatorId: "op_nemo_reef",
   canManage: true,
@@ -347,5 +353,69 @@ export const CHANGE_REQUESTS = [
     requestedAt: todayAt("09:00", -1),
     objectionUntil: null,
     coolingUntil: todayAt("09:00", 1),
+  },
+];
+
+/* --------------------------------------------------------------- team ---- */
+
+export interface MockTeamMember {
+  id: string;
+  name: string;
+  roles: string[];
+  state: string;
+  pending?: boolean;
+  lastSeenAt?: string;
+  /**
+   * Mock-internal, and deliberately NOT part of the response.
+   *
+   * `TeamMember` carries no phone. The API knows the number — it is how the
+   * invitation was sent and how "a number already belonging to any operator"
+   * is refused — but it does not return it, so neither does this. Keeping it
+   * here lets the mock enforce the rule without inventing a field the client
+   * would then be tempted to render.
+   */
+  phone: string;
+}
+
+/**
+ * A Havelock dive shop, as three people and one invitation nobody has used.
+ *
+ * The owner is the signed-in user, which puts "This is you" on the first row —
+ * the refusal an operator meets most often, and the one the API answers with
+ * `409 cannot_remove`.
+ */
+export const TEAM: MockTeamMember[] = [
+  {
+    id: OPERATOR.id,
+    name: OPERATOR.name,
+    roles: ["OWNER"],
+    state: "active",
+    lastSeenAt: todayAt("05:50"),
+    phone: "+919000000101",
+  },
+  {
+    id: "usr_manager_dev",
+    name: "Dev Kapoor",
+    roles: ["MANAGER"],
+    state: "active",
+    lastSeenAt: todayAt("18:20", -2),
+    phone: "+919000000102",
+  },
+  {
+    id: "usr_staff_arun",
+    name: "Arun Biswas",
+    roles: ["STAFF"],
+    state: "active",
+    lastSeenAt: todayAt("07:05", -4),
+    phone: "+919000000103",
+  },
+  {
+    // `id` is the INVITATION, not a user. Nothing is granted until it is used.
+    id: "inv_ramesh",
+    name: "Ramesh Toppo",
+    roles: ["STAFF"],
+    state: "invited",
+    pending: true,
+    phone: "+919000000104",
   },
 ];

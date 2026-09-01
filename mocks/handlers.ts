@@ -8,7 +8,9 @@ import {
   OPERATOR,
   REQUESTS,
   SLOTS,
+  TEAM,
   type MockParty,
+  type MockTeamMember,
 } from "./fixtures";
 
 /**
@@ -33,7 +35,39 @@ import {
 */
 const url = (path: string) => `${apiBaseUrl()}${path}`;
 
-const SESSION_TOKEN = "opsess_mock_a1b2c3d4e5f6";
+/**
+ * The mock's session table, as a function of the team.
+ *
+ * A single hard-coded token was enough while every screen belonged to one
+ * identity. O5 is the screen that ends that: a portal whose whole subject is
+ * "three people, three different amounts of access" cannot be exercised by a
+ * mock that only knows one of them, and the first version of these handlers
+ * checked the OWNER fixture's roles rather than the caller's — which would
+ * have let a MANAGER invite somebody here while the real API answered 403.
+ *
+ * Two properties fall out of resolving the token against the live team rather
+ * than a constant, and both match the API:
+ *
+ *   - **Removing somebody ends their session.** The lookup simply stops
+ *     finding them, so their next request is a 401. "Their sessions are
+ *     revoked in the same transaction."
+ *   - **Only a real member can sign in.** A number nobody on the account owns
+ *     gets the same 401 as a wrong code — which is what makes the accept →
+ *     sign-in journey worth testing at all.
+ */
+const sessionTokenFor = (id: string) => `opsess_mock_${id}`;
+
+function sessionUser(request: Request): MockTeamMember | null {
+  const auth = request.headers.get("authorization") ?? "";
+  const match = auth.match(/^Bearer opsess_mock_(.+)$/);
+  if (!match) return null;
+  // A pending row is an invitation, not a user, and cannot hold a session.
+  return team.find((m) => !m.pending && m.id === match[1]) ?? null;
+}
+
+/** OWNER or MANAGER, exactly as `GET /me` defines it. */
+const canManage = (member: MockTeamMember) =>
+  member.roles.includes("OWNER") || member.roles.includes("MANAGER");
 
 let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
 /** Requests that have been answered. An answered one is not open any more. */
@@ -48,6 +82,13 @@ let offlineSold: Record<string, number> = {};
 let steppedUp = false;
 let bankChanges: Record<string, unknown>[] = [];
 let stoppedChanges: string[] = [];
+/**
+ * The team, mutated in place for the life of the server process.
+ *
+ * A copy rather than the fixture itself, so a reset restores the fixture
+ * instead of restoring whatever the last test left behind.
+ */
+let team: MockTeamMember[] = TEAM.map((m) => ({ ...m }));
 
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
@@ -59,6 +100,7 @@ export function __resetOperatorMocks() {
   steppedUp = false;
   bankChanges = [];
   stoppedChanges = [];
+  team = TEAM.map((m) => ({ ...m }));
 }
 
 function envelope(code: string, message: string, status: number) {
@@ -67,13 +109,36 @@ function envelope(code: string, message: string, status: number) {
 
 /** Every authenticated route answers 401 the same way. */
 function requireSession(request: Request) {
-  const auth = request.headers.get("authorization");
-  if (auth !== `Bearer ${SESSION_TOKEN}`) {
+  if (!sessionUser(request)) {
     return envelope(
       "unauthorized",
       "No session, or one that is no longer valid.",
       401,
     );
+  }
+  return null;
+}
+
+/** The response shape: everything except the number, which is never returned. */
+function publicMember(member: MockTeamMember) {
+  const { phone: _phone, ...rest } = member;
+  void _phone;
+  return rest;
+}
+
+/**
+ * OWNER only, and deliberately not `canManage`.
+ *
+ * `canManage` is "OWNER or MANAGER" and gates capacity, closed dates, earnings
+ * and listing edits. Both team writes are 403 "OWNER only" — a manager who
+ * could add a staff account could hand out access to a business that is not
+ * theirs.
+ */
+function requireOwner(request: Request) {
+  const failed = requireSession(request);
+  if (failed) return failed;
+  if (!sessionUser(request)!.roles.includes("OWNER")) {
+    return envelope("forbidden", "Only the owner can do that.", 403);
   }
   return null;
 }
@@ -148,13 +213,21 @@ export const handlers = [
 
   http.post(url("/auth/session"), async ({ request }) => {
     const body = (await request.json()) as { phone?: string; code?: string };
-    if (body.code !== DEV_CODE) {
-      // Wrong, expired, used and over-attempted all answer 401 with one message.
+    const member = team.find(
+      (m) => !m.pending && m.phone === (body.phone ?? "").trim(),
+    );
+    /*
+      A wrong code and a number nobody on the account owns answer identically.
+      `POST /auth/otp` above already refuses to distinguish known numbers from
+      unknown ones; a session endpoint that then said "no such user" would give
+      back the directory the OTP endpoint carefully withholds.
+    */
+    if (body.code !== DEV_CODE || !member) {
       return envelope("unauthorized", "That code did not work.", 401);
     }
     return HttpResponse.json(
       {
-        token: SESSION_TOKEN,
+        token: sessionTokenFor(member.id),
         operatorId: OPERATOR.operatorId,
         expiresAt: new Date(Date.now() + 30 * 864e5).toISOString(),
       },
@@ -170,7 +243,164 @@ export const handlers = [
   http.get(url("/me"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
-    return HttpResponse.json(OPERATOR);
+    const me = sessionUser(request)!;
+    return HttpResponse.json({
+      id: me.id,
+      name: me.name,
+      roles: me.roles,
+      operatorId: OPERATOR.operatorId,
+      canManage: canManage(me),
+    });
+  }),
+
+  /* ------------------------------------------------------------- team --- */
+
+  /**
+   * What the response actually carries.
+   *
+   * `phone` is stripped here rather than never stored: the API knows the
+   * number — it is how the invitation was sent, and how "a number already
+   * belonging to any operator" is refused — and simply does not return it. A
+   * mock that returned one would let this portal ship a screen showing a
+   * number the real API never sends.
+   */
+  http.get(url("/team"), async ({ request }) => {
+    // Session only. `GET /team` has no role gate in the contract — every role
+    // may see who is on the account; only the writes are OWNER only.
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json({ team: team.map(publicMember) });
+  }),
+
+  http.post(url("/team"), async ({ request }) => {
+    const failed = requireOwner(request);
+    if (failed) return failed;
+
+    const body = (await request.json()) as {
+      phone?: string;
+      name?: string;
+      role?: string;
+    };
+    const phone = (body.phone ?? "").trim();
+    const name = (body.name ?? "").trim();
+    const role = body.role ?? "";
+
+    if (!/^\+[1-9]\d{7,14}$/.test(phone) || name.length < 2) {
+      return envelope("invalid_input", "A name and an E.164 number.", 400);
+    }
+
+    /*
+      A role that does not exist is a different failure from a role that is not
+      allowed, and the contract keeps them apart: `invalid_role` is "pick a role
+      that exists", while inviting an OWNER folds into the one deliberately
+      uninformative `cannot_invite` below.
+    */
+    if (role !== "MANAGER" && role !== "STAFF" && role !== "OWNER") {
+      return envelope("invalid_role", "No such role.", 400);
+    }
+
+    /*
+      ONE message for every refusal, and the mock keeps it that way on purpose.
+
+      "A number already belonging to any operator is refused with the same
+      message as any other failure, so this endpoint cannot be used to find out
+      which businesses are on Yuvoy." A mock that distinguished them would let
+      this portal ship a branch the real API never takes — and the branch would
+      be the enumeration oracle the endpoint exists to avoid being.
+    */
+    const alreadyHere = team.some((m) => !m.pending && m.phone === phone);
+    if (role === "OWNER" || alreadyHere) {
+      return envelope(
+        "cannot_invite",
+        "We could not send that invitation.",
+        409,
+      );
+    }
+
+    /*
+      "Re-inviting the same number replaces the open invitation rather than
+      adding one, so a revoked invite is not undone by an older code still
+      lying around."
+    */
+    team = team.filter((m) => !(m.pending && m.phone === phone));
+    team.push({
+      id: `inv_${Math.random().toString(36).slice(2, 10)}`,
+      name,
+      roles: [role],
+      state: "invited",
+      pending: true,
+      phone,
+    });
+
+    return HttpResponse.json(
+      { sent: true, devCode: DEV_CODE },
+      { status: 202 },
+    );
+  }),
+
+  /*
+    Unauthenticated by design — `security: []` in the contract, because
+    accepting an invitation is what somebody does BEFORE they have an account.
+    Note what it does not do: mint a session. "They sign in through the
+    ordinary flow afterwards, so one code path creates operator sessions rather
+    than two."
+  */
+  http.post(url("/team/accept"), async ({ request }) => {
+    const body = (await request.json()) as { phone?: string; code?: string };
+    const phone = (body.phone ?? "").trim();
+
+    const invite = team.find((m) => m.pending && m.phone === phone);
+    if (!invite || body.code !== DEV_CODE) {
+      // Wrong code, expired, used, and no invitation for that number all
+      // answer 401 with one message — the same rule sign-in follows.
+      return envelope("unauthorized", "That code did not work.", 401);
+    }
+
+    /*
+      The id changes, because it was the INVITATION's id and is now a user's.
+      Modelled rather than glossed: a client holding the old id and calling
+      DELETE gets a 404, which is exactly what the real API would do.
+    */
+    invite.id = `usr_${Math.random().toString(36).slice(2, 10)}`;
+    invite.pending = false;
+    invite.state = "active";
+    // They have accepted, not signed in. `lastSeenAt` stays absent.
+
+    return HttpResponse.json({ accepted: true, next: "sign_in" });
+  }),
+
+  http.delete(url("/team/:id"), async ({ request, params }) => {
+    const failed = requireOwner(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const member = team.find((m) => m.id === id);
+    if (!member) return envelope("not_found", "No such member.", 404);
+
+    if (!member.pending) {
+      if (member.id === sessionUser(request)!.id) {
+        return envelope("cannot_remove", "You cannot remove yourself.", 409);
+      }
+      const owners = team.filter(
+        (m) => !m.pending && m.roles.includes("OWNER"),
+      ).length;
+      if (member.roles.includes("OWNER") && owners <= 1) {
+        return envelope(
+          "cannot_remove",
+          "You cannot remove the last owner.",
+          409,
+        );
+      }
+    }
+
+    /*
+      Removed outright. In the real API "their sessions are revoked in the same
+      transaction" — there is no session state to revoke in this mock, but the
+      removal is immediate here for the same reason it is there: a row that
+      lingers is a client that ships believing removal is eventual.
+    */
+    team = team.filter((m) => m.id !== id);
+    return new HttpResponse(null, { status: 204 });
   }),
 
   /* --------------------------------------------------------- the day ----- */
@@ -410,7 +640,7 @@ export const handlers = [
     if (!steppedUp) {
       return envelope("step_up_required", "Ask for a code first.", 403);
     }
-    if (!OPERATOR.roles.includes("OWNER")) {
+    if (!sessionUser(request)!.roles.includes("OWNER")) {
       return envelope("forbidden", "Only the owner can change this.", 403);
     }
 
