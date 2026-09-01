@@ -44,6 +44,10 @@ let calledOff: Record<string, string> = {};
 let capacity: Record<string, number> = {};
 /** Seats reported sold at the operator's own counter. */
 let offlineSold: Record<string, number> = {};
+/** Sessions elevated by a step-up code, and bank changes raised. */
+let steppedUp = false;
+let bankChanges: Record<string, unknown>[] = [];
+let stoppedChanges: string[] = [];
 
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
@@ -52,6 +56,9 @@ export function __resetOperatorMocks() {
   calledOff = {};
   capacity = {};
   offlineSold = {};
+  steppedUp = false;
+  bankChanges = [];
+  stoppedChanges = [];
 }
 
 function envelope(code: string, message: string, status: number) {
@@ -355,7 +362,154 @@ export const handlers = [
   http.get(url("/change-requests"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
-    return HttpResponse.json({ requests: CHANGE_REQUESTS });
+    const live = [...bankChanges, ...CHANGE_REQUESTS].map((r) =>
+      stoppedChanges.includes(String((r as { id?: string }).id))
+        ? { ...r, state: "withdrawn" }
+        : r,
+    );
+    return HttpResponse.json({ requests: live });
+  }),
+
+  /* --------------------------------------------------------- step up ---- */
+
+  http.post(url("/auth/step-up"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    // Sent to the OWNER's number whoever asks. The mock does not model a
+    // second user, but it does model that asking is not the same as receiving.
+    return HttpResponse.json(
+      { sent: true, expiresIn: 600, devCode: DEV_CODE },
+      { status: 202 },
+    );
+  }),
+
+  http.post(url("/auth/step-up/verify"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const { code } = (await request.json()) as { code?: string };
+    if (code !== DEV_CODE) {
+      // Wrong, expired and used all answer the same way.
+      return envelope("unauthorized", "That code did not work.", 401);
+    }
+    steppedUp = true;
+    return HttpResponse.json({ elevated: true, expiresIn: 600 });
+  }),
+
+  /* ------------------------------------------------------ bank change --- */
+
+  http.post(url("/change-requests/bank"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    /*
+      The gates are enforced, not assumed. A mock that raises a change without
+      step-up would let the client ship without the code step — and the first
+      time anybody found out would be in production, on the one flow where the
+      whole design is the gate.
+    */
+    if (!steppedUp) {
+      return envelope("step_up_required", "Ask for a code first.", 403);
+    }
+    if (!OPERATOR.roles.includes("OWNER")) {
+      return envelope("forbidden", "Only the owner can change this.", 403);
+    }
+
+    const open = [...bankChanges, ...CHANGE_REQUESTS].filter(
+      (r) =>
+        !stoppedChanges.includes(String((r as { id?: string }).id)) &&
+        ["objection_window", "pending", "cooling", "approved"].includes(
+          String((r as { state?: string }).state),
+        ),
+    );
+    if (open.length > 0) {
+      // "Two open bank changes would mean the second approval silently decides
+      // which account wins."
+      return envelope(
+        "change_already_in_progress",
+        "Cancel the open one first.",
+        409,
+      );
+    }
+
+    const body = (await request.json()) as {
+      accountHolder?: string;
+      accountNumber?: string;
+      ifsc?: string;
+      bankName?: string;
+    };
+    const account = (body.accountNumber ?? "").replace(/\s/g, "");
+    if (!/^\d{9,18}$/.test(account)) {
+      return envelope(
+        "invalid_input",
+        "accountNumber must be 9-18 digits.",
+        400,
+      );
+    }
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test((body.ifsc ?? "").toUpperCase())) {
+      return envelope("invalid_input", "ifsc is malformed.", 400);
+    }
+
+    const id = `chg_${Math.random().toString(36).slice(2, 10)}`;
+    const objectionUntil = new Date(Date.now() + 24 * 3600_000).toISOString();
+    // Masked. Only the last four digits are ever stored.
+    const summary = `${body.bankName || "Bank"} ••••${account.slice(-4)} · ${(body.ifsc ?? "").toUpperCase()}`;
+
+    bankChanges.unshift({
+      id,
+      kind: "bank",
+      state: "objection_window",
+      summary,
+      requestedAt: new Date().toISOString(),
+      objectionUntil,
+      coolingUntil: null,
+    });
+
+    return HttpResponse.json(
+      {
+        id,
+        state: "objection_window",
+        summary,
+        objectionUntil,
+        whatHappensNext:
+          "We have messaged the owner. You can stop this for the next 24 hours. After that a person at Yuvoy reviews it, and it goes live 24 hours after they approve — still stoppable the whole time.",
+      },
+      { status: 202 },
+    );
+  }),
+
+  http.post(url("/change-requests/:id/cancel"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const all = [...bankChanges, ...CHANGE_REQUESTS] as {
+      id?: string;
+      state?: string;
+    }[];
+    const found = all.find((r) => r.id === id);
+    if (!found) return envelope("not_found", "No such change.", 404);
+
+    if (stoppedChanges.includes(id) || found.state === "applied") {
+      /*
+        Distinguished from 404 on purpose: "we cannot find it" and "it already
+        happened" mean very different things to somebody who has just realised
+        their account was compromised.
+      */
+      return envelope(
+        "change_already_decided",
+        "It has already gone through.",
+        409,
+      );
+    }
+
+    /*
+      Marked withdrawn rather than removed. A cancelled change is part of the
+      account's history — an owner who stopped one needs to be able to show
+      that they did, and a record that disappears is the opposite of an audit
+      trail. `withdrawn` is in the contract's own state enum for this.
+    */
+    stoppedChanges.push(id);
+    return new HttpResponse(null, { status: 204 });
   }),
 
   /* ------------------------------------------------------------ capacity - */

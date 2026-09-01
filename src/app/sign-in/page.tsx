@@ -28,6 +28,26 @@ export default async function SignInPage() {
           business.
         </p>
         <SignInForm />
+
+        {/*
+          The way in for somebody who does not have an account yet.
+          Deliberately a LINK rather than a second form: applying posts to the
+          public contract, the applicant has no session, and yuvoy.in/operators
+          already does it. Two forms against one endpoint means two copies of
+          the validation and two places that have to stay truthful about what
+          applying means. See yuvoy-operator#2.
+        */}
+        <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
+          Not on Yuvoy yet?{" "}
+          <a
+            href="https://yuvoy.in/operators"
+            className="text-terra-deep tap-target font-bold underline underline-offset-4"
+          >
+            Apply to run experiences
+          </a>
+          . A person reads every application — nothing is public until we have
+          checked you out.
+        </p>
       </div>
     </main>
   );

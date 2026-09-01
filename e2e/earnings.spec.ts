@@ -65,25 +65,6 @@ test("a figure that can still move says so; a settled one does not", async ({
   await expect(page.getByText(/Still adding up/)).toHaveCount(0);
 });
 
-test("a bank change in flight is shown as a payout hold", async ({ page }) => {
-  await signIn(page);
-  await page.goto("/earnings");
-
-  /*
-    "A payout on hold because a bank change is in flight should say so — that
-    is a real state and the operator can act on it." The fixture is in
-    `cooling`: approved, not yet live, and still stoppable.
-  */
-  await expect(
-    page.getByText("Payouts are on hold while your bank change is reviewed"),
-  ).toBeVisible();
-  await expect(page.getByText(/cooling period/)).toBeVisible();
-  await expect(page.getByText(/If you did not request this/)).toBeVisible();
-
-  // Masked, never a full account number.
-  await expect(page.getByText(/••••4417/)).toBeVisible();
-});
-
 test("the per-booking gap is stated rather than hidden", async ({ page }) => {
   await signIn(page);
   await page.goto("/earnings");

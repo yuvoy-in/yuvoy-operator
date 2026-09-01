@@ -53,11 +53,12 @@ well-meaning commit from showing one the day it does.
 
 ## Built so far
 
-|           | Screen                                                    | State       |
-| --------- | --------------------------------------------------------- | ----------- |
-| **O2**    | Operator signs in — phone, code, session                  | **Built**   |
-| **O10**   | The day, and today's manifest                             | **Built**   |
-| O1, O3–O8 | Signup, approval, payouts, team, profile, listings, reels | Not started |
+|           | Screen                                          | State                                                                  |
+| --------- | ----------------------------------------------- | ---------------------------------------------------------------------- |
+| **O2**    | Operator signs in — phone, code, session        | **Built**                                                              |
+| **O10**   | The day, and today's manifest                   | **Built**                                                              |
+| O3, O5–O8 | Approval states, team, profile, listings, reels | Not started                                                            |
+| O1        | Operator signs up                               | **Closed** — `yuvoy.in/operators` already does it; sign-in links to it |
 
 O10 first because the brief says so: _"If you build one screen well, build the
 manifest."_ It is the screen an operator opens at 6am. O9 second because it is the one

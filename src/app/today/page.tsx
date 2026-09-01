@@ -110,6 +110,13 @@ export default async function TodayPage({
               >
                 Earnings →
               </Link>
+              {" · "}
+              <Link
+                href="/payouts"
+                className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
+              >
+                Payout details →
+              </Link>
             </>
           ) : null}
         </p>
