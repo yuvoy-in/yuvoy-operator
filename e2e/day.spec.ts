@@ -149,7 +149,8 @@ test("terminal outcomes are absent before the departure has set off", async ({
 }) => {
   await signIn(page);
 
-  // slot_late_morning departs at 23:30 IST — later today, whenever this runs.
+  // slot_late_morning departs tomorrow morning, so it has never set off —
+  // whatever hour this suite runs at. See `earlierToday` in the fixtures.
   await page.goto("/today/slot_late_morning");
   const row = page.locator("li").filter({ hasText: "Nadia Farouk" });
   await expect(row.getByRole("button", { name: "Here" })).toBeVisible();
@@ -158,7 +159,7 @@ test("terminal outcomes are absent before the departure has set off", async ({
   await expect(row.getByRole("button", { name: "Completed" })).toHaveCount(0);
   await expect(row.getByRole("button", { name: "No-show" })).toHaveCount(0);
 
-  // slot_dawn departed at 06:45 IST, so they are available there.
+  // slot_dawn is anchored to a few hours ago, so it has always departed.
   await page.goto("/today/slot_dawn");
   const early = page.locator("li").filter({ hasText: "Daniel Okafor" });
   await expect(early.getByRole("button", { name: "Completed" })).toBeVisible();

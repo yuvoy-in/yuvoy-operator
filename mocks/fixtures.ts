@@ -23,12 +23,37 @@ export const OPERATOR = {
 
 const TZ = "Asia/Kolkata";
 
-/** An instant today at a given IST wall-clock time. */
-export function todayAt(hhmm: string, dayOffset = 0): string {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(
+/** The market's calendar date, `YYYY-MM-DD`, `dayOffset` days from now. */
+function marketDay(dayOffset = 0): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(
     new Date(Date.now() + dayOffset * 24 * 60 * 60 * 1000),
   );
-  return new Date(`${day}T${hhmm}:00+05:30`).toISOString();
+}
+
+/** An instant today at a given IST wall-clock time. */
+export function todayAt(hhmm: string, dayOffset = 0): string {
+  return new Date(`${marketDay(dayOffset)}T${hhmm}:00+05:30`).toISOString();
+}
+
+/**
+ * An instant that has **already happened**, and is still today.
+ *
+ * A wall-clock literal cannot promise both. `slot_dawn` was pinned to 06:45
+ * and the suite that depends on it having departed was therefore red between
+ * midnight and quarter to seven every morning — nobody noticed, because nobody
+ * runs it then. Its counterpart was pinned to 23:30 and went red at 23:30,
+ * which is how this was found: `pnpm verify` refused a push at 23:36.
+ *
+ * Clamped to the start of the market's day so it never slides into yesterday
+ * and out of the `from=today&to=today` window the day screen filters on.
+ * `hasDeparted` compares with `>=`, so the clamp is still "departed" at the
+ * stroke of midnight.
+ */
+export function earlierToday(hoursBack = 3): string {
+  const dayStart = Date.parse(`${marketDay()}T00:00:00+05:30`);
+  return new Date(
+    Math.max(dayStart, Date.now() - hoursBack * 60 * 60 * 1000),
+  ).toISOString();
 }
 
 export interface MockParty {
@@ -69,7 +94,8 @@ export const SLOTS: MockSlot[] = [
     id: "slot_dawn",
     experienceId: "exp_try_dive",
     title: "Try-dive at Nemo Reef",
-    startsAt: todayAt("06:45"),
+    // Has departed, at every hour of the day. See `earlierToday`.
+    startsAt: earlierToday(),
     timezone: TZ,
     seats: 8,
     sold: 5,
@@ -118,7 +144,13 @@ export const SLOTS: MockSlot[] = [
     id: "slot_late_morning",
     experienceId: "exp_snorkel",
     title: "Snorkel trip to Elephant Beach",
-    startsAt: todayAt("23:30"),
+    /*
+      Has NOT departed, at every hour of the day — which "later today" cannot
+      promise, because at 23:40 there is no later today. Tomorrow morning can.
+      It is reached by id rather than from the day list, and `/capacity` covers
+      a fortnight, so nothing needs it to be today.
+    */
+    startsAt: todayAt("09:00", 1),
     timezone: TZ,
     seats: 12,
     sold: 1,
