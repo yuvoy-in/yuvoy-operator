@@ -319,3 +319,33 @@ export const REQUESTS: MockRequest[] = [
     minutesToAnswer: 1_805,
   },
 ];
+
+/**
+ * Earnings, and a bank change that holds the payout.
+ *
+ * The figures reconcile on purpose — gross − commission − refunds = net — so
+ * that the screen's own reconciliation check is exercised on a case that
+ * passes rather than only on one that fails.
+ */
+export const EARNINGS = {
+  bookings: 12,
+  grossPaise: 5_400_000,
+  commissionPaise: 810_000,
+  refundsPaise: 450_000,
+  netPaise: 4_140_000,
+  state: "provisional" as const,
+};
+
+export const CHANGE_REQUESTS = [
+  {
+    id: "chg_bank_1",
+    kind: "bank",
+    // `cooling` is approved and STILL STOPPABLE — the state most worth
+    // rendering, because an operator can still act on it.
+    state: "cooling",
+    summary: "HDFC Bank ••••4417 · HDFC0001234",
+    requestedAt: todayAt("09:00", -1),
+    objectionUntil: null,
+    coolingUntil: todayAt("09:00", 1),
+  },
+];

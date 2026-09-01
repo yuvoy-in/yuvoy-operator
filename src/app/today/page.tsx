@@ -99,6 +99,19 @@ export default async function TodayPage({
           >
             Seats and closed dates →
           </Link>
+          {/* Earnings is OWNER/MANAGER only; a staff member sees a 403 rather
+              than a page, so the link is not offered to them. */}
+          {me.canManage ? (
+            <>
+              {" · "}
+              <Link
+                href="/earnings"
+                className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
+              >
+                Earnings →
+              </Link>
+            </>
+          ) : null}
         </p>
 
         <div className="mt-8">

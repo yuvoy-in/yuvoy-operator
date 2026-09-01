@@ -53,11 +53,11 @@ well-meaning commit from showing one the day it does.
 
 ## Built so far
 
-|                | Screen                                                                        | State       |
-| -------------- | ----------------------------------------------------------------------------- | ----------- |
-| **O2**         | Operator signs in — phone, code, session                                      | **Built**   |
-| **O10**        | The day, and today's manifest                                                 | **Built**   |
-| O1, O3–O9, O11 | Signup, approval, payouts, team, profile, listings, reels, capacity, earnings | Not started |
+|           | Screen                                                    | State       |
+| --------- | --------------------------------------------------------- | ----------- |
+| **O2**    | Operator signs in — phone, code, session                  | **Built**   |
+| **O10**   | The day, and today's manifest                             | **Built**   |
+| O1, O3–O8 | Signup, approval, payouts, team, profile, listings, reels | Not started |
 
 O10 first because the brief says so: _"If you build one screen well, build the
 manifest."_ It is the screen an operator opens at 6am. O9 second because it is the one
@@ -119,6 +119,22 @@ expires unanswered is a traveller told no by a timer.
   it fresh. Declining does revalidate: there is no post-state to show.
 - **STAFF see the queue and are told they cannot answer it**, up front. The contract
   refuses the write, not the read, and finding that out after choosing a reason is worse.
+
+### What O11 does
+
+- **It shows the arithmetic, not a headline.** Gross, minus commission, minus refunds,
+  equals net. An operator asking "why is this ₹200 less than I expected" needs to see
+  which line disagrees.
+- **It checks its own sum.** If gross − commission − refunds ≠ net, it says so and tells
+  the operator not to reconcile against it. A reconciliation screen that cannot reconcile
+  is worse than no screen.
+- **A figure that can still move says so**, loudly. `provisional` and `open` both mean the
+  number is not final, and nobody should plan against one that is not.
+- **A bank change in flight is shown as a payout hold**, above the number, because it
+  changes what the number means: owed, and not moving.
+- **The per-booking gap is stated rather than hidden.** `GET /earnings` returns totals
+  only and `OperatorBooking` carries no money fields, so "why is _this_ booking less"
+  cannot be answered yet. Raised on `yuvoy-api` rather than worked around.
 
 ### Capacity, and the three refusals that matter
 

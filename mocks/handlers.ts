@@ -2,7 +2,9 @@ import { http, HttpResponse } from "msw";
 import { apiBaseUrl } from "../src/lib/api/server-client";
 import { validateRelay } from "../src/lib/day/relay-types";
 import {
+  CHANGE_REQUESTS,
   DEV_CODE,
+  EARNINGS,
   OPERATOR,
   REQUESTS,
   SLOTS,
@@ -324,6 +326,36 @@ export const handlers = [
 
     answered[id] = "released";
     return HttpResponse.json({ id, state: "released", holdExpiresAt: null });
+  }),
+
+  /* -------------------------------------------------------------- money - */
+
+  http.get(url("/earnings"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const u = new URL(request.url);
+    const from = u.searchParams.get("from") ?? undefined;
+    const to = u.searchParams.get("to") ?? undefined;
+
+    /*
+      Last month is settled; this month is still provisional. Two states from
+      one endpoint, so the screen's "this can still move" warning is exercised
+      on the case where it matters and absent on the case where it does not.
+    */
+    const isPast = Boolean(from && to && new Date(to) < new Date());
+    return HttpResponse.json({
+      from,
+      to,
+      ...EARNINGS,
+      state: isPast ? "settled" : EARNINGS.state,
+    });
+  }),
+
+  http.get(url("/change-requests"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json({ requests: CHANGE_REQUESTS });
   }),
 
   /* ------------------------------------------------------------ capacity - */
