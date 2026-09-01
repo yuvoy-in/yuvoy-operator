@@ -38,12 +38,18 @@ let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
 let answered: Record<string, "active" | "released"> = {};
 /** Departures called off in this session. Irreversible, as in production. */
 let calledOff: Record<string, string> = {};
+/** Seats offered, once an operator has changed them in this session. */
+let capacity: Record<string, number> = {};
+/** Seats reported sold at the operator's own counter. */
+let offlineSold: Record<string, number> = {};
 
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
   attendance = {};
   answered = {};
   calledOff = {};
+  capacity = {};
+  offlineSold = {};
 }
 
 function envelope(code: string, message: string, status: number) {
@@ -318,6 +324,156 @@ export const handlers = [
 
     answered[id] = "released";
     return HttpResponse.json({ id, state: "released", holdExpiresAt: null });
+  }),
+
+  /* ------------------------------------------------------------ capacity - */
+
+  http.patch(url("/slots/:id"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const slot = SLOTS.find((s) => s.id === id);
+    if (!slot) return envelope("not_found", "No such departure.", 404);
+
+    const { seats } = (await request.json()) as { seats?: number };
+    if (
+      typeof seats !== "number" ||
+      !Number.isInteger(seats) ||
+      seats < 0 ||
+      seats > 200
+    ) {
+      return envelope("invalid_input", "seats must be 0 to 200.", 400);
+    }
+
+    /*
+      The floor is enforced, not assumed. "Not 'should not' — the database
+      refuses it, because the alternative is a traveller with a paid booking
+      and no seat, discovered at a jetty at six in the morning." Reducing to
+      EXACTLY what is sold is allowed: it closes the departure without
+      stranding anyone.
+
+      The 409 message is written the way the contract describes — copy telling
+      the operator what to do instead — because the client renders it verbatim.
+    */
+    if (seats < slot.sold) {
+      return envelope(
+        "conflict",
+        `${slot.sold} seats are already sold on this departure. Set it to ${slot.sold} to close it without stranding anyone, or call the departure off.`,
+        409,
+      );
+    }
+
+    capacity[id] = seats;
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.post(url("/blackouts"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const body = (await request.json()) as {
+      from?: string;
+      to?: string;
+      reasonCode?: string;
+    };
+    const REASONS = [
+      "WEATHER",
+      "MAINTENANCE",
+      "STAFF",
+      "PERSONAL",
+      "SEASONAL",
+      "OTHER",
+    ];
+    const shape = /^\d{4}-\d{2}-\d{2}$/;
+    if (
+      !body.from ||
+      !body.to ||
+      !shape.test(body.from) ||
+      !shape.test(body.to)
+    ) {
+      return envelope("invalid_input", "from and to must be dates.", 400);
+    }
+    if (body.to < body.from) {
+      return envelope("invalid_input", "to cannot precede from.", 400);
+    }
+    if (!body.reasonCode || !REASONS.includes(body.reasonCode)) {
+      return envelope("invalid_input", "Unknown reasonCode.", 400);
+    }
+
+    /*
+      Closing dates is NOT cancelling people. The count includes live holds,
+      whose bookings predate the closure and can still complete — which is
+      exactly the thing an operator assumes did not survive.
+    */
+    const inRange = SLOTS.filter((s) => {
+      const day = new Intl.DateTimeFormat("en-CA", {
+        timeZone: s.timezone,
+      }).format(new Date(s.startsAt));
+      return day >= body.from! && day <= body.to!;
+    });
+    const existingBookings = inRange.reduce((n, s) => n + s.parties.length, 0);
+
+    return HttpResponse.json({
+      closed: true,
+      existingBookings,
+      ...(existingBookings > 0
+        ? {
+            note: "The bookings you already have still stand — including anyone mid-checkout, whose hold predates the closure and can still complete. Run them, or call each departure off individually.",
+          }
+        : {}),
+    });
+  }),
+
+  http.post(url("/slots/:id/offline-sales"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const slot = SLOTS.find((s) => s.id === id);
+    if (!slot) return envelope("not_found", "No such departure.", 404);
+
+    const { seats } = (await request.json()) as { seats?: number };
+    if (
+      typeof seats !== "number" ||
+      !Number.isInteger(seats) ||
+      seats < 1 ||
+      seats > 200
+    ) {
+      return envelope("invalid_input", "seats must be 1 to 200.", 400);
+    }
+
+    /*
+      A REPORT, not a request. Accepted even when it is bad news: "refusing it
+      would not un-sell the seats — it would only keep our numbers wrong until
+      eleven people and a six-person boat meet at a jetty."
+    */
+    const offered = capacity[id] ?? slot.seats;
+    const previouslyOffline = offlineSold[id] ?? 0;
+    offlineSold[id] = previouslyOffline + seats;
+
+    const taken = slot.sold + offlineSold[id];
+    const over = taken - offered;
+
+    const result: Record<string, unknown> = {
+      seatsRecorded: seats,
+      // Never negative: an oversell is an incident, not a number on a screen.
+      seatsRemaining: Math.max(0, offered - taken),
+      totalSoldOffline: offlineSold[id],
+    };
+
+    if (over > 0) {
+      // Travellers who paid us now have no seat.
+      const stranded = slot.parties.filter((p) => p.bookingId).slice(0, over);
+      result.oversold = {
+        guests: over,
+        bookings: stranded.map((p) => p.reference),
+        message: `${over} ${over === 1 ? "guest has" : "guests have"} paid for a seat that no longer exists on this departure.`,
+        incidentId: `inc_${id}_${Date.now().toString(36)}`,
+      };
+    }
+
+    return HttpResponse.json(result);
   }),
 
   /* --------------------------------------------------------------- relay - */

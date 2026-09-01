@@ -45,3 +45,23 @@ export function orderParties(parties: Party[]): Party[] {
     return (a.name ?? "").localeCompare(b.name ?? "", "en");
   });
 }
+
+/**
+ * A departure, as the capacity screen renders it.
+ *
+ * Lives here rather than beside its fetcher for the same reason `Party` does:
+ * `manifest.ts` is `server-only` because it holds a session token, and a
+ * client component needing this shape must not import that module. `pnpm qa`
+ * caught exactly this when the capacity row was first written — a type-only
+ * import would have compiled and left the edge to break later.
+ */
+export interface OperatorSlot {
+  id: string;
+  title: string;
+  startsAt: string;
+  timezone: string;
+  seats: number;
+  sold: number;
+  remaining: number;
+  status: string;
+}

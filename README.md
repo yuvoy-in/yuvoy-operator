@@ -120,6 +120,25 @@ expires unanswered is a traveller told no by a timer.
 - **STAFF see the queue and are told they cannot answer it**, up front. The contract
   refuses the write, not the read, and finding that out after choosing a reason is worse.
 
+### Capacity, and the three refusals that matter
+
+- **Seats cannot go below what is already sold.** Not "should not" — the database refuses
+  it, because the alternative is a traveller with a paid booking and no seat, discovered
+  at a jetty at six in the morning. Reducing to _exactly_ what is sold **is** allowed: it
+  closes the departure without stranding anyone, and the UI names that number rather than
+  only refusing. The input deliberately does not carry `min={sold}`: native validation
+  would block the submit with a browser tooltip, and the operator would never see the
+  reason.
+- **Closing dates is not cancelling people.** It stops new sales and reports what is still
+  owed — including holds that predate the closure and can still complete. "An operator who
+  assumes closing the calendar cancelled the bookings will simply not turn up", so the
+  owed count leads the result whenever it is non-zero.
+- **An oversell is never a success.** A counter sale is a _report_, not a request, and is
+  recorded even when it is bad news — refusing it would not un-sell the seats. When the
+  response carries `oversold`, the screen renders the incident: how many people paid for a
+  seat that no longer exists, which bookings, and the incident id. **This is the one
+  screen in the portal where a green tick would be actively harmful.**
+
 ## Run it
 
 ```bash

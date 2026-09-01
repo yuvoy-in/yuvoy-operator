@@ -83,7 +83,7 @@ export default async function TodayPage({
           </Link>
         ) : null}
 
-        <nav className="mt-6 flex gap-2" aria-label="Which day">
+        <nav className="mt-6 flex flex-wrap gap-2" aria-label="Which day">
           <DayLink label="Today" href="/today" active={date === today} />
           <DayLink
             label="Tomorrow"
@@ -91,6 +91,15 @@ export default async function TodayPage({
             active={date === tomorrow}
           />
         </nav>
+
+        <p className="mt-4">
+          <Link
+            href="/capacity"
+            className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
+          >
+            Seats and closed dates →
+          </Link>
+        </p>
 
         <div className="mt-8">
           {slots.length === 0 ? (

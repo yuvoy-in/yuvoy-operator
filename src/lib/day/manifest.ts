@@ -1,6 +1,6 @@
 import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
-import type { Manifest } from "./types";
+import type { Manifest, OperatorSlot } from "./types";
 
 export * from "./types";
 
@@ -30,17 +30,6 @@ export async function getManifest(
     );
   }
   return data;
-}
-
-export interface OperatorSlot {
-  id: string;
-  title: string;
-  startsAt: string;
-  timezone: string;
-  seats: number;
-  sold: number;
-  remaining: number;
-  status: string;
 }
 
 /** Departures in a date range, ordered first-off-first. */
