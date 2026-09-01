@@ -1,0 +1,53 @@
+name: CI
+
+# MANUAL ONLY, matching yuvoy-web and yuvoy-app.
+#
+# The same suite runs locally before every push (`pnpm verify`, wired to
+# .husky/pre-push), so running it here on every push and pull request pays for
+# the same answer twice. The org reached 90% of its 2,000 free Actions minutes
+# with 20 days of the cycle left, and there is no budget to spend past it.
+#
+# **Keep this workflow.** It is the second opinion on a machine that is not the
+# author's, worth the minutes before a release or when a failure smells
+# environmental.
+#
+#     gh workflow run CI --ref <branch>
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # typecheck · lint · format · qa · tokens · test · contract · build · e2e
+      #
+      # `pnpm tokens:check` warns rather than fails here: it diffs against
+      # ../yuvoy-app, which a single-repo checkout does not have. The check that
+      # matters runs on the machine where both repos live.
+      - run: pnpm verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

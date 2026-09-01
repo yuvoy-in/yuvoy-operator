@@ -1,0 +1,203 @@
+@import "tailwindcss";
+
+/*
+  Yuvoy design tokens — COPIED from yuvoy-app, which is canonical (D-101).
+
+  This is the third consumer, and D-101 named exactly this moment as when
+  `yuvoy-kit` should be extracted: "the third consumer is where hand-copying
+  stops being viable." It has not been extracted yet — that is a real,
+  recorded debt and not an oversight. Publishing three packages before the
+  portal has a single screen would have spent the session on packaging.
+
+  What holds the line until then is a check rather than a promise:
+  `pnpm tokens:check` diffs this @theme block against yuvoy-app's byte for
+  byte and fails on any divergence. A copy nobody verifies is how the design
+  system's founding rule — every color, font, radius and tracking value maps
+  to a token — breaks structurally rather than stylistically.
+
+  The utility layer below is trimmed: the feed scrim, the media ground and the
+  9:16 column are traveller-app machinery with no operator screen behind them.
+  The TOKENS are not trimmed, because that is what the check compares.
+*/
+
+@theme {
+  /* ---------------------------------------------------------------- color */
+  --color-cream: #f4efe4; /* canvas — editorial surfaces */
+  --color-cream-deep: #ece5d6; /* raised surface on cream — cards, inputs */
+  --color-cream-line: #e5dcc9; /* hairline borders on cream */
+  --color-forest: #16362e; /* primary ink AND every chrome surface (11.44:1) */
+  --color-terra: #be7149; /* accent — decoration + LARGE display text (3.24:1 on cream) */
+  --color-terra-deep: #985028; /* text-capable accent (5.21:1); never a CTA fill */
+  --color-terra-soft: #d89772; /* accent text on forest (5.36:1) / abyss (7.86:1) */
+
+  /*
+    v2.6. The system's near-black. TWO sanctioned usages and no others:
+      1. the full-bleed media ground — feed, player, lightbox
+      2. the product-preview bezel (its original role as `device`)
+    It is a ground and an object's colour, never a surface: it carries no
+    section, no chrome, and no body text of its own. `palette.test.ts` pins
+    both usages — the moment a section takes it, the site has two darks again.
+    Not pure #000, which sits harder than anything else and rims against cream.
+  */
+  --color-abyss: #0a100e;
+
+  /* ----------------------------------------------------------------- type */
+  /* Fraunces, tuned into the site's own cut — optical size at 144 for
+     display-grade contrast, SOFT 75 for sea-glass terminals, WONK 0. The
+     variation settings ride the `font-display` utility itself, so every
+     headline gets the cut for free. Display weight is 400; the turn is a
+     TRUE italic at `font-turn` (480). Satoshi is the one text voice. */
+  --font-display: var(--font-fraunces);
+  --font-display--font-variation-settings: "opsz" 144, "SOFT" 75, "WONK" 0;
+  --font-sans: var(--font-satoshi); /* body + UI + labels */
+
+  /* The turn's weight: 80 above the display's 400. A token, not a magic
+     number, so the upright/turn relationship is stated once. */
+  --font-weight-turn: 480;
+
+  /* --------------------------------------------------------------- layout */
+  --container-page: 70rem; /* the page measure — `max-w-page` */
+
+  /*
+    The feed column's cap. An upscaled phone video stretched across a 1200px
+    desktop looks like a mistake, so the 9:16 column stops here and the space
+    beside it becomes the detail panel. Instagram's own web feed does the same.
+  */
+  --container-feed: 30rem; /* 480px */
+
+  /* Editorial near-square. The brand is rectangular: buttons, inputs, cards
+     and panels all share this single radius. Pills are not part of the system. */
+  --radius-edge: 2px;
+
+  /* The one rounded object in the system: the product-preview phone frame.
+     It depicts hardware, not UI — nothing else may use it. */
+  --radius-device: 2.25rem;
+
+  /* --------------------------------------------------------------- motion */
+  /* Entrances. The second control point ends at 1: it used to be 0.16, which
+     made the curve climb to full, sag back, then climb again — a wobble
+     halfway through every entrance on the site. */
+  --ease-cinematic: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-interaction: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* ------------------------------------------------------------- tracking */
+  --tracking-wordmark: 0.34em;
+  --tracking-label: 0.18em;
+  --tracking-display: -0.01em; /* Fraunces sets looser than a grotesque */
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-cream text-forest font-sans antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: clip;
+  }
+
+  ::selection {
+    @apply bg-terra-deep text-cream;
+  }
+
+  a:focus-visible {
+    outline: 2px solid var(--color-terra-deep);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  /* On the media ground the cream focus ring is the legible one. */
+  .on-abyss a:focus-visible,
+  .on-abyss button:focus-visible {
+    outline-color: var(--color-terra-soft);
+  }
+
+  dialog::backdrop {
+    background: color-mix(in srgb, var(--color-abyss) 72%, transparent);
+  }
+
+  /*
+    Respect users who prefer less motion. This neutralises every animation and
+    transition globally, which is why individual components never need their
+    own reduced-motion branch. Feed autoplay is disabled separately in JS —
+    a paused video is not an animation the browser knows about.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ------------------------------------------------------------- typography */
+
+/**
+ * Wide-tracked uppercase label — the brand's editorial voice, in the text
+ * face. On cream use `text-terra-deep` or `text-forest/75`; on forest use
+ * `text-terra-soft` or `text-cream/70`. Never `text-terra` on cream at this
+ * size (3.24:1, fails AA) — though on `abyss` it measures 5.17:1 and passes.
+ */
+@utility label {
+  @apply font-sans text-xs font-medium uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+/**
+ * A section eyebrow — the label preceded by a terracotta square, the same
+ * `size-1` marker the fact rows use. Square, not round: `rounded-full` is
+ * reserved for hardware. Use once per section, at the top.
+ */
+@utility eyebrow {
+  @apply inline-flex items-center gap-2.5 font-sans text-xs font-medium uppercase;
+  letter-spacing: var(--tracking-label);
+
+  &::before {
+    content: "";
+    flex: none;
+    width: 0.25rem;
+    height: 0.25rem;
+    background-color: var(--color-terra);
+  }
+}
+
+/**
+ * Guarantees a pointer target of at least 24px (WCAG 2.2 SC 2.5.8), which
+ * small text links do not reach on their own. Set to 28px for comfort.
+ * Not needed inside a sentence — SC 2.5.8 exempts inline targets.
+ */
+@utility tap-target {
+  @apply inline-flex items-center;
+  min-height: 1.75rem;
+}
+
+/* ----------------------------------------------------------------- layout */
+
+/** The standard page measure and gutters. */
+@utility container-page {
+  @apply mx-auto w-full px-6 sm:px-10;
+  max-width: var(--container-page);
+}
+
+/* ------------------------------------------------------- the operator day */
+
+/**
+ * A target sized for a wet hand in sunlight.
+ *
+ * 56px, not the 44px minimum. The brief's constraint for this portal is a
+ * person "standing on a jetty at 6am on a phone, in bright sun, possibly with
+ * wet hands, on one bar of signal" — a wet fingertip spreads and lands less
+ * precisely than a dry one, and the cost of a mis-tap here is ticking off the
+ * wrong traveller. The traveller app's 44px is a compliance floor; this is a
+ * measurement of the actual hand.
+ */
+@utility dock-target {
+  @apply inline-flex items-center justify-center;
+  min-height: 3.5rem;
+  min-width: 3.5rem;
+}

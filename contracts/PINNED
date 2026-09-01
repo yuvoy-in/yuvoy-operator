@@ -1,0 +1,16 @@
+# The contract this portal is generated against.
+#
+# The OPERATOR contract, not the traveller one. Different document, different
+# base path, different auth, and a tenant boundary the traveller API does not
+# have: `operator_id` is read from the session row and is never accepted as a
+# parameter in any position.
+#
+# Pinned to the same yuvoy-api commit yuvoy-app is pinned to, so the two
+# frontends cannot be reasoning about different versions of the same backend.
+#
+# `pnpm contract:check` fails the build if this copy stops matching the ref.
+repo=yuvoy-in/yuvoy-api
+path=contracts/operator-openapi.yaml
+ref=cc8ede61ed6b8823571323a32c42ded739543178
+branch=master
+pinned_on=2026-09-01

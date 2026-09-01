@@ -1,0 +1,27 @@
+# operators.yuvoy.in
+#
+# Its own Vercel project and its own origin — D-102 puts the operator portal on
+# a separate origin from the traveller app deliberately, and the two are
+# different security surfaces (see next.config.ts).
+#
+# `main` is the only branch that deploys.
+name: Production deployment
+
+on:
+  # Manual redeploy. Environment values are read at BUILD time, so changing one
+  # in Vercel does nothing until a rebuild.
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy.yml
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
