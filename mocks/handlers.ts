@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { apiBaseUrl } from "../src/lib/api/server-client";
+import { validateRelay } from "../src/lib/day/relay-types";
 import {
   DEV_CODE,
   OPERATOR,
@@ -35,11 +36,14 @@ const SESSION_TOKEN = "opsess_mock_a1b2c3d4e5f6";
 let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
 /** Requests that have been answered. An answered one is not open any more. */
 let answered: Record<string, "active" | "released"> = {};
+/** Departures called off in this session. Irreversible, as in production. */
+let calledOff: Record<string, string> = {};
 
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
   attendance = {};
   answered = {};
+  calledOff = {};
 }
 
 function envelope(code: string, message: string, status: number) {
@@ -68,6 +72,51 @@ function partyOf(
   }
   return null;
 }
+
+/**
+ * Both relay endpoints.
+ *
+ * The rules are enforced rather than echoed: `detail` is required for every
+ * intent except `note`, times must be 24-hour, and the character rule is real.
+ *
+ * It calls the SAME `validateRelay` the screen calls, deliberately. The
+ * alternative was a second copy of the regex here, and a mock whose rule has
+ * drifted from the client's is a suite that passes on values the API would
+ * reject — which is the only thing a mock must never do.
+ *
+ * The exact regex the real API applies is not published; `validateRelay` is
+ * this repo's reading of "letters, numbers and basic punctuation", and the API
+ * stays the authority. A divergence shows up as a 400, which `sendRelay`
+ * surfaces verbatim rather than swallowing.
+ */
+const relay = async (request: Request, recipientsOf: () => number | null) => {
+  const failed = requireSession(request);
+  if (failed) return failed;
+
+  const body = (await request.json()) as {
+    intent?: string;
+    detail?: string;
+    note?: string;
+  };
+
+  const problem = validateRelay(
+    body.intent ?? "",
+    body.detail ?? "",
+    body.note ?? "",
+  );
+  if (problem) return envelope("invalid_input", problem.message, 400);
+
+  const recipients = recipientsOf();
+  if (recipients === null) {
+    return envelope("not_found", "No such departure or booking.", 404);
+  }
+
+  return HttpResponse.json({
+    batchId: `batch_${Math.random().toString(36).slice(2, 10)}`,
+    intent: body.intent,
+    recipients,
+  });
+};
 
 export const handlers = [
   /* -------------------------------------------------------------- auth --- */
@@ -182,8 +231,12 @@ export const handlers = [
       startsAt: slot.startsAt,
       timezone: slot.timezone,
       meetingPoint: slot.meetingPoint,
-      status: slot.status,
-      ...(slot.calledOff ? { calledOff: slot.calledOff } : {}),
+      status: calledOff[slot.id] ? "cancelled" : slot.status,
+      ...(calledOff[slot.id]
+        ? { calledOff: { reasonCode: calledOff[slot.id] } }
+        : slot.calledOff
+          ? { calledOff: slot.calledOff }
+          : {}),
       parties,
       totals: {
         parties: parties.length,
@@ -265,6 +318,87 @@ export const handlers = [
 
     answered[id] = "released";
     return HttpResponse.json({ id, state: "released", holdExpiresAt: null });
+  }),
+
+  /* --------------------------------------------------------------- relay - */
+
+  http.post(url("/bookings/:id/relay"), async ({ request, params }) =>
+    relay(request, () => (partyOf(String(params.id)) ? 1 : null)),
+  ),
+
+  http.post(url("/slots/:id/relay"), async ({ request, params }) =>
+    relay(request, () => {
+      const slot = SLOTS.find((s) => s.id === String(params.id));
+      if (!slot) return null;
+      // Only confirmed bookings are reachable; a live hold has no booking to
+      // message, which is why a relay can legitimately reach zero people.
+      return slot.parties.filter((p) => p.bookingId).length;
+    }),
+  ),
+
+  /* ------------------------------------------------------------- call off - */
+
+  http.post(url("/slots/:id/call-off"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const slot = SLOTS.find((s) => s.id === id);
+    if (!slot) return envelope("not_found", "No such departure.", 404);
+
+    if (calledOff[id] || slot.status === "cancelled") {
+      return envelope(
+        "already_called_off",
+        "Everybody on it has already been told.",
+        409,
+      );
+    }
+
+    const body = (await request.json()) as {
+      reasonCode?: string;
+      confirmSlotId?: string;
+      note?: string;
+    };
+
+    const REASONS = [
+      "weather",
+      "equipment",
+      "staffing",
+      "safety",
+      "insufficient_numbers",
+    ];
+    if (!body.reasonCode || !REASONS.includes(body.reasonCode)) {
+      return envelope("invalid_input", "Pick a reason.", 400);
+    }
+
+    /*
+      The confirmation is enforced here, not just in the UI. It is the only
+      irreversible action in the portal, and a mock that accepts any string
+      would let a client ship without the guard.
+    */
+    if (body.confirmSlotId !== id) {
+      return envelope(
+        "invalid_input",
+        "confirmSlotId must equal the departure's own id.",
+        400,
+      );
+    }
+
+    calledOff[id] = body.reasonCode;
+
+    const confirmed = slot.parties.filter((p) => p.bookingId);
+    const holds = slot.parties.filter((p) => !p.bookingId);
+
+    return HttpResponse.json({
+      slotId: id,
+      reasonCode: body.reasonCode,
+      bookingsCancelled: confirmed.length,
+      guestsAffected: confirmed.reduce((n, p) => n + p.guests, 0),
+      // Full refunds regardless of the cancellation policy: those tiers price
+      // a traveller changing their mind, and nobody changed their mind here.
+      refundedPaise: confirmed.reduce((n, p) => n + p.guests * 450000, 0),
+      holdsReleased: holds.length,
+    });
   }),
 
   /* ---------------------------------------------------------- attendance - */

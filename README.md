@@ -81,6 +81,21 @@ expires unanswered is a traveller told no by a timer.
   403, because a 403 confirms the row exists. The client does not distinguish them
   either.
 - **Every target is 56px**, not the traveller app's 44px. A wet fingertip spreads.
+- **The relay is how an operator reaches a traveller**, because there is no phone number
+  (O12). They pick a structured intent and supply one fact — the only operator-written
+  value that reaches a phone. `note` is the trap and gets the loudest line on the panel:
+  it goes on the traveller's booking page and is **never sent to a phone**.
+- **The character rule on a detail is real.** No links, no line breaks — not for
+  injection safety (values are parameterised throughout) but because a template variable
+  holding a URL renders as something nobody approved and the provider may reject the
+  whole message. Indic combining marks are allowed: an operator naming a meeting point
+  in Tamil is not an edge case.
+- **A relay says how many people it reached.** "Sent" is not an outcome anybody can
+  check, and a relay that reached nobody looks identical to one that reached eleven.
+- **Calling off is confirmed by typing the departure's own id**, not a checkbox — "one
+  mis-tap on a wet phone away from cancelling a full boat", and the only action in the
+  portal that cannot be undone. It shows back what it did: bookings cancelled, guests
+  affected, rupees refunded, holds released.
 
 ### What O9 does, and the rules baked into it
 

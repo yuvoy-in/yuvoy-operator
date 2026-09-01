@@ -131,6 +131,59 @@ export const SLOTS: MockSlot[] = [
       },
     ],
   },
+  /*
+    Two departures that exist only to be called off, one per Playwright
+    project. Calling off mutates state in the shared Next server process and
+    is the one action that cannot be undone — so a slot two tests can both
+    cancel is a race in the FIXTURE, and it would take the relay panel away
+    from whichever test ran second.
+  */
+  {
+    id: "slot_calloff_a",
+    experienceId: "exp_snorkel",
+    title: "Sunset cruise (call-off fixture A)",
+    startsAt: todayAt("17:00"),
+    timezone: TZ,
+    seats: 10,
+    sold: 2,
+    remaining: 8,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 1",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_ca_1",
+        reference: "YV-1A2B3C4D",
+        name: "Elena Rossi",
+        guests: 2,
+        state: "confirmed",
+        arrived: false,
+      },
+    ],
+  },
+  {
+    id: "slot_calloff_b",
+    experienceId: "exp_snorkel",
+    title: "Sunset cruise (call-off fixture B)",
+    startsAt: todayAt("17:30"),
+    timezone: TZ,
+    seats: 10,
+    sold: 3,
+    remaining: 7,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 1",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_cb_1",
+        reference: "YV-5E6F7G8H",
+        name: "Ravi Shankar",
+        guests: 3,
+        state: "confirmed",
+        arrived: false,
+      },
+    ],
+  },
   {
     id: "slot_called_off",
     experienceId: "exp_charter",

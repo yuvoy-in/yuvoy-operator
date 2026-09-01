@@ -326,3 +326,119 @@ test("/requests has no accessibility violations", async ({ page }) => {
 
   expect(results.violations).toEqual([]);
 });
+
+/* ==================================================== O10 · relay, call-off */
+
+test("a note is unmistakably not sent to a phone", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/today/slot_dawn");
+
+  await page
+    .getByRole("button", { name: "Tell everybody on this departure" })
+    .click();
+
+  /*
+    The most important sentence on the panel. "An operator who thinks they
+    messaged somebody and did not is worse than one who knows they left a
+    note." It is present whichever intent is chosen, because a note can ride
+    along with any of them.
+  */
+  await expect(
+    page.getByText(
+      "This goes on their booking page. It is never sent to a phone.",
+    ),
+  ).toBeVisible();
+});
+
+test("the relay refuses a link, and says why", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/today/slot_dawn");
+
+  await page
+    .getByRole("button", { name: "Tell everybody on this departure" })
+    .click();
+  await page
+    .getByRole("radio", { name: "The meeting point has changed" })
+    .check();
+  await page.getByLabel("New meeting point").fill("See https://x.example");
+  await page.getByRole("button", { name: "Send it" }).click();
+
+  // Not injection safety — a template variable holding a URL renders as
+  // something nobody approved, and the provider may reject the whole message.
+  await expect(page.locator("form").getByRole("alert")).toContainText(
+    "no links or line breaks",
+  );
+});
+
+test("a relay to a departure says how many people it reached", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/today/slot_late_morning");
+
+  await page
+    .getByRole("button", { name: "Tell everybody on this departure" })
+    .click();
+  await page.getByRole("radio", { name: "The time has changed" }).check();
+  await page.getByLabel("New time").fill("09:30");
+  await page.getByRole("button", { name: "Send it" }).click();
+
+  // "Sent" is not an outcome an operator can check. One confirmed booking on
+  // this departure, so one person.
+  await expect(page.getByText("Told 1 person")).toBeVisible();
+});
+
+test("calling off needs the departure's own id typed, not a checkbox", async ({
+  page,
+}) => {
+  await signIn(page);
+  // A wrong id changes nothing, so this can share a departure — but only one
+  // that nothing else cancels.
+  await page.goto("/today/slot_late_morning");
+
+  await page.getByRole("button", { name: "This departure cannot run" }).click();
+  await page.getByRole("radio", { name: "Weather" }).check();
+  await page.getByLabel("Type the departure id to confirm").fill("wrong-id");
+  await page.getByRole("button", { name: "Call it off" }).click();
+
+  // "A checkbox is one mis-tap on a wet phone away from cancelling a full
+  // boat, and this is the only action in the portal that cannot be undone."
+  await expect(page.locator("form").getByRole("alert")).toContainText(
+    "Nothing was cancelled",
+  );
+
+  // The departure is still open.
+  await page.reload();
+  await expect(page.getByText("This departure is called off")).toHaveCount(0);
+});
+
+test("a call-off shows back exactly what it did", async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+
+  // A departure per project: calling off mutates shared server state, and it
+  // is the one action that cannot be undone.
+  const slot =
+    testInfo.project.name === "mobile" ? "slot_calloff_a" : "slot_calloff_b";
+  await page.goto(`/today/${slot}`);
+
+  await page.getByRole("button", { name: "This departure cannot run" }).click();
+  await page.getByRole("radio", { name: "Weather" }).check();
+  await page.getByLabel("Type the departure id to confirm").fill(slot);
+  await page.getByRole("button", { name: "Call it off" }).click();
+
+  /*
+    "Somebody who has just cancelled fourteen people's day should see that it
+    happened, and how much went back." A confirmation with no numbers is the
+    most consequential action in the product ending in silence.
+  */
+  await expect(
+    page.getByRole("heading", { name: "What that did" }),
+  ).toBeVisible();
+  await expect(page.getByText("Bookings cancelled")).toBeVisible();
+  await expect(page.getByText("Guests affected")).toBeVisible();
+  await expect(page.getByText("Holds released")).toBeVisible();
+  // Money is paise; the screen must render rupees.
+  await expect(page.getByText(/₹[\d,]+/)).toBeVisible();
+});

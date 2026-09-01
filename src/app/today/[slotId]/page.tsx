@@ -13,6 +13,8 @@ import {
 } from "@/lib/format/market-time";
 import { Empty, Problem } from "@/components/ui/states";
 import { PartyRow } from "./party-row";
+import { RelayPanel } from "./relay-panel";
+import { CallOffPanel } from "./call-off-panel";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 
 export const metadata: Metadata = { title: "Manifest" };
@@ -42,7 +44,7 @@ export default async function ManifestPage({
   params: Promise<{ slotId: string }>;
 }) {
   const { slotId } = await params;
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
 
   let manifest;
   try {
@@ -127,6 +129,20 @@ export default async function ManifestPage({
           </p>
         ) : null}
 
+        {/*
+          Telling the whole departure something. Above the list rather than
+          below it: at 6am the thing an operator most often needs is to move a
+          time or a meeting point for everybody, not to tick one person off.
+        */}
+        {!manifest.calledOff ? (
+          <section className="mt-8" aria-labelledby="relay-all">
+            <h2 id="relay-all" className="label text-forest/75">
+              Tell everybody
+            </h2>
+            <RelayPanel slotId={slotId} who="everybody on this departure" />
+          </section>
+        ) : null}
+
         <section className="mt-10" aria-labelledby="confirmed">
           <h2 id="confirmed" className="label text-forest/75">
             Coming
@@ -178,6 +194,12 @@ export default async function ManifestPage({
             </ul>
           </section>
         ) : null}
+
+        <CallOffPanel
+          slotId={slotId}
+          alreadyCalledOff={Boolean(manifest.calledOff)}
+          canManage={me.canManage}
+        />
       </div>
     </main>
   );

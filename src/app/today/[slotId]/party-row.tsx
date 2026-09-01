@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { markAttendance, type AttendanceState } from "./actions";
 import { isHolding, type Party } from "@/lib/day/types";
 import { cn } from "@/lib/cn";
+import { RelayPanel } from "./relay-panel";
 
 /**
  * One party on the manifest.
@@ -125,6 +126,19 @@ export function PartyRow({
           {state.message}
         </p>
       ) : null}
+
+      {/*
+        Reaching one traveller. There is no phone number here and never will
+        be — `reference` identifies them, the relay reaches them (O12). A hold
+        has no bookingId, so there is nobody to address yet.
+      */}
+      {holding ? null : (
+        <RelayPanel
+          slotId={slotId}
+          bookingId={party.bookingId}
+          who={party.name ?? "them"}
+        />
+      )}
     </li>
   );
 }
