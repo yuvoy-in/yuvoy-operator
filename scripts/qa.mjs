@@ -531,6 +531,33 @@ for (const [seg, endpoints] of ownerSegments) {
   }
 }
 
+/* -------------- 12. the failure screens exist at all --------------------- */
+
+/**
+ * `error.tsx`, `global-error.tsx` and `not-found.tsx`.
+ *
+ * Written from a defect rather than a principle. `requireOperator()` described
+ * itself as throwing "to the error boundary, which says what is actually
+ * true", and **there was no error boundary** — so every failure this portal
+ * could not handle rendered Next's default page, to somebody on a jetty at
+ * 0.5 Mbps where a dropped connection is the common path rather than the
+ * exception. Nothing failed; a file was missing, which is the same class of
+ * absence as a page that forgot `dynamic` or a route with no Open Graph.
+ *
+ * A boundary is opt-in in Next and its absence is silent by design: the
+ * fallback is a working page that says nothing. That is exactly what a code
+ * review cannot see.
+ */
+for (const required of ["error.tsx", "global-error.tsx", "not-found.tsx"]) {
+  if (!existsSync(join(APP, required))) {
+    problems.push(
+      `src/app/${required} is missing. Without it Next renders its own ` +
+        `default screen — no retry, no way back, and nothing true said to ` +
+        `somebody on one bar of signal.`,
+    );
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);

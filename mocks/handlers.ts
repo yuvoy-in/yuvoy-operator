@@ -5,7 +5,10 @@ import {
   CHANGE_REQUESTS,
   DEV_CODE,
   EARNINGS,
+  FAILING_ID,
   OPERATOR,
+  OTHER_MEMBERS,
+  SUSPENDED_ID,
   REQUESTS,
   SLOTS,
   TEAM,
@@ -62,7 +65,10 @@ function sessionUser(request: Request): MockTeamMember | null {
   const match = auth.match(/^Bearer opsess_mock_(.+)$/);
   if (!match) return null;
   // A pending row is an invitation, not a user, and cannot hold a session.
-  return team.find((m) => !m.pending && m.id === match[1]) ?? null;
+  return (
+    [...team, ...OTHER_MEMBERS].find((m) => !m.pending && m.id === match[1]) ??
+    null
+  );
 }
 
 /** OWNER or MANAGER, exactly as `GET /me` defines it. */
@@ -109,12 +115,34 @@ function envelope(code: string, message: string, status: number) {
 
 /** Every authenticated route answers 401 the same way. */
 function requireSession(request: Request) {
-  if (!sessionUser(request)) {
+  const user = sessionUser(request);
+  if (!user) {
     return envelope(
       "unauthorized",
       "No session, or one that is no longer valid.",
       401,
     );
+  }
+  /*
+    A suspended business answers 403 on EVERY endpoint, not only `/me`. The
+    session is valid and the person is fine — the contract is explicit that
+    those are different things — so this is deliberately not a 401, and
+    clearing their cookie would tell them the wrong story entirely.
+  */
+  if (user.id === SUSPENDED_ID) {
+    return envelope(
+      "account_not_active",
+      "This account cannot trade right now.",
+      403,
+    );
+  }
+  /*
+    Not an account state: the server having a bad minute. Kept distinct so the
+    portal can be checked for the one confusion that matters — a dropped
+    connection rendering as "your account has been suspended".
+  */
+  if (user.id === FAILING_ID) {
+    return envelope("internal_error", "Something went wrong.", 500);
   }
   return null;
 }
@@ -213,7 +241,7 @@ export const handlers = [
 
   http.post(url("/auth/session"), async ({ request }) => {
     const body = (await request.json()) as { phone?: string; code?: string };
-    const member = team.find(
+    const member = [...team, ...OTHER_MEMBERS].find(
       (m) => !m.pending && m.phone === (body.phone ?? "").trim(),
     );
     /*

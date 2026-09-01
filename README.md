@@ -53,16 +53,17 @@ well-meaning commit from showing one the day it does.
 
 ## Built so far
 
-|           | Screen                                    | State                                                                  |
-| --------- | ----------------------------------------- | ---------------------------------------------------------------------- |
-| **O2**    | Operator signs in — phone, code, session  | **Built**                                                              |
-| **O4**    | Payout details                            | **Built**                                                              |
-| **O5**    | Team access, and accepting an invitation  | **Built**                                                              |
-| **O9**    | Seat requests and capacity                | **Built**                                                              |
-| **O10**   | The day, and today's manifest             | **Built**                                                              |
-| **O11**   | Earnings                                  | **Built**                                                              |
-| O3, O6–O8 | Approval states, profile, listings, reels | Not started                                                            |
-| O1        | Operator signs up                         | **Closed** — `yuvoy.in/operators` already does it; sign-in links to it |
+|         | Screen                                   | State                                                                  |
+| ------- | ---------------------------------------- | ---------------------------------------------------------------------- |
+| **O2**  | Operator signs in — phone, code, session | **Built**                                                              |
+| **O3**  | Getting approved                         | **Half built** — the contract cannot answer the other half, below      |
+| **O4**  | Payout details                           | **Built**                                                              |
+| **O5**  | Team access, and accepting an invitation | **Built**                                                              |
+| **O9**  | Seat requests and capacity               | **Built**                                                              |
+| **O10** | The day, and today's manifest            | **Built**                                                              |
+| **O11** | Earnings                                 | **Built**                                                              |
+| O6–O8   | Profile, listings, reels                 | Not started — **O6 and O7 are contract-blocked too**                   |
+| O1      | Operator signs up                        | **Closed** — `yuvoy.in/operators` already does it; sign-in links to it |
 
 O10 first because the brief says so: _"If you build one screen well, build the
 manifest."_ It is the screen an operator opens at 6am. O9 second because it is the one
@@ -141,6 +142,56 @@ expires unanswered is a traveller told no by a timer.
   only and `OperatorBooking` carries no money fields, so "why is _this_ booking less"
   cannot be answered yet. Raised on `yuvoy-api` rather than worked around.
 
+### What O3 can say, and what the contract will not let it
+
+O3 asks for the states between signing up and taking bookings, and for the
+operator to see **exactly what is outstanding — a missing credential, an
+unverified document — rather than a generic "pending"**. That is the right
+screen and it is the one that stops the "why am I not live yet" phone call.
+
+**The pinned contract cannot answer it.** `GET /me` returns `id`, `name`,
+`roles`, `operatorId` and `canManage`, and nothing else in the operator
+document carries an account state, an approval stage, a credential or an
+expiry. The only account-level signal that exists anywhere is a
+`403 account_not_active` — "suspended or offboarded".
+
+So `/account` says the one true thing the API publishes, **states the gap out
+loud** rather than leaving a blank page to be read as "everything is approved",
+and invents nothing. A checklist reading "waiting on your dive licence" would
+be plausible, would look like the prototype, and would be a sentence an
+operator plans a season around. Raised on `yuvoy-api` instead.
+
+- **A suspension is not a sign-out.** "The person is fine, the business
+  relationship is not", so the session survives, the screen talks about the
+  account rather than about them, and it does not guess between suspended and
+  offboarded — one code covers both.
+- **It does not call `requireOperator()`.** That helper redirects here on
+  `account_not_active`; calling it from this page would redirect to this page,
+  forever.
+- **A 500 is not an account state.** A dropped connection is the common path at
+  0.5 Mbps, and rendering it as "your business account has been suspended"
+  would send an operator to cancel a season over a timeout. Branch on `code`,
+  never on the bare status.
+
+### The failure screens, and the absence that produced them
+
+`error.tsx`, `global-error.tsx` and `not-found.tsx` **did not exist** until O3.
+`requireOperator()` described itself as throwing "to the error boundary, which
+says what is actually true" — into nothing. Every failure this portal could not
+handle rendered Next's default page, to somebody on a jetty at 0.5 Mbps where a
+dropped connection is the common path rather than the exception.
+
+That plan could not have worked even with a boundary in place: **in production
+Next strips a thrown error's message and code before a boundary sees it**,
+leaving an opaque `digest`. A boundary can only ever say "something went
+wrong". So `account_not_active` is now handled where it is _known_ — in
+`requireOperator()` — and `error.tsx` says the one honest thing, offers the
+retry that is usually the answer, and warns anybody who was mid-action to check
+whether their tap landed before repeating it. The digest stays in the server
+logs, not in sunlight.
+
+`pnpm qa` fails a build with any of the three missing.
+
 ### What O5 does, and the two claims underneath it
 
 - **An invitation is not a person.** `GET /team` returns "active people and
@@ -218,6 +269,14 @@ exercised at all. The code is `424242` for everybody.
 | `+919000000102` | Dev Kapoor  | MANAGER |
 | `+919000000103` | Arun Biswas | STAFF   |
 
+Two more identities exist only to make two screens reachable at all. Neither is
+on the team and neither appears anywhere in the UI:
+
+| Number          | What happens                                                     |
+| --------------- | ---------------------------------------------------------------- |
+| `+919000000109` | Signs in; the business account is on hold → `/account` says so   |
+| `+919000000108` | `GET /me` answers 500 → the error boundary, **not** a suspension |
+
 A number nobody on the account owns gets the same 401 as a wrong code — the same
 rule `POST /auth/otp` follows, and the reason it does not tell you which numbers
 exist. Removing somebody ends their session for free, because the lookup simply
@@ -235,15 +294,15 @@ left (so the terminal outcomes are reachable), one that has not, and one called 
 pnpm verify          # the pre-push gate — all nine steps below, in order
 pnpm qa              # the static sweep on its own
 pnpm tokens:check    # design tokens against yuvoy-app (canonical)
-pnpm test:e2e        # 112 e2e tests, incl. axe on every route
+pnpm test:e2e        # 116 e2e tests, incl. axe on every route
 ```
 
 ```
 typecheck · lint · format · qa · tokens · test · contract:check · build · e2e
 ```
 
-**`pnpm qa` guards six things the compiler cannot**, and all six are ways the
-architecture above quietly stops being the architecture:
+**`pnpm qa` guards seven things the compiler cannot**, and all seven are ways
+the architecture above quietly stops being the architecture:
 
 1. **A route handler under `src/app`** — see the proxy note. There is no allowlist
    entry today.
@@ -262,6 +321,10 @@ architecture above quietly stops being the architecture:
    parsed out of `contracts/operator-openapi.yaml` rather than written down, so
    it stays true when the contract moves, and the check fails loudly if the
    parse ever finds nothing.
+7. **A missing `error.tsx`, `global-error.tsx` or `not-found.tsx`.** Written
+   from the defect above rather than from a principle. A boundary is opt-in in
+   Next and its absence is silent by design — the fallback is a working page
+   that says nothing true.
 
 Each was verified by breaking it on purpose and watching the check fail.
 

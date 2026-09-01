@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError } from "@/lib/api/errors";
+import { classifyMeFailure } from "@/lib/account/status";
 
 /**
  * The operator session, and the one place the token is touched.
@@ -28,6 +29,7 @@ const COOKIE = "yvo_session";
 const MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 export const SIGN_IN_PATH = "/sign-in";
+export const ACCOUNT_PATH = "/account";
 
 /**
  * httpOnly is the load-bearing one and the reason this portal has no
@@ -103,18 +105,32 @@ export async function requireOperator(): Promise<{
       },
     };
   } catch (err) {
-    if (err instanceof OperatorApiError && err.isUnauthorized) {
+    const status = classifyMeFailure(err);
+
+    if (status === "signed-out") {
       // The token is dead. Drop it rather than looping through a redirect
       // that hands the same dead token back on the next request.
       await clearSessionToken();
       redirect(SIGN_IN_PATH);
     }
+
     /*
-      403 here is `AccountNotActive` — suspended or offboarded. The contract
-      draws the line deliberately: the PERSON is fine, the business
-      relationship is not. Signing them out would tell them the wrong thing,
-      so it throws to the error boundary, which says what is actually true.
+      403 `account_not_active` — suspended or offboarded. The contract draws
+      the line deliberately: the PERSON is fine, the business relationship is
+      not, so the session is NOT cleared and they are not sent to sign in.
+
+      It used to throw here, on the stated grounds that the error boundary
+      would say what was actually true. There was no error boundary. In
+      production Next also strips a thrown error's message and code before a
+      boundary ever sees it, so that plan could not have worked even once one
+      existed — a boundary can only ever say "something went wrong", which is
+      the opposite of true here.
+
+      The state is known at exactly this point, so it is handled at exactly
+      this point: /account reads `GET /me` itself and says what it means.
     */
+    if (status === "not-active") redirect(ACCOUNT_PATH);
+
     throw err;
   }
 }

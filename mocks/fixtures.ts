@@ -419,3 +419,43 @@ export const TEAM: MockTeamMember[] = [
     phone: "+919000000104",
   },
 ];
+
+/* ------------------------------------------------ other people's accounts - */
+
+/**
+ * Two identities that exist only so two screens are reachable at all.
+ *
+ * Neither is on `TEAM` — they belong to other businesses — and neither appears
+ * anywhere in this portal's UI. They exist because the alternative was
+ * shipping O3's not-active branch and the error boundary having never once
+ * been rendered, which is how this repo ended up with a `requireOperator()`
+ * that threw "to the error boundary" when there was no error boundary.
+ */
+export const OTHER_MEMBERS: MockTeamMember[] = [
+  {
+    /*
+      Signs in fine; the business account is on hold. The contract's own
+      distinction: "the person is fine, the business relationship is not."
+    */
+    id: "usr_suspended",
+    name: "Ismail Khan",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000109",
+  },
+  {
+    /*
+      The API having a bad minute — a 500 from `GET /me`, which is not an
+      account state and must never render as one. Lands on the error boundary,
+      where the answer is a retry rather than a sentence about suspension.
+    */
+    id: "usr_api_failing",
+    name: "Test Failure",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000108",
+  },
+];
+
+export const SUSPENDED_ID = "usr_suspended";
+export const FAILING_ID = "usr_api_failing";
