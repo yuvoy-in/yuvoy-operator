@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { apiBaseUrl } from "../src/lib/api/server-client";
 import { DEV_CODE, OPERATOR, SLOTS, type MockParty } from "./fixtures";
 
 /**
@@ -15,10 +16,13 @@ import { DEV_CODE, OPERATOR, SLOTS, type MockParty } from "./fixtures";
  * against behaviour the API does not have.
  */
 
-const BASE =
-  process.env.OPERATOR_API_URL ?? "http://localhost:8093/operator/v1";
-
-const url = (path: string) => `${BASE}${path}`;
+/*
+  The same resolver the client uses, not a second copy of the fallback. A mock
+  registered against a slightly different base URL intercepts nothing, and the
+  symptom is a real network call to somewhere that is not listening — which
+  looks exactly like the API being down.
+*/
+const url = (path: string) => `${apiBaseUrl()}${path}`;
 
 const SESSION_TOKEN = "opsess_mock_a1b2c3d4e5f6";
 

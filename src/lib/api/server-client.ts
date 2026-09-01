@@ -40,8 +40,84 @@ import {
 
 const DEFAULT_BASE_URL = "http://localhost:8093/operator/v1";
 
+/**
+ * Describes a value without reproducing it.
+ *
+ * Vercel scrubs environment values out of build and function logs by literal
+ * substitution, so echoing a bad value back prints `[SENSITIVE]` and says
+ * nothing. Shape survives that: a length and a character census is enough to
+ * recognise a stray quote, a pasted newline or a missing scheme.
+ */
+function describeShape(value: string): string {
+  const unusual = [...new Set(value.replace(/[a-z0-9.\-/:]/g, ""))]
+    .map((c) => {
+      const code = c.codePointAt(0) ?? 0;
+      return code < 0x20 || code > 0x7e
+        ? `U+${code.toString(16).toUpperCase().padStart(4, "0")}`
+        : c;
+    })
+    .join(" ");
+
+  return (
+    `length ${value.length}, ` +
+    `scheme ${/^https?:\/\//i.test(value) ? "yes" : "no"}, ` +
+    `whitespace inside ${/\s/.test(value) ? "yes" : "no"}, ` +
+    `unusual characters: ${unusual ? `[ ${unusual} ]` : "none"}`
+  );
+}
+
+/**
+ * Where `/operator/v1` lives — read once, and **validated rather than trusted**.
+ *
+ * This pattern is here before it was needed, because it was needed next door.
+ * `yuvoy-app` took `NEXT_PUBLIC_SITE_URL` on trust and three production
+ * deploys died at module evaluation with `TypeError: Invalid URL` and a value
+ * the log redacted. The local build had been green throughout — the variable
+ * is unset locally, so the fallback literal was what ran.
+ *
+ * Three ways a dashboard value goes wrong, all handled here rather than deep
+ * inside a fetch:
+ *
+ *   - **Empty string.** `??` does not catch it: `"" ?? x` is `""`. An env var
+ *     created with no value is the easiest mistake there is to make.
+ *   - **A trailing slash.** `${base}/slots` would become `//slots`, which is
+ *     a protocol-relative URL and reaches a different host entirely.
+ *   - **Not a URL at all.** Thrown, by name and by shape.
+ *
+ * Note this variable is deliberately NOT `NEXT_PUBLIC_`: nothing in this
+ * portal talks to the API from a browser, so it has no business being inlined
+ * into client JavaScript, and a leaked bundle should not name the admin
+ * origin. It is read at request time, never at build time — every page here is
+ * `force-dynamic` — so marking it Sensitive in Vercel is safe, unlike a
+ * NEXT_PUBLIC_ value which the build must inline and therefore cannot.
+ */
+function resolveApiBaseUrl(): string {
+  const raw = process.env.OPERATOR_API_URL?.trim().replace(
+    /^["'`]|["'`]$/g,
+    "",
+  );
+  const candidate = raw ? raw : DEFAULT_BASE_URL;
+
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("not http");
+    }
+    // Trailing slash removed: openapi-fetch appends "/slots", and
+    // `https://host/operator/v1//slots` is not the same request.
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    throw new Error(
+      `OPERATOR_API_URL is not an http(s) URL. It must be a full base such ` +
+        `as "https://api.yuvoy.in/operator/v1".\n` +
+        `The value is masked in deploy logs, so here is its shape instead: ` +
+        `${describeShape(candidate)}.`,
+    );
+  }
+}
+
 export function apiBaseUrl(): string {
-  return process.env.OPERATOR_API_URL ?? DEFAULT_BASE_URL;
+  return resolveApiBaseUrl();
 }
 
 /**

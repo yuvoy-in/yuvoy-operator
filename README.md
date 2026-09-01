@@ -153,6 +153,19 @@ Needs `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` as repo secrets, a
 API from a browser, so the value has no business being inlined into client JavaScript,
 and keeping it server-only means a leaked bundle does not name the admin origin.
 
+It is also **validated rather than trusted** — empty string, surrounding quotes, a
+trailing slash and a non-http scheme each get a defined answer, and a bad value fails
+by name with a description of its _shape_, because Vercel scrubs the value itself out
+of logs. That code is here before it was needed here: `yuvoy-app` took
+`NEXT_PUBLIC_SITE_URL` on trust and three production deploys died at module evaluation
+while the local build stayed green, because the variable is unset locally and the
+fallback literal was what ran. `pnpm qa` fails a raw read of it anywhere else.
+
+Because it is server-only and read at **request** time — every page here is
+`force-dynamic` — marking it Sensitive in Vercel is safe. A `NEXT_PUBLIC_` value is
+not: the build must inline it, and Vercel substitutes a `[SENSITIVE]` placeholder
+instead. That is exactly what broke `yuvoy-app`'s first three deploys.
+
 ## Blocked
 
 **Operator sign-in in production needs the Meta WhatsApp account** — that is how the

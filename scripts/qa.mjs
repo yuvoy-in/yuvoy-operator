@@ -299,6 +299,35 @@ for (const f of files) {
   }
 }
 
+/* ---------------- 9. environment values are validated, not trusted ------- */
+
+/**
+ * A raw `process.env.OPERATOR_API_URL` read outside its one owner.
+ *
+ * Written from a failure that happened next door rather than here.
+ * `yuvoy-app` took `NEXT_PUBLIC_SITE_URL` on trust and three production
+ * deploys died at module evaluation, while the local build stayed green the
+ * whole time — the variable is unset locally, so the fallback literal was what
+ * ran. A dashboard value is the one input a repo cannot test, so the code that
+ * reads it gets read instead.
+ *
+ * `lib/api/server-client.ts` resolves it once: empty string, surrounding
+ * quotes, a trailing slash and a non-http scheme each get a defined answer.
+ */
+
+for (const f of [...files, ...walk(join(ROOT, "mocks"))]) {
+  if (!/\.tsx?$/.test(f)) continue;
+  if (/lib[/\\]api[/\\](server-client|base-url\.test)\.ts$/.test(f)) continue;
+  if (/process\.env\.OPERATOR_API_URL/.test(code(f))) {
+    problems.push(
+      `${rel(f)}: reads OPERATOR_API_URL raw — import apiBaseUrl() from ` +
+        `@/lib/api/server-client, which validates and normalises it. A second ` +
+        `copy of the fallback is how a mock ends up registered against a base ` +
+        `URL that intercepts nothing.`,
+    );
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);
