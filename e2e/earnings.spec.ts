@@ -15,7 +15,7 @@ async function signIn(page: Page) {
   await page.goto("/sign-in");
   await page.getByLabel("Your phone number").fill("+919000000101");
   await page.getByRole("button", { name: "Send me a code" }).click();
-  await page.getByLabel("The code we sent").fill(DEV_CODE);
+  await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/today");
 }

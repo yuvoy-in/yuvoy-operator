@@ -44,7 +44,12 @@ const phoneSchema = z
 const codeSchema = z
   .string()
   .trim()
-  .regex(/^\d{4,8}$/, "The code is the digits we sent you, nothing else.");
+  /*
+    Says nothing about where the code came from. It may have arrived by
+    WhatsApp or been issued by Yuvoy out of band, and this screen is never told
+    which — see yuvoy-api#59 and the sign-in copy rule in `pnpm qa`.
+  */
+  .regex(/^\d{4,8}$/, "A code is digits and nothing else.");
 
 const MOCKING = process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
 

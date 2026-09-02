@@ -39,13 +39,13 @@ export function SignInForm() {
             className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-lg"
           />
           <p className="text-forest/70 mt-2 text-sm">
-            The number Yuvoy has for your business. We send a code to it.
+            The number Yuvoy has for your business.
           </p>
         </div>
       ) : (
         <div>
           <label htmlFor="code" className="label text-forest/75">
-            The code we sent
+            Your code
           </label>
           <input
             id="code"
@@ -58,8 +58,14 @@ export function SignInForm() {
             autoFocus
             className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 font-mono text-2xl tracking-[0.4em]"
           />
+          {/*
+            "For", not "sent to". If Yuvoy issued this code by another route,
+            nothing was sent anywhere — but the code still belongs to that
+            number, which is the fact worth showing: it is how somebody catches
+            a digit they mistyped on the previous step.
+          */}
           <p className="text-forest/70 mt-2 text-sm">
-            Sent to {state.phone}. It lasts a few minutes.
+            For {state.phone}. It lasts a few minutes.
           </p>
           {state.devCode ? (
             <p className="rounded-edge border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">

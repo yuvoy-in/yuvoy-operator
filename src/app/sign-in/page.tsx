@@ -24,9 +24,22 @@ export default async function SignInPage() {
         <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
           Sign in
         </h1>
+        {/*
+          Deliberately says nothing about HOW the code reaches you.
+
+          `yuvoy-api#59` adds a second path: Yuvoy staff can issue a sign-in
+          code out of band, which is the hedge for an operator whose phone is
+          gone or whose WhatsApp has not arrived. The session it produces is
+          indistinguishable from a WhatsApp one — `POST /auth/session` never
+          learns which channel the code came from — and the ruling was that
+          this copy should be true of both, **unconditionally**.
+
+          Unconditional is the important half. A screen that says "we messaged
+          you" only when it believes it did is a screen that has been told the
+          channel, and being told is exactly what the design avoids.
+        */}
         <p className="text-forest/70 mt-3 text-base">
-          No password. We send a code to the number we already have for your
-          business.
+          No password. You sign in with a one-time code for your business.
         </p>
         <SignInForm />
 

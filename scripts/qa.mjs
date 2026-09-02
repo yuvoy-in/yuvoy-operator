@@ -671,6 +671,46 @@ for (const [segment, info] of gateJustification) {
   );
 }
 
+/* ---------- 11c. the sign-in screen never names the channel -------------- */
+
+/**
+ * Copy on `/sign-in` that says a code was sent, or by what.
+ *
+ * There are two ways a sign-in code reaches an operator: WhatsApp, and a
+ * Yuvoy staff member issuing one out of band when a phone is gone or a
+ * message has not arrived (`yuvoy-api#59`). The session they produce is
+ * deliberately indistinguishable — `POST /auth/session` never learns which
+ * channel the code came from — and the agreed copy is true of both,
+ * **unconditionally**.
+ *
+ * Unconditional is the load-bearing half. A screen that says "we messaged you"
+ * only when it believes it did is a screen that has been told the channel, and
+ * not being told is the design. So the rule is not "branch correctly", it is
+ * "do not have the branch": nothing here asserts a send, and nothing names a
+ * carrier.
+ *
+ * "Send me a code" is fine and is not matched — that is a request the operator
+ * makes, not a claim about what happened.
+ */
+{
+  const signIn = walk(join(APP, "sign-in")).filter((f) => /\.tsx?$/.test(f));
+  const banned =
+    /\bwe (sent|send|have sent|messaged|texted)\b|\bWhatsApp\b|\bSMS\b|\btext message\b|\bsent to\b/i;
+
+  for (const f of signIn) {
+    const src = code(f);
+    const hit = banned.exec(src);
+    if (hit) {
+      problems.push(
+        `${rel(f)}: says "${hit[0]}" on the sign-in screen. A code may arrive ` +
+          `by WhatsApp or be issued by Yuvoy out of band, and this screen is ` +
+          `never told which — so its copy must be true of both, ` +
+          `unconditionally. See yuvoy-api#59.`,
+      );
+    }
+  }
+}
+
 /* -------------- 12. the failure screens exist at all --------------------- */
 
 /**
