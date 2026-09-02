@@ -4,7 +4,7 @@ import { requireOperator } from "@/lib/auth/session";
 import { listSlots } from "@/lib/day/manifest";
 import { listOpenRequests } from "@/lib/day/requests";
 import { urgencyOf } from "@/lib/day/request-types";
-import { marketDays, marketTime } from "@/lib/format/market-time";
+import { dayCaption, marketDays, marketTime } from "@/lib/format/market-time";
 import { Empty } from "@/components/ui/states";
 import { SignOutButton } from "@/components/chrome/sign-out-button";
 
@@ -35,8 +35,13 @@ export default async function TodayPage({
   const { token, me } = await requireOperator();
   const { day } = await searchParams;
 
-  // Started before the slots are awaited, so the two overlap.
-  const openRequests = listOpenRequests(token).catch(() => []);
+  // Started before the slots are awaited, so the two overlap. A failure is
+  // kept as a failure rather than folded into "no requests" — a queue nobody
+  // sees is a queue that expires, and a 500 used to look exactly like empty.
+  const openRequests = listOpenRequests(token).then(
+    (items) => ({ ok: true as const, items }),
+    () => ({ ok: false as const, items: [] }),
+  );
 
   const { today, tomorrow } = await marketDays();
   // Only ever today or tomorrow from the UI, but the value arrives in a URL,
@@ -50,7 +55,8 @@ export default async function TodayPage({
     not awaited in sequence with the slots — the two are independent, and on
     one bar of signal a serial fetch doubles the wait for no reason.
   */
-  const requests = await openRequests;
+  const requestsResult = await openRequests;
+  const requests = requestsResult.items;
   const urgent = requests.filter(
     (r) => urgencyOf(r.minutesToAnswer) === "critical",
   ).length;
@@ -62,11 +68,24 @@ export default async function TodayPage({
           <div>
             <p className="eyebrow text-terra-deep">{me.name || "Your day"}</p>
             <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-              {date === today ? "Today" : "Tomorrow"}
+              {dayCaption(date, today, tomorrow)}
             </h1>
           </div>
           <SignOutButton />
         </div>
+
+        {!requestsResult.ok ? (
+          <p
+            role="status"
+            className="rounded-edge border-cream-line bg-cream-deep mt-6 border px-4 py-3 text-sm"
+          >
+            Requests could not be loaded just now.{" "}
+            <Link href="/requests" className="text-terra-deep underline">
+              Open the queue
+            </Link>{" "}
+            to check — one may be waiting.
+          </p>
+        ) : null}
 
         {requests.length > 0 ? (
           <Link
@@ -148,7 +167,9 @@ export default async function TodayPage({
               body={
                 date === today
                   ? "No departures today. If that is wrong, check your slots — a departure that is not here is one Yuvoy cannot sell."
-                  : "Nothing on the books for tomorrow yet."
+                  : date === tomorrow
+                    ? "Nothing on the books for tomorrow yet."
+                    : "Nothing on the books for that day."
               }
             />
           ) : (

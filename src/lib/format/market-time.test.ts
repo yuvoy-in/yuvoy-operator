@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasDeparted, marketDay, marketTime } from "./market-time";
+import { dayCaption, hasDeparted, marketDay, marketTime } from "./market-time";
 
 /**
  * Times in the market's zone.
@@ -38,5 +38,18 @@ describe("market time", () => {
     // `now >= startsAt`, and a UI that disagrees offers a button that 409s.
     expect(hasDeparted(DAWN, t)).toBe(true);
     expect(hasDeparted(DAWN, t + 1)).toBe(true);
+  });
+});
+
+describe("dayCaption", () => {
+  it("names today and tomorrow, and any other day as the date it is", () => {
+    expect(dayCaption("2026-08-18", "2026-08-18", "2026-08-19")).toBe("Today");
+    expect(dayCaption("2026-08-19", "2026-08-18", "2026-08-19")).toBe(
+      "Tomorrow",
+    );
+    // A stale bookmark. Used to read "Tomorrow" over yesterday's departures.
+    expect(dayCaption("2026-08-17", "2026-08-18", "2026-08-19")).toBe(
+      "Monday, 17 August",
+    );
   });
 });

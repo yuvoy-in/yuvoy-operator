@@ -7,6 +7,7 @@ import { requireOperator } from "@/lib/auth/session";
 import {
   RIGHTS_TYPES,
   WITHDRAW_REASONS,
+  rightsProblem,
   type RightsType,
   type WithdrawReason,
 } from "@/lib/media/rights";
@@ -92,6 +93,18 @@ export async function createUploadIntent(): Promise<IntentState> {
       }
       if (err.status === 403) {
         return { message: "Your role cannot upload footage." };
+      }
+      if (err.code === "media_unavailable") {
+        /*
+          The brief's "you will see this today": no Cloudflare Stream account
+          exists yet (yuvoy-api#64), so production refuses every upload with
+          this code. It is nothing to do with the clip and nothing a retry
+          fixes, so it is said as such rather than as a generic failure.
+        */
+        return {
+          message:
+            "Uploads are switched off for now — nothing to do with your clip. We will tell you when they open.",
+        };
       }
     }
     return { message: "We could not start the upload. Try again." };
@@ -205,6 +218,22 @@ export async function attestRights(
   }
 
   const { mediaAssetId, ...body } = parsed.data;
+
+  /*
+    The same rule the form applies, applied here. "Licensed" needs the
+    licence, "somebody gave us permission" needs who — the form marks those
+    fields `required`, and a Server Action is a public POST endpoint that
+    never sees the form. `rightsProblem()` existed for exactly this and was
+    never called.
+  */
+  const problem = rightsProblem({
+    rightsType: body.rightsType,
+    peopleConsentConfirmed: body.peopleConsentConfirmed,
+    licenceRef: body.licenceRef,
+    thirdPartyRef: body.thirdPartyRef,
+  });
+  if (problem) return { field: problem.field, message: problem.message };
+
   const { token } = await requireOperator();
 
   try {

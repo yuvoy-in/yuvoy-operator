@@ -1,5 +1,13 @@
 // @vitest-environment node
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { server } from "../../../mocks/server";
 import { __resetOperatorMocks } from "../../../mocks/handlers";
 import { apiBaseUrl } from "@/lib/api/server-client";
@@ -88,5 +96,50 @@ describe("manage-only endpoints refuse STAFF with the contract's 403", () => {
       "/earnings?from=2030-01-01&to=2030-01-31",
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe("the mock's calendar and its patience", () => {
+  it("does not call this month settled at 05:30 IST on its last day", async () => {
+    // A bare date parsed as UTC midnight is 05:30 IST — the hour at which
+    // "This month" used to flip to "Paid" with the month still running.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-30T00:00:00Z"));
+    try {
+      const owner = await signIn(OWNER);
+      const res = await call(
+        owner,
+        "GET",
+        "/earnings?from=2026-09-01&to=2026-09-30",
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { state: string };
+      expect(body.state).not.toBe("settled");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("answers the sixth wrong code with a 429, not the same 401", async () => {
+    for (let i = 0; i < 5; i++) {
+      const res = await fetch(`${base}/auth/session`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          phone: STAFF,
+          code: "000000",
+          device: "vitest",
+        }),
+      });
+      expect(res.status).toBe(401);
+    }
+    const throttled = await fetch(`${base}/auth/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ phone: STAFF, code: DEV_CODE, device: "vitest" }),
+    });
+    expect(throttled.status).toBe(429);
+    const body = (await throttled.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("rate_limited");
   });
 });

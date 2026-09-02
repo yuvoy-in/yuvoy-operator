@@ -297,6 +297,41 @@ test("attesting says plainly that it is not publishing", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("a licensed clip needs its licence, even when the form's own check is bypassed", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await signIn(page);
+  await choose(page, clip(3));
+  await page.getByRole("button", { name: "Upload it" }).click();
+  await expect(page.getByText("Your clip is uploaded")).toBeVisible({
+    timeout: 60_000,
+  });
+
+  /*
+    The form marks the licence field `required`; a Server Action is a public
+    POST endpoint that never sees the form. `rightsProblem()` existed for
+    exactly this and was never called — so a "licensed" attestation with no
+    licence reference went through. The browser's check is stripped here to
+    reach the action's.
+  */
+  await page.getByRole("radio", { name: "We paid for it" }).check();
+  await page
+    .locator("#licenceRef")
+    .evaluate((el) => el.removeAttribute("required"));
+  await page.getByRole("radio", { name: /they knew and agreed/ }).check();
+  await page
+    .getByRole("button", { name: "I confirm this, and submit for review" })
+    .click();
+
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Which licence" }),
+  ).toBeVisible();
+  await expect(page.getByText("Recorded, and queued for review")).toHaveCount(
+    0,
+  );
+});
+
 test("the wrong clip can be taken down, while the page is still open", async ({
   page,
 }) => {

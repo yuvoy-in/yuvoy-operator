@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   confirmUpload,
   createUploadIntent,
@@ -112,6 +112,22 @@ function readVideoFacts(file: File): Promise<LocalVideoFacts> {
 export function Uploader() {
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
   const abort = useRef<AbortController | null>(null);
+
+  /*
+    "Keep this tab open" was load-bearing copy with nothing behind it: an
+    accidental close mid-upload burned the operator's single slot until it
+    timed out. The browser's own leave prompt is the only guard that exists
+    for that, so it is armed while bytes are moving or being processed.
+  */
+  const busy = phase.name === "uploading" || phase.name === "processing";
+  useEffect(() => {
+    if (!busy) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [busy]);
   /*
     The upload slot, kept across file changes — and bound to the file whose
     bytes it holds.
@@ -271,10 +287,18 @@ export function Uploader() {
       await new Promise((r) => setTimeout(r, 1_500));
     }
 
+    /*
+      Sixty seconds of polling is up. There is no `GET /media` to check on it
+      later (yuvoy-api#66), so "check back shortly" pointed at nothing — the
+      one way to look again is the way in: the same clip picked again resumes
+      at the server's offset, which is the end, and asks the API once more.
+    */
     setPhase({
       name: "failed",
       message:
-        "The video is taking longer than usual to process. It is not lost — check back shortly.",
+        "The video is taking longer than usual to process. Nothing is lost — choose the same clip again and we will check on it.",
+      bound: identityOf(file),
+      uploaded: file.size,
     });
   }, []);
 

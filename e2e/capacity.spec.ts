@@ -80,6 +80,13 @@ test("reducing to exactly what is sold is allowed", async ({
   // out of a full boat, and the one reduction the API permits.
   await expect(row.getByText(`Now offering ${sold}.`)).toBeVisible();
   await expect(row.getByRole("alert")).toHaveCount(0);
+
+  // And the row itself now says so. The action revalidates the page, and for
+  // a month the mock's reads ignored its writes — "Now offering 5." rendered
+  // beside a row still reading "5 of 8 sold · 3 left".
+  await expect(
+    row.getByText(new RegExp(`${sold} of ${sold} sold`)),
+  ).toBeVisible();
 });
 
 test("closing dates says plainly that it did not cancel anybody", async ({
@@ -138,6 +145,11 @@ test("an oversell is never rendered as a success", async ({
   await expect(row.getByText("The sale was still recorded")).toBeVisible();
   // And emphatically NOT the success wording.
   await expect(row.getByText(/recorded at your counter$/)).toHaveCount(0);
+
+  // The second walk-up sale of the morning does not need a navigation: the
+  // receipt offers a fresh form.
+  await row.getByRole("button", { name: "Record another sale" }).click();
+  await expect(row.getByLabel("Seats you sold at your counter")).toBeVisible();
 });
 
 test("/capacity has no accessibility violations", async ({ page }) => {

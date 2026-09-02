@@ -69,3 +69,22 @@ export async function marketDays(): Promise<{
     tomorrow: marketDate(new Date(t + 24 * 60 * 60 * 1000)),
   };
 }
+
+/**
+ * What to call a day on the day screen.
+ *
+ * The UI only ever offers today and tomorrow, but the day arrives in a URL —
+ * a link saved two days ago names a date that is neither, and captioning it
+ * "Tomorrow" is a manifest lie on the screen the brief says must never
+ * disagree with the boat. Anything else is named as the date it is.
+ */
+export function dayCaption(
+  date: string,
+  today: string,
+  tomorrow: string,
+  timeZone = "Asia/Kolkata",
+): string {
+  if (date === today) return "Today";
+  if (date === tomorrow) return "Tomorrow";
+  return marketDay(`${date}T12:00:00+05:30`, timeZone);
+}

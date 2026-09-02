@@ -23,3 +23,16 @@ describe("formatPaise", () => {
     expect(formatPaise(123456700)).toBe("₹12,34,567");
   });
 });
+
+describe("formatPaise — the paise", () => {
+  it("shows them when they are there, so lines add up on screen", () => {
+    // ₹6,125.50 rounded to ₹6,126 beside a net that was computed in paise
+    // is a screen that visibly does not reconcile.
+    expect(formatPaise(612550)).toBe("₹6,125.50");
+    expect(formatPaise(5)).toBe("₹0.05");
+  });
+
+  it("still shows whole rupees as whole rupees", () => {
+    expect(formatPaise(450000)).toBe("₹4,500");
+  });
+});

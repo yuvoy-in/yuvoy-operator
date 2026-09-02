@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { markAttendance, type AttendanceState } from "./actions";
 import { isHolding, type Party } from "@/lib/day/types";
 import { cn } from "@/lib/cn";
@@ -34,6 +34,15 @@ export function PartyRow({
   const holding = isHolding(party);
   const arrived = Boolean(party.arrived);
   const settled = party.state === "completed" || party.state === "no_show";
+  /*
+    A terminal outcome is armed by one tap and sent by a second. The API
+    refuses to overwrite a settled booking, so a wet-thumb tap on "No-show"
+    used to record a paying guest as absent, permanently, with no way back —
+    while the call-off panel next door claimed to be "the only action in the
+    portal that cannot be undone". Arriving stays one tap: it is idempotent
+    and reversible in the only sense that matters (the boat leaves anyway).
+  */
+  const [armed, setArmed] = useState<"completed" | "no_show" | null>(null);
 
   return (
     <li
@@ -96,27 +105,56 @@ export function PartyRow({
             offering a button that will be refused is how an operator learns to
             distrust the screen.
           */}
-          {departed ? (
+          {departed && !armed ? (
             <>
               <button
-                type="submit"
-                name="outcome"
-                value="completed"
+                type="button"
+                onClick={() => setArmed("completed")}
                 disabled={pending}
                 className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
               >
                 Completed
               </button>
               <button
-                type="submit"
-                name="outcome"
-                value="no_show"
+                type="button"
+                onClick={() => setArmed("no_show")}
                 disabled={pending}
                 className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
               >
                 No-show
               </button>
             </>
+          ) : null}
+
+          {departed && armed ? (
+            <div className="border-cream-line mt-1 flex w-full flex-wrap gap-2 border-t pt-3">
+              <p className="text-forest/80 w-full text-sm">
+                {armed === "no_show"
+                  ? `Mark ${party.name} as a no-show? This cannot be changed afterwards.`
+                  : `Mark ${party.name} as completed? This cannot be changed afterwards.`}
+              </p>
+              <button
+                type="submit"
+                name="outcome"
+                value={armed}
+                disabled={pending}
+                className="rounded-edge dock-target label border-terra-deep text-terra-deep flex-1 border-2 px-5 font-bold"
+              >
+                {pending
+                  ? "Recording…"
+                  : armed === "no_show"
+                    ? "Confirm no-show"
+                    : "Confirm completed"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setArmed(null)}
+                disabled={pending}
+                className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+              >
+                Not that
+              </button>
+            </div>
           ) : null}
         </form>
       )}

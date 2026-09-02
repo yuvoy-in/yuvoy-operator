@@ -127,12 +127,21 @@ export async function submitCode(
 
     await writeSessionToken(data.token);
   } catch (err) {
+    if (err instanceof OperatorApiError && err.status === 429) {
+      // Throttled. A different next step from a wrong code — wait, do not
+      // ask for another — so it gets its own sentence and nothing else.
+      return {
+        ...prev,
+        step: "code",
+        message: "Too many attempts. Wait a minute, then try the code again.",
+      };
+    }
     if (err instanceof OperatorApiError && err.isUnauthorized) {
       /*
-        Wrong, expired, used and over-attempted codes all answer 401 with one
-        message, and this screen keeps them one message. Telling somebody the
-        code was "already used" rather than "wrong" tells an attacker they had
-        the right number and the wrong window.
+        Wrong, expired and used codes all answer 401 with one message, and
+        this screen keeps them one message. Telling somebody the code was
+        "already used" rather than "wrong" tells an attacker they had the
+        right number and the wrong window.
       */
       return {
         ...prev,

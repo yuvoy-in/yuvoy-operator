@@ -17,15 +17,34 @@ import { cn } from "@/lib/cn";
  * operator who thinks they messaged somebody and did not is worse than one who
  * knows they left a note.
  */
-export function RelayPanel({
-  slotId,
-  bookingId,
-  who,
-}: {
+export function RelayPanel(props: {
   slotId: string;
   /** Empty means the whole departure. */
   bookingId?: string;
   who: string;
+}) {
+  /*
+    Remounted per message. `useActionState` keeps its last result for the
+    life of the component, so after one relay the receipt stood in for the
+    form until a navigation — a follow-up "watching the weather" to the same
+    departure needed leaving and coming back. A new key is a new form.
+  */
+  const [round, setRound] = useState(0);
+  return (
+    <RelayRound key={round} {...props} onAgain={() => setRound((r) => r + 1)} />
+  );
+}
+
+function RelayRound({
+  slotId,
+  bookingId,
+  who,
+  onAgain,
+}: {
+  slotId: string;
+  bookingId?: string;
+  who: string;
+  onAgain: () => void;
 }) {
   const [state, act, pending] = useActionState<RelayState, FormData>(
     sendRelay,
@@ -61,6 +80,13 @@ export function RelayPanel({
             It is on their booking page. It was not sent to a phone.
           </p>
         ) : null}
+        <button
+          type="button"
+          onClick={onAgain}
+          className="rounded-edge dock-target label border-cream-line bg-cream mt-3 w-full border px-5"
+        >
+          Tell {who} something else
+        </button>
       </div>
     );
   }

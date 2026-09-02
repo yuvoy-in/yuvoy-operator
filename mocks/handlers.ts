@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { apiBaseUrl } from "../src/lib/api/server-client";
+import { marketDate } from "../src/lib/format/market-time";
 import {
   MOCK_TUS_PORT,
   createMockUpload,
@@ -83,6 +84,9 @@ const canManage = (member: MockTeamMember) =>
   member.roles.includes("OWNER") || member.roles.includes("MANAGER");
 
 let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
+/** Wrong sign-in codes per number. The sixth answers 429. */
+let codeAttempts: Record<string, number> = {};
+const CODE_ATTEMPT_LIMIT = 5;
 /** Requests that have been answered. An answered one is not open any more. */
 let answered: Record<string, "active" | "released"> = {};
 /** Departures called off in this session. Irreversible, as in production. */
@@ -114,6 +118,7 @@ let mediaAssets: Record<string, { attested: boolean; withdrawn?: boolean }> =
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
   attendance = {};
+  codeAttempts = {};
   answered = {};
   calledOff = {};
   capacity = {};
@@ -279,8 +284,23 @@ export const handlers = [
 
   http.post(url("/auth/session"), async ({ request }) => {
     const body = (await request.json()) as { phone?: string; code?: string };
+    const phone = (body.phone ?? "").trim();
+    /*
+      Over-attempted, as the contract declares. Five wrong codes and the
+      number is throttled — a 429, distinct from the one 401 every wrong,
+      expired or used code shares, because "wait a minute" is a different
+      next step from "ask for a new one". The mock never modelled it, so the
+      client shipped without its 429 branch ever running.
+    */
+    if ((codeAttempts[phone] ?? 0) >= CODE_ATTEMPT_LIMIT) {
+      return envelope(
+        "rate_limited",
+        "Too many attempts. Wait a minute and try again.",
+        429,
+      );
+    }
     const member = [...team, ...OTHER_MEMBERS].find(
-      (m) => !m.pending && m.phone === (body.phone ?? "").trim(),
+      (m) => !m.pending && m.phone === phone,
     );
     /*
       A wrong code and a number nobody on the account owns answer identically.
@@ -289,8 +309,10 @@ export const handlers = [
       back the directory the OTP endpoint carefully withholds.
     */
     if (body.code !== DEV_CODE || !member) {
+      codeAttempts[phone] = (codeAttempts[phone] ?? 0) + 1;
       return envelope("unauthorized", "That code did not work.", 401);
     }
+    delete codeAttempts[phone];
     return HttpResponse.json(
       {
         token: sessionTokenFor(member.id),
@@ -664,30 +686,30 @@ export const handlers = [
       return (!from || day >= from) && (!to || day <= to);
     });
 
+    /*
+      What was WRITTEN is what is read back. For its first month this handler
+      returned the fixture's numbers whatever the session had done to them, so
+      every revalidate-after-write showed the pre-write state: "Now offering
+      6." beside a row still saying "11 left", a called-off departure still
+      open on /today. A mock whose reads ignore its writes is a suite that
+      proves the message rendered and nothing about the screen.
+    */
     return HttpResponse.json({
-      items: inRange.map(
-        ({
-          id,
-          experienceId,
-          title,
-          startsAt,
-          timezone,
+      items: inRange.map((s) => {
+        const seats = capacity[s.id] ?? s.seats;
+        const sold = s.sold + (offlineSold[s.id] ?? 0);
+        return {
+          id: s.id,
+          experienceId: s.experienceId,
+          title: s.title,
+          startsAt: s.startsAt,
+          timezone: s.timezone,
           seats,
           sold,
-          remaining,
-          status,
-        }) => ({
-          id,
-          experienceId,
-          title,
-          startsAt,
-          timezone,
-          seats,
-          sold,
-          remaining,
-          status,
-        }),
-      ),
+          remaining: Math.max(0, seats - sold),
+          status: calledOff[s.id] ? "cancelled" : s.status,
+        };
+      }),
     });
   }),
 
@@ -732,7 +754,9 @@ export const handlers = [
         guests,
         arrived: parties.filter((p) => p.arrived).length,
         seatsSold: slot.sold,
-        seatsSoldOffline: slot.seatsSoldOffline,
+        // Counter sales recorded this session count, as they would.
+        seatsSoldOffline:
+          (slot.seatsSoldOffline ?? 0) + (offlineSold[slot.id] ?? 0),
       },
     });
   }),
@@ -824,7 +848,15 @@ export const handlers = [
       one endpoint, so the screen's "this can still move" warning is exercised
       on the case where it matters and absent on the case where it does not.
     */
-    const isPast = Boolean(from && to && new Date(to) < new Date());
+    /*
+      "Over" in the market's calendar, by date string, never `new Date(to)`:
+      that parses a bare date as UTC midnight, which arrives at 05:30 IST — so
+      from half past five on the last morning of every month "This month"
+      rendered as "Paid. The money has left our side" while the month was
+      still running, and the earnings e2e went red for the rest of the day.
+      The same class of bug the day screen had (369267c), one file over.
+    */
+    const isPast = Boolean(from && to && to < marketDate(new Date()));
     return HttpResponse.json({
       from,
       to,

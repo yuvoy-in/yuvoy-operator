@@ -158,7 +158,8 @@ for (const f of files) {
 const ALLOWED_ROUTE_HANDLERS = new Set();
 
 for (const f of walk(APP)) {
-  if (!/[/\\]route\.tsx?$/.test(f)) continue;
+  // `.js` too: the guard matched only TypeScript, and a route.js is a route.
+  if (!/[/\\]route\.[jt]sx?$/.test(f)) continue;
   if (ALLOWED_ROUTE_HANDLERS.has(rel(f))) continue;
   problems.push(
     `${rel(f)}: a route handler. This portal has no browser-callable API by ` +
@@ -166,6 +167,28 @@ for (const f of walk(APP)) {
       `one is genuinely needed, add it to ALLOWED_ROUTE_HANDLERS in ` +
       `scripts/qa.mjs with the reason.`,
   );
+}
+
+/*
+  The two other doors to the same surface: the pages router's API directory,
+  and a middleware that writes a response body. Neither exists today; both
+  used to be invisible to this check.
+*/
+for (const f of walk(join(SRC, "pages", "api"))) {
+  problems.push(
+    `${rel(f)}: a pages-router API route. Same objection as a route handler — ` +
+      `this portal has no browser-callable API by design.`,
+  );
+}
+for (const f of [join(SRC, "middleware.ts"), join(ROOT, "middleware.ts")]) {
+  if (!existsSync(f)) continue;
+  const s = code(f);
+  if (/NextResponse\.json\(|new Response\(/.test(s)) {
+    problems.push(
+      `${rel(f)}: middleware that writes a response body is a route handler ` +
+        `by another name. It may redirect or rewrite; it may not answer.`,
+    );
+  }
 }
 
 /* ------------------- 6. the session never enters the client graph -------- */
@@ -371,17 +394,37 @@ for (const [path, reason] of UNAUTHENTICATED_ACTIONS) {
   }
 }
 
+/*
+  Per EXPORTED ACTION, not per module. The first version credited a whole
+  file with one `requireOperator()` call, so a second action added to an
+  already-passing module could skip the check undetected. Every exported
+  async function in a "use server" module is a public endpoint of its own.
+*/
 for (const f of files) {
   if (!isServerAction(f)) continue;
   if (UNAUTHENTICATED_ACTIONS.has(rel(f))) continue;
   const s = code(f);
-  if (!/requireOperator\(/.test(s)) {
+  const exports = [...s.matchAll(/^export\s+async\s+function\s+(\w+)\s*\(/gm)];
+  if (exports.length === 0 && !/requireOperator\(/.test(s)) {
     problems.push(
       `${rel(f)}: a Server Action module that never calls requireOperator(). ` +
         `An action is a public POST endpoint — Next checks the origin, not ` +
         `who is asking.`,
     );
+    continue;
   }
+  exports.forEach((m, i) => {
+    const start = m.index;
+    const end = i + 1 < exports.length ? exports[i + 1].index : s.length;
+    const body = s.slice(start, end);
+    if (!/requireOperator\(/.test(body)) {
+      problems.push(
+        `${rel(f)}: exported action \`${m[1]}\` never calls requireOperator(). ` +
+          `Each export is its own public POST endpoint — one check elsewhere ` +
+          `in the file covers nothing here.`,
+      );
+    }
+  });
 }
 
 /* ------------------- 8. no traveller phone number, anywhere -------------- */
@@ -398,14 +441,46 @@ for (const f of files) {
  * The API does not return one today. This is what stops a well-meaning commit
  * from displaying one the day it does.
  */
+const PHONE_FIELDS = "whatsapp|phone|mobile|msisdn";
+const TRAVELLER_RECEIVERS = "contact|party|booking|traveller";
+/*
+  Three shapes of the same read, and a domain rule. The first version caught
+  `party.phone` and nothing else: `party["phone"]`, `const { phone } = party`
+  and any aliased receiver slipped through. Bracket and destructured reads
+  are matched now; and inside the manifest domain — the day screens and the
+  day library, where the only numbers in scope are travellers' — ANY phone
+  field read on ANY receiver is refused, alias or not.
+*/
+const PHONE_READS = [
+  new RegExp(`\\b(?:${TRAVELLER_RECEIVERS})\\??\\.(${PHONE_FIELDS})\\b`, "gi"),
+  new RegExp(
+    `\\b(?:${TRAVELLER_RECEIVERS})\\??\\.?\\[\\s*["'](${PHONE_FIELDS})["']\\s*\\]`,
+    "gi",
+  ),
+  new RegExp(
+    `\\{[^}]*\\b(${PHONE_FIELDS})\\b[^}]*\\}\\s*=\\s*(?:${TRAVELLER_RECEIVERS})\\b`,
+    "gi",
+  ),
+];
+const MANIFEST_DOMAIN = /[/\\](app[/\\]today|lib[/\\]day)[/\\]/;
+const ANY_PHONE_READ = new RegExp(
+  `(?:\\.(${PHONE_FIELDS})\\b|\\[\\s*["'](${PHONE_FIELDS})["']\\s*\\])`,
+  "gi",
+);
+
 for (const f of files) {
   if (/\.test\.tsx?$/.test(f)) continue;
   const s = code(f);
-  for (const m of s.matchAll(
-    /\b(?:contact|party|booking|traveller)\??\.(whatsapp|phone|mobile|msisdn)\b/gi,
-  )) {
+  const seen = new Set();
+  for (const re of PHONE_READS) {
+    for (const m of s.matchAll(re)) seen.add(m[0]);
+  }
+  if (MANIFEST_DOMAIN.test(f)) {
+    for (const m of s.matchAll(ANY_PHONE_READ)) seen.add(m[0]);
+  }
+  for (const read of seen) {
     problems.push(
-      `${rel(f)}: reads "${m[0]}" — a traveller's number never appears in ` +
+      `${rel(f)}: reads "${read}" — a traveller's number never appears in ` +
         `this portal (O12). Use \`reference\` to identify, the relay to reach.`,
     );
   }

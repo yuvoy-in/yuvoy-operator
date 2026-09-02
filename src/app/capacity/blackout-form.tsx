@@ -17,6 +17,28 @@ import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
  * can still complete.
  */
 export function BlackoutForm({ today }: { today: string }) {
+  /*
+    Remounted per closure. `useActionState` keeps its last result for the
+    life of the component, so one closure replaced the form with its receipt
+    until the operator navigated away and back. A new key is a new form.
+  */
+  const [round, setRound] = useState(0);
+  return (
+    <BlackoutRound
+      key={round}
+      today={today}
+      onAgain={() => setRound((r) => r + 1)}
+    />
+  );
+}
+
+function BlackoutRound({
+  today,
+  onAgain,
+}: {
+  today: string;
+  onAgain: () => void;
+}) {
   const [state, act, pending] = useActionState<BlackoutState, FormData>(
     addBlackout,
     {},
@@ -52,6 +74,13 @@ export function BlackoutForm({ today }: { today: string }) {
             Nothing was booked on them, so nobody is owed anything.
           </p>
         )}
+        <button
+          type="button"
+          onClick={onAgain}
+          className="rounded-edge dock-target label border-cream-line bg-cream mt-4 w-full border px-5"
+        >
+          Close more dates
+        </button>
       </div>
     );
   }

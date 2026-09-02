@@ -8,9 +8,20 @@
  * a factor of a hundred there is its own emergency.
  */
 export function formatPaise(paise: number): string {
+  const rupees = Math.round(paise) / 100;
+  /*
+    Whole rupees show as whole rupees; anything else shows its paise. This
+    used to round every line to the rupee, so on the one screen built to be
+    reconciled against an operator's own book, four independently-rounded
+    lines could visibly fail to add up by ₹1 while the "does not add up"
+    guard — which checks raw paise — stayed silent. Integer paise in, the
+    exact amount out.
+  */
+  const whole = Number.isInteger(rupees);
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(Math.round(paise) / 100);
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(rupees);
 }

@@ -203,6 +203,20 @@ test("terminal outcomes are absent before the departure has set off", async ({
   await page.goto("/today/slot_dawn");
   const early = page.locator("li").filter({ hasText: "Daniel Okafor" });
   await expect(early.getByRole("button", { name: "Completed" })).toBeVisible();
+
+  /*
+    And a terminal outcome takes two taps. The API refuses to overwrite a
+    settled booking, so one tap used to record a paying guest as a no-show
+    for good. Armed, said out loud, and disarmed here — never confirmed,
+    because Daniel is a shared fixture both projects read.
+  */
+  await early.getByRole("button", { name: "No-show" }).click();
+  await expect(
+    early.getByText(/Mark Daniel Okafor as a no-show\? This cannot be changed/),
+  ).toBeVisible();
+  await early.getByRole("button", { name: "Not that" }).click();
+  await expect(early.getByRole("button", { name: "No-show" })).toBeVisible();
+  await expect(early.getByRole("button", { name: /Confirm/ })).toHaveCount(0);
 });
 
 test("a called-off departure says so before anything else", async ({
