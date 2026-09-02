@@ -477,6 +477,18 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
   },
   {
     /*
+      A link that drops mid-upload. The one thing a resumable uploader exists
+      for, and the one thing it cannot be shown to do without an interruption
+      to recover from.
+    */
+    id: "usr_upload_drops",
+    name: "Drop Test",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000107",
+  },
+  {
+    /*
       The API having a bad minute — a 500 from `GET /me`, which is not an
       account state and must never render as one. Lands on the error boundary,
       where the answer is a retry rather than a sentence about suspension.
@@ -490,4 +502,6 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
 ];
 
 export const SUSPENDED_ID = "usr_suspended";
+/** Their uploads drop once, mid-chunk. See `mocks/tus-server.ts`. */
+export const DROPPING_ID = "usr_upload_drops";
 export const FAILING_ID = "usr_api_failing";

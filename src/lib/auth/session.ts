@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { operatorApi } from "@/lib/api/server-client";
-import { OperatorApiError } from "@/lib/api/errors";
+
 import { classifyMeFailure } from "@/lib/account/status";
 
 /**

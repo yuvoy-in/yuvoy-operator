@@ -556,10 +556,20 @@ function segmentOf(file) {
   const r = relative(APP, file);
   if (r.startsWith("..")) return file;
   const first = r.split(/[/\\]/)[0];
-  return first.endsWith(".tsx") ? APP : join(APP, first);
+  /*
+    The root page is its own segment, not the whole app tree. Returning APP
+    here made `src/app` a "route" containing every file under it, so any use of
+    `canManage` anywhere in the portal counted as the root redirect gating on a
+    role — a false positive that would have had to be silenced with an
+    exemption rather than fixed.
+  */
+  return first.endsWith(".tsx") ? file : join(APP, first);
 }
 
 const pages = walk(APP).filter((f) => /[/\\]page\.tsx$/.test(f));
+
+/** segment → what it gates on, and what could possibly justify it. */
+const gateJustification = new Map();
 
 for (const page of pages) {
   const graph = reachableFrom(page);
@@ -602,6 +612,28 @@ for (const page of pages) {
     }
   }
 
+  /*
+    The other direction, and it caught a real one.
+
+    A first draft of `/reels` gated uploading on `canManage`. Nothing in the
+    contract asks for that — `POST /media/upload-intents` declares 401 and 409
+    and no 403 — so the screen was inventing a permission the server does not
+    have, in the direction that matters most: telling a skipper they may not do
+    something they may. The person who filmed the dive is exactly the person
+    who should be able to send it.
+
+    A gate is allowed if the route reaches a gated endpoint itself, OR if it
+    links to a route that does — `/today` gates the earnings and payout links
+    on `canManage` and calls nothing gated of its own, which is correct.
+  */
+  gateJustification.set(segment, {
+    gates: gatesOnManage || gatesOnOwner,
+    own: manageCalls.length + ownerCalls.length > 0,
+    links: [...code(page).matchAll(/href=\{?["'`](\/[^"'`}\s]*)["'`]/g)].map(
+      (m) => m[1].split("?")[0].split("#")[0],
+    ),
+  });
+
   if (manageCalls.length && !gatesOnManage && !gatesOnOwner) {
     problems.push(
       `${rel(segment)}: reaches ${manageCalls.join(", ")} (OWNER or MANAGER in ` +
@@ -611,6 +643,32 @@ for (const page of pages) {
         `will never succeed.`,
     );
   }
+}
+
+/* --------- 11b. a role gate the contract never asked for ---------------- */
+
+const gatedSegments = new Set(
+  [...gateJustification].filter(([, v]) => v.own).map(([seg]) => seg),
+);
+
+for (const [segment, info] of gateJustification) {
+  if (!info.gates || info.own) continue;
+
+  // A route may gate on a role purely to stop offering links to routes that
+  // need it — which is what the day screen does, and is correct.
+  const justifiedByLink = info.links.some((href) =>
+    [...gatedSegments].some(
+      (seg) => rel(seg) === join("src", "app", href.replace(/^\//, "")),
+    ),
+  );
+  if (justifiedByLink) continue;
+
+  problems.push(
+    `${rel(segment)}: gates on a role, but reaches no endpoint the contract ` +
+      `restricts and links to no route that does. That is a permission this ` +
+      `build invented — and telling somebody they may not do something the ` +
+      `server would allow is the wrong direction to be wrong in.`,
+  );
 }
 
 /* -------------- 12. the failure screens exist at all --------------------- */

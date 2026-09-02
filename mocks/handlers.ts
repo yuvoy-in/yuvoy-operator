@@ -1,9 +1,16 @@
 import { http, HttpResponse } from "msw";
 import { apiBaseUrl } from "../src/lib/api/server-client";
+import {
+  MOCK_TUS_PORT,
+  createMockUpload,
+  mockUploadDone,
+  resetMockUploads,
+} from "./tus-server";
 import { validateRelay } from "../src/lib/day/relay-types";
 import {
   CHANGE_REQUESTS,
   DEV_CODE,
+  DROPPING_ID,
   EARNINGS,
   FAILING_ID,
   OPERATOR,
@@ -95,6 +102,13 @@ let stoppedChanges: string[] = [];
  * instead of restoring whatever the last test left behind.
  */
 let team: MockTeamMember[] = TEAM.map((m) => ({ ...m }));
+/** Upload intents in flight, by operator. One at a time, as the API enforces. */
+let uploadIntents: Record<
+  string,
+  { id: string; uploadId: string; confirmedAt?: number }
+> = {};
+/** Assets that finished processing, and what has been attested about them. */
+let mediaAssets: Record<string, { attested: boolean }> = {};
 
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
@@ -107,6 +121,9 @@ export function __resetOperatorMocks() {
   bankChanges = [];
   stoppedChanges = [];
   team = TEAM.map((m) => ({ ...m }));
+  uploadIntents = {};
+  mediaAssets = {};
+  resetMockUploads();
 }
 
 function envelope(code: string, message: string, status: number) {
@@ -395,6 +412,151 @@ export const handlers = [
     // They have accepted, not signed in. `lastSeenAt` stays absent.
 
     return HttpResponse.json({ accepted: true, next: "sign_in" });
+  }),
+
+  /* ------------------------------------------------------------ media --- */
+
+  /**
+   * An upload slot.
+   *
+   * The `uploadUrl` points at a DIFFERENT ORIGIN, because in production it
+   * does: "bytes never pass through this API", the browser talks straight to
+   * the video provider, and that is the one request in this portal MSW cannot
+   * intercept. `mocks/tus-server.ts` is that origin.
+   *
+   * The 409 is modelled rather than skipped. One upload at a time is what
+   * makes the whole flow unresumable across a reload — the client cannot ask
+   * for the URL again — and a mock that handed out a second intent would let
+   * this portal ship a recovery path the real API does not have.
+   */
+  http.post(url("/media/upload-intents"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const me = sessionUser(request)!;
+
+    const open = uploadIntents[me.id];
+    if (open && !open.confirmedAt) {
+      return envelope(
+        "conflict",
+        "An upload is already in progress for this operator.",
+        409,
+      );
+    }
+
+    const id = `upi_${Math.random().toString(36).slice(2, 10)}`;
+    /*
+      A dropping upload for one fixture identity, so the resume path is
+      exercised end to end rather than only in unit tests. A resumable uploader
+      that has never been interrupted is an uploader whose resume path has
+      never run.
+    */
+    const uploadId = `${id}${me.id === DROPPING_ID ? "-drop" : ""}`;
+    createMockUpload(uploadId);
+    uploadIntents[me.id] = { id, uploadId };
+
+    return HttpResponse.json(
+      {
+        intentId: id,
+        uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/uploads/${uploadId}`,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        maxBytes: 200 * 1024 * 1024,
+        maxSeconds: 60,
+        protocol: "tus",
+        /*
+          1 MB here, 5 MB in production. The chunk size is the SERVER's to
+          decide and the client's to honour — which is the property worth
+          testing — so a smaller one exercises the same loop with a quarter of
+          the bytes going over Playwright's wire. A client with its own idea of
+          the chunk size is a client that breaks the day the provider changes.
+        */
+        chunkBytes: 1024 * 1024,
+        aspectRatio: "9:16",
+      },
+      { status: 201 },
+    );
+  }),
+
+  /**
+   * "A hint that it is worth polling, nothing more — the client's claim is
+   * never trusted. What decides is whether the provider has an asset."
+   *
+   * So this checks the tus server's real offset rather than believing the
+   * caller: a client that says it finished at 40% is told to keep waiting, and
+   * a portal built against a mock that took its word would ship a flow that
+   * marks half-uploaded clips ready.
+   */
+  http.post(
+    url("/media/upload-intents/:id/complete"),
+    async ({ request, params }) => {
+      const failed = requireSession(request);
+      if (failed) return failed;
+      const me = sessionUser(request)!;
+
+      const intent = uploadIntents[me.id];
+      if (!intent || intent.id !== String(params.id)) {
+        return envelope("not_found", "No such upload.", 404);
+      }
+
+      if (!mockUploadDone(intent.uploadId)) {
+        // Not an error: still processing, from the caller's point of view.
+        return HttpResponse.json({ ready: false }, { status: 202 });
+      }
+
+      /*
+        One poll of latency before ready, because 202 is the normal first
+        answer and a client that only ever sees 200 has never rendered its own
+        waiting state.
+      */
+      if (!intent.confirmedAt) {
+        intent.confirmedAt = Date.now();
+        return HttpResponse.json({ ready: false }, { status: 202 });
+      }
+
+      const mediaAssetId = `med_${intent.id.slice(4)}`;
+      mediaAssets[mediaAssetId] = { attested: false };
+      return HttpResponse.json({ ready: true, mediaAssetId });
+    },
+  ),
+
+  http.post(url("/media/:id/rights"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const asset = mediaAssets[String(params.id)];
+    if (!asset) return envelope("not_found", "No such clip.", 404);
+
+    const body = (await request.json()) as Record<string, unknown>;
+
+    /*
+      The contract's required four, enforced. `peopleConsentConfirmed` is
+      checked for being a BOOLEAN rather than for being truthy: "never
+      defaulted and never omitted" means an absent field is a 400, and a mock
+      that accepted `undefined` would let the client ship a quiet `false`.
+    */
+    if (
+      typeof body.statementVersion !== "number" ||
+      typeof body.peopleConsentConfirmed !== "boolean" ||
+      typeof body.rightsType !== "string"
+    ) {
+      return envelope("invalid_input", "Missing an attestation field.", 400);
+    }
+    if (!/^[a-f0-9]{64}$/.test(String(body.statementSha256 ?? ""))) {
+      return envelope(
+        "invalid_input",
+        "statementSha256 must be 64 lower-case hex characters.",
+        400,
+      );
+    }
+
+    asset.attested = true;
+    return HttpResponse.json(
+      {
+        attestationId: `att_${Math.random().toString(36).slice(2, 10)}`,
+        state: "queued_for_review",
+        note: "A person at Yuvoy checks this before the clip can appear anywhere.",
+      },
+      { status: 201 },
+    );
   }),
 
   http.delete(url("/team/:id"), async ({ request, params }) => {

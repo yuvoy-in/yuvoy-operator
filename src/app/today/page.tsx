@@ -99,6 +99,15 @@ export default async function TodayPage({
           >
             Seats and closed dates →
           </Link>
+          {" · "}
+          {/* Ungated: the contract puts no role on an upload intent, and the
+              person who filmed the dive is the one who should be sending it. */}
+          <Link
+            href="/reels"
+            className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
+          >
+            Add a reel →
+          </Link>
           {/* Earnings is OWNER/MANAGER only; a staff member sees a 403 rather
               than a page, so the link is not offered to them. Payout details
               and Team are OWNER-only to CHANGE but readable by a manager, so

@@ -62,7 +62,8 @@ well-meaning commit from showing one the day it does.
 | **O9**  | Seat requests and capacity               | **Built**                                                              |
 | **O10** | The day, and today's manifest            | **Built**                                                              |
 | **O11** | Earnings                                 | **Built**                                                              |
-| O6–O8   | Profile, listings, reels                 | Not started — **O6 and O7 are contract-blocked too**                   |
+| **O8**  | Upload a reel                            | **Built** — minus what the contract cannot serve, below                |
+| O6, O7  | Profile, listings                        | Not started — **both are contract-blocked**                            |
 | O1      | Operator signs up                        | **Closed** — `yuvoy.in/operators` already does it; sign-in links to it |
 
 O10 first because the brief says so: _"If you build one screen well, build the
@@ -141,6 +142,55 @@ expires unanswered is a traveller told no by a timer.
 - **The per-booking gap is stated rather than hidden.** `GET /earnings` returns totals
   only and `OperatorBooking` carries no money fields, so "why is _this_ booking less"
   cannot be answered yet. Raised on `yuvoy-api` rather than worked around.
+
+### What O8 does, and the two things it cannot
+
+The four steps all exist in the contract and all four are here: upload intent →
+resumable upload → confirm → rights attestation.
+
+- **Nothing is uploaded before it has been checked locally.** The uplink is
+  0.5–3 Mbps. A 180 MB clip is twenty minutes of somebody's morning, and finding
+  out afterwards that it was filmed sideways is not a validation message. Size,
+  length and shape are read from the file in the browser first — and the limits
+  come off the **intent**, never hardcoded, so the server stays the authority.
+- **A browser that cannot decode the file does not block the upload.** A phone's
+  HEVC clip is something one browser reads and another does not, and Cloudflare
+  handles both. It warns, says the checks did not run, and lets it go.
+- **The refusals that need no server run before one is asked for.** An upload
+  intent is a single per-operator slot the API will not duplicate and gives no
+  way to hand back, so asking for one to discover that somebody picked a photo
+  locks them out of the upload they meant to do. A first version did exactly
+  that.
+- **A dropped connection is a pause, not a failure.** `HEAD` first, resume from
+  the server's offset, never from ours — a client that assumed its own would
+  write good bytes into the wrong part of the file. Exercised against a real tus
+  endpoint with a real destroyed socket, not described in a comment.
+- **The rights statement is hashed in the browser, from the exact string
+  rendered.** `statementSha256` is "the hash of the statement as it was rendered
+  to the operator", and a hash computed anywhere else is a hash of what somebody
+  _believes_ was rendered. A unit test pins the digest, so editing the wording
+  fails loudly instead of silently turning every prior attestation into a claim
+  about words nobody saw.
+- **Consent has no default.** Two radios, neither preselected, and an
+  unanswered form is refused rather than sent as a quiet `false`. "Consent of
+  the people filmed is the one thing a moderator cannot check by watching."
+- **Attesting is not publishing, and the screen says so twice.** Operators
+  reasonably assume it is the last step.
+
+**What it cannot do, and why the screen says so out loud:**
+
+1. **There is no `GET /media`**, so nothing can list what has been uploaded,
+   what is processing, what a reviewer approved or what is live.
+2. **Publishing and taking a clip down are therefore undriveable.**
+   `POST /media/{id}/publish` needs a media id and an experience id, and there
+   is no way to enumerate either.
+3. **Resumption is scoped to the page session** — and that is the contract, not
+   a shortcut. The upload URL may not be persisted client-side, is never stored
+   server-side, and a fresh intent is refused while one is open. After a reload
+   there is no URL to resume to and no way to ask for it again. So the screen
+   says "keep this tab open" rather than implying a durability it does not have.
+
+All three are raised on `yuvoy-api` rather than faked.
 
 ### What each role is offered, and where the refusal is said
 
@@ -284,6 +334,9 @@ logs, not in sunlight.
 ```bash
 pnpm install
 pnpm dev                 # http://localhost:3200, everything mocked
+                         # a mock tus endpoint also starts on :3201 — O8's
+                         # bytes go browser → provider, which MSW cannot
+                         # intercept, so the mock provider is a real origin
 ```
 
 **Sign in as whichever role you want to see.** The mock resolves the session
@@ -304,6 +357,7 @@ on the team and neither appears anywhere in the UI:
 | --------------- | ---------------------------------------------------------------- |
 | `+919000000109` | Signs in; the business account is on hold → `/account` says so   |
 | `+919000000108` | `GET /me` answers 500 → the error boundary, **not** a suspension |
+| `+919000000107` | Their upload drops once, mid-chunk, so the resume path runs      |
 
 A number nobody on the account owns gets the same 401 as a wrong code — the same
 rule `POST /auth/otp` follows, and the reason it does not tell you which numbers
@@ -322,14 +376,14 @@ left (so the terminal outcomes are reachable), one that has not, and one called 
 pnpm verify          # the pre-push gate — all nine steps below, in order
 pnpm qa              # the static sweep on its own
 pnpm tokens:check    # design tokens against yuvoy-app (canonical)
-pnpm test:e2e        # 130 e2e tests, incl. axe on every route
+pnpm test:e2e        # 137 e2e tests, incl. axe on every route
 ```
 
 ```
 typecheck · lint · format · qa · tokens · test · contract:check · build · e2e
 ```
 
-**`pnpm qa` guards seven things the compiler cannot**, and all seven are ways
+**`pnpm qa` guards eight things the compiler cannot**, and all eight are ways
 the architecture above quietly stops being the architecture:
 
 1. **A route handler under `src/app`** — see the proxy note. There is no allowlist
@@ -353,6 +407,11 @@ the architecture above quietly stops being the architecture:
    from the defect above rather than from a principle. A boundary is opt-in in
    Next and its absence is silent by design — the fallback is a working page
    that says nothing true.
+8. **A role gate the contract never asked for.** The other direction of check 6,
+   and it caught one: `/reels` gated uploading on `canManage` when
+   `POST /media/upload-intents` declares no 403 at all. Telling somebody they
+   may not do something the server would allow is the wrong direction to be
+   wrong in.
 
 Checks 5 and 6 walk each page's whole import graph rather than one file, because
 `/earnings` does not call `GET /earnings` itself — `lib/money/fetch.ts` does —
