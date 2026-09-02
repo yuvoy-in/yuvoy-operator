@@ -28,6 +28,16 @@ export interface RequestActionState {
 
 const acceptSchema = z.object({ requestId: z.string().min(1) });
 
+/**
+ * Said here, and said by the API. `GET /me` is re-read on every action, so
+ * this is the role at the moment of the tap rather than the one the page was
+ * rendered with — and it is the first line, not the only one: the contract's
+ * own 403 is rendered with the same words below, for the day the two disagree.
+ * A disabled button is a courtesy; a Server Action is a public POST endpoint.
+ */
+const ROLE_REFUSAL =
+  "Your role cannot answer requests. An owner or manager has to.";
+
 /*
   The enum is derived from DECLINE_REASONS rather than retyped, so the form,
   the validator and the request body cannot disagree about the closed set the
@@ -55,7 +65,7 @@ function explain(err: unknown, verb: string): string {
     }
     if (err.status === 403) {
       // The contract is specific: STAFF may not commit seats.
-      return "Your role cannot answer requests. An owner or manager has to.";
+      return ROLE_REFUSAL;
     }
     if (err.isNotFound) {
       return "That request is no longer here.";
@@ -72,7 +82,8 @@ export async function acceptRequest(
   if (!parsed.success) return { message: "That request cannot be answered." };
 
   const { requestId } = parsed.data;
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
+  if (!me.canManage) return { requestId, message: ROLE_REFUSAL };
 
   try {
     const { data, error } = await operatorApi(token).POST(
@@ -96,11 +107,15 @@ export async function acceptRequest(
       screen exists to prevent, produced by the cache call meant to keep it
       fresh.
 
-      The row's own granted state is the truthful thing to show, and
-      `RefreshOnFocus` reconciles the rest of the queue on the next focus or
-      within a minute. Navigating away and back re-renders on the server
-      anyway — the page is force-dynamic and no-store — so nothing stale
-      survives a real navigation.
+      Not revalidating is necessary and was not sufficient. `RefreshOnFocus`
+      calls `router.refresh()` on every focus and every minute, which re-runs
+      the server render — and the accepted request has left the queue, so its
+      row unmounted and took the receipt with it anyway. The operator tapped
+      Accept, flipped to WhatsApp to tell the traveller to pay, flipped back,
+      and nothing said "still have to pay". So the receipt is held ABOVE the
+      list, in `RequestQueue`, where a refresh cannot reach it: the queue
+      reconciles underneath, the receipt stays until a real navigation. The
+      page is force-dynamic and no-store, so nothing stale survives one.
     */
     return { granted: true, holdExpiresAt: data.holdExpiresAt ?? null };
   } catch (err) {
@@ -123,7 +138,8 @@ export async function declineRequest(
   }
 
   const { requestId, reasonCode } = parsed.data;
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
+  if (!me.canManage) return { requestId, message: ROLE_REFUSAL };
 
   try {
     const { error } = await operatorApi(token).POST("/requests/{id}/decline", {

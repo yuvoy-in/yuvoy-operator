@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   acceptRequest,
   declineRequest,
@@ -13,7 +13,48 @@ import {
   urgencyOf,
   type OpenRequest,
 } from "@/lib/day/request-types";
+import { marketTime } from "@/lib/format/market-time";
 import { cn } from "@/lib/cn";
+
+/**
+ * What an accept produced, kept by `RequestQueue` after the row is gone.
+ *
+ * Only what the receipt needs to say — nothing that would let it be mistaken
+ * for a live request once the queue underneath it has moved on.
+ */
+export interface Receipt {
+  id: string;
+  contactName: string;
+  guests: number;
+  /** The granted hold's deadline. Null when the API did not say. */
+  holdExpiresAt: string | null;
+  timezone: string;
+}
+
+/**
+ * Accepting is not the end. The traveller now holds seats with a clock on
+ * them and must pay before it lapses — an operator who reads "accepted" as
+ * "booked" will not chase it, and the seats go back.
+ *
+ * The deadline is said as a time, because that is the number an operator
+ * chases a traveller against. Market time, never the phone's.
+ */
+export function GrantedReceipt({ receipt }: { receipt: Receipt }) {
+  return (
+    <li className="rounded-edge border-forest bg-forest/5 border-2 p-5">
+      <p className="text-base font-bold">
+        Seats granted to {receipt.contactName}
+      </p>
+      <p className="text-forest/80 mt-2 text-sm">
+        They are holding {receipt.guests}{" "}
+        {receipt.guests === 1 ? "seat" : "seats"} and still have to pay.{" "}
+        {receipt.holdExpiresAt
+          ? `If they have not paid by ${marketTime(receipt.holdExpiresAt, receipt.timezone)}, the seats come back to you.`
+          : "If they do not, the seats come back to you."}
+      </p>
+    </li>
+  );
+}
 
 /**
  * One request waiting for an answer.
@@ -31,6 +72,7 @@ import { cn } from "@/lib/cn";
 export function RequestRow({
   request,
   canAnswer,
+  onGranted,
 }: {
   request: OpenRequest;
   /**
@@ -48,6 +90,12 @@ export function RequestRow({
    * public POST endpoint, and roles change between a render and a tap.
    */
   canAnswer: boolean;
+  /**
+   * Hands the receipt up to `RequestQueue` the moment an accept lands. This
+   * row is inside the server-rendered list and the next refresh removes it;
+   * the receipt has to be somewhere a refresh cannot reach.
+   */
+  onGranted: (receipt: Receipt) => void;
 }) {
   const [state, act, pending] = useActionState<RequestActionState, FormData>(
     async (prev, form) =>
@@ -62,27 +110,25 @@ export function RequestRow({
   const grantable = canAnswer && canGrant(request);
   const short = (request.seatsGrantable ?? 0) < (request.guests ?? 0);
 
-  if (state.granted) {
-    return (
-      <li className="rounded-edge border-forest bg-forest/5 border-2 p-5">
-        <p className="text-base font-bold">
-          Seats granted to {request.contactName}
-        </p>
-        {/*
-          Accepting is not the end. The traveller now holds seats with a clock
-          on them and must pay before it lapses — an operator who reads
-          "accepted" as "booked" will not chase it, and the seats go back.
-        */}
-        <p className="text-forest/80 mt-2 text-sm">
-          They are holding {request.guests}{" "}
-          {request.guests === 1 ? "seat" : "seats"} and still have to pay.
-          {state.holdExpiresAt
-            ? " If they do not, the seats come back to you."
-            : null}
-        </p>
-      </li>
-    );
-  }
+  const receipt: Receipt | null = state.granted
+    ? {
+        id: request.id ?? "",
+        contactName: request.contactName ?? "",
+        guests: request.guests ?? 0,
+        holdExpiresAt: state.holdExpiresAt ?? null,
+        timezone: request.timezone ?? "Asia/Kolkata",
+      }
+    : null;
+
+  useEffect(() => {
+    if (receipt) onGranted(receipt);
+    // `receipt` is derived from `state.granted`, which flips exactly once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.granted]);
+
+  // Rendered here for the frame before the queue takes it over, so the
+  // receipt never blinks. Same markup, same place.
+  if (receipt) return <GrantedReceipt receipt={receipt} />;
 
   return (
     <li

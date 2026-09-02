@@ -181,6 +181,7 @@ for (const f of walk(APP)) {
 const SERVER_ONLY = [
   /^@\/lib\/api\/server-client$/,
   /^@\/lib\/auth\/session$/,
+  /^@\/lib\/auth\/session-writes$/,
   /^@\/lib\/day\/manifest$/,
   /^@\/lib\/team\/fetch$/,
   /^server-only$/,
@@ -241,6 +242,83 @@ for (const root of clientRoots) {
       }
     }
   }
+}
+
+/* ------------ 6b. a cookie is written only in the action phase ----------- */
+
+/**
+ * Next allows `cookies().set()` inside a Server Action or Route Handler and
+ * nowhere else. A write that a rendering Server Component can reach throws —
+ * and because the throw pre-empts whatever `redirect()` sits beside it, the
+ * person lands on the error boundary still holding the cookie that sent them
+ * there. That was a live defect: `requireOperator()` cleared a dead session
+ * during render, so a removed staff member's phone looped on "That did not
+ * load" for as long as the thirty-day cookie lived. An e2e now loads a page
+ * with a dead cookie and expects the sign-in form; this is the static half.
+ *
+ * Two rules make it structural rather than remembered:
+ *
+ *   - `next/headers` is importable only by the two session modules, so cookie
+ *     access cannot quietly spread to a page or a helper.
+ *   - `session-writes` — the one module that mutates — is importable only
+ *     from `"use server"` modules, which ARE the action phase. It must never
+ *     be `"use server"` itself: that would publish "set any cookie" as an
+ *     endpoint.
+ */
+const HEADERS_IMPORTERS = new Map([
+  [
+    join("src", "lib", "auth", "session.ts"),
+    "Reads the session cookie and asks /me what it is worth. Never writes.",
+  ],
+  [
+    join("src", "lib", "auth", "session-writes.ts"),
+    "The only module that writes a cookie, importable only from actions.",
+  ],
+]);
+
+for (const [path, reason] of HEADERS_IMPORTERS) {
+  if (!reason || reason.length < 40) {
+    problems.push(
+      `scripts/qa.mjs: HEADERS_IMPORTERS entry "${path}" has no real reason.`,
+    );
+  }
+  if (!existsSync(join(ROOT, path))) {
+    problems.push(
+      `scripts/qa.mjs: HEADERS_IMPORTERS names "${path}", which does not exist`,
+    );
+  }
+}
+
+const WRITES_MODULE = join("src", "lib", "auth", "session-writes.ts");
+
+for (const f of files) {
+  if (/\.test\.tsx?$/.test(f)) continue;
+  const specs = importsOf(f);
+
+  if (specs.includes("next/headers") && !HEADERS_IMPORTERS.has(rel(f))) {
+    problems.push(
+      `${rel(f)}: imports next/headers. Cookie access lives in ` +
+        `src/lib/auth/session.ts (read) and session-writes.ts (write) only — ` +
+        `a write reachable from render throws and strands the operator.`,
+    );
+  }
+
+  if (specs.some((spec) => /^@\/lib\/auth\/session-writes$/.test(spec))) {
+    if (!isServerAction(f)) {
+      problems.push(
+        `${rel(f)}: imports session-writes from a module that is not ` +
+          `"use server". A cookie can only be written in the action phase; ` +
+          `from render it throws before any redirect beside it runs.`,
+      );
+    }
+  }
+}
+
+if (isServerAction(join(ROOT, WRITES_MODULE))) {
+  problems.push(
+    `${WRITES_MODULE}: is "use server". That publishes writeSessionToken() ` +
+      `as a POST endpoint anybody can call to set a cookie. Remove it.`,
+  );
 }
 
 /* ------------------ 7. every Server Action authorises itself ------------- */

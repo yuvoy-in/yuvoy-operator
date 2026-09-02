@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -141,6 +142,68 @@ test("a dropped connection is a pause, not a failure", async ({ page }) => {
   await expect(page.getByText(/Nothing was lost/)).toBeVisible();
 
   // And it still finishes.
+  await expect(page.getByText("Your clip is uploaded")).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
+test("a slot holding one clip's bytes refuses another, and resumes the first", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  await signIn(page);
+
+  /*
+    Real files on disk rather than buffers: the slot recognises "the same
+    clip" by name, size AND modification time, and a buffer handed to
+    setInputFiles is a new File with a new time on every pick.
+  */
+  const reef = testInfo.outputPath("reef.mp4");
+  writeFileSync(reef, Buffer.alloc(3 * 1024 * 1024, 7));
+  const harbour = testInfo.outputPath("harbour.mp4");
+  writeFileSync(harbour, Buffer.alloc(2 * 1024 * 1024, 9));
+
+  /*
+    The first 1 MB chunk lands; every PATCH after it dies on the wire. That is
+    an upload a jetty connection abandoned with bytes already on the server —
+    the state in which the slot used to be handed the next clip picked.
+  */
+  let patches = 0;
+  await page.route(/\/uploads\//, (route) => {
+    if (route.request().method() === "PATCH" && ++patches > 1) {
+      return route.abort("connectionreset");
+    }
+    return route.continue();
+  });
+
+  await page.goto("/reels");
+  await page.getByLabel("Choose a clip").setInputFiles(reef);
+  await page.getByRole("button", { name: "Upload it" }).click();
+  await expect(page.getByText(/It stopped at 1\.0 MB of 3\.0 MB/)).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByText(/Choose reef\.mp4 again/)).toBeVisible();
+
+  /*
+    A different clip. Before the fix this resumed at reef's offset: 1 MB of
+    reef with harbour's tail, confirmed, attested, into review as one corrupt
+    reel. Now it is refused, told why, and told the way forward.
+  */
+  await page.getByLabel("Choose a clip").setInputFiles(harbour);
+  // Scoped: Next's route announcer is role="alert" too.
+  await expect(
+    page.getByRole("alert").filter({ hasText: "already holds" }),
+  ).toContainText("already holds 1.0 MB of reef.mp4");
+  await expect(page.getByText(/One clip at a time/)).toBeVisible();
+  await page.getByRole("button", { name: "Pick a clip again" }).click();
+
+  // The same clip: carries on from the server's offset, and finishes.
+  await page.unroute(/\/uploads\//);
+  await page.getByLabel("Choose a clip").setInputFiles(reef);
+  await expect(
+    page.getByText(/Picks up from 1\.0 MB already uploaded/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Upload it" }).click();
   await expect(page.getByText("Your clip is uploaded")).toBeVisible({
     timeout: 60_000,
   });

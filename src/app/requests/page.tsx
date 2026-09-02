@@ -3,8 +3,8 @@ import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import { listOpenRequests } from "@/lib/day/requests";
 import { urgencyOf } from "@/lib/day/request-types";
-import { Empty, Problem } from "@/components/ui/states";
-import { RequestRow } from "./request-row";
+import { Problem } from "@/components/ui/states";
+import { RequestQueue } from "./request-queue";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 
 export const metadata: Metadata = { title: "Requests" };
@@ -77,23 +77,13 @@ export default async function RequestsPage() {
           </p>
         ) : null}
 
+        {/*
+          The list and its receipts are one client component on purpose: the
+          receipt an accept produces has to outlive the row the next refresh
+          removes. See `RequestQueue`.
+        */}
         <div className="mt-8">
-          {requests.length === 0 ? (
-            <Empty
-              title="Nothing waiting"
-              body="When somebody asks for seats on a request-mode departure, it appears here with a clock on it."
-            />
-          ) : (
-            <ul className="space-y-3">
-              {requests.map((request) => (
-                <RequestRow
-                  key={request.id}
-                  request={request}
-                  canAnswer={me.canManage}
-                />
-              ))}
-            </ul>
-          )}
+          <RequestQueue requests={requests} canAnswer={me.canManage} />
         </div>
       </div>
     </main>

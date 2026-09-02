@@ -27,6 +27,16 @@ export interface CapacityState {
   slotId?: string;
 }
 
+/**
+ * Said here, and said by the API. The page already hides the forms from
+ * STAFF, but a Server Action is a public POST endpoint and roles change
+ * between a render and a tap — `GET /me` is re-read on every action, so this
+ * is the role at the moment of the tap. The contract's own 403 stays handled
+ * below it, for the day the two disagree.
+ */
+const ROLE_REFUSAL =
+  "Seats, closed dates and counter sales need an owner or a manager. Nothing was changed.";
+
 const seatsSchema = z.object({
   slotId: z.string().min(1),
   seats: z.coerce.number().int().min(0).max(MAX_SEATS),
@@ -65,7 +75,8 @@ export async function setCapacity(
   const problem = capacityProblem(seats, sold);
   if (problem) return { slotId, message: problem };
 
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
+  if (!me.canManage) return { slotId, message: ROLE_REFUSAL };
 
   try {
     const { error } = await operatorApi(token).PATCH("/slots/{id}", {
@@ -145,7 +156,8 @@ export async function addBlackout(
   const problem = blackoutProblem(from, to);
   if (problem) return { message: problem };
 
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
+  if (!me.canManage) return { message: ROLE_REFUSAL };
 
   try {
     const { data, error } = await operatorApi(token).POST("/blackouts", {
@@ -230,7 +242,8 @@ export async function recordOfflineSale(
   }
 
   const { slotId, seats, note } = parsed.data;
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
+  if (!me.canManage) return { message: ROLE_REFUSAL };
 
   try {
     const { data, error } = await operatorApi(token).POST(

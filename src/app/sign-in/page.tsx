@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignInForm } from "./sign-in-form";
-import { readSessionToken } from "@/lib/auth/session";
+import { ACCOUNT_PATH, sessionState } from "@/lib/auth/session";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -15,7 +15,23 @@ export const dynamic = "force-dynamic";
 
 /** O2 — daily access for the person running the boat, one hand free. */
 export default async function SignInPage() {
-  if (await readSessionToken()) redirect("/today");
+  /*
+    Asked of the server, not inferred from the cookie's existence. A session
+    revoked an hour ago leaves a cookie exactly as real as a live one, and
+    bouncing its holder to /today on sight built a loop: /today's
+    requireOperator() sent them back here, and here sent them to /today,
+    forever — with no legal place to clear the cookie, because clearing
+    during render throws. A dead or unreadable session renders the form
+    instead; the next successful sign-in overwrites the cookie in the action
+    phase, where writes are allowed.
+
+    "unknown" (network trouble, a 500) also renders the form: signing in
+    again is harmless, while an error page here traps somebody on a jetty
+    whose session may be fine.
+  */
+  const state = await sessionState();
+  if (state === "alive") redirect("/today");
+  if (state === "not-active") redirect(ACCOUNT_PATH);
 
   return (
     <main className="bg-cream text-forest flex min-h-dvh flex-col">

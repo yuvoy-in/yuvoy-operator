@@ -92,6 +92,34 @@ test("a staff login sees the queue and cannot answer it — including the button
   ).toBeDisabled();
 });
 
+test("a staff phone that forces the button through is refused by the action itself", async ({
+  page,
+}) => {
+  await signIn(page, STAFF);
+  await page.goto("/requests");
+
+  /*
+    `disabled` is a courtesy. A Server Action is a public POST endpoint, and
+    for a month the only thing between a STAFF phone and a granted request
+    was the attribute this test removes — the mock refused nothing by role,
+    so the 403 branch in the action had never once run. The action now
+    re-reads the role at the moment of the tap, and the mock refuses like
+    the contract does; either alone would render this line.
+  */
+  const accept = page.getByRole("button", { name: "Accept" }).first();
+  await accept.evaluate((button) => button.removeAttribute("disabled"));
+  await accept.click();
+
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Your role cannot answer" }),
+  ).toHaveText("Your role cannot answer requests. An owner or manager has to.");
+
+  // And nothing was granted: the request is still in the queue.
+  await expect(
+    page.getByRole("button", { name: "Accept" }).first(),
+  ).toBeVisible();
+});
+
 test("an owner can still answer the queue", async ({ page }) => {
   await signIn(page, OWNER);
   await page.goto("/requests");

@@ -44,6 +44,46 @@ test("the session token never reaches JavaScript", async ({ page }) => {
   expect(session!.sameSite).toBe("Lax");
 });
 
+test("a dead session lands on the sign-in form, not an error page", async ({
+  page,
+  baseURL,
+}) => {
+  /*
+    A cookie whose session was revoked — the owner removed this person, or the
+    session simply expired — exists exactly as hard as a live one. This used
+    to brick the phone: requireOperator() cleared the dead cookie DURING
+    RENDER, Next threw on the write, the throw pre-empted the redirect, and
+    /sign-in bounced any cookie-holder straight back to /today. "That did not
+    load", forever, for thirty days.
+
+    The mock answers 401 to any token it did not mint, so a made-up one is a
+    dead session. Nothing is signed in here, so both projects may run it.
+  */
+  await page.context().addCookies([
+    {
+      name: "yvo_session",
+      value: "opsess_dead_e2e",
+      url: baseURL!,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+
+  await page.goto("/today");
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByLabel("Your phone number")).toBeVisible();
+
+  // Signing in from that state must work — the dead cookie is overwritten in
+  // the action phase, which is the only place a write is legal.
+  await page.getByLabel("Your phone number").fill("+919000000101");
+  await page.getByRole("button", { name: "Send me a code" }).click();
+  await page.getByLabel("Your code").fill(DEV_CODE);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("**/today");
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+});
+
 test("a wrong code says one thing, whatever was wrong with it", async ({
   page,
 }) => {
@@ -289,8 +329,27 @@ test("accepting says what the traveller actually has now", async ({
   // An operator who reads "accepted" as "booked" will not chase it.
   await expect(page.getByText(`Seats granted to ${who}`)).toBeVisible();
   await expect(page.getByText("still have to pay")).toBeVisible();
+  // The deadline is the number an operator chases a traveller against.
+  await expect(
+    page.getByText(/If they have not paid by \d\d:\d\d/),
+  ).toBeVisible();
 
-  // And it leaves the queue.
+  /*
+    The receipt must survive the page's own refresh. `RefreshOnFocus` calls
+    `router.refresh()` on every focus and every minute; the server re-renders
+    the queue WITHOUT the accepted request, and a receipt that lived inside
+    that row went with it — flip to WhatsApp to tell the traveller to pay,
+    flip back, and "still have to pay" was gone. It lives above the list now.
+  */
+  const refreshed = page.waitForResponse((r) => r.url().includes("_rsc"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await refreshed;
+  await expect(page.getByText(`Seats granted to ${who}`)).toBeVisible();
+  await expect(page.getByText("still have to pay")).toBeVisible();
+  // The row itself is gone — the receipt is not a second copy of it.
+  await expect(row.getByRole("button", { name: "Accept" })).toHaveCount(0);
+
+  // And it leaves the queue on a real navigation.
   await page.reload();
   await expect(page.getByText(who)).toHaveCount(0);
 });

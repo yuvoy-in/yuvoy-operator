@@ -6,7 +6,7 @@ import { operatorApi } from "@/lib/api/server-client";
 import { classifyMeFailure } from "@/lib/account/status";
 
 /**
- * The operator session, and the one place the token is touched.
+ * The operator session: reading it, and deciding what it means.
  *
  * The token is opaque — the contract is explicit that it is "not a JWT and
  * carries no claims … random with no meaning outside our database, which is
@@ -14,57 +14,21 @@ import { classifyMeFailure } from "@/lib/account/status";
  * So there is nothing to decode, nothing to trust locally, and no expiry a
  * client can read. `GET /me` is the only honest answer to "am I signed in",
  * and a 401 from any call is the only honest answer to "am I still".
- */
-
-const COOKIE = "yvo_session";
-
-/**
- * Thirty days, matching nothing in particular on purpose.
  *
- * The cookie's lifetime is a convenience; the SERVER decides whether a
- * session is alive. A cookie that outlives its session produces one 401 and a
- * redirect, which is correct. A cookie that dies first signs somebody out on
- * a jetty for no reason, which is not.
+ * This module only ever READS the cookie. The writers live in
+ * `session-writes.ts`, importable only from `"use server"` modules, because a
+ * cookie write from render throws in Next — see that file for the defect the
+ * split closes. `pnpm qa` enforces the boundary.
  */
-const MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
+export const SESSION_COOKIE = "yvo_session";
 
 export const SIGN_IN_PATH = "/sign-in";
 export const ACCOUNT_PATH = "/account";
 
-/**
- * httpOnly is the load-bearing one and the reason this portal has no
- * client-side data layer: JavaScript on this origin cannot read the session,
- * so an XSS cannot carry it away.
- *
- * `sameSite: "lax"` rather than `strict`. Strict is tempting for an admin
- * surface, and it would sign an operator out of the first page they open from
- * a WhatsApp link — which is how they are told about a request waiting. Lax
- * still refuses to ride a cross-site POST, which is the attack that matters,
- * and Server Actions carry Next's own origin check on top.
- */
-function cookieOptions() {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: MAX_AGE_SECONDS,
-  };
-}
-
 export async function readSessionToken(): Promise<string | null> {
   const jar = await cookies();
-  return jar.get(COOKIE)?.value ?? null;
-}
-
-export async function writeSessionToken(token: string): Promise<void> {
-  const jar = await cookies();
-  jar.set(COOKIE, token, cookieOptions());
-}
-
-export async function clearSessionToken(): Promise<void> {
-  const jar = await cookies();
-  jar.set(COOKIE, "", { ...cookieOptions(), maxAge: 0 });
+  return jar.get(SESSION_COOKIE)?.value ?? null;
 }
 
 export interface OperatorIdentity {
@@ -74,6 +38,42 @@ export interface OperatorIdentity {
   operatorId: string;
   /** OWNER or MANAGER. Capacity, earnings and call-off require it. */
   canManage: boolean;
+}
+
+/**
+ * What the cookie is actually worth, asked of the server.
+ *
+ * For the one page that must NOT bounce a cookie-holder onward on sight:
+ * `/sign-in`. A cookie's existence says nothing — a session revoked an hour
+ * ago leaves a cookie exactly as real as a live one — so the sign-in page
+ * asks `GET /me` before deciding, and a dead cookie renders the form instead
+ * of redirecting into a portal that will only send its holder straight back.
+ */
+export type SessionState =
+  /** No cookie at all. */
+  | "none"
+  /** `/me` answered — the session is live. */
+  | "alive"
+  /** 403 `account_not_active` — signed in, but the business cannot trade. */
+  | "not-active"
+  /** 401 — the cookie outlived its session. Worthless, but still present. */
+  | "dead"
+  /** Network or server trouble: not an answer about the session at all. */
+  | "unknown";
+
+export async function sessionState(): Promise<SessionState> {
+  const token = await readSessionToken();
+  if (!token) return "none";
+  try {
+    const { error } = await operatorApi(token).GET("/me", {});
+    if (error) throw error;
+    return "alive";
+  } catch (err) {
+    const status = classifyMeFailure(err);
+    if (status === "signed-out") return "dead";
+    if (status === "not-active") return "not-active";
+    return "unknown";
+  }
 }
 
 /**
@@ -108,9 +108,21 @@ export async function requireOperator(): Promise<{
     const status = classifyMeFailure(err);
 
     if (status === "signed-out") {
-      // The token is dead. Drop it rather than looping through a redirect
-      // that hands the same dead token back on the next request.
-      await clearSessionToken();
+      /*
+        The token is dead. It is deliberately NOT cleared here: this function
+        runs during render, and Next only allows a cookie write inside a
+        Server Action or Route Handler — the write throws, the throw pre-empts
+        the redirect on the next line, and the operator is stranded on the
+        error boundary holding the very cookie that keeps sending them there.
+        That was a live defect: removing a staff member bricked their phone
+        until the thirty-day cookie expired.
+
+        The redirect loop the old clear guarded against is broken at the other
+        end instead: `/sign-in` asks `sessionState()` rather than trusting
+        that a cookie exists, so a dead cookie renders the sign-in form and
+        the next successful sign-in overwrites it in the action phase, where
+        writes are legal.
+      */
       redirect(SIGN_IN_PATH);
     }
 

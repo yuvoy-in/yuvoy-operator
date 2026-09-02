@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
-import { writeSessionToken } from "@/lib/auth/session";
+import { writeSessionToken } from "@/lib/auth/session-writes";
 
 /**
  * O2 — the operator signs in.
@@ -156,7 +156,7 @@ export async function submitCode(
 }
 
 export async function signOut(): Promise<void> {
-  const { clearSessionToken } = await import("@/lib/auth/session");
+  const { clearSessionToken } = await import("@/lib/auth/session-writes");
   const { readSessionToken } = await import("@/lib/auth/session");
 
   const token = await readSessionToken();

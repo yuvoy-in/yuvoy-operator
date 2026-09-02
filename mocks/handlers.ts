@@ -189,6 +189,26 @@ function requireOwner(request: Request) {
   return null;
 }
 
+/**
+ * OWNER or MANAGER — `canManage`, exactly as `GET /me` defines it.
+ *
+ * Every write that commits seats or money is gated on it in the contract:
+ * accept and decline ("STAFF cannot commit seats / answer requests"), seats,
+ * closed dates, counter sales and call-off ("Requires OWNER or MANAGER"), and
+ * the earnings read. For its first month this mock refused none of them, so
+ * the 403 branch every action renders had never once executed — a suite that
+ * passes against a mock kinder than the API proves nothing about the refusal.
+ * Found by the 2 Sep audit; `mock-roles.test.ts` now drives each one.
+ */
+function requireManager(request: Request, refusal: string) {
+  const failed = requireSession(request);
+  if (failed) return failed;
+  if (!canManage(sessionUser(request)!)) {
+    return envelope("forbidden", refusal, 403);
+  }
+  return null;
+}
+
 function partyOf(
   bookingId: string,
 ): { slotId: string; party: MockParty } | null {
@@ -733,7 +753,7 @@ export const handlers = [
   }),
 
   http.post(url("/requests/:id/accept"), async ({ request, params }) => {
-    const failed = requireSession(request);
+    const failed = requireManager(request, "STAFF cannot commit seats.");
     if (failed) return failed;
 
     const id = String(params.id);
@@ -769,7 +789,7 @@ export const handlers = [
   }),
 
   http.post(url("/requests/:id/decline"), async ({ request, params }) => {
-    const failed = requireSession(request);
+    const failed = requireManager(request, "STAFF cannot answer requests.");
     if (failed) return failed;
 
     const id = String(params.id);
@@ -792,7 +812,7 @@ export const handlers = [
   /* -------------------------------------------------------------- money - */
 
   http.get(url("/earnings"), async ({ request }) => {
-    const failed = requireSession(request);
+    const failed = requireManager(request, "Requires OWNER or MANAGER.");
     if (failed) return failed;
 
     const u = new URL(request.url);
@@ -969,7 +989,7 @@ export const handlers = [
   /* ------------------------------------------------------------ capacity - */
 
   http.patch(url("/slots/:id"), async ({ request, params }) => {
-    const failed = requireSession(request);
+    const failed = requireManager(request, "Requires OWNER or MANAGER.");
     if (failed) return failed;
 
     const id = String(params.id);
@@ -1009,7 +1029,7 @@ export const handlers = [
   }),
 
   http.post(url("/blackouts"), async ({ request }) => {
-    const failed = requireSession(request);
+    const failed = requireManager(request, "Requires OWNER or MANAGER.");
     if (failed) return failed;
 
     const body = (await request.json()) as {
@@ -1066,7 +1086,7 @@ export const handlers = [
   }),
 
   http.post(url("/slots/:id/offline-sales"), async ({ request, params }) => {
-    const failed = requireSession(request);
+    const failed = requireManager(request, "Requires OWNER or MANAGER.");
     if (failed) return failed;
 
     const id = String(params.id);
@@ -1135,7 +1155,10 @@ export const handlers = [
   /* ------------------------------------------------------------- call off - */
 
   http.post(url("/slots/:id/call-off"), async ({ request, params }) => {
-    const failed = requireSession(request);
+    const failed = requireManager(
+      request,
+      "STAFF cannot call off a departure.",
+    );
     if (failed) return failed;
 
     const id = String(params.id);

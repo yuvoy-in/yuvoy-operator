@@ -14,7 +14,9 @@ import {
   type LocalVideoFacts,
   type PreflightProblem,
 } from "@/lib/media/preflight";
-import { TusError, uploadResumable } from "@/lib/media/tus";
+import { TusError, readOffset, uploadResumable } from "@/lib/media/tus";
+import { decideSlot, identityOf, type FileIdentity } from "@/lib/media/slot";
+import { marketTime } from "@/lib/format/market-time";
 import { RightsForm } from "./rights-form";
 
 /**
@@ -35,9 +37,21 @@ type Phase =
       file: File;
       intent: UploadIntent;
       problems: PreflightProblem[];
+      /** Bytes the server already holds of THIS file. Zero for a fresh one. */
+      resumeFrom: number;
     }
   /** Refused locally, before an upload slot was ever asked for. */
   | { name: "rejected"; problems: PreflightProblem[] }
+  /**
+   * The slot holds bytes of a different clip. Nothing else may go in until
+   * that one finishes or the slot expires — see `decideSlot`.
+   */
+  | {
+      name: "held";
+      by: FileIdentity;
+      uploaded: number | null;
+      intent: UploadIntent;
+    }
   | {
       name: "uploading";
       file: File;
@@ -47,7 +61,13 @@ type Phase =
     }
   | { name: "processing"; intent: UploadIntent; resumes: number }
   | { name: "attesting"; mediaAssetId: string }
-  | { name: "failed"; message: string };
+  | {
+      name: "failed";
+      message: string;
+      /** The clip the slot is holding, so the screen can say how to carry on. */
+      bound?: FileIdentity;
+      uploaded?: number;
+    };
 
 /**
  * Read the length and shape out of the file, locally, before uploading it.
@@ -93,15 +113,22 @@ export function Uploader() {
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
   const abort = useRef<AbortController | null>(null);
   /*
-    The upload slot, kept across file changes.
+    The upload slot, kept across file changes — and bound to the file whose
+    bytes it holds.
 
-    An intent is not tied to a file — `POST /media/upload-intents` takes no
-    request body — so picking a different clip reuses the one we already hold
-    rather than asking for a second, which the API refuses with 409 while the
-    first is open. There is no endpoint to hand one back, so a slot spent is a
-    slot gone until it expires.
+    An intent is not tied to a file: `POST /media/upload-intents` takes no
+    request body, a second one is refused with 409 while the first is open,
+    and there is no endpoint to hand one back. So the slot is reused rather
+    than re-asked for. But tus resumes from the SERVER's offset, and a slot
+    that has taken 1 MB of clip A must not be handed clip B: B would carry on
+    from A's offset and the result is one corrupt reel — A's head, B's tail —
+    confirmed, attested and sent to review. `bound` is set the moment bytes
+    start moving; `decideSlot` says what a newly chosen file may do.
   */
-  const slot = useRef<UploadIntent | null>(null);
+  const slot = useRef<{
+    intent: UploadIntent;
+    bound: FileIdentity | null;
+  } | null>(null);
 
   const pick = useCallback(async (file: File) => {
     /*
@@ -124,7 +151,7 @@ export function Uploader() {
     // The limits live on the intent, so the rest of the checks need one.
     // Numbers this build guessed would be the wrong ones the day the ceiling
     // moves.
-    let intent = slot.current;
+    let intent = slot.current?.intent;
     if (!intent) {
       const started = await createUploadIntent();
       if (!started.intent) {
@@ -135,7 +162,37 @@ export function Uploader() {
         return;
       }
       intent = started.intent;
-      slot.current = intent;
+      slot.current = { intent, bound: null };
+    }
+
+    /*
+      Whose bytes does the slot hold? Asked of the server, not remembered:
+      `HEAD` is the truth about what landed, and only a confirmed zero means
+      the slot is clean enough to take a different clip. Not being able to
+      ask is treated as "held" — "probably fine" is how a corrupt reel reaches
+      a traveller's screen.
+    */
+    let resumeFrom = 0;
+    const bound = slot.current?.bound ?? null;
+    if (bound) {
+      let offset: number | null = null;
+      try {
+        offset = await readOffset(intent.uploadUrl, fetch);
+      } catch {
+        offset = null;
+      }
+      const decision = decideSlot(bound, identityOf(file), offset);
+      if (decision.kind === "held") {
+        setPhase({
+          name: "held",
+          by: decision.by,
+          uploaded: decision.uploaded,
+          intent,
+        });
+        return;
+      }
+      if (decision.kind === "fresh") slot.current!.bound = null;
+      else resumeFrom = decision.uploaded;
     }
 
     const facts = await readVideoFacts(file);
@@ -144,12 +201,16 @@ export function Uploader() {
       file,
       intent,
       problems: preflight(file, intent, facts),
+      resumeFrom,
     });
   }, []);
 
   const send = useCallback(async (file: File, intent: UploadIntent) => {
     const controller = new AbortController();
     abort.current = controller;
+    // From here the slot belongs to this file. See `decideSlot`.
+    const bound = identityOf(file);
+    slot.current = { intent, bound };
     setPhase({ name: "uploading", file, intent, uploaded: 0, resumes: 0 });
     let lastResumes = 0;
 
@@ -171,12 +232,15 @@ export function Uploader() {
         },
       });
     } catch (err) {
+      const uploaded = err instanceof TusError ? err.uploaded : 0;
       setPhase({
         name: "failed",
         message:
           err instanceof TusError
             ? `${err.message} It stopped at ${formatBytes(err.uploaded)} of ${formatBytes(file.size)}.`
             : "The upload stopped.",
+        bound,
+        uploaded,
       });
       return;
     }
@@ -246,6 +310,37 @@ export function Uploader() {
         </div>
       ) : null}
 
+      {phase.name === "held" ? (
+        <div>
+          <p role="alert" className="text-terra-deep text-sm font-bold">
+            {phase.uploaded === null
+              ? `This upload already holds another clip, ${phase.by.name}, and we could not check how much of it has arrived.`
+              : `This upload already holds ${formatBytes(phase.uploaded)} of ${phase.by.name}.`}
+          </p>
+          {/*
+            One clip at a time is the API's rule, and the slot cannot be handed
+            back. What CAN happen is said plainly: the same clip carries on;
+            anything else waits.
+          */}
+          <p className="text-forest/70 mt-2 text-sm">
+            One clip at a time. Choose {phase.by.name} again and it carries on
+            from where it stopped. A different clip cannot go in until that one
+            finishes
+            {phase.intent.expiresAt
+              ? ` or times out at ${marketTime(phase.intent.expiresAt, "Asia/Kolkata")}`
+              : " or times out"}
+            .
+          </p>
+          <button
+            type="button"
+            onClick={() => setPhase({ name: "idle" })}
+            className="rounded-edge dock-target label border-cream-line bg-cream-deep text-forest mt-4 w-full border px-5"
+          >
+            Pick a clip again
+          </button>
+        </div>
+      ) : null}
+
       {phase.name === "idle" || phase.name === "failed" ? (
         <>
           <label htmlFor="reel" className="label text-forest/75 block">
@@ -261,10 +356,25 @@ export function Uploader() {
               if (file) void pick(file);
             }}
           />
-          <p className="text-forest/70 mt-2 text-xs">
-            Filmed upright, on a phone, is exactly right. We check the length
-            and the shape here before anything is sent.
-          </p>
+          {phase.name === "failed" &&
+          phase.bound &&
+          (phase.uploaded ?? 0) > 0 ? (
+            /*
+              The way back, said beside the way in. The slot is holding this
+              clip's bytes; choosing it again is a resume, choosing another is
+              a refusal.
+            */
+            <p className="text-forest/80 mt-2 text-xs">
+              Choose {phase.bound.name} again and it carries on from{" "}
+              {formatBytes(phase.uploaded ?? 0)} — nothing already sent is sent
+              twice.
+            </p>
+          ) : (
+            <p className="text-forest/70 mt-2 text-xs">
+              Filmed upright, on a phone, is exactly right. We check the length
+              and the shape here before anything is sent.
+            </p>
+          )}
         </>
       ) : null}
 
@@ -294,6 +404,13 @@ export function Uploader() {
               {p.message}
             </p>
           ))}
+
+          {phase.resumeFrom > 0 ? (
+            <p className="text-forest/80 mt-3 text-sm" role="status">
+              Picks up from {formatBytes(phase.resumeFrom)} already uploaded —
+              nothing is sent twice.
+            </p>
+          ) : null}
 
           {refuses(phase.problems) ? (
             <button

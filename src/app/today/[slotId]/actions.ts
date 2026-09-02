@@ -271,7 +271,19 @@ export async function callOffDeparture(
     };
   }
 
-  const { token } = await requireOperator();
+  /*
+    Role, re-read at the moment of the tap. The panel is not rendered for
+    STAFF, but a Server Action is a public POST endpoint, and this is the one
+    action in the portal that cannot be undone. The contract's 403 stays
+    handled below it.
+  */
+  const { token, me } = await requireOperator();
+  if (!me.canManage) {
+    return {
+      message:
+        "Calling off a departure needs an owner or a manager. Nothing was cancelled.",
+    };
+  }
 
   try {
     const { data, error } = await operatorApi(token).POST(
