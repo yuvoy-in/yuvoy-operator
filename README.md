@@ -181,9 +181,12 @@ resumable upload → confirm → rights attestation.
 
 1. **There is no `GET /media`**, so nothing can list what has been uploaded,
    what is processing, what a reviewer approved or what is live.
-2. **Publishing and taking a clip down are therefore undriveable.**
-   `POST /media/{id}/publish` needs a media id and an experience id, and there
-   is no way to enumerate either.
+2. **Publishing is therefore undriveable.** `POST /media/{id}/publish` needs a
+   media id and an experience id, and there is no way to enumerate either.
+   **Taking a clip down is reachable for the clip just sent** — that id is in
+   hand for as long as the page is open, and the wrong file noticed immediately
+   is the case that actually happens. Once the page unmounts the id is gone
+   with it, and the screen says so rather than leaving it to be found out.
 3. **Resumption is scoped to the page session** — and that is the contract, not
    a shortcut. The upload URL may not be persisted client-side, is never stored
    server-side, and a fresh intent is refused while one is open. After a reload
@@ -376,7 +379,7 @@ left (so the terminal outcomes are reachable), one that has not, and one called 
 pnpm verify          # the pre-push gate — all nine steps below, in order
 pnpm qa              # the static sweep on its own
 pnpm tokens:check    # design tokens against yuvoy-app (canonical)
-pnpm test:e2e        # 137 e2e tests, incl. axe on every route
+pnpm test:e2e        # 138 e2e tests, incl. axe on every route
 ```
 
 ```

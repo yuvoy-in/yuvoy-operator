@@ -4,7 +4,12 @@ import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
-import { RIGHTS_TYPES, type RightsType } from "@/lib/media/rights";
+import {
+  RIGHTS_TYPES,
+  WITHDRAW_REASONS,
+  type RightsType,
+  type WithdrawReason,
+} from "@/lib/media/rights";
 
 /**
  * O8's three writes. The fourth step — the bytes — does not happen here.
@@ -230,5 +235,79 @@ export async function attestRights(
       if (err.status === 400) return { message: err.message };
     }
     return { message: "Nothing was recorded. Try again." };
+  }
+}
+
+/* -------------------------------------------------------------- withdraw -- */
+
+export interface WithdrawState {
+  message?: string;
+  withdrawn?: { note?: string };
+}
+
+const withdrawSchema = z.object({
+  mediaAssetId: z.string().min(1),
+  reason: z.enum(
+    WITHDRAW_REASONS.map((r) => r.code) as [
+      WithdrawReason,
+      ...WithdrawReason[],
+    ],
+  ),
+});
+
+/**
+ * Take a clip down.
+ *
+ * Reachable for the clip the operator has **just** submitted, and only that
+ * one, because `GET /media` does not exist and the id is otherwise
+ * unrecoverable the moment this page unmounts. That is a real limitation and
+ * the screen says so — but the case it does cover is the common one: the wrong
+ * file, noticed immediately.
+ *
+ * "Two acts that fail independently, and only the first is transactional: it
+ * comes off Yuvoy immediately, and the original is deleted at the video
+ * provider shortly afterwards by a job." So a success here means it is off
+ * Yuvoy, which is the half the operator asked for — and the copy does not
+ * promise the provider deletion that has not happened yet.
+ */
+export async function withdrawMedia(
+  _prev: WithdrawState,
+  form: FormData,
+): Promise<WithdrawState> {
+  const parsed = withdrawSchema.safeParse({
+    mediaAssetId: String(form.get("mediaAssetId") ?? ""),
+    reason: String(form.get("reason") ?? ""),
+  });
+  if (!parsed.success) {
+    return { message: "Choose why it is coming down." };
+  }
+
+  const { token } = await requireOperator();
+
+  try {
+    const { data, error } = await operatorApi(token).POST(
+      "/media/{id}/withdraw",
+      {
+        params: { path: { id: parsed.data.mediaAssetId } },
+        body: { reason: parsed.data.reason },
+      },
+    );
+    if (error) throw error;
+    return { withdrawn: { note: data.note } };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return { message: "No signal. It is still up — try again." };
+    }
+    if (err instanceof OperatorApiError && err.isNotFound) {
+      /*
+        404 and another operator's clip are one case; the server does not
+        distinguish them and neither does this. For a clip we just created,
+        the realistic cause is that it is already gone.
+      */
+      return {
+        message: "That clip is not here any more. It may already be down.",
+      };
+    }
+    return { message: "It was not taken down. Try again." };
   }
 }

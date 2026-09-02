@@ -108,7 +108,8 @@ let uploadIntents: Record<
   { id: string; uploadId: string; confirmedAt?: number }
 > = {};
 /** Assets that finished processing, and what has been attested about them. */
-let mediaAssets: Record<string, { attested: boolean }> = {};
+let mediaAssets: Record<string, { attested: boolean; withdrawn?: boolean }> =
+  {};
 
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
@@ -557,6 +558,39 @@ export const handlers = [
       },
       { status: 201 },
     );
+  }),
+
+  http.post(url("/media/:id/withdraw"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const body = (await request.json()) as { reason?: string };
+    const REASONS = [
+      "operator_request",
+      "people_in_it_objected",
+      "no_longer_accurate",
+      "rights_lapsed",
+    ];
+    if (!REASONS.includes(body.reason ?? "")) {
+      return envelope("invalid_input", "That is not a withdrawal reason.", 400);
+    }
+
+    const asset = mediaAssets[id];
+    if (!asset) return envelope("not_found", "No such clip.", 404);
+
+    /*
+      "Asking twice succeeds: somebody requesting a clip come down that is
+      already down should be told it is down, not told they did something
+      wrong." Modelled, because a client built against a mock that 409s the
+      second attempt would grow an error path the API does not have — and it
+      would fire on the wet-hands double tap this portal is designed around.
+    */
+    asset.withdrawn = true;
+    return HttpResponse.json({
+      withdrawn: true,
+      note: "It is off Yuvoy now. The original is deleted at the video provider shortly afterwards.",
+    });
   }),
 
   http.delete(url("/team/:id"), async ({ request, params }) => {

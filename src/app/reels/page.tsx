@@ -76,9 +76,10 @@ export default async function ReelsPage() {
               them.
             </p>
             <p className="text-forest/80 mt-3 text-sm">
-              That also means putting a clip on a particular listing, and taking
-              one down, are not on this screen. Message us and a person will do
-              either.
+              That also means putting a clip on a particular listing is not on
+              this screen. You can take a clip down straight after sending it,
+              while this page is still open — after that, message us and a
+              person will do it.
             </p>
             <p className="text-forest/80 mt-3 text-sm">
               Nothing you upload is lost by this — it is queued for review the

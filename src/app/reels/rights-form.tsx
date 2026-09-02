@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import Link from "next/link";
 import { attestRights, type AttestState } from "./actions";
+import { Submitted } from "./submitted";
 import {
   RIGHTS_STATEMENT,
   RIGHTS_TYPES,
@@ -37,29 +37,12 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
   }, []);
 
   if (state.done) {
+    // The success panel owns the takedown, so it holds its own action state.
     return (
-      <div className="rounded-edge border-forest bg-forest/5 border-2 p-5">
-        <p className="text-base font-bold">Recorded, and queued for review</p>
-        {/*
-          The sentence that stops the phone call. An operator who thinks this
-          published their clip will look for it in the feed tomorrow and find
-          nothing.
-        */}
-        <p className="text-forest/80 mt-2 text-sm">
-          {state.done.note ??
-            "A person at Yuvoy checks this before the clip can appear anywhere."}
-        </p>
-        <p className="text-forest/80 mt-2 text-sm">
-          It is <strong>not published</strong>. Nothing you have uploaded is
-          visible to travellers until that check is done.
-        </p>
-        <Link
-          href="/today"
-          className="rounded-edge dock-target label border-cream-line bg-cream-deep text-forest mt-4 flex items-center justify-center border px-5"
-        >
-          Back to today
-        </Link>
-      </div>
+      <Submitted
+        mediaAssetId={mediaAssetId}
+        attestationNote={state.done.note}
+      />
     );
   }
 

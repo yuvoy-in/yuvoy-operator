@@ -234,6 +234,53 @@ test("attesting says plainly that it is not publishing", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("the wrong clip can be taken down, while the page is still open", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await signIn(page);
+  await choose(page, clip(3));
+  await page.getByRole("button", { name: "Upload it" }).click();
+  await expect(page.getByText("Your clip is uploaded")).toBeVisible({
+    timeout: 60_000,
+  });
+
+  await page.getByRole("radio", { name: "We filmed it" }).check();
+  await page.getByRole("radio", { name: /they knew and agreed/ }).check();
+  await page
+    .getByRole("button", { name: "I confirm this, and submit for review" })
+    .click();
+  await expect(page.getByText("Recorded, and queued for review")).toBeVisible();
+
+  /*
+    The case that actually happens: the wrong file, noticed immediately. There
+    is no `GET /media`, so this id is unrecoverable once the page unmounts —
+    and the screen says exactly that rather than leaving it to be discovered.
+  */
+  await expect(page.getByText(/Only while this page is open/)).toBeVisible();
+  await page.getByRole("button", { name: "Wrong clip? Take it down" }).click();
+
+  // A closed set, because the counts matter — a consent takedown arriving
+  // repeatedly is a signal about how somebody films.
+  await expect(
+    page.getByRole("radio", { name: /Somebody in it objected/ }),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: /We just want it down/ }).check();
+  await page.getByRole("button", { name: "Take it down" }).click();
+
+  /*
+    Says what is true now. "Only the first is transactional: it comes off Yuvoy
+    immediately, and the original is deleted at the video provider shortly
+    afterwards by a job." Promising the provider deletion here would tell an
+    operator who asked because somebody objected that the footage is gone when
+    it is not, yet.
+  */
+  await expect(page.getByText("Taken down")).toBeVisible();
+  await expect(
+    page.getByText(/deleted at the video provider shortly/),
+  ).toBeVisible();
+});
+
 test("the screen says what it cannot show, rather than looking empty", async ({
   page,
 }) => {

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   RIGHTS_STATEMENT,
+  WITHDRAW_REASONS,
+  isWithdrawReason,
   RIGHTS_TYPES,
   STATEMENT_VERSION,
   isRightsType,
@@ -109,5 +111,36 @@ describe("the optional facts", () => {
     expect(rightsProblem(input({ filmedOn: "14/08/2026" }))?.field).toBe(
       "filmedOn",
     );
+  });
+});
+
+describe("why a clip comes down", () => {
+  it("offers exactly the contract's four, and nothing else", () => {
+    expect(WITHDRAW_REASONS.map((r) => r.code)).toEqual([
+      "operator_request",
+      "people_in_it_objected",
+      "no_longer_accurate",
+      "rights_lapsed",
+    ]);
+    expect(isWithdrawReason("operator_request")).toBe(true);
+    expect(isWithdrawReason("mistake")).toBe(false);
+    expect(isWithdrawReason("")).toBe(false);
+  });
+
+  it("names what happened rather than offering a quick way out", () => {
+    /*
+      "The reason is a closed set because the counts matter —
+      `people_in_it_objected` arriving repeatedly for one operator is a consent
+      problem in how they film, not a series of unrelated takedowns."
+
+      An operator who reaches for "we just want it down" because it is the
+      easiest option is the operator whose filming nobody ever corrects, so the
+      consent reason describes the event in the words it happened in.
+    */
+    const consent = WITHDRAW_REASONS.find(
+      (r) => r.code === "people_in_it_objected",
+    )!;
+    expect(consent.label).toMatch(/objected/i);
+    expect(consent.detail).toMatch(/asked not to be shown/i);
   });
 });

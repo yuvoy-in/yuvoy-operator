@@ -146,3 +146,47 @@ export function rightsProblem(input: RightsInput): RightsProblem | null {
 
   return null;
 }
+
+/* -------------------------------------------------------------- withdraw -- */
+
+/**
+ * Why a clip is coming down. A closed set, and the counts are the point.
+ *
+ * "The reason is a closed set because the counts matter —
+ * `people_in_it_objected` arriving repeatedly for one operator is a consent
+ * problem in how they film, not a series of unrelated takedowns."
+ *
+ * So the labels are written to be chosen honestly rather than to be the
+ * quickest way out of a dialog. `people_in_it_objected` in particular is
+ * phrased as the thing that actually happened, because an operator picking
+ * "just take it down" for it is the operator whose filming nobody ever
+ * corrects.
+ */
+export const WITHDRAW_REASONS = [
+  {
+    code: "operator_request",
+    label: "We just want it down",
+    detail: "No particular reason, or we would rather show something else.",
+  },
+  {
+    code: "people_in_it_objected",
+    label: "Somebody in it objected",
+    detail: "A guest or crew member asked not to be shown.",
+  },
+  {
+    code: "no_longer_accurate",
+    label: "It is out of date",
+    detail: "The boat, the site or the trip is no longer what this shows.",
+  },
+  {
+    code: "rights_lapsed",
+    label: "We no longer have the rights",
+    detail: "A licence ended, or permission was withdrawn.",
+  },
+] as const;
+
+export type WithdrawReason = (typeof WITHDRAW_REASONS)[number]["code"];
+
+export function isWithdrawReason(v: string): v is WithdrawReason {
+  return WITHDRAW_REASONS.some((r) => r.code === v);
+}
