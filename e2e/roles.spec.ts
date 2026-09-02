@@ -158,3 +158,46 @@ test("the staff earnings refusal has no accessibility violations", async ({
 
   expect(results.violations).toEqual([]);
 });
+
+/* ------------------------------------------------ the other sign-in door -- */
+
+test("somebody who already holds a code never asks for one to be sent", async ({
+  page,
+}) => {
+  /*
+    yuvoy-api#59, ruled **keep** on 2 September: Yuvoy staff can issue a
+    sign-in code out of band, as the hedge for an operator whose phone is gone.
+
+    That operator must not be made to press "Send me a code". It messages a
+    phone they do not have — which is the whole reason they are on this path —
+    and if issuing a code supersedes an outstanding one, it destroys the code
+    they are holding at the moment they are using it.
+  */
+  await page.goto("/sign-in");
+  await page.getByLabel("Your phone number").fill(OWNER);
+  await page.getByRole("button", { name: "I already have a code" }).click();
+
+  // Straight to the code field, and the screen does not claim it sent anything.
+  await expect(page.getByLabel("Your code")).toBeVisible();
+  await expect(page.getByText("We have not messaged you.")).toBeVisible();
+
+  // And the code still works, because skipping the send skips nothing that
+  // authorises anybody — `POST /auth/session` is the only gate.
+  await page.getByLabel("Your code").fill(DEV_CODE);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("**/today");
+});
+
+test("that door still validates the number, and still says nothing about channels", async ({
+  page,
+}) => {
+  await page.goto("/sign-in");
+  await page.getByLabel("Your phone number").fill("98765");
+  await page.getByRole("button", { name: "I already have a code" }).click();
+
+  // Same rule as the send path — a bad number is caught before anything else.
+  await expect(page.locator("form").getByRole("alert")).toContainText(
+    "country code",
+  );
+  await expect(page.getByLabel("Your code")).toHaveCount(0);
+});

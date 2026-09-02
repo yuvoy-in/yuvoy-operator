@@ -19,6 +19,13 @@ export interface SignInState {
   phone?: string;
   message?: string;
   /**
+   * They arrived at the code step holding a code already, so nothing was sent.
+   *
+   * Kept so the screen can avoid implying a delivery that did not happen —
+   * and NOT so it can name a channel. See the sign-in copy rule in `pnpm qa`.
+   */
+  existing?: boolean;
+  /**
    * Development only. `POST /auth/otp` returns `devCode` when the service runs
    * outside production, so the flow can be exercised without an SMS account.
    * Carried through so a reviewer can sign in locally, and gated on the flag
@@ -164,4 +171,42 @@ export async function signOut(): Promise<void> {
   }
   await clearSessionToken();
   redirect("/sign-in");
+}
+
+/**
+ * Straight to the code field, without asking for a code to be sent.
+ *
+ * Yuvoy staff can issue a sign-in code out of band (`yuvoy-api#59`, ruled
+ * **keep** on 2 September with step-up and a notice to the operator's backup
+ * number). That is the hedge for an operator whose phone is gone — which is
+ * precisely the operator who must not be made to press "Send me a code".
+ *
+ * Two reasons that button is the wrong door for them:
+ *
+ *   - It fires a WhatsApp send to a phone they do not have, which is the whole
+ *     reason they are on this path.
+ *   - **If issuing a code supersedes an outstanding one, it destroys the code
+ *     they are holding** — burning their only way in at the moment they are
+ *     using it. Whether it does is asked on #59; this path is correct either
+ *     way, which is why it is not waiting on the answer.
+ *
+ * No API call at all. The phone is validated with the same rule the send path
+ * uses, and `POST /auth/session` remains the only gate — skipping the send
+ * skips nothing that authorises anybody.
+ */
+/*
+  Named `enterExistingCode` rather than `useExistingCode`: a function whose
+  name begins with `use` is a React Hook as far as ESLint is concerned, and it
+  refuses one called inside a callback — which is exactly where a Server Action
+  gets dispatched from. A real error, not a lint quirk.
+*/
+export async function enterExistingCode(
+  _prev: SignInState,
+  form: FormData,
+): Promise<SignInState> {
+  const parsed = phoneSchema.safeParse(String(form.get("phone") ?? ""));
+  if (!parsed.success) {
+    return { step: "phone", message: parsed.error.issues[0].message };
+  }
+  return { step: "code", phone: parsed.data, existing: true };
 }

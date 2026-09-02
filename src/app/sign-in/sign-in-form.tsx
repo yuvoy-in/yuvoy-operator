@@ -1,7 +1,12 @@
 "use client";
 
 import { useActionState } from "react";
-import { requestCode, submitCode, type SignInState } from "./actions";
+import {
+  requestCode,
+  submitCode,
+  enterExistingCode,
+  type SignInState,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -15,8 +20,18 @@ import { Button } from "@/components/ui/button";
  */
 export function SignInForm() {
   const [state, act, pending] = useActionState<SignInState, FormData>(
-    async (prev, form) =>
-      prev.step === "code" ? submitCode(prev, form) : requestCode(prev, form),
+    async (prev, form) => {
+      if (prev.step === "code") return submitCode(prev, form);
+      /*
+        An operator who already holds a Yuvoy-issued code goes straight to the
+        code field rather than asking for one to be sent — see
+        `enterExistingCode`. Dispatched on an intent field rather than a second
+        form, so both buttons submit the same phone number.
+      */
+      return form.get("intent") === "have-code"
+        ? enterExistingCode(prev, form)
+        : requestCode(prev, form);
+    },
     { step: "phone" },
   );
 
@@ -90,6 +105,48 @@ export function SignInForm() {
             ? "Sign in"
             : "Send me a code"}
       </Button>
+
+      {state.step === "phone" ? (
+        <>
+          {/*
+            The other door, for an operator who is holding a code already.
+
+            Yuvoy staff can issue one out of band — the hedge for somebody
+            whose phone is gone (yuvoy-api#59). That operator must not be made
+            to press "Send me a code": it messages a phone they do not have,
+            and if issuing a code supersedes an outstanding one it destroys the
+            code they are holding, at the moment they are using it.
+
+            A submit rather than a link, so it carries the number they already
+            typed. `name` + `value` on a button is what puts `intent` in the
+            form data — the same pattern the request queue uses.
+          */}
+          <button
+            type="submit"
+            name="intent"
+            value="have-code"
+            disabled={pending}
+            className="rounded-edge dock-target label border-cream-line bg-cream-deep text-forest w-full border px-5 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            I already have a code
+          </button>
+          <p className="text-forest/70 text-xs">
+            If somebody at Yuvoy gave you one, use this — it takes you straight
+            to the code without messaging your phone.
+          </p>
+        </>
+      ) : null}
+
+      {state.existing ? (
+        /*
+          Nothing was sent, so the screen does not imply anything was. It also
+          does not say what channel the code came from — it has not been told,
+          and that is deliberate. See the sign-in copy rule in `pnpm qa`.
+        */
+        <p className="text-forest/70 text-xs">
+          Enter the code you were given. We have not messaged you.
+        </p>
+      ) : null}
     </form>
   );
 }

@@ -379,7 +379,7 @@ left (so the terminal outcomes are reachable), one that has not, and one called 
 pnpm verify          # the pre-push gate — all nine steps below, in order
 pnpm qa              # the static sweep on its own
 pnpm tokens:check    # design tokens against yuvoy-app (canonical)
-pnpm test:e2e        # 138 e2e tests, incl. axe on every route
+pnpm test:e2e        # 142 e2e tests, incl. axe on every route
 ```
 
 ```
