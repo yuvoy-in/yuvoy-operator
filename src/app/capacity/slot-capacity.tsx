@@ -9,7 +9,10 @@ import {
 } from "./actions";
 import type { OperatorSlot } from "@/lib/day/types";
 import { marketDay, marketTime } from "@/lib/format/market-time";
-import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { inputClass } from "@/components/ui/input";
+import { Panel, panelClass } from "@/components/ui/panel";
 
 /**
  * One departure's capacity, and the counter sales against it.
@@ -31,14 +34,12 @@ export function SlotCapacity({ slot }: { slot: OperatorSlot }) {
   const [round, setRound] = useState(0);
 
   return (
-    <li className="rounded-edge border-cream-line bg-cream-deep border p-5">
-      <div className="flex items-baseline justify-between gap-3">
+    <li className={panelClass()}>
+      <div className="flex items-center justify-between gap-3">
         <span className="font-display text-2xl leading-none">
           {marketTime(slot.startsAt, slot.timezone)}
         </span>
-        <span className="label text-forest/70">
-          {marketDay(slot.startsAt, slot.timezone)}
-        </span>
+        <Chip>{marketDay(slot.startsAt, slot.timezone)}</Chip>
       </div>
       <p className="mt-2 text-base font-bold">{slot.title}</p>
       <p className="text-forest/70 mt-1 text-sm">
@@ -76,15 +77,17 @@ export function SlotCapacity({ slot }: { slot: OperatorSlot }) {
             max={200}
             defaultValue={seatsState.seats ?? slot.seats}
             required
-            className="rounded-edge border-cream-line bg-cream h-14 w-28 border px-4 text-lg"
+            className={inputClass("bg-cream w-28 text-lg")}
           />
-          <button
+          <Button
             type="submit"
             disabled={savingSeats}
-            className="rounded-edge dock-target label border-forest text-forest flex-1 border-2 px-5 font-bold"
+            variant="outline"
+            block={false}
+            className="flex-1"
           >
             {savingSeats ? "Saving…" : "Set seats"}
-          </button>
+          </Button>
         </div>
         <p className="text-forest/70 mt-1.5 text-xs">
           {slot.sold > 0
@@ -136,13 +139,9 @@ function CounterSale({
   const oversold = saleState.result?.oversold;
 
   const again = (
-    <button
-      type="button"
-      onClick={onAgain}
-      className="rounded-edge dock-target label border-cream-line bg-cream mt-4 w-full border px-5"
-    >
+    <Button onClick={onAgain} variant="secondary" className="mt-4">
       Record another sale
-    </button>
+    </Button>
   );
 
   if (oversold) {
@@ -153,7 +152,7 @@ function CounterSale({
       and carries the incident id somebody will quote.
     */
     return (
-      <div className="rounded-edge border-terra-deep bg-cream mt-5 border-2 p-4">
+      <Panel tone="alert" className="bg-cream mt-5 p-4">
         <p className="text-terra-deep text-base font-bold">
           This oversold the departure
         </p>
@@ -184,13 +183,13 @@ function CounterSale({
           leaves.
         </p>
         {again}
-      </div>
+      </Panel>
     );
   }
 
   if (saleState.result) {
     return (
-      <div className="rounded-edge border-forest bg-forest/5 mt-5 border p-4">
+      <Panel tone="done" className="mt-5 p-4">
         <p className="text-sm font-bold">
           {saleState.result.seatsRecorded} recorded at your counter
         </p>
@@ -199,7 +198,7 @@ function CounterSale({
           {saleState.result.totalSoldOffline} sold at the counter in total.
         </p>
         {again}
-      </div>
+      </Panel>
     );
   }
 
@@ -218,7 +217,7 @@ function CounterSale({
           min={1}
           max={200}
           required
-          className="rounded-edge border-cream-line bg-cream mt-2 h-14 w-28 border px-4 text-lg"
+          className={inputClass("bg-cream mt-2 w-28 text-lg")}
         />
         <p className="text-forest/70 mt-1.5 text-xs">
           So we stop selling them. This is a report, not a request — it is
@@ -233,34 +232,34 @@ function CounterSale({
         ) : null}
 
         <div className="mt-4 flex gap-2">
-          <button
+          <Button
             type="submit"
             disabled={selling}
-            className="rounded-edge dock-target label bg-forest text-cream flex-1 px-5 font-bold"
+            block={false}
+            className="flex-1"
           >
             {selling ? "Recording…" : "Record it"}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
             onClick={() => setSellingOpen(false)}
-            className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+            variant="secondary"
+            block={false}
+            className="flex-1"
           >
             Cancel
-          </button>
+          </Button>
         </div>
       </form>
     );
   }
 
   return (
-    <button
-      type="button"
+    <Button
       onClick={() => setSellingOpen(true)}
-      className={cn(
-        "rounded-edge dock-target label border-cream-line bg-cream mt-5 w-full border px-5",
-      )}
+      variant="secondary"
+      className="mt-5"
     >
       I sold seats at my counter
-    </button>
+    </Button>
   );
 }

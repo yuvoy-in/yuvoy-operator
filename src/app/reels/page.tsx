@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import { Uploader } from "./uploader";
+import { Screen } from "@/components/chrome/screen";
+import { Panel } from "@/components/ui/panel";
 
 export const metadata: Metadata = { title: "Reels" };
 
@@ -38,56 +39,49 @@ export default async function ReelsPage() {
   await requireOperator();
 
   return (
-    <main className="bg-cream text-forest min-h-dvh">
-      <div className="container-page max-w-2xl py-8">
-        <Link
-          href="/today"
-          className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
-        >
-          ← The day
-        </Link>
+    <Screen
+      nav={{ back: { href: "/account", label: "your business" } }}
+      stageLabel="Reels"
+    >
+      <p className="eyebrow text-terra-deep">Your footage</p>
+      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+        Add a reel
+      </h1>
+      <p className="text-forest/70 mt-3 text-base">
+        Travellers pick a boat by watching it. One upright clip of the real
+        thing does more than a page of description.
+      </p>
 
-        <p className="eyebrow text-terra-deep mt-6">Your footage</p>
-        <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-          Add a reel
-        </h1>
-        <p className="text-forest/70 mt-3 text-base">
-          Travellers pick a boat by watching it. One upright clip of the real
-          thing does more than a page of description.
-        </p>
-
-        <div className="mt-8">
-          <Uploader />
-        </div>
-
-        {/*
-          Stated, not hidden — the same call O11 makes about its per-booking
-          gap. An operator who uploads three clips and finds no list would
-          reasonably conclude they were lost.
-        */}
-        <section className="mt-12" aria-labelledby="not-here">
-          <h2 id="not-here" className="label text-forest/75">
-            What is not here yet
-          </h2>
-          <div className="rounded-edge border-cream-line bg-cream-deep mt-3 border p-5">
-            <p className="text-sm">
-              We cannot yet show you the clips you have already sent, or which
-              ones a reviewer has approved. There is no endpoint that lists
-              them.
-            </p>
-            <p className="text-forest/80 mt-3 text-sm">
-              That also means putting a clip on a particular listing is not on
-              this screen. You can take a clip down straight after sending it,
-              while this page is still open — after that, message us and a
-              person will do it.
-            </p>
-            <p className="text-forest/80 mt-3 text-sm">
-              Nothing you upload is lost by this — it is queued for review the
-              moment you confirm the rights.
-            </p>
-          </div>
-        </section>
+      <div className="mt-8">
+        <Uploader />
       </div>
-    </main>
+
+      {/*
+        Stated, not hidden — the same call O11 makes about its per-booking
+        gap. An operator who uploads three clips and finds no list would
+        reasonably conclude they were lost.
+      */}
+      <section className="mt-12" aria-labelledby="not-here">
+        <h2 id="not-here" className="label text-forest/75">
+          What is not here yet
+        </h2>
+        <Panel className="mt-3">
+          <p className="text-sm">
+            We cannot yet show you the clips you have already sent, or which
+            ones a reviewer has approved. There is no endpoint that lists them.
+          </p>
+          <p className="text-forest/80 mt-3 text-sm">
+            That also means putting a clip on a particular listing is not on
+            this screen. You can take a clip down straight after sending it,
+            while this page is still open — after that, message us and a person
+            will do it.
+          </p>
+          <p className="text-forest/80 mt-3 text-sm">
+            Nothing you upload is lost by this — it is queued for review the
+            moment you confirm the rights.
+          </p>
+        </Panel>
+      </section>
+    </Screen>
   );
 }

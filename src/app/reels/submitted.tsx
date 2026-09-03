@@ -1,9 +1,11 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import Link from "next/link";
 import { withdrawMedia, type WithdrawState } from "./actions";
 import { WITHDRAW_REASONS } from "@/lib/media/rights";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { choiceClass } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 
 /**
  * What the operator sees once the rights are recorded — and the one thing
@@ -44,7 +46,7 @@ export function Submitted({
 
   if (state.withdrawn) {
     return (
-      <div className="rounded-edge border-cream-line bg-cream-deep border p-5">
+      <Panel>
         <p className="text-base font-bold">Taken down</p>
         {/*
           "Two acts that fail independently, and only the first is
@@ -60,18 +62,15 @@ export function Submitted({
           {state.withdrawn.note ??
             "It is off Yuvoy. The original is deleted at the video provider shortly afterwards."}
         </p>
-        <Link
-          href="/reels"
-          className="rounded-edge dock-target label border-cream-line bg-cream text-forest mt-4 flex items-center justify-center border px-5"
-        >
+        <ButtonLink href="/reels" variant="secondary" className="mt-4">
           Add another
-        </Link>
-      </div>
+        </ButtonLink>
+      </Panel>
     );
   }
 
   return (
-    <div className="rounded-edge border-forest bg-forest/5 border-2 p-5">
+    <Panel tone="done">
       <p className="text-base font-bold">Recorded, and queued for review</p>
       <p className="text-forest/80 mt-2 text-sm">
         {attestationNote ??
@@ -100,14 +99,14 @@ export function Submitted({
               {WITHDRAW_REASONS.map((reason) => (
                 <label
                   key={reason.code}
-                  className="rounded-edge border-cream-line bg-cream flex cursor-pointer items-start gap-3 border p-3"
+                  className={choiceClass(false, "items-start py-4")}
                 >
                   <input
                     type="radio"
                     name="reason"
                     value={reason.code}
                     required
-                    className="mt-0.5 size-5 shrink-0"
+                    className="accent-terra-deep mt-0.5 size-5 shrink-0"
                   />
                   <span>
                     <span className="block text-sm font-bold">
@@ -123,32 +122,35 @@ export function Submitted({
           </fieldset>
 
           <div className="mt-4 flex gap-2">
-            <button
+            <Button
               type="submit"
               disabled={pending}
-              className="rounded-edge dock-target label border-terra-deep text-terra-deep flex-1 border-2 px-5 font-bold disabled:cursor-not-allowed disabled:opacity-55"
+              variant="danger"
+              block={false}
+              className="flex-1"
             >
               {pending ? "Taking it down…" : "Take it down"}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               onClick={() => setConfirming(false)}
               disabled={pending}
-              className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+              variant="secondary"
+              block={false}
+              className="flex-1"
             >
               Back
-            </button>
+            </Button>
           </div>
         </form>
       ) : (
         <>
-          <button
-            type="button"
+          <Button
             onClick={() => setConfirming(true)}
-            className="rounded-edge dock-target label border-cream-line bg-cream text-forest mt-5 w-full border px-5"
+            variant="secondary"
+            className="mt-5"
           >
             Wrong clip? Take it down
-          </button>
+          </Button>
           {/*
             The limitation, said here because here is where it bites. Once this
             page is gone the id is gone with it, and nothing in the portal can
@@ -167,12 +169,9 @@ export function Submitted({
         </p>
       ) : null}
 
-      <Link
-        href="/today"
-        className="rounded-edge dock-target label border-cream-line bg-cream-deep text-forest mt-4 flex items-center justify-center border px-5"
-      >
+      <ButtonLink href="/today" variant="secondary" className="mt-4">
         Back to today
-      </Link>
-    </div>
+      </ButtonLink>
+    </Panel>
   );
 }

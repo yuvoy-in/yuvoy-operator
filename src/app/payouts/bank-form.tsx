@@ -8,6 +8,9 @@ import {
   type StepUpState,
 } from "./actions";
 import { maskAccount } from "@/lib/account/bank";
+import { Button } from "@/components/ui/button";
+import { inputClass } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 
 /**
  * Changing where the money goes.
@@ -47,7 +50,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
           type="text"
           autoComplete="off"
           required
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-base"
+          className={inputClass("mt-2")}
         />
       </div>
 
@@ -64,7 +67,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
           required
           value={account}
           onChange={(e) => setAccount(e.target.value)}
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 font-mono text-base"
+          className={inputClass("mt-2 font-mono")}
         />
         {/*
           Shown before sending, because it is what will actually be stored.
@@ -92,7 +95,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
           autoComplete="off"
           required
           placeholder="HDFC0001234"
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 font-mono text-base uppercase"
+          className={inputClass("mt-2 font-mono uppercase")}
         />
       </div>
 
@@ -105,12 +108,12 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
           name="bankName"
           type="text"
           autoComplete="off"
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-base"
+          className={inputClass("mt-2")}
         />
       </div>
 
       {/* ------------------------------------------------------- step up -- */}
-      <div className="rounded-edge border-cream-line bg-cream border p-4">
+      <Panel tone="outline" className="p-4">
         <p className="text-sm font-bold">
           A code goes to the owner&rsquo;s phone
         </p>
@@ -131,7 +134,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
               inputMode="numeric"
               autoComplete="one-time-code"
               required
-              className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 font-mono text-2xl tracking-[0.4em]"
+              className={inputClass("mt-2 font-mono text-2xl tracking-[0.4em]")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
               It lasts ten minutes — long enough for a bad phone keyboard, short
@@ -139,25 +142,25 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
               elevated after lunch.
             </p>
             {step.devCode ? (
-              <p className="rounded-edge border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
+              <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
                 Development build — the code is{" "}
                 <strong className="font-mono">{step.devCode}</strong>.
               </p>
             ) : null}
           </>
         ) : (
-          <button
-            type="button"
+          <Button
             disabled={sending}
             onClick={async () => {
               setSending(true);
               setStep(await requestStepUp());
               setSending(false);
             }}
-            className="rounded-edge dock-target label border-forest text-forest mt-4 w-full border-2 px-5 font-bold"
+            variant="outline"
+            className="mt-4"
           >
             {sending ? "Sending…" : "Send the code"}
-          </button>
+          </Button>
         )}
 
         {step.message ? (
@@ -165,7 +168,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
             {step.message}
           </p>
         ) : null}
-      </div>
+      </Panel>
 
       {state.message ? (
         <p role="alert" className="text-terra-deep text-sm font-bold">
@@ -173,13 +176,9 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
         </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={pending || !step.sent}
-        className="rounded-edge dock-target label bg-forest text-cream w-full px-5 font-bold disabled:cursor-not-allowed disabled:opacity-55"
-      >
+      <Button type="submit" disabled={pending || !step.sent}>
         {pending ? "Raising…" : "Raise the change"}
-      </button>
+      </Button>
 
       <p className="text-forest/70 text-xs">
         Raising it changes nothing today. The owner is messaged immediately and

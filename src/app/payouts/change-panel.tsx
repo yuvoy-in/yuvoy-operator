@@ -4,6 +4,8 @@ import { useActionState } from "react";
 import { cancelChange, type CancelState } from "./actions";
 import { describeChange, type ChangeState } from "@/lib/account/bank";
 import { marketTime, marketDay } from "@/lib/format/market-time";
+import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
 
 /**
  * A bank change in flight, and the brake beside it.
@@ -39,13 +41,13 @@ export function ChangePanel({
 
   if (result.stopped) {
     return (
-      <div className="rounded-edge border-forest bg-forest/5 border-2 p-5">
+      <Panel tone="done">
         <p className="text-base font-bold">Stopped. Nothing was changed.</p>
         <p className="text-forest/80 mt-2 text-sm">
           Payouts still go to the account you had. If you did not raise this in
           the first place, change your sign-in and tell us.
         </p>
-      </div>
+      </Panel>
     );
   }
 
@@ -54,13 +56,7 @@ export function ChangePanel({
     iso ? `${marketTime(iso, tz)} on ${marketDay(iso, tz)}` : null;
 
   return (
-    <div
-      className={
-        stoppable
-          ? "rounded-edge border-terra-deep bg-cream-deep border-2 p-5"
-          : "rounded-edge border-cream-line bg-cream-deep border p-5"
-      }
-    >
+    <Panel tone={stoppable ? "alert" : "raised"}>
       <p className="text-base font-bold">{title}</p>
       {summary ? (
         <p className="text-forest/90 mt-2 font-mono text-sm">{summary}</p>
@@ -94,13 +90,14 @@ export function ChangePanel({
           <p className="text-forest/80 mt-1 text-sm">
             Stop it now. It takes no code and no waiting — that is deliberate.
           </p>
-          <button
+          <Button
             type="submit"
             disabled={pending}
-            className="rounded-edge dock-target label border-terra-deep text-terra-deep mt-3 w-full border-2 px-5 font-bold"
+            variant="danger"
+            className="mt-3"
           >
             {pending ? "Stopping…" : "This wasn't me — stop it"}
-          </button>
+          </Button>
         </form>
       ) : null}
 
@@ -109,7 +106,7 @@ export function ChangePanel({
           {result.message}
         </p>
       ) : null}
-    </div>
+    </Panel>
   );
 }
 

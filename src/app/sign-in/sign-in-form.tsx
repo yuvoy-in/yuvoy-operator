@@ -8,6 +8,7 @@ import {
   type SignInState,
 } from "./actions";
 import { Button } from "@/components/ui/button";
+import { inputClass } from "@/components/ui/input";
 
 /**
  * Two steps in one form, driven entirely by Server Actions.
@@ -51,7 +52,7 @@ export function SignInForm() {
             required
             autoFocus
             placeholder="+91 90000 00101"
-            className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-lg"
+            className={inputClass("mt-2 text-lg")}
           />
           <p className="text-forest/70 mt-2 text-sm">
             The number Yuvoy has for your business.
@@ -71,7 +72,7 @@ export function SignInForm() {
             pattern="[0-9]*"
             required
             autoFocus
-            className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 font-mono text-2xl tracking-[0.4em]"
+            className={inputClass("mt-2 font-mono text-2xl tracking-[0.4em]")}
           />
           {/*
             "For", not "sent to". If Yuvoy issued this code by another route,
@@ -83,7 +84,7 @@ export function SignInForm() {
             For {state.phone}. It lasts a few minutes.
           </p>
           {state.devCode ? (
-            <p className="rounded-edge border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
+            <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
               Development build — the code is{" "}
               <strong className="font-mono">{state.devCode}</strong>. This never
               appears in production.
@@ -121,15 +122,15 @@ export function SignInForm() {
             typed. `name` + `value` on a button is what puts `intent` in the
             form data — the same pattern the request queue uses.
           */}
-          <button
+          <Button
             type="submit"
             name="intent"
             value="have-code"
+            variant="secondary"
             disabled={pending}
-            className="rounded-edge dock-target label border-cream-line bg-cream-deep text-forest w-full border px-5 disabled:cursor-not-allowed disabled:opacity-55"
           >
             I already have a code
-          </button>
+          </Button>
           <p className="text-forest/70 text-xs">
             If somebody at Yuvoy gave you one, use this — it takes you straight
             to the code without messaging your phone.

@@ -5,6 +5,7 @@ import { markAttendance, type AttendanceState } from "./actions";
 import { isHolding, type Party } from "@/lib/day/types";
 import { cn } from "@/lib/cn";
 import { RelayPanel } from "./relay-panel";
+import { Button } from "@/components/ui/button";
 
 /**
  * One party on the manifest.
@@ -47,9 +48,9 @@ export function PartyRow({
   return (
     <li
       className={cn(
-        "rounded-edge border p-4",
+        "rounded-card ease-interaction border p-4 transition-[border-color,background-color,box-shadow] duration-200",
         arrived
-          ? "border-forest bg-forest/5"
+          ? "border-forest bg-forest/5 ring-forest ring-1"
           : "border-cream-line bg-cream-deep",
         holding && "border-dashed",
       )}
@@ -84,20 +85,17 @@ export function PartyRow({
             read while eleven people wait" — so the button stays live rather
             than disabling, and simply reads as done.
           */}
-          <button
+          <Button
             type="submit"
             name="outcome"
             value="arrived"
             disabled={pending}
-            className={cn(
-              "rounded-edge dock-target label flex-1 px-5 font-bold",
-              arrived
-                ? "bg-forest text-cream"
-                : "border-forest text-forest border-2",
-            )}
+            variant={arrived ? "primary" : "outline"}
+            block={false}
+            className="flex-1"
           >
             {arrived ? "Here ✓" : "Here"}
-          </button>
+          </Button>
 
           {/*
             Terminal outcomes appear only once the trip has set off. The API
@@ -107,22 +105,24 @@ export function PartyRow({
           */}
           {departed && !armed ? (
             <>
-              <button
-                type="button"
+              <Button
                 onClick={() => setArmed("completed")}
                 disabled={pending}
-                className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+                variant="secondary"
+                block={false}
+                className="flex-1"
               >
                 Completed
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
                 onClick={() => setArmed("no_show")}
                 disabled={pending}
-                className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+                variant="secondary"
+                block={false}
+                className="flex-1"
               >
                 No-show
-              </button>
+              </Button>
             </>
           ) : null}
 
@@ -133,27 +133,30 @@ export function PartyRow({
                   ? `Mark ${party.name} as a no-show? This cannot be changed afterwards.`
                   : `Mark ${party.name} as completed? This cannot be changed afterwards.`}
               </p>
-              <button
+              <Button
                 type="submit"
                 name="outcome"
                 value={armed}
                 disabled={pending}
-                className="rounded-edge dock-target label border-terra-deep text-terra-deep flex-1 border-2 px-5 font-bold"
+                variant="danger"
+                block={false}
+                className="flex-1"
               >
                 {pending
                   ? "Recording…"
                   : armed === "no_show"
                     ? "Confirm no-show"
                     : "Confirm completed"}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
                 onClick={() => setArmed(null)}
                 disabled={pending}
-                className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+                variant="secondary"
+                block={false}
+                className="flex-1"
               >
                 Not that
-              </button>
+              </Button>
             </div>
           ) : null}
         </form>

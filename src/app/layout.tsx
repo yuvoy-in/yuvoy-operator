@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { fraunces, satoshi } from "@/lib/fonts";
+import { AppShell } from "@/components/chrome/app-shell";
+import { THEME_COLOR } from "@/lib/site/theme";
 import "./globals.css";
 
 /**
@@ -23,7 +25,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#16362e",
+  themeColor: THEME_COLOR,
   width: "device-width",
   initialScale: 1,
   /*
@@ -37,14 +39,14 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${fraunces.variable} ${satoshi.variable}`}>
-      <body className="bg-cream text-forest">
+      <body className="bg-forest text-cream">
         <a
           href="#main"
-          className="focus:bg-forest focus:text-cream sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-3 focus:px-4 focus:py-3"
+          className="label bg-cream text-forest sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-3"
         >
           Skip to content
         </a>
-        <div id="main">{children}</div>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

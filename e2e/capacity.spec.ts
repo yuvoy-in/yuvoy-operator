@@ -28,11 +28,15 @@ function mySlot(name: string) {
     : "Snorkel trip to Elephant Beach";
 }
 
-test("the day links to capacity, and capacity lists the fortnight", async ({
+test("the bar links to capacity, and capacity lists the fortnight", async ({
   page,
 }) => {
   await signIn(page);
-  await page.getByRole("link", { name: "Seats and closed dates →" }).click();
+  await page
+    .getByRole("navigation", { name: /Primary/i })
+    .first()
+    .getByRole("link", { name: "Capacity" })
+    .click();
   await page.waitForURL("**/capacity");
   await expect(page.getByRole("heading", { name: "Capacity" })).toBeVisible();
   await expect(page.getByText("Try-dive at Nemo Reef")).toBeVisible();

@@ -3,7 +3,9 @@
 import { useActionState, useState } from "react";
 import { sendRelay, type RelayState } from "./actions";
 import { NOTE_MAX, RELAY_INTENTS, relayIntent } from "@/lib/day/relay-types";
-import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
+import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 
 /**
  * Telling a departure something.
@@ -58,7 +60,7 @@ function RelayRound({
 
   if (state.recipients !== undefined) {
     return (
-      <div className="rounded-edge border-forest bg-forest/5 mt-4 border-2 p-4">
+      <Panel tone="done" className="mt-4 p-4">
         <p className="text-sm font-bold">
           {state.intent === "note"
             ? `Note left for ${state.recipients} ${state.recipients === 1 ? "booking" : "bookings"}`
@@ -80,26 +82,22 @@ function RelayRound({
             It is on their booking page. It was not sent to a phone.
           </p>
         ) : null}
-        <button
-          type="button"
-          onClick={onAgain}
-          className="rounded-edge dock-target label border-cream-line bg-cream mt-3 w-full border px-5"
-        >
+        <Button onClick={onAgain} variant="secondary" className="mt-3">
           Tell {who} something else
-        </button>
-      </div>
+        </Button>
+      </Panel>
     );
   }
 
   if (!open) {
     return (
-      <button
-        type="button"
+      <Button
         onClick={() => setOpen(true)}
-        className="rounded-edge dock-target label border-cream-line bg-cream mt-4 w-full border px-5"
+        variant="secondary"
+        className="mt-4"
       >
         Tell {who}
-      </button>
+      </Button>
     );
   }
 
@@ -116,12 +114,7 @@ function RelayRound({
           {RELAY_INTENTS.map((option) => (
             <label
               key={option.intent}
-              className={cn(
-                "rounded-edge flex min-h-11 cursor-pointer items-center gap-3 border px-3",
-                intent === option.intent
-                  ? "border-forest bg-cream"
-                  : "border-cream-line bg-cream",
-              )}
+              className={choiceClass(intent === option.intent)}
             >
               <input
                 type="radio"
@@ -129,7 +122,7 @@ function RelayRound({
                 value={option.intent}
                 checked={intent === option.intent}
                 onChange={() => setIntent(option.intent)}
-                className="size-5"
+                className="accent-terra-deep size-5"
               />
               <span className="text-sm">{option.label}</span>
             </label>
@@ -152,7 +145,7 @@ function RelayRound({
             inputMode={spec.detail === "time" ? "numeric" : "text"}
             placeholder={spec.placeholder}
             required
-            className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-base"
+            className={inputClass("mt-2")}
           />
           <p className="text-forest/70 mt-1.5 text-xs">{spec.help}</p>
         </div>
@@ -171,7 +164,7 @@ function RelayRound({
           rows={3}
           maxLength={NOTE_MAX}
           required={!sendsToPhone}
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 w-full border p-3 text-base"
+          className={textareaClass("mt-2")}
         />
         {/*
           The single most important sentence on this panel. Free text never
@@ -189,20 +182,22 @@ function RelayRound({
       ) : null}
 
       <div className="mt-4 flex gap-2">
-        <button
+        <Button
           type="submit"
           disabled={pending}
-          className="rounded-edge dock-target label bg-forest text-cream flex-1 px-5 font-bold"
+          block={false}
+          className="flex-1"
         >
           {pending ? "Sending…" : sendsToPhone ? "Send it" : "Leave the note"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           onClick={() => setOpen(false)}
-          className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+          variant="secondary"
+          block={false}
+          className="flex-1"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

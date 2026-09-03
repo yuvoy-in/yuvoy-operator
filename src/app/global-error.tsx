@@ -49,7 +49,7 @@ export default function GlobalError({ reset }: { reset: () => void }) {
               background: "#16362e",
               color: "#f4efe4",
               border: 0,
-              borderRadius: "0.25rem",
+              borderRadius: "9999px",
               fontWeight: 700,
               fontSize: "0.9375rem",
             }}

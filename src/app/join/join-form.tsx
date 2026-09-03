@@ -1,8 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import Link from "next/link";
 import { acceptInvite, type AcceptState } from "./actions";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { inputClass } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 
 export function JoinForm() {
   const [state, act, pending] = useActionState<AcceptState, FormData>(
@@ -12,10 +14,7 @@ export function JoinForm() {
 
   if (state.accepted) {
     return (
-      <div
-        role="status"
-        className="rounded-edge border-forest bg-forest/5 mt-8 border-2 p-5"
-      >
+      <Panel tone="done" role="status" className="mt-8">
         <p className="text-base font-bold">You are on the account</p>
         {/*
           Accepting is not signing in, and the screen must not blur that. The
@@ -27,13 +26,10 @@ export function JoinForm() {
           Accepting does not sign you in. Sign in with the same number and we
           will send you a fresh code.
         </p>
-        <Link
-          href="/sign-in"
-          className="rounded-edge dock-target label bg-forest text-cream mt-4 flex items-center justify-center px-5 font-bold"
-        >
+        <ButtonLink href="/sign-in" className="mt-4">
           Sign in
-        </Link>
-      </div>
+        </ButtonLink>
+      </Panel>
     );
   }
 
@@ -51,7 +47,7 @@ export function JoinForm() {
           autoComplete="tel"
           required
           placeholder="+919000000101"
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 font-mono text-base"
+          className={inputClass("mt-2 font-mono")}
         />
         <p className="text-forest/70 mt-1.5 text-xs">
           The number the invitation was sent to, with its country code.
@@ -69,7 +65,7 @@ export function JoinForm() {
           inputMode="numeric"
           autoComplete="one-time-code"
           required
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 font-mono text-2xl tracking-[0.4em]"
+          className={inputClass("mt-2 font-mono text-2xl tracking-[0.4em]")}
         />
       </div>
 
@@ -79,13 +75,9 @@ export function JoinForm() {
         </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-edge dock-target label bg-forest text-cream w-full px-5 font-bold disabled:cursor-not-allowed disabled:opacity-55"
-      >
+      <Button type="submit" disabled={pending}>
         {pending ? "Accepting…" : "Accept the invitation"}
-      </button>
+      </Button>
     </form>
   );
 }

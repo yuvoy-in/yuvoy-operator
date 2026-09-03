@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireOperator } from "@/lib/auth/session";
 import { getManifest } from "@/lib/day/manifest";
@@ -16,6 +15,8 @@ import { PartyRow } from "./party-row";
 import { RelayPanel } from "./relay-panel";
 import { CallOffPanel } from "./call-off-panel";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
+import { Screen } from "@/components/chrome/screen";
+import { Panel } from "@/components/ui/panel";
 
 export const metadata: Metadata = { title: "Manifest" };
 
@@ -74,142 +75,134 @@ export default async function ManifestPage({
   const departed = startsAt ? hasDeparted(startsAt, await now()) : false;
 
   return (
-    <main className="bg-cream text-forest min-h-dvh">
+    <Screen
+      nav={{ back: { href: "/today", label: "the day" } }}
+      stageLabel="Manifest"
+    >
       <RefreshOnFocus />
 
-      <div className="container-page max-w-2xl py-8">
-        <Link
-          href="/today"
-          className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
-        >
-          ← The day
-        </Link>
+      <p className="eyebrow text-terra-deep">
+        {startsAt ? marketDay(startsAt, timezone) : "Departure"}
+      </p>
+      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+        {startsAt ? marketTime(startsAt, timezone) : "—"}{" "}
+        <span className="text-3xl">{manifest.experience}</span>
+      </h1>
 
-        <p className="eyebrow text-terra-deep mt-6">
-          {startsAt ? marketDay(startsAt, timezone) : "Departure"}
+      {manifest.meetingPoint ? (
+        <p className="text-forest/80 mt-3 text-base">{manifest.meetingPoint}</p>
+      ) : null}
+
+      {/* The departure is off. Nothing else on the page matters as much. */}
+      {manifest.calledOff ? (
+        <div className="mt-6">
+          <Problem
+            title="This departure is called off"
+            body="Everybody on it has been told and refunded in full. Nothing below needs marking."
+          />
+        </div>
+      ) : null}
+
+      {/*
+        Totals come from the server. They are computed there precisely "so
+        three clients cannot disagree about them on a dock", and seatsSold
+        and seatsSoldOffline answer different questions — an operator adding
+        them together to get a head count is the mistake this layout avoids
+        by never putting them beside each other as one number.
+      */}
+      <dl className="mt-8 grid grid-cols-3 gap-3">
+        <Total label="Parties" value={totals.parties} />
+        <Total label="Guests" value={totals.guests} />
+        <Total label="Here" value={totals.arrived} />
+      </dl>
+      {totals.seatsSoldOffline ? (
+        <p className="text-forest/70 mt-3 text-sm">
+          {totals.seatsSoldOffline} more seat
+          {totals.seatsSoldOffline === 1 ? "" : "s"} sold at your own counter.
+          They are not on this list.
         </p>
-        <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-          {startsAt ? marketTime(startsAt, timezone) : "—"}{" "}
-          <span className="text-3xl">{manifest.experience}</span>
-        </h1>
+      ) : null}
 
-        {manifest.meetingPoint ? (
-          <p className="text-forest/80 mt-3 text-base">
-            {manifest.meetingPoint}
-          </p>
-        ) : null}
+      {/*
+        Telling the whole departure something. Above the list rather than
+        below it: at 6am the thing an operator most often needs is to move a
+        time or a meeting point for everybody, not to tick one person off.
+      */}
+      {!manifest.calledOff ? (
+        <section className="mt-8" aria-labelledby="relay-all">
+          <h2 id="relay-all" className="label text-forest/75">
+            Tell everybody
+          </h2>
+          <RelayPanel slotId={slotId} who="everybody on this departure" />
+        </section>
+      ) : null}
 
-        {/* The departure is off. Nothing else on the page matters as much. */}
-        {manifest.calledOff ? (
-          <div className="mt-6">
-            <Problem
-              title="This departure is called off"
-              body="Everybody on it has been told and refunded in full. Nothing below needs marking."
+      <section className="mt-10" aria-labelledby="confirmed">
+        <h2 id="confirmed" className="label text-forest/75">
+          Coming
+        </h2>
+        {confirmed.length === 0 ? (
+          <div className="mt-3">
+            <Empty
+              title="Nobody booked yet"
+              body="When somebody books this departure they appear here, with the reference they will read out to you."
             />
           </div>
-        ) : null}
-
-        {/*
-          Totals come from the server. They are computed there precisely "so
-          three clients cannot disagree about them on a dock", and seatsSold
-          and seatsSoldOffline answer different questions — an operator adding
-          them together to get a head count is the mistake this layout avoids
-          by never putting them beside each other as one number.
-        */}
-        <dl className="border-cream-line mt-8 grid grid-cols-3 gap-px border-t pt-6">
-          <Total label="Parties" value={totals.parties} />
-          <Total label="Guests" value={totals.guests} />
-          <Total label="Here" value={totals.arrived} />
-        </dl>
-        {totals.seatsSoldOffline ? (
-          <p className="text-forest/70 mt-3 text-sm">
-            {totals.seatsSoldOffline} more seat
-            {totals.seatsSoldOffline === 1 ? "" : "s"} sold at your own counter.
-            They are not on this list.
-          </p>
-        ) : null}
-
-        {/*
-          Telling the whole departure something. Above the list rather than
-          below it: at 6am the thing an operator most often needs is to move a
-          time or a meeting point for everybody, not to tick one person off.
-        */}
-        {!manifest.calledOff ? (
-          <section className="mt-8" aria-labelledby="relay-all">
-            <h2 id="relay-all" className="label text-forest/75">
-              Tell everybody
-            </h2>
-            <RelayPanel slotId={slotId} who="everybody on this departure" />
-          </section>
-        ) : null}
-
-        <section className="mt-10" aria-labelledby="confirmed">
-          <h2 id="confirmed" className="label text-forest/75">
-            Coming
-          </h2>
-          {confirmed.length === 0 ? (
-            <div className="mt-3">
-              <Empty
-                title="Nobody booked yet"
-                body="When somebody books this departure they appear here, with the reference they will read out to you."
+        ) : (
+          <ul className="mt-3 space-y-3">
+            {confirmed.map((party) => (
+              <PartyRow
+                key={party.bookingId}
+                party={party}
+                slotId={slotId}
+                departed={departed}
               />
-            </div>
-          ) : (
-            <ul className="mt-3 space-y-3">
-              {confirmed.map((party) => (
-                <PartyRow
-                  key={party.bookingId}
-                  party={party}
-                  slotId={slotId}
-                  departed={departed}
-                />
-              ))}
-            </ul>
-          )}
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/*
+        Holds are on the manifest deliberately: "a party mid-checkout at
+        08:40 may walk up at 08:55, and a manifest that omits them sends the
+        operator into an argument they cannot win."
+      */}
+      {holds.length > 0 ? (
+        <section className="mt-10" aria-labelledby="holding">
+          <h2 id="holding" className="label text-forest/75">
+            Still paying
+          </h2>
+          <p className="text-forest/70 mt-2 text-sm">
+            Not confirmed seats. They may finish paying and turn up, or the hold
+            may lapse.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {holds.map((party, i) => (
+              <PartyRow
+                key={party.reference ?? i}
+                party={party}
+                slotId={slotId}
+                departed={departed}
+              />
+            ))}
+          </ul>
         </section>
+      ) : null}
 
-        {/*
-          Holds are on the manifest deliberately: "a party mid-checkout at
-          08:40 may walk up at 08:55, and a manifest that omits them sends the
-          operator into an argument they cannot win."
-        */}
-        {holds.length > 0 ? (
-          <section className="mt-10" aria-labelledby="holding">
-            <h2 id="holding" className="label text-forest/75">
-              Still paying
-            </h2>
-            <p className="text-forest/70 mt-2 text-sm">
-              Not confirmed seats. They may finish paying and turn up, or the
-              hold may lapse.
-            </p>
-            <ul className="mt-3 space-y-3">
-              {holds.map((party, i) => (
-                <PartyRow
-                  key={party.reference ?? i}
-                  party={party}
-                  slotId={slotId}
-                  departed={departed}
-                />
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        <CallOffPanel
-          slotId={slotId}
-          alreadyCalledOff={Boolean(manifest.calledOff)}
-          canManage={me.canManage}
-        />
-      </div>
-    </main>
+      <CallOffPanel
+        slotId={slotId}
+        alreadyCalledOff={Boolean(manifest.calledOff)}
+        canManage={me.canManage}
+      />
+    </Screen>
   );
 }
 
 function Total({ label, value }: { label: string; value?: number }) {
   return (
-    <div>
+    <Panel className="p-4">
       <dt className="label text-forest/70">{label}</dt>
       <dd className="font-display mt-1 text-3xl leading-none">{value ?? 0}</dd>
-    </div>
+    </Panel>
   );
 }

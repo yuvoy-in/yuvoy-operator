@@ -15,9 +15,11 @@
   system's founding rule — every color, font, radius and tracking value maps
   to a token — breaks structurally rather than stylistically.
 
-  The utility layer below is trimmed: the feed scrim, the media ground and the
-  9:16 column are traveller-app machinery with no operator screen behind them.
-  The TOKENS are not trimmed, because that is what the check compares.
+  v2.7 (2026-09-02): the portal shares the app's rounded chassis — the forest
+  stage, the cream sheet, the floating bar, pills and discs — so the block
+  below carries the radius scale too. The utility layer is still trimmed: the
+  feed scrim and the media ground are traveller-app machinery with no
+  operator screen behind them, and `dock-target` is the portal's own.
 */
 
 @theme {
@@ -65,12 +67,29 @@
   */
   --container-feed: 30rem; /* 480px */
 
-  /* Editorial near-square. The brand is rectangular: buttons, inputs, cards
-     and panels all share this single radius. Pills are not part of the system. */
-  --radius-edge: 2px;
+  /* --------------------------------------------------------------- radius */
+  /*
+    v2.7 (2026-09-02, owner-directed): THE APP IS ROUNDED.
 
-  /* The one rounded object in the system: the product-preview phone frame.
-     It depicts hardware, not UI — nothing else may use it. */
+    The 2px near-square was drawn for an editorial marketing page and stays
+    there. The traveller app and the operator portal share this scale instead,
+    taken from the reference set in `expectations/app`: sheets that rise over
+    a photograph, cards, pill chips, circular controls. Every radius in the
+    app maps to one of these four tokens or to a full pill (`rounded-full`);
+    `palette.test.ts` fails an arbitrary radius and a `rounded-edge` control.
+
+    Nesting is CONCENTRIC: an inner radius is the outer one minus the padding
+    between them (`calc(var(--radius-card) - 1rem)`), or the two curves stop
+    sharing a centre and the corner reads as uneven.
+  */
+  --radius-edge: 2px; /* the marketing near-square; here only the guide's inline code keeps it */
+  --radius-tile: 0.75rem; /* 12px — thumbnails, inner media, small tiles */
+  --radius-control: 1rem; /* 16px — inputs, selects, textareas */
+  --radius-card: 1.5rem; /* 24px — cards, panels, notices, slot rows */
+  --radius-sheet: 2rem; /* 32px — content sheets, desktop panels, the feed well */
+
+  /* The product-preview phone frame on the marketing site. Kept for token
+     parity across the three repos; nothing in the app draws one. */
   --radius-device: 2.25rem;
 
   /* --------------------------------------------------------------- motion */
@@ -92,7 +111,7 @@
   }
 
   body {
-    @apply bg-cream text-forest font-sans antialiased;
+    @apply bg-forest text-cream font-sans antialiased;
     text-rendering: optimizeLegibility;
     overflow-x: clip;
   }
@@ -107,10 +126,19 @@
     border-radius: 4px;
   }
 
-  /* On the media ground the cream focus ring is the legible one. */
-  .on-abyss a:focus-visible,
-  .on-abyss button:focus-visible {
-    outline-color: var(--color-terra-soft);
+  /*
+    Focus rings follow the surface. The shell is the dark stage (`on-dark`),
+    where terra-soft is the legible ring; a cream sheet nested inside it
+    (`sheet`) switches back to terra-deep. Declared here, once, so no
+    component carries its own focus colour.
+  */
+  .on-dark :is(a, button, input, select, textarea, summary):focus-visible {
+    outline: 2px solid var(--color-terra-soft);
+    outline-offset: 3px;
+  }
+
+  .sheet :is(a, button, input, select, textarea, summary):focus-visible {
+    outline-color: var(--color-terra-deep);
   }
 
   dialog::backdrop {
@@ -120,8 +148,7 @@
   /*
     Respect users who prefer less motion. This neutralises every animation and
     transition globally, which is why individual components never need their
-    own reduced-motion branch. Feed autoplay is disabled separately in JS —
-    a paused video is not an animation the browser knows about.
+    own reduced-motion branch.
   */
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -150,8 +177,7 @@
 
 /**
  * A section eyebrow — the label preceded by a terracotta square, the same
- * `size-1` marker the fact rows use. Square, not round: `rounded-full` is
- * reserved for hardware. Use once per section, at the top.
+ * `size-1` marker the fact rows use. Use once per section, at the top.
  */
 @utility eyebrow {
   @apply inline-flex items-center gap-2.5 font-sans text-xs font-medium uppercase;
@@ -200,4 +226,82 @@
   @apply inline-flex items-center justify-center;
   min-height: 3.5rem;
   min-width: 3.5rem;
+}
+
+/* ------------------------------------------------------------ the chassis */
+
+/**
+ * The chrome surfaces — the floating tab bar, the rail, the discs that float
+ * over the stage. `forest`, separated from a cream sheet by contrast and from
+ * the stage by a `cream/12` hairline ring.
+ */
+@utility app-chrome {
+  background-color: var(--color-forest);
+  color: var(--color-cream);
+}
+
+/**
+ * The stage: the forest ground every screen stands on. On a phone it is the
+ * strip the sheet rises out of; on a desktop it is the whole canvas the
+ * panel floats on.
+ */
+@utility stage {
+  background-color: var(--color-forest);
+  color: var(--color-cream);
+}
+
+/**
+ * The content sheet: cream, rounded at the top, rising over the stage. It is
+ * the reading surface, so it resets the ink and the focus ring (see the base
+ * layer) — everything measured on cream still holds here, unchanged.
+ */
+@utility sheet {
+  background-color: var(--color-cream);
+  color: var(--color-forest);
+}
+
+/**
+ * Skeletons. A slow shimmer rather than a spinner. Killed by reduced-motion
+ * above.
+ */
+@utility skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, currentColor 8%, transparent) 25%,
+    color-mix(in srgb, currentColor 14%, transparent) 37%,
+    color-mix(in srgb, currentColor 8%, transparent) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-sweep 1.6s var(--ease-interaction) infinite;
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}
+
+/**
+ * The safe-area foot for the floating tab bar. `viewport-fit=cover` is
+ * deliberately NOT set (a standing rule across both apps), so the env()
+ * resolves to 0 and this is simply the padding.
+ */
+@utility tabbar-foot {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+/**
+ * The room a screen leaves for the floating tab bar: the bar's 56px, its
+ * foot, and a breath above it. Applied by `Screen` to every tab root, and
+ * only below `lg`, where the bar exists.
+ */
+@utility tabbar-clearance {
+  padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+
+  @media (min-width: 64rem) {
+    padding-bottom: 2rem;
+  }
 }

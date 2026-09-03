@@ -36,16 +36,24 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     "The crew phone goes out on the boat and gets left on a bench. It should be
     able to tick people off a manifest and nothing else." Three of these are
     OWNER-or-MANAGER on the server, so offering them would be offering a 403.
+    The doors live behind the Business tab, so that is where the absence is
+    asserted.
   */
+  await page.goto("/account");
   await expect(page.getByRole("link", { name: /Earnings/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Payout details/ })).toHaveCount(
     0,
   );
   await expect(page.getByRole("link", { name: /Team access/ })).toHaveCount(0);
 
-  // What they DO get: the day, and the seats they may look at but not change.
+  // What they DO get: the day, the seats they may look at but not change,
+  // and the reel upload the contract puts no role on.
+  await expect(page.getByRole("link", { name: /Add a reel/ })).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /Seats and closed dates/ }),
+    page
+      .getByRole("navigation", { name: /Primary/i })
+      .first()
+      .getByRole("link", { name: "Capacity" }),
   ).toBeVisible();
 });
 
@@ -53,6 +61,7 @@ test("a manager is offered all three, because the server allows them", async ({
   page,
 }) => {
   await signIn(page, MANAGER);
+  await page.goto("/account");
 
   // The positive control. A test that only ever asserts an absence passes just
   // as well when the links have been deleted for everybody.

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { JoinForm } from "./join-form";
+import { Screen } from "@/components/chrome/screen";
 
 export const metadata: Metadata = { title: "Accept an invitation" };
 
@@ -25,31 +26,29 @@ export const dynamic = "force-dynamic";
  */
 export default function JoinPage() {
   return (
-    <main className="bg-cream text-forest flex min-h-dvh flex-col">
-      <div className="container-page mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-12">
-        <p className="eyebrow text-terra-deep">Yuvoy for operators</p>
-        <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
-          Accept an invitation
-        </h1>
-        <p className="text-forest/70 mt-3 text-base">
-          Somebody has added you to their business on Yuvoy. Enter your number
-          and the code they sent you.
-        </p>
+    <Screen nav="none" stageLabel="For operators" width="sm">
+      <p className="eyebrow text-terra-deep">Yuvoy for operators</p>
+      <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
+        Accept an invitation
+      </h1>
+      <p className="text-forest/70 mt-3 text-base">
+        Somebody has added you to their business on Yuvoy. Enter your number and
+        the code they sent you.
+      </p>
 
-        <JoinForm />
+      <JoinForm />
 
-        <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
-          Already accepted?{" "}
-          <Link
-            href="/sign-in"
-            className="text-terra-deep tap-target font-bold underline underline-offset-4"
-          >
-            Sign in
-          </Link>
-          . Codes last seven days — if yours has expired, ask whoever invited
-          you to send another.
-        </p>
-      </div>
-    </main>
+      <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
+        Already accepted?{" "}
+        <Link
+          href="/sign-in"
+          className="text-terra-deep tap-target font-bold underline underline-offset-4"
+        >
+          Sign in
+        </Link>
+        . Codes last seven days — if yours has expired, ask whoever invited you
+        to send another.
+      </p>
+    </Screen>
   );
 }

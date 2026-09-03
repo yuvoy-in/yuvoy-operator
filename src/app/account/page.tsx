@@ -1,18 +1,29 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { ComponentType } from "react";
 import { operatorApi } from "@/lib/api/server-client";
 import { classifyMeFailure } from "@/lib/account/status";
 import { readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/chrome/sign-out-button";
+import { Screen } from "@/components/chrome/screen";
+import { ButtonLink } from "@/components/ui/button";
+import {
+  BankIcon,
+  ChevronRightIcon,
+  CoinsIcon,
+  FilmIcon,
+  UsersIcon,
+} from "@/components/ui/icons";
+import { Panel, panelClass } from "@/components/ui/panel";
 
-export const metadata: Metadata = { title: "Your account" };
+export const metadata: Metadata = { title: "Your business" };
 
 export const dynamic = "force-dynamic";
 
 /**
- * O3 — where an operator finds out whether they can trade, and who they are
- * waiting on.
+ * The Business door — O3, and the way to everything about the business that
+ * is not the day.
  *
  * ## What this screen is not, and why
  *
@@ -36,17 +47,21 @@ export const dynamic = "force-dynamic";
  *
  * That helper redirects here on `account_not_active`. Calling it from this
  * page would redirect to this page, forever. This is the one authenticated
- * screen that reads `GET /me` itself.
+ * screen that reads `GET /me` itself — and it reads `canManage` off the same
+ * answer to decide which doors to draw, the same field `requireOperator()`
+ * hands every other screen.
  */
 export default async function AccountPage() {
   const token = await readSessionToken();
   if (!token) redirect(SIGN_IN_PATH);
 
   let active = false;
+  let canManage = false;
   try {
-    const { error } = await operatorApi(token).GET("/me", {});
+    const { data, error } = await operatorApi(token).GET("/me", {});
     if (error) throw error;
     active = true;
+    canManage = data?.canManage ?? false;
   } catch (err) {
     const status = classifyMeFailure(err);
     if (status === "signed-out") redirect(SIGN_IN_PATH);
@@ -60,79 +75,156 @@ export default async function AccountPage() {
   }
 
   return (
-    <main className="bg-cream text-forest min-h-dvh">
-      <div className="container-page max-w-2xl py-8">
-        <div className="flex items-start justify-between gap-4">
-          <p className="eyebrow text-terra-deep">Yuvoy for operators</p>
-          <SignOutButton />
-        </div>
+    <Screen>
+      <p className="eyebrow text-terra-deep">Yuvoy for operators</p>
 
-        {active ? (
-          <>
-            <h1 className="font-display tracking-display mt-6 text-4xl leading-[1.05]">
-              Your account is live
-            </h1>
-            <p className="text-forest/70 mt-3 text-base">
-              Travellers can book your departures. Nothing is waiting on you
-              here.
-            </p>
-            <Link
-              href="/today"
-              className="rounded-edge dock-target label bg-forest text-cream mt-8 flex items-center justify-center px-5 font-bold"
-            >
-              Go to today
-            </Link>
-            {/*
-              Said out loud rather than left as a silence. An operator who came
-              here expecting a review checklist should learn that we do not
-              have one yet, not conclude that everything is approved because a
-              page was blank.
-            */}
-            <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
-              We cannot yet show a breakdown of what Yuvoy has verified —
-              licences, documents and their expiry dates are not on this screen
-              because the API does not publish them. If you are waiting on a
-              check, message us and a person will tell you where it is.
-            </p>
-          </>
-        ) : (
-          <>
-            <h1 className="font-display tracking-display mt-6 text-4xl leading-[1.05]">
-              Your account cannot take bookings
-            </h1>
-            {/*
-              The contract's own distinction, kept: "the person is fine, the
-              business relationship is not". So they are NOT signed out, and
-              the page does not talk to them as though they had done something
-              wrong. It also does not guess between suspended and offboarded —
-              one code covers both, and inventing which would be worse than
-              saying neither.
-            */}
-            <p className="text-forest/80 mt-3 text-base">
-              Your sign-in works. It is the business account that is on hold, so
-              departures are not on sale and bookings cannot be taken.
-            </p>
-            <p className="text-forest/80 mt-3 text-base">
-              We have not told you why here, because this screen does not know.
-              A person at Yuvoy does — that is the conversation to have.
-            </p>
+      {active ? (
+        <>
+          <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
+            Your account is live
+          </h1>
+          <p className="text-forest/70 mt-3 text-base">
+            Travellers can book your departures. Nothing is waiting on you here.
+          </p>
+          <ButtonLink href="/today" className="mt-6">
+            Go to today
+          </ButtonLink>
 
-            <div className="rounded-edge border-terra-deep bg-cream-deep mt-8 border-2 p-5">
-              <p className="text-base font-bold">Call us</p>
-              <p className="mt-1.5 font-mono text-lg">+91 81216 57657</p>
-              <p className="text-forest/70 mt-2 text-sm">
-                If you have travellers booked on departures today, say so first.
-                Those bookings still exist and still need somebody to meet them.
-              </p>
-            </div>
+          {/*
+            Everything about the business that is not the day. Earnings,
+            payout details and the team are OWNER/MANAGER doors — a staff
+            phone on a boat needs the manifest and nothing else, and the
+            pages themselves say what a manager may do. Uploading a reel is
+            ungated: the contract puts no role on an upload intent, and the
+            person who filmed the dive is the one who should be sending it.
+          */}
+          <section className="mt-10" aria-labelledby="business">
+            <h2 id="business" className="label text-forest/75">
+              Your business
+            </h2>
+            <ul className="mt-3 space-y-3">
+              {canManage ? (
+                <>
+                  <Door
+                    href="/earnings"
+                    icon={CoinsIcon}
+                    title="Earnings"
+                    body="What you are owed, and why it is that number."
+                  />
+                  <Door
+                    href="/payouts"
+                    icon={BankIcon}
+                    title="Payout details"
+                    body="Where the money goes. Changing it takes two days on purpose."
+                  />
+                  <Door
+                    href="/team"
+                    icon={UsersIcon}
+                    title="Team access"
+                    body="Who can get into this business, and what each of them can do."
+                  />
+                </>
+              ) : null}
+              <Door
+                href="/reels"
+                icon={FilmIcon}
+                title="Add a reel"
+                body="One upright clip of the real thing does more than a page of description."
+              />
+            </ul>
+          </section>
 
-            <p className="text-forest/70 mt-8 text-sm">
-              Nothing else in the portal will open while the account is on hold.
-              Signing out and back in will not change it.
+          {/*
+            Said out loud rather than left as a silence. An operator who came
+            here expecting a review checklist should learn that we do not
+            have one yet, not conclude that everything is approved because a
+            page was blank.
+          */}
+          <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
+            We cannot yet show a breakdown of what Yuvoy has verified —
+            licences, documents and their expiry dates are not on this screen
+            because the API does not publish them. If you are waiting on a
+            check, message us and a person will tell you where it is.
+          </p>
+
+          <div className="mt-8">
+            <SignOutButton />
+          </div>
+        </>
+      ) : (
+        <>
+          <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
+            Your account cannot take bookings
+          </h1>
+          {/*
+            The contract's own distinction, kept: "the person is fine, the
+            business relationship is not". So they are NOT signed out, and
+            the page does not talk to them as though they had done something
+            wrong. It also does not guess between suspended and offboarded —
+            one code covers both, and inventing which would be worse than
+            saying neither.
+          */}
+          <p className="text-forest/80 mt-3 text-base">
+            Your sign-in works. It is the business account that is on hold, so
+            departures are not on sale and bookings cannot be taken.
+          </p>
+          <p className="text-forest/80 mt-3 text-base">
+            We have not told you why here, because this screen does not know. A
+            person at Yuvoy does — that is the conversation to have.
+          </p>
+
+          <Panel tone="alert" className="mt-8">
+            <p className="text-base font-bold">Call us</p>
+            <p className="mt-1.5 font-mono text-lg">+91 81216 57657</p>
+            <p className="text-forest/70 mt-2 text-sm">
+              If you have travellers booked on departures today, say so first.
+              Those bookings still exist and still need somebody to meet them.
             </p>
-          </>
+          </Panel>
+
+          <p className="text-forest/70 mt-8 text-sm">
+            Nothing else in the portal will open while the account is on hold.
+            Signing out and back in will not change it.
+          </p>
+
+          <div className="mt-8">
+            <SignOutButton />
+          </div>
+        </>
+      )}
+    </Screen>
+  );
+}
+
+function Door({
+  href,
+  icon: Icon,
+  title,
+  body,
+}: {
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  body: string;
+}) {
+  return (
+    <li>
+      <Link
+        href={href}
+        className={panelClass(
+          "raised",
+          "hover:border-forest/40 ease-interaction flex items-center gap-4 transition-colors duration-200",
         )}
-      </div>
-    </main>
+      >
+        <span className="bg-forest text-cream inline-flex size-11 shrink-0 items-center justify-center rounded-full">
+          <Icon className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-base font-bold">{title}</span>
+          <span className="text-forest/70 mt-0.5 block text-sm">{body}</span>
+        </span>
+        <ChevronRightIcon className="text-forest/70 size-5 shrink-0" />
+      </Link>
+    </li>
   );
 }

@@ -6,7 +6,11 @@ import { listOpenRequests } from "@/lib/day/requests";
 import { urgencyOf } from "@/lib/day/request-types";
 import { dayCaption, marketDays, marketTime } from "@/lib/format/market-time";
 import { Empty } from "@/components/ui/states";
-import { SignOutButton } from "@/components/chrome/sign-out-button";
+import { Screen } from "@/components/chrome/screen";
+import { Chip } from "@/components/ui/chip";
+import { Panel, panelClass } from "@/components/ui/panel";
+import { ChevronRightIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/cn";
 
 export const metadata: Metadata = { title: "Today" };
 
@@ -26,6 +30,9 @@ export const dynamic = "force-dynamic";
  * week makes somebody find today, and at 6am on a jetty the answer to "what is
  * on" is never next Thursday. Tomorrow is one tap away for the operator who is
  * checking ahead.
+ *
+ * The day carries nothing but the day. Money, people, footage and the account
+ * live behind the Business tab, and capacity has a tab of its own.
  */
 export default async function TodayPage({
   searchParams,
@@ -62,131 +69,80 @@ export default async function TodayPage({
   ).length;
 
   return (
-    <main className="bg-cream text-forest min-h-dvh">
-      <div className="container-page max-w-2xl py-8">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="eyebrow text-terra-deep">{me.name || "Your day"}</p>
-            <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-              {dayCaption(date, today, tomorrow)}
-            </h1>
-          </div>
-          <SignOutButton />
-        </div>
+    <Screen>
+      <p className="eyebrow text-terra-deep">{me.name || "Your day"}</p>
+      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+        {dayCaption(date, today, tomorrow)}
+      </h1>
 
-        {!requestsResult.ok ? (
-          <p
-            role="status"
-            className="rounded-edge border-cream-line bg-cream-deep mt-6 border px-4 py-3 text-sm"
-          >
-            Requests could not be loaded just now.{" "}
-            <Link href="/requests" className="text-terra-deep underline">
-              Open the queue
-            </Link>{" "}
-            to check — one may be waiting.
-          </p>
-        ) : null}
+      {!requestsResult.ok ? (
+        <Panel role="status" className="mt-6 px-4 py-3 text-sm">
+          Requests could not be loaded just now.{" "}
+          <Link href="/requests" className="text-terra-deep underline">
+            Open the queue
+          </Link>{" "}
+          to check — one may be waiting.
+        </Panel>
+      ) : null}
 
-        {requests.length > 0 ? (
-          <Link
-            href="/requests"
-            className="rounded-edge border-terra-deep bg-cream-deep mt-6 flex items-center justify-between gap-4 border-2 p-4"
-          >
-            <span className="text-base font-bold">
-              {requests.length} request{requests.length === 1 ? "" : "s"}{" "}
-              waiting
-            </span>
-            <span className="label text-terra-deep shrink-0">
-              {urgent > 0 ? `${urgent} within the hour` : "Answer"} →
-            </span>
-          </Link>
-        ) : null}
+      {requests.length > 0 ? (
+        <Link
+          href="/requests"
+          className={panelClass(
+            "alert",
+            "ease-interaction hover:bg-cream mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
+          )}
+        >
+          <span className="text-base font-bold">
+            {requests.length} request{requests.length === 1 ? "" : "s"} waiting
+          </span>
+          <span className="label text-terra-deep flex shrink-0 items-center gap-1">
+            {urgent > 0 ? `${urgent} within the hour` : "Answer"}
+            <ChevronRightIcon className="size-4" />
+          </span>
+        </Link>
+      ) : null}
 
-        <nav className="mt-6 flex flex-wrap gap-2" aria-label="Which day">
-          <DayLink label="Today" href="/today" active={date === today} />
-          <DayLink
-            label="Tomorrow"
-            href={`/today?day=${tomorrow}`}
-            active={date === tomorrow}
+      <nav className="mt-6 flex flex-wrap gap-2" aria-label="Which day">
+        <DayLink label="Today" href="/today" active={date === today} />
+        <DayLink
+          label="Tomorrow"
+          href={`/today?day=${tomorrow}`}
+          active={date === tomorrow}
+        />
+      </nav>
+
+      <div className="mt-8">
+        {slots.length === 0 ? (
+          <Empty
+            title="Nothing scheduled"
+            body={
+              date === today
+                ? "No departures today. If that is wrong, check your slots — a departure that is not here is one Yuvoy cannot sell."
+                : date === tomorrow
+                  ? "Nothing on the books for tomorrow yet."
+                  : "Nothing on the books for that day."
+            }
           />
-        </nav>
-
-        <p className="mt-4">
-          <Link
-            href="/capacity"
-            className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
-          >
-            Seats and closed dates →
-          </Link>
-          {" · "}
-          {/* Ungated: the contract puts no role on an upload intent, and the
-              person who filmed the dive is the one who should be sending it. */}
-          <Link
-            href="/reels"
-            className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
-          >
-            Add a reel →
-          </Link>
-          {/* Earnings is OWNER/MANAGER only; a staff member sees a 403 rather
-              than a page, so the link is not offered to them. Payout details
-              and Team are OWNER-only to CHANGE but readable by a manager, so
-              they sit behind the same gate as the link list rather than a
-              stricter one — the pages themselves say what a manager may do. A
-              staff phone on a boat needs the manifest and nothing else. */}
-          {me.canManage ? (
-            <>
-              {" · "}
-              <Link
-                href="/earnings"
-                className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
-              >
-                Earnings →
-              </Link>
-              {" · "}
-              <Link
-                href="/payouts"
-                className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
-              >
-                Payout details →
-              </Link>
-              {" · "}
-              <Link
-                href="/team"
-                className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
-              >
-                Team access →
-              </Link>
-            </>
-          ) : null}
-        </p>
-
-        <div className="mt-8">
-          {slots.length === 0 ? (
-            <Empty
-              title="Nothing scheduled"
-              body={
-                date === today
-                  ? "No departures today. If that is wrong, check your slots — a departure that is not here is one Yuvoy cannot sell."
-                  : date === tomorrow
-                    ? "Nothing on the books for tomorrow yet."
-                    : "Nothing on the books for that day."
-              }
-            />
-          ) : (
-            <ul className="space-y-3">
-              {slots.map((slot) => (
-                <li key={slot.id}>
-                  <Link
-                    href={`/today/${slot.id}`}
-                    className="rounded-edge border-cream-line bg-cream-deep hover:border-forest/30 block border p-5 transition-colors"
-                  >
-                    <div className="flex items-baseline justify-between gap-4">
+        ) : (
+          <ul className="space-y-3">
+            {slots.map((slot) => (
+              <li key={slot.id}>
+                <Link
+                  href={`/today/${slot.id}`}
+                  className={panelClass(
+                    "raised",
+                    "hover:border-forest/40 ease-interaction flex items-center gap-4 transition-colors duration-200",
+                  )}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-4">
                       <span className="font-display text-2xl leading-none">
                         {marketTime(slot.startsAt, slot.timezone)}
                       </span>
-                      <span className="label text-forest/70">
+                      <Chip tone={slot.remaining === 0 ? "accent" : "neutral"}>
                         {slot.sold} of {slot.seats} sold
-                      </span>
+                      </Chip>
                     </div>
                     <p className="mt-2 text-base font-bold">{slot.title}</p>
                     {slot.status !== "open" ? (
@@ -196,14 +152,15 @@ export default async function TodayPage({
                           : "Closed to new bookings"}
                       </p>
                     ) : null}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                  </div>
+                  <ChevronRightIcon className="text-forest/70 size-5 shrink-0" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-    </main>
+    </Screen>
   );
 }
 
@@ -220,11 +177,12 @@ function DayLink({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={
+      className={cn(
+        "dock-target ease-interaction rounded-full border px-6 text-sm transition-colors duration-200",
         active
-          ? "rounded-edge border-forest bg-forest text-cream dock-target border px-5 text-sm font-bold"
-          : "rounded-edge border-cream-line bg-cream-deep dock-target border px-5 text-sm"
-      }
+          ? "border-forest bg-forest text-cream font-bold"
+          : "border-cream-line bg-cream-deep hover:border-forest/40",
+      )}
     >
       {label}
     </Link>

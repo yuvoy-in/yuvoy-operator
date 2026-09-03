@@ -4,6 +4,9 @@ import { useActionState, useState } from "react";
 import { removeMember, type RemoveState } from "./actions";
 import { describeRole, roleLabel, strongestRole } from "@/lib/team/roles";
 import type { Removability, TeamPerson } from "@/lib/team/members";
+import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { panelClass } from "@/components/ui/panel";
 
 /**
  * One person, or one invitation nobody has accepted.
@@ -45,7 +48,7 @@ export function MemberRow({
       all — and the second is the whole reason somebody is removed in a hurry.
     */
     return (
-      <li className="rounded-edge border-forest bg-forest/5 border-2 p-5">
+      <li className={panelClass("done")}>
         <p className="text-base font-bold">
           {member.pending
             ? `Invitation to ${member.name} revoked`
@@ -61,8 +64,8 @@ export function MemberRow({
   }
 
   return (
-    <li className="rounded-edge border-cream-line bg-cream-deep border p-5">
-      <div className="flex items-baseline justify-between gap-3">
+    <li className={panelClass()}>
+      <div className="flex items-center justify-between gap-3">
         <p className="text-lg font-bold">{member.name}</p>
         <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
           {/*
@@ -71,15 +74,12 @@ export function MemberRow({
             would quietly hide half of what somebody has been granted.
           */}
           {member.roles.map((role) => (
-            <span
-              key={role}
-              className="rounded-edge border-cream-line bg-cream label text-forest/75 border px-2.5 py-1"
-            >
+            <Chip key={role} className="label text-forest/75 bg-cream">
               {roleLabel(role)}
-            </span>
+            </Chip>
           ))}
           {member.roles.length === 0 ? (
-            <span className="label text-forest/60">No role</span>
+            <span className="label text-forest/70">No role</span>
           ) : null}
         </div>
       </div>
@@ -149,31 +149,34 @@ export function MemberRow({
                   : "Their sessions end immediately — not at their next sign-in. You can invite them again afterwards."}
               </p>
               <div className="mt-4 flex gap-2">
-                <button
+                <Button
                   type="submit"
                   disabled={pending}
-                  className="rounded-edge dock-target label border-terra-deep text-terra-deep flex-1 border-2 px-5 font-bold disabled:cursor-not-allowed disabled:opacity-55"
+                  variant="danger"
+                  block={false}
+                  className="flex-1"
                 >
                   {pending ? "Removing…" : member.pending ? "Revoke" : "Remove"}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
                   onClick={() => setConfirming(false)}
                   disabled={pending}
-                  className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+                  variant="secondary"
+                  block={false}
+                  className="flex-1"
                 >
                   Back
-                </button>
+                </Button>
               </div>
             </form>
           ) : (
-            <button
-              type="button"
+            <Button
               onClick={() => setConfirming(true)}
-              className="rounded-edge dock-target label border-cream-line bg-cream text-forest mt-4 w-full border px-5"
+              variant="secondary"
+              className="mt-4"
             >
               {member.pending ? "Revoke invitation" : "Remove"}
-            </button>
+            </Button>
           )
         ) : (
           /*

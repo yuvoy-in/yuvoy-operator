@@ -235,6 +235,9 @@ test("another operator's departure is a 404, never a 403", async ({ page }) => {
 
 test("signing out ends the session on the server too", async ({ page }) => {
   await signIn(page);
+  // Sign out lives behind the Business door, with everything else about the
+  // account. The day carries nothing but the day.
+  await page.goto("/account");
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("**/sign-in");
 

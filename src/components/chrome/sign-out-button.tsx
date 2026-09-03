@@ -1,4 +1,5 @@
 import { signOut } from "@/app/sign-in/actions";
+import { Button } from "@/components/ui/button";
 
 /**
  * Sign out, as a form rather than a link.
@@ -10,12 +11,9 @@ import { signOut } from "@/app/sign-in/actions";
 export function SignOutButton() {
   return (
     <form action={signOut}>
-      <button
-        type="submit"
-        className="label text-forest/70 hover:text-forest tap-target underline underline-offset-4"
-      >
+      <Button type="submit" variant="outline" size="md" block={false}>
         Sign out
-      </button>
+      </Button>
     </form>
   );
 }

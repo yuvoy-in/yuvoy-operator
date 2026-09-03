@@ -20,9 +20,10 @@ async function signIn(page: Page) {
   await page.waitForURL("**/today");
 }
 
-test("the day links to earnings", async ({ page }) => {
+test("the business door links to earnings", async ({ page }) => {
   await signIn(page);
-  await page.getByRole("link", { name: "Earnings →" }).click();
+  await page.goto("/account");
+  await page.getByRole("link", { name: /^Earnings/ }).click();
   await page.waitForURL("**/earnings");
   await expect(page.getByRole("heading", { name: "Earnings" })).toBeVisible();
 });

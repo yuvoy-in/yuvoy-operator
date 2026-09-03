@@ -15,6 +15,11 @@ import {
 } from "@/lib/day/request-types";
 import { marketTime } from "@/lib/format/market-time";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { ClockIcon } from "@/components/ui/icons";
+import { choiceClass } from "@/components/ui/input";
+import { panelClass } from "@/components/ui/panel";
 
 /**
  * What an accept produced, kept by `RequestQueue` after the row is gone.
@@ -41,7 +46,7 @@ export interface Receipt {
  */
 export function GrantedReceipt({ receipt }: { receipt: Receipt }) {
   return (
-    <li className="rounded-edge border-forest bg-forest/5 border-2 p-5">
+    <li className={panelClass("done")}>
       <p className="text-base font-bold">
         Seats granted to {receipt.contactName}
       </p>
@@ -133,22 +138,18 @@ export function RequestRow({
   return (
     <li
       className={cn(
-        "rounded-edge border p-5",
+        "rounded-card border p-5",
         urgency === "critical"
           ? "border-terra-deep bg-cream-deep border-2"
           : "border-cream-line bg-cream-deep",
       )}
     >
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-lg font-bold">{request.contactName}</p>
-        <p
-          className={cn(
-            "label shrink-0",
-            urgency === "critical" ? "text-terra-deep" : "text-forest/70",
-          )}
-        >
+        <Chip tone={urgency === "critical" ? "accent" : "neutral"}>
+          <ClockIcon className="size-3.5" />
           {timeToAnswer(request.minutesToAnswer)}
-        </p>
+        </Chip>
       </div>
 
       <p className="text-forest/80 mt-1.5 text-sm">
@@ -181,16 +182,13 @@ export function RequestRow({
             <legend className="label text-forest/75">Why?</legend>
             <div className="mt-2 space-y-2">
               {DECLINE_REASONS.map((reason) => (
-                <label
-                  key={reason.code}
-                  className="rounded-edge border-cream-line bg-cream flex min-h-11 cursor-pointer items-center gap-3 border px-3"
-                >
+                <label key={reason.code} className={choiceClass()}>
                   <input
                     type="radio"
                     name="reasonCode"
                     value={reason.code}
                     required
-                    className="size-5"
+                    className="accent-terra-deep size-5"
                   />
                   <span className="text-sm">{reason.label}</span>
                 </label>
@@ -203,40 +201,45 @@ export function RequestRow({
           </p>
 
           <div className="mt-4 flex gap-2">
-            <button
+            <Button
               type="submit"
               disabled={pending}
-              className="rounded-edge dock-target label border-terra-deep text-terra-deep flex-1 border-2 px-5 font-bold"
+              variant="danger"
+              block={false}
+              className="flex-1"
             >
               {pending ? "Sending…" : "Decline"}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               onClick={() => setDeclining(false)}
-              className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+              variant="secondary"
+              block={false}
+              className="flex-1"
             >
               Back
-            </button>
+            </Button>
           </div>
         </form>
       ) : (
         <form action={act} className="mt-4 flex gap-2">
           <input type="hidden" name="requestId" value={request.id ?? ""} />
-          <button
+          <Button
             type="submit"
             disabled={pending || !grantable}
-            className="rounded-edge dock-target label bg-forest text-cream flex-1 px-5 font-bold disabled:cursor-not-allowed disabled:opacity-55"
+            block={false}
+            className="flex-1"
           >
             {pending ? "Working…" : "Accept"}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
             onClick={() => setDeclining(true)}
             disabled={pending || !canAnswer}
-            className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5 disabled:cursor-not-allowed disabled:opacity-55"
+            variant="secondary"
+            block={false}
+            className="flex-1"
           >
             Decline
-          </button>
+          </Button>
         </form>
       )}
 

@@ -3,6 +3,9 @@
 import { useActionState, useState } from "react";
 import { addBlackout, type BlackoutState } from "./actions";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
+import { Button } from "@/components/ui/button";
+import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
+import { Panel, panelClass } from "@/components/ui/panel";
 
 /**
  * Closing dates to new bookings.
@@ -48,13 +51,7 @@ function BlackoutRound({
   if (state.result) {
     const owed = state.result.existingBookings;
     return (
-      <div
-        className={
-          owed > 0
-            ? "rounded-edge border-terra-deep bg-cream-deep border-2 p-5"
-            : "rounded-edge border-forest bg-forest/5 border p-5"
-        }
-      >
+      <Panel tone={owed > 0 ? "alert" : "done"}>
         <p className="text-base font-bold">
           Those dates are closed to new bookings
         </p>
@@ -74,34 +71,23 @@ function BlackoutRound({
             Nothing was booked on them, so nobody is owed anything.
           </p>
         )}
-        <button
-          type="button"
-          onClick={onAgain}
-          className="rounded-edge dock-target label border-cream-line bg-cream mt-4 w-full border px-5"
-        >
+        <Button onClick={onAgain} variant="secondary" className="mt-4">
           Close more dates
-        </button>
-      </div>
+        </Button>
+      </Panel>
     );
   }
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-edge dock-target label border-cream-line bg-cream-deep w-full border px-5"
-      >
+      <Button onClick={() => setOpen(true)} variant="secondary">
         Close dates to new bookings
-      </button>
+      </Button>
     );
   }
 
   return (
-    <form
-      action={act}
-      className="rounded-edge border-cream-line bg-cream-deep border p-5"
-    >
+    <form action={act} className={panelClass()}>
       <p className="text-base font-bold">Close dates to new bookings</p>
       <p className="text-forest/80 mt-2 text-sm">
         This stops new sales. It does <strong>not</strong> cancel bookings you
@@ -120,7 +106,7 @@ function BlackoutRound({
             min={today}
             defaultValue={today}
             required
-            className="rounded-edge border-cream-line bg-cream mt-2 h-14 w-full border px-3 text-base"
+            className={inputClass("bg-cream mt-2 px-3")}
           />
         </div>
         <div className="flex-1">
@@ -134,7 +120,7 @@ function BlackoutRound({
             min={today}
             defaultValue={today}
             required
-            className="rounded-edge border-cream-line bg-cream mt-2 h-14 w-full border px-3 text-base"
+            className={inputClass("bg-cream mt-2 px-3")}
           />
         </div>
       </div>
@@ -143,16 +129,13 @@ function BlackoutRound({
         <legend className="label text-forest/75">Why?</legend>
         <div className="mt-2 space-y-2">
           {BLACKOUT_REASONS.map((reason) => (
-            <label
-              key={reason.code}
-              className="rounded-edge border-cream-line bg-cream flex min-h-11 cursor-pointer items-center gap-3 border px-3"
-            >
+            <label key={reason.code} className={choiceClass()}>
               <input
                 type="radio"
                 name="reasonCode"
                 value={reason.code}
                 required
-                className="size-5"
+                className="accent-terra-deep size-5"
               />
               <span className="text-sm">{reason.label}</span>
             </label>
@@ -169,7 +152,7 @@ function BlackoutRound({
           name="note"
           rows={2}
           maxLength={500}
-          className="rounded-edge border-cream-line bg-cream mt-2 w-full border p-3 text-base"
+          className={textareaClass("bg-cream mt-2")}
         />
       </div>
 
@@ -180,20 +163,22 @@ function BlackoutRound({
       ) : null}
 
       <div className="mt-4 flex gap-2">
-        <button
+        <Button
           type="submit"
           disabled={pending}
-          className="rounded-edge dock-target label bg-forest text-cream flex-1 px-5 font-bold"
+          block={false}
+          className="flex-1"
         >
           {pending ? "Closing…" : "Close them"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           onClick={() => setOpen(false)}
-          className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+          variant="secondary"
+          block={false}
+          className="flex-1"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

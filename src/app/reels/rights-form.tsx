@@ -9,6 +9,8 @@ import {
   STATEMENT_VERSION,
   sha256Hex,
 } from "@/lib/media/rights";
+import { Button } from "@/components/ui/button";
+import { choiceClass, inputClass } from "@/components/ui/input";
 
 /**
  * The last step, and the one the whole screen exists to get right.
@@ -64,7 +66,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
         never paraphrased in JSX — the two must be the same bytes or the
         attestation is a claim about words nobody saw.
       */}
-      <blockquote className="rounded-edge border-cream-line bg-cream-deep border p-5 text-sm whitespace-pre-line">
+      <blockquote className="rounded-card border-cream-line bg-cream-deep border p-5 text-sm whitespace-pre-line">
         {RIGHTS_STATEMENT}
       </blockquote>
 
@@ -76,7 +78,10 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
           {RIGHTS_TYPES.map((type) => (
             <label
               key={type.code}
-              className="rounded-edge border-cream-line bg-cream flex cursor-pointer items-start gap-3 border p-3"
+              className={choiceClass(
+                rightsType === type.code,
+                "items-start py-4",
+              )}
             >
               <input
                 type="radio"
@@ -85,7 +90,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
                 required
                 checked={rightsType === type.code}
                 onChange={() => setRightsType(type.code)}
-                className="mt-0.5 size-5 shrink-0"
+                className="accent-terra-deep mt-0.5 size-5 shrink-0"
               />
               <span>
                 <span className="block text-sm font-bold">{type.label}</span>
@@ -108,7 +113,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
             name="licenceRef"
             type="text"
             required
-            className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-base"
+            className={inputClass("mt-2")}
           />
           <p className="text-forest/70 mt-1.5 text-xs">
             An invoice number or the agency&rsquo;s name is enough.
@@ -126,7 +131,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
             name="thirdPartyRef"
             type="text"
             required
-            className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-base"
+            className={inputClass("mt-2")}
           />
         </div>
       ) : null}
@@ -147,23 +152,23 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
           quiet no.
         */}
         <div className="mt-2 space-y-2">
-          <label className="rounded-edge border-cream-line bg-cream flex min-h-14 cursor-pointer items-center gap-3 border px-3">
+          <label className={choiceClass()}>
             <input
               type="radio"
               name="peopleConsentConfirmed"
               value="yes"
               required
-              className="size-5 shrink-0"
+              className="accent-terra-deep size-5 shrink-0"
             />
             <span className="text-sm">Yes — they knew and agreed</span>
           </label>
-          <label className="rounded-edge border-cream-line bg-cream flex min-h-14 cursor-pointer items-center gap-3 border px-3">
+          <label className={choiceClass()}>
             <input
               type="radio"
               name="peopleConsentConfirmed"
               value="no"
               required
-              className="size-5 shrink-0"
+              className="accent-terra-deep size-5 shrink-0"
             />
             <span className="text-sm">
               No — or there is nobody recognisable in it
@@ -185,7 +190,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
             id="filmedOn"
             name="filmedOn"
             type="date"
-            className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-base"
+            className={inputClass("mt-2")}
           />
         </div>
         <div>
@@ -196,7 +201,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
             id="filmedAtLocation"
             name="filmedAtLocation"
             type="text"
-            className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-base"
+            className={inputClass("mt-2")}
           />
         </div>
       </div>
@@ -207,13 +212,9 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
         </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={pending || !hash}
-        className="rounded-edge dock-target label bg-forest text-cream w-full px-5 font-bold disabled:cursor-not-allowed disabled:opacity-55"
-      >
+      <Button type="submit" disabled={pending || !hash}>
         {pending ? "Recording…" : "I confirm this, and submit for review"}
-      </button>
+      </Button>
 
       <p className="text-forest/70 text-xs">
         This does not publish anything. A person at Yuvoy checks it first, and

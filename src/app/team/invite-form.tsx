@@ -3,6 +3,9 @@
 import { useActionState } from "react";
 import { inviteMember, type InviteState } from "./actions";
 import { INVITABLE_ROLES, describeRole, roleLabel } from "@/lib/team/roles";
+import { Button } from "@/components/ui/button";
+import { choiceClass, inputClass } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 
 /**
  * Adding the new skipper before the 6am boat.
@@ -32,7 +35,7 @@ export function InviteForm() {
           type="text"
           autoComplete="off"
           required
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 text-base"
+          className={inputClass("mt-2")}
           aria-invalid={state.field === "name" || undefined}
           aria-describedby={state.field === "name" ? "invite-error" : undefined}
         />
@@ -50,7 +53,7 @@ export function InviteForm() {
           autoComplete="off"
           required
           placeholder="+919000000101"
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 font-mono text-base"
+          className={inputClass("mt-2 font-mono")}
           aria-invalid={state.field === "phone" || undefined}
           /*
             Both, not one. Swapping the help text out for the error loses the
@@ -77,7 +80,7 @@ export function InviteForm() {
             return (
               <label
                 key={role}
-                className="rounded-edge border-cream-line bg-cream flex cursor-pointer items-start gap-3 border p-3"
+                className={choiceClass(false, "items-start py-4")}
               >
                 <input
                   type="radio"
@@ -85,7 +88,7 @@ export function InviteForm() {
                   value={role}
                   required
                   defaultChecked={i === INVITABLE_ROLES.length - 1}
-                  className="mt-0.5 size-5 shrink-0"
+                  className="accent-terra-deep mt-0.5 size-5 shrink-0"
                 />
                 <span>
                   <span className="block text-sm font-bold">
@@ -128,10 +131,7 @@ export function InviteForm() {
       ) : null}
 
       {state.sent ? (
-        <div
-          role="status"
-          className="rounded-edge border-forest bg-forest/5 border-2 p-4"
-        >
+        <Panel tone="done" role="status" className="p-4">
           <p className="text-base font-bold">Code sent to {state.sent.name}</p>
           {/*
             The number is echoed because the list cannot show it. `TeamMember`
@@ -154,21 +154,17 @@ export function InviteForm() {
             sign in as usual. Nothing is granted until they do.
           </p>
           {state.devCode ? (
-            <p className="rounded-edge border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
+            <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
               Development build — their code is{" "}
               <strong className="font-mono">{state.devCode}</strong>.
             </p>
           ) : null}
-        </div>
+        </Panel>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-edge dock-target label bg-forest text-cream w-full px-5 font-bold disabled:cursor-not-allowed disabled:opacity-55"
-      >
+      <Button type="submit" disabled={pending}>
         {pending ? "Sending…" : "Send the invitation"}
-      </button>
+      </Button>
     </form>
   );
 }

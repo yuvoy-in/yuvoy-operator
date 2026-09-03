@@ -4,6 +4,9 @@ import { useActionState, useState } from "react";
 import { callOffDeparture, type CallOffState } from "./actions";
 import { CALL_OFF_REASONS } from "@/lib/day/relay-types";
 import { formatPaise } from "@/lib/format/money";
+import { Button } from "@/components/ui/button";
+import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
+import { panelClass } from "@/components/ui/panel";
 
 /**
  * This departure cannot run.
@@ -40,7 +43,7 @@ export function CallOffPanel({
   if (state.result) {
     const r = state.result;
     return (
-      <section className="rounded-edge border-terra-deep bg-cream-deep mt-10 border-2 p-5">
+      <section className={panelClass("alert", "mt-10")}>
         {/*
           The banner at the top of the page already says the departure is off —
           it renders from the manifest, which the call-off revalidated. This
@@ -82,22 +85,15 @@ export function CallOffPanel({
   if (!open) {
     return (
       <div className="mt-10">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="rounded-edge dock-target label border-terra-deep text-terra-deep w-full border-2 px-5 font-bold"
-        >
+        <Button onClick={() => setOpen(true)} variant="danger">
           This departure cannot run
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
-    <form
-      action={act}
-      className="rounded-edge border-terra-deep mt-10 border-2 p-5"
-    >
+    <form action={act} className={panelClass("alert", "bg-cream mt-10")}>
       <h2 className="text-base font-bold">Call off this departure</h2>
       <p className="text-forest/80 mt-2 text-sm">
         Everybody on it is cancelled and refunded <strong>in full</strong>, the
@@ -110,16 +106,13 @@ export function CallOffPanel({
         <legend className="label text-forest/75">Why?</legend>
         <div className="mt-2 space-y-2">
           {CALL_OFF_REASONS.map((reason) => (
-            <label
-              key={reason.code}
-              className="rounded-edge border-cream-line bg-cream flex min-h-11 cursor-pointer items-center gap-3 border px-3"
-            >
+            <label key={reason.code} className={choiceClass()}>
               <input
                 type="radio"
                 name="reasonCode"
                 value={reason.code}
                 required
-                className="size-5"
+                className="accent-terra-deep size-5"
               />
               <span className="text-sm">{reason.label}</span>
             </label>
@@ -136,7 +129,7 @@ export function CallOffPanel({
           name="note"
           rows={2}
           maxLength={500}
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 w-full border p-3 text-base"
+          className={textareaClass("mt-2")}
         />
         <p className="text-forest/70 mt-1.5 text-xs">
           Shown on their booking page. Never sent to a phone.
@@ -158,7 +151,7 @@ export function CallOffPanel({
           type="text"
           autoComplete="off"
           required
-          className="rounded-edge border-cream-line bg-cream-deep mt-2 h-14 w-full border px-4 font-mono text-base"
+          className={inputClass("mt-2 font-mono")}
         />
       </div>
 
@@ -169,20 +162,23 @@ export function CallOffPanel({
       ) : null}
 
       <div className="mt-5 flex gap-2">
-        <button
+        <Button
           type="submit"
           disabled={pending}
-          className="rounded-edge dock-target label border-terra-deep text-terra-deep flex-1 border-2 px-5 font-bold"
+          variant="danger"
+          block={false}
+          className="flex-1"
         >
           {pending ? "Cancelling…" : "Call it off"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           onClick={() => setOpen(false)}
-          className="rounded-edge dock-target label border-cream-line bg-cream flex-1 border px-5"
+          variant="secondary"
+          block={false}
+          className="flex-1"
         >
           Keep it
-        </button>
+        </Button>
       </div>
     </form>
   );

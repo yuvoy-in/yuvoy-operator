@@ -18,6 +18,8 @@ import { TusError, readOffset, uploadResumable } from "@/lib/media/tus";
 import { decideSlot, identityOf, type FileIdentity } from "@/lib/media/slot";
 import { marketTime } from "@/lib/format/market-time";
 import { RightsForm } from "./rights-form";
+import { Button } from "@/components/ui/button";
+import { inputClass } from "@/components/ui/input";
 
 /**
  * The four steps, as one screen that never loses its place.
@@ -319,13 +321,13 @@ export function Uploader() {
               {p.message}
             </p>
           ))}
-          <button
-            type="button"
+          <Button
             onClick={() => setPhase({ name: "idle" })}
-            className="rounded-edge dock-target label border-cream-line bg-cream-deep text-forest mt-4 w-full border px-5"
+            variant="secondary"
+            className="mt-4"
           >
             Choose a different clip
-          </button>
+          </Button>
           {/* No intent was asked for, so the operator's single upload slot is
               untouched and the next choice starts clean. */}
           <p className="text-forest/70 mt-2 text-xs">
@@ -355,13 +357,13 @@ export function Uploader() {
               : " or times out"}
             .
           </p>
-          <button
-            type="button"
+          <Button
             onClick={() => setPhase({ name: "idle" })}
-            className="rounded-edge dock-target label border-cream-line bg-cream-deep text-forest mt-4 w-full border px-5"
+            variant="secondary"
+            className="mt-4"
           >
             Pick a clip again
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -374,7 +376,7 @@ export function Uploader() {
             id="reel"
             type="file"
             accept="video/*"
-            className="rounded-edge border-cream-line bg-cream-deep mt-2 w-full border p-4 text-base"
+            className={inputClass("mt-2 h-auto py-4")}
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) void pick(file);
@@ -437,22 +439,21 @@ export function Uploader() {
           ) : null}
 
           {refuses(phase.problems) ? (
-            <button
-              type="button"
+            <Button
               onClick={() => setPhase({ name: "idle" })}
-              className="rounded-edge dock-target label border-cream-line bg-cream-deep text-forest mt-4 w-full border px-5"
+              variant="secondary"
+              className="mt-4"
             >
               Choose a different clip
-            </button>
+            </Button>
           ) : (
             <>
-              <button
-                type="button"
+              <Button
                 onClick={() => void send(phase.file, phase.intent)}
-                className="rounded-edge dock-target label bg-forest text-cream mt-4 w-full px-5 font-bold"
+                className="mt-4"
               >
                 Upload it
-              </button>
+              </Button>
               {/*
                 The awkward truth, said before they start rather than after
                 they lose it. The upload URL may not be persisted anywhere, and
@@ -478,7 +479,7 @@ export function Uploader() {
             might have stopped.
           */}
           <progress
-            className="mt-3 h-3 w-full"
+            className="accent-forest mt-3 h-3 w-full"
             max={phase.file.size}
             value={phase.uploaded}
             aria-label="Upload progress"
@@ -501,13 +502,13 @@ export function Uploader() {
               Nothing was lost.
             </p>
           ) : null}
-          <button
-            type="button"
+          <Button
             onClick={() => abort.current?.abort()}
-            className="rounded-edge dock-target label border-cream-line bg-cream-deep text-forest mt-4 w-full border px-5"
+            variant="secondary"
+            className="mt-4"
           >
             Stop
-          </button>
+          </Button>
         </div>
       ) : null}
 
