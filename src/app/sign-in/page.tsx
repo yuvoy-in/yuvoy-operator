@@ -62,10 +62,16 @@ export default async function SignInPage() {
       {/*
         The way in for somebody who does not have an account yet.
         Deliberately a LINK rather than a second form: applying posts to the
-        public contract, the applicant has no session, and yuvoy.in/operators
-        already does it. Two forms against one endpoint means two copies of
-        the validation and two places that have to stay truthful about what
-        applying means. See yuvoy-operator#2.
+        public contract, the applicant has no session, and the marketing
+        site's /operators page already does it. Two forms against one
+        endpoint means two copies of the validation and two places that have
+        to stay truthful about what applying means. See yuvoy-operator#2.
+
+        The host is www.yuvoy.in, not yuvoy.in, since 3 Sep 2026 (yuvoy-app#12,
+        option A): at launch the root domain becomes the traveller app and the
+        marketing site moves to www. Today www forwards to yuvoy.in in one hop,
+        so this works before the cutover and is direct after it — nothing here
+        has to change on launch day.
       */}
       {/*
         The other door. Somebody invited to an existing business has a code
@@ -88,7 +94,7 @@ export default async function SignInPage() {
       <p className="text-forest/70 mt-4 text-sm">
         Not on Yuvoy yet?{" "}
         <a
-          href="https://yuvoy.in/operators"
+          href="https://www.yuvoy.in/operators"
           className="text-terra-deep tap-target font-bold underline underline-offset-4"
         >
           Apply to run experiences
