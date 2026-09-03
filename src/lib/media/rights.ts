@@ -14,11 +14,20 @@
  * hashes differently from every one before it — which is the audit trail
  * working, not a bug.
  *
- * **Open with the backend** (`yuvoy-api`): nothing in the contract says who
- * owns this wording or how versions are allocated. This build treats the
- * statement as the client's to render and the hash as evidence of what was
- * shown. If the API ever validates the hash against a copy of its own, these
- * two constants become a shared artefact and this comment becomes wrong.
+ * **Settled with the backend, 2 Sep 2026 (yuvoy-api#66): the wording is the
+ * client's.** The API holds no copy and validates against none —
+ * `statementSha256` is evidence of what was rendered, not a checksum the
+ * server compares. Two rules follow, and both are in the contract's own
+ * description now as well as here:
+ *
+ *   - `STATEMENT_VERSION` is a **shared integer** even though the text is
+ *     ours. Change a word, bump it. A new version invalidates every prior
+ *     attestation and forces re-attestation, and that only works if the
+ *     number moves.
+ *   - **A published version's digest never changes.** `rights.test.ts` keeps
+ *     a ledger of version → digest: editing the wording without a bump fails
+ *     there, and rewriting an old row is visible as a diff to a line that
+ *     says it must never be edited.
  */
 
 export const STATEMENT_VERSION = 1;

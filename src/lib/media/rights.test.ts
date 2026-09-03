@@ -24,20 +24,45 @@ describe("the hash of what was on the screen", () => {
     expect(hex).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("is a known value, so an accidental edit to the wording is visible here", async () => {
+  /*
+    Every version ever shown to an operator, and the hash of the exact bytes
+    they saw. APPEND-ONLY. The backend holds no copy and validates against
+    nothing (yuvoy-api#66, 2 Sep 2026), so this ledger is the record of what
+    real people attested to.
+
+      - Changing the wording? Bump STATEMENT_VERSION in rights.ts and ADD a row.
+      - Editing an existing row rewrites what somebody signed. Never.
+  */
+  const PUBLISHED: Record<number, string> = {
+    1: "3a6a40fab663f3d28066b1d7da04ee0fbec207eeec8106ba3435d51f84d7322a",
+  };
+
+  it("hashes to the digest recorded for the current version", async () => {
     /*
-      This assertion is meant to fail when somebody changes the statement.
+      This is the assertion that fails when somebody changes the statement.
 
       "Sending only a version number would mean that editing the wording
       without bumping the version silently turns every prior attestation into a
-      claim about words nobody saw." A test that pinned nothing would let that
-      happen quietly; this one makes the edit a decision — change the text,
-      this fails, and whoever changes it has to bump STATEMENT_VERSION and
-      paste the new hash, which is exactly the moment to think about it.
+      claim about words nobody saw." So an edit is a decision: bump the
+      version, add the new digest to the ledger above, and think about it at
+      exactly that moment.
     */
+    expect(PUBLISHED[STATEMENT_VERSION]).toBeDefined();
     expect(await sha256Hex(RIGHTS_STATEMENT)).toBe(
-      "3a6a40fab663f3d28066b1d7da04ee0fbec207eeec8106ba3435d51f84d7322a",
+      PUBLISHED[STATEMENT_VERSION],
     );
+  });
+
+  it("is the newest version in the ledger — a bump without a row, or a row without a bump, both fail", () => {
+    const versions = Object.keys(PUBLISHED).map(Number);
+    expect(Math.max(...versions)).toBe(STATEMENT_VERSION);
+  });
+
+  it("never reuses a digest across versions", () => {
+    // Two versions sharing one hash is a bump that changed nothing, or a row
+    // that was pasted rather than computed. Either way the ledger is lying.
+    const digests = Object.values(PUBLISHED);
+    expect(new Set(digests).size).toBe(digests.length);
   });
 
   it("changes when a single character does", async () => {
