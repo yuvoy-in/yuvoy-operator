@@ -70,18 +70,18 @@ the registry and `nav.test.ts` pins which routes are which.
 
 ## Built so far
 
-|         | Screen                                   | State                                                                      |
-| ------- | ---------------------------------------- | -------------------------------------------------------------------------- |
-| **O2**  | Operator signs in — phone, code, session | **Built**                                                                  |
-| **O3**  | Getting approved                         | **Half built** — the contract cannot answer the other half, below          |
-| **O4**  | Payout details                           | **Built**                                                                  |
-| **O5**  | Team access, and accepting an invitation | **Built**                                                                  |
-| **O9**  | Seat requests and capacity               | **Built**                                                                  |
-| **O10** | The day, and today's manifest            | **Built**                                                                  |
-| **O11** | Earnings                                 | **Built**                                                                  |
-| **O8**  | Upload a reel                            | **Built** — minus what the contract cannot serve, below                    |
-| O6, O7  | Profile, listings                        | Not started — **both are contract-blocked**                                |
-| O1      | Operator signs up                        | **Closed** — `www.yuvoy.in/operators` already does it; sign-in links to it |
+|         | Screen                                   | State                                                                  |
+| ------- | ---------------------------------------- | ---------------------------------------------------------------------- |
+| **O2**  | Operator signs in — phone, code, session | **Built**                                                              |
+| **O3**  | Getting approved                         | **Half built** — the contract cannot answer the other half, below      |
+| **O4**  | Payout details                           | **Built**                                                              |
+| **O5**  | Team access, and accepting an invitation | **Built**                                                              |
+| **O9**  | Seat requests and capacity               | **Built**                                                              |
+| **O10** | The day, and today's manifest            | **Built**                                                              |
+| **O11** | Earnings                                 | **Built**                                                              |
+| **O8**  | Upload a reel                            | **Built** — minus what the contract cannot serve, below                |
+| O6, O7  | Profile, listings                        | Not started — **both are contract-blocked**                            |
+| O1      | Operator signs up                        | **Closed** — `yuvoy.in/operators` already does it; sign-in links to it |
 
 O10 first because the brief says so: _"If you build one screen well, build the
 manifest."_ It is the screen an operator opens at 6am. O9 second because it is the one

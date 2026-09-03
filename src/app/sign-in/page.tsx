@@ -67,11 +67,11 @@ export default async function SignInPage() {
         endpoint means two copies of the validation and two places that have
         to stay truthful about what applying means. See yuvoy-operator#2.
 
-        The host is www.yuvoy.in, not yuvoy.in, since 3 Sep 2026 (yuvoy-app#12,
-        option A): at launch the root domain becomes the traveller app and the
-        marketing site moves to www. Today www forwards to yuvoy.in in one hop,
-        so this works before the cutover and is direct after it — nothing here
-        has to change on launch day.
+        The host is yuvoy.in — the marketing site's own. The launch is on
+        app.yuvoy.in and operators.yuvoy.in (owner, 3 Sep 2026, yuvoy-app#12),
+        so the marketing site keeps the root domain and this link is direct.
+        The D-102 move of the app onto the root is deferred; if it ever happens
+        this host follows the marketing site, not the app.
       */}
       {/*
         The other door. Somebody invited to an existing business has a code
@@ -94,7 +94,7 @@ export default async function SignInPage() {
       <p className="text-forest/70 mt-4 text-sm">
         Not on Yuvoy yet?{" "}
         <a
-          href="https://www.yuvoy.in/operators"
+          href="https://yuvoy.in/operators"
           className="text-terra-deep tap-target font-bold underline underline-offset-4"
         >
           Apply to run experiences
