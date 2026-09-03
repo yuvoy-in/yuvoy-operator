@@ -32,10 +32,9 @@ export interface InviteState {
     /**
      * The number it went to, echoed back from what was typed.
      *
-     * `TeamMember` carries no phone, so once this screen re-renders the
-     * pending row is a name with no number beside it and a typo is
-     * unrecoverable by eye. Raised on yuvoy-api; until then the confirmation
-     * is the only place the owner can check what they sent.
+     * The list shows the last four digits of every row (`phoneMasked`,
+     * yuvoy-api#62); this is the one place the whole number is shown, once,
+     * while the owner still remembers what they meant to type.
      */
     phone: string;
     role: InvitableRole;

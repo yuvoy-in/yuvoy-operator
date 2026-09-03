@@ -1690,6 +1690,27 @@ components:
           type: boolean
           description: An invitation nobody has accepted yet. `id` is the invitation, not a user.
         lastSeenAt: { type: string, format: date-time }
+        phoneMasked:
+          type: string
+          examples: ["••••0132"]
+          description: >-
+            The last four digits of the number this person signs in with, or
+            that an unaccepted invitation was sent to.
+
+
+            **Why the list carries a number at all.** An invitation is the only
+            way into an operator account that starts with a human typing a
+            number, so it is the only place a typo grants access — at STAFF,
+            every departure's manifest; at MANAGER, capacity, closed dates,
+            earnings and call-off. Without something to check against, an owner
+            sees "Ramesh Toppo · Invited" and cannot tell that the last two
+            digits were transposed at six in the morning.
+
+
+            **Why only four.** Enough to catch a transposition, not enough to
+            be a directory of an operator's staff. The full number is masked in
+            SQL and never enters the API process, so it cannot reach a log line
+            or an error string by accident.
 
     OperatorBooking:
       type: object
@@ -1720,3 +1741,55 @@ components:
           properties:
             name: { type: string }
         createdAt: { type: string, format: date-time }
+        money:
+          type: object
+          description: >-
+            What this one booking contributed, so an operator asking "why is
+            this two hundred rupees less than I expected" can answer it here
+            rather than by messaging us.
+
+
+            **These are the same frozen figures `/earnings` sums**, not a
+            recomputation. Commission was frozen on this booking at capture, so
+            a rate change today cannot restate what was earned last week, and
+            this object cannot disagree with the total for arithmetic reasons.
+
+
+            **It can disagree for a window reason, and that is deliberate.**
+            `/earnings` selects on `created_at` — when the money moved — while
+            this list selects on the slot's `startsAt`, which is when the trip
+            runs. A booking made in March for a trip in April belongs to
+            March's earnings and April's manifest. So summing a screenful of
+            these will NOT reproduce an earnings total unless the two windows
+            were asked the same question. Reconcile one booking against itself,
+            not a page against a period.
+
+
+            Absent on a booking that never captured — a `pending_request`
+            awaiting its operator has moved no money and has none of this.
+          properties:
+            grossPaise:
+              type: integer
+              format: int64
+              description: What the traveller was actually charged, at capture.
+            commissionPaise:
+              type: integer
+              format: int64
+              description: >-
+                Yuvoy's cut, frozen at capture against the rate in force then.
+            refundsPaise:
+              type: integer
+              format: int64
+              description: >-
+                Refunds against this booking that are requested, pending or
+                processed. Live rather than frozen: a refund raised today
+                changes what is owed, and hiding that until settlement would
+                make the screen wrong in the operator's favour.
+            netPaise:
+              type: integer
+              format: int64
+              description: >-
+                `grossPaise - commissionPaise - refundsPaise`. Sent rather than
+                left to the client so that every surface subtracts in the same
+                order and no screen can invent a different answer.
+          required: [grossPaise, commissionPaise, refundsPaise, netPaise]

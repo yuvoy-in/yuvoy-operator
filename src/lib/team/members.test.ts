@@ -61,6 +61,24 @@ describe("narrowing what the API returned", () => {
     expect(toTeamPerson({ id: "x", pending: true }).pending).toBe(true);
   });
 
+  it("passes the masked number through, and refuses anything that is not a mask", () => {
+    /*
+      `phoneMasked` is four digits behind bullets, masked in SQL before it
+      reaches the API process (yuvoy-api#62). If a future contract ever put
+      more of the number here, this portal must not become the directory of an
+      operator's staff that the mask exists to prevent — so more than four
+      digits renders as nothing rather than as a number.
+    */
+    expect(toTeamPerson({ phoneMasked: "••••0132" }).phoneMasked).toBe(
+      "••••0132",
+    );
+    expect(toTeamPerson({}).phoneMasked).toBeUndefined();
+    expect(toTeamPerson({ phoneMasked: "" }).phoneMasked).toBeUndefined();
+    expect(
+      toTeamPerson({ phoneMasked: "+919000000132" }).phoneMasked,
+    ).toBeUndefined();
+  });
+
   it("passes `state` through rather than branching on it", () => {
     // The contract types `state` as a bare string with no enum, so this build
     // does not know its values and must not pretend to.

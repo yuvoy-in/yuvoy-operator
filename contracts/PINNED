@@ -11,6 +11,9 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-ref=cc8ede61ed6b8823571323a32c42ded739543178
+# 3 Sep 2026: two additive fields — `TeamMember.phoneMasked` (yuvoy-api#62,
+# PR #65) and `OperatorBooking.money` (yuvoy-api#60, PR #61). Consumed in the
+# same change as this bump: the team list and the earnings screen.
+ref=2dc9472adb63b5277112fe25a491979dbc814cd4
 branch=master
-pinned_on=2026-09-01
+pinned_on=2026-09-03

@@ -400,11 +400,11 @@ export interface MockTeamMember {
   /**
    * Mock-internal, and deliberately NOT part of the response.
    *
-   * `TeamMember` carries no phone. The API knows the number — it is how the
-   * invitation was sent and how "a number already belonging to any operator"
-   * is refused — but it does not return it, so neither does this. Keeping it
-   * here lets the mock enforce the rule without inventing a field the client
-   * would then be tempted to render.
+   * `TeamMember` never carries the whole number. The API knows it — it is how
+   * the invitation was sent and how "a number already belonging to any
+   * operator" is refused — and returns only its last four digits as
+   * `phoneMasked` (yuvoy-api#62). `publicMember` derives that mask from this
+   * field the same way, so the two cannot disagree.
    */
   phone: string;
 }

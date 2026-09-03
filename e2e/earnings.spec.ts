@@ -37,15 +37,17 @@ test("the arithmetic is shown, not just the total", async ({ page }) => {
     to answer it here rather than by messaging us." A headline with the
     workings hidden answers a different question.
   */
-  await expect(page.getByText("Gross", { exact: true })).toBeVisible();
-  await expect(page.getByText("Yuvoy's commission")).toBeVisible();
-  await expect(page.getByText("Refunds", { exact: true })).toBeVisible();
-  await expect(page.getByText("Net", { exact: true })).toBeVisible();
+  // Scoped to the month's totals: every booking below repeats these labels.
+  const totals = page.getByRole("region", { name: "This month" });
+  await expect(totals.getByText("Gross", { exact: true })).toBeVisible();
+  await expect(totals.getByText("Yuvoy's commission")).toBeVisible();
+  await expect(totals.getByText("Refunds", { exact: true })).toBeVisible();
+  await expect(totals.getByText("Net", { exact: true })).toBeVisible();
 
   // Paise rendered as rupees, in the Indian grouping.
-  await expect(page.getByText("₹54,000")).toBeVisible();
-  await expect(page.getByText("− ₹8,100")).toBeVisible();
-  await expect(page.getByText("₹41,400")).toBeVisible();
+  await expect(totals.getByText("₹54,000")).toBeVisible();
+  await expect(totals.getByText("− ₹8,100")).toBeVisible();
+  await expect(totals.getByText("₹41,400")).toBeVisible();
 
   // And it must not claim the figures disagree when they do not.
   await expect(page.getByText("These figures do not add up")).toHaveCount(0);
@@ -66,14 +68,56 @@ test("a figure that can still move says so; a settled one does not", async ({
   await expect(page.getByText(/Still adding up/)).toHaveCount(0);
 });
 
-test("the per-booking gap is stated rather than hidden", async ({ page }) => {
+test("each booking shows what it contributed, and the list says why it does not sum", async ({
+  page,
+}) => {
   await signIn(page);
   await page.goto("/earnings");
 
-  // The API returns totals only. Saying so beats an operator hunting for a
-  // breakdown that is not there — and it is raised on yuvoy-api, not worked
-  // around on the client.
-  await expect(page.getByText(/per-booking breakdown/)).toBeVisible();
+  const list = page.getByRole("region", { name: "By booking" });
+
+  /*
+    `OperatorBooking.money` (yuvoy-api#60): the same frozen figures the totals
+    sum, per booking, so "why is THIS one less" is answered on the row. Asha
+    Menon's two seats at ₹4,500 — gross ₹9,000, commission ₹1,350, no refund,
+    net ₹7,650 — and the row's own check stays quiet because it adds up.
+  */
+  const row = list.locator("li").filter({ hasText: "YV-4K2M9P7Q" });
+  await expect(row.getByText("Asha Menon")).toBeVisible();
+  await expect(row.getByText("₹9,000")).toBeVisible();
+  await expect(row.getByText("− ₹1,350")).toBeVisible();
+  await expect(row.getByText("₹7,650")).toBeVisible();
+  await expect(row.getByText(/do not add up/)).toHaveCount(0);
+
+  // A refund is a deduction on its own line, not a smaller gross: the
+  // operator sees WHICH line moved.
+  const refunded = list.locator("li").filter({ hasText: "YV-9Q5R2W6C" });
+  await expect(refunded.getByText("− ₹4,500")).toBeVisible();
+  await expect(refunded.getByText("₹3,150")).toBeVisible();
+
+  /*
+    "Absent, not zeroed." A seat request nobody has answered is a booking that
+    has captured nothing, so it carries no money and says so — never a row of
+    ₹0s inviting somebody to reconcile it. `req_urgent` is the request no test
+    ever answers, so it is always here.
+  */
+  const awaiting = list.locator("li").filter({ hasText: "Reuben Mathai" });
+  await expect(awaiting.getByText(/No money has moved/)).toBeVisible();
+  await expect(awaiting.getByText("pending_request")).toBeVisible();
+  await expect(awaiting.getByText("₹0")).toHaveCount(0);
+
+  // No traveller phone number, anywhere on this list (O12).
+  await expect(list.getByText(/\+91\d{10}/)).toHaveCount(0);
+
+  /*
+    Not summed, and the screen says so. `/earnings` selects on when the money
+    moved; this list on when the trip runs — a page of these will not
+    reproduce the total unless both windows agree, and an operator holding a
+    calculator has to be told that before they start.
+  */
+  await expect(
+    list.getByText(/Reconcile one booking against itself/),
+  ).toBeVisible();
 });
 
 test("/earnings has no accessibility violations", async ({ page }) => {

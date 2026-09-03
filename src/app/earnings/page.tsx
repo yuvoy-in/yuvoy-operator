@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
-import { getChangeRequests, getEarnings } from "@/lib/money/fetch";
+import {
+  getChangeRequests,
+  getEarnings,
+  listBookings,
+} from "@/lib/money/fetch";
 import {
   canStillMove,
   describeState,
@@ -9,11 +13,12 @@ import {
   payoutHold,
   reconciles,
 } from "@/lib/money/earnings";
+import { bookingReconciles } from "@/lib/money/bookings";
 import { formatPaise } from "@/lib/format/money";
-import { now } from "@/lib/format/market-time";
-import { Problem } from "@/components/ui/states";
+import { marketDay, marketTime, now } from "@/lib/format/market-time";
+import { Empty, Problem } from "@/components/ui/states";
 import { Screen } from "@/components/chrome/screen";
-import { Panel } from "@/components/ui/panel";
+import { Panel, panelClass } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
 
 export const metadata: Metadata = { title: "Earnings" };
@@ -79,9 +84,10 @@ export default async function EarningsPage({
   const monthsAgo = month === "last" ? 1 : 0;
   const { from, to } = monthRange(monthsAgo, await now());
 
-  const [earnings, changes] = await Promise.all([
+  const [earnings, changes, bookings] = await Promise.all([
     getEarnings(token, from, to),
     getChangeRequests(token),
+    listBookings(token, from, to),
   ]);
 
   const hold = payoutHold(changes);
@@ -125,21 +131,26 @@ export default async function EarningsPage({
         The arithmetic, not a headline. An operator reconciling against their
         own book needs to see WHICH line disagrees.
       */}
-      <Panel className="mt-8 p-0">
-        <dl className="divide-cream-line divide-y">
-          <Line label="Bookings" value={String(earnings.bookings)} />
-          <Line label="Gross" value={formatPaise(earnings.grossPaise)} />
-          <Line
-            label="Yuvoy's commission"
-            value={`− ${formatPaise(earnings.commissionPaise)}`}
-          />
-          <Line
-            label="Refunds"
-            value={`− ${formatPaise(earnings.refundsPaise)}`}
-          />
-          <Line label="Net" value={formatPaise(earnings.netPaise)} emphasis />
-        </dl>
-      </Panel>
+      <section className="mt-8" aria-labelledby="totals">
+        <h2 id="totals" className="label text-forest/75">
+          {monthsAgo === 0 ? "This month" : "Last month"}
+        </h2>
+        <Panel className="mt-3 p-0">
+          <dl className="divide-cream-line divide-y">
+            <Line label="Bookings" value={String(earnings.bookings)} />
+            <Line label="Gross" value={formatPaise(earnings.grossPaise)} />
+            <Line
+              label="Yuvoy's commission"
+              value={`− ${formatPaise(earnings.commissionPaise)}`}
+            />
+            <Line
+              label="Refunds"
+              value={`− ${formatPaise(earnings.refundsPaise)}`}
+            />
+            <Line label="Net" value={formatPaise(earnings.netPaise)} emphasis />
+          </dl>
+        </Panel>
+      </section>
 
       {/*
         If the parts do not sum to the total, say so rather than rendering a
@@ -175,15 +186,124 @@ export default async function EarningsPage({
       </p>
 
       {/*
-        Stated rather than hidden. The API returns totals only, so a
-        per-booking "why is this one ₹200 less" cannot be answered here yet.
-        Raised on yuvoy-api rather than worked around — see the issue.
+        Each booking's own arithmetic — the answer to "why is THIS one ₹200
+        less", which is a per-booking question and the reason this list exists
+        (yuvoy-api#60).
+
+        Deliberately not summed. `/earnings` selects on when the money moved;
+        this list on when the trip runs, so a screenful of these does not
+        reproduce the total above unless both windows happened to agree. The
+        caption says so rather than letting an operator discover it with a
+        calculator.
       */}
-      <p className="text-forest/70 border-cream-line mt-8 border-t pt-6 text-sm">
-        Need the per-booking breakdown? It is not here yet — the totals are all
-        we are given today. Ask us and we will send it while we get it onto this
-        screen.
-      </p>
+      <section className="mt-10" aria-labelledby="by-booking">
+        <h2 id="by-booking" className="label text-forest/75">
+          By booking
+        </h2>
+        <p className="text-forest/70 mt-2 text-sm">
+          Every departure in this window, with what it contributed. These do not
+          add up to the total above, on purpose: the total counts when money
+          moved, this list counts when the trip runs. Reconcile one booking
+          against itself, not this page against the month.
+        </p>
+
+        {bookings === null ? (
+          <div className="mt-4">
+            <Problem
+              title="The bookings did not load"
+              body="The totals above are unaffected. Try again in a moment — nothing here has changed because of it."
+            />
+          </div>
+        ) : bookings.length === 0 ? (
+          <div className="mt-4">
+            <Empty
+              title="No departures in this window"
+              body="Bookings appear here by the day the trip runs. A booking made this month for a trip next month is in next month's list."
+            />
+          </div>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {bookings.map((b) => (
+              <li key={b.id} className={panelClass("raised", "p-0")}>
+                <div className="flex items-baseline justify-between gap-3 px-5 pt-4">
+                  <p className="text-base font-bold">{b.name || b.reference}</p>
+                  <p className="text-forest/70 text-sm">
+                    {b.guests} {b.guests === 1 ? "guest" : "guests"}
+                  </p>
+                </div>
+                {b.reference ? (
+                  <p className="text-forest/70 px-5 font-mono text-sm tracking-wider">
+                    {b.reference}
+                  </p>
+                ) : null}
+                <p className="text-forest/70 mt-1 px-5 text-sm">
+                  {b.experience}
+                  {b.startsAt
+                    ? ` · ${marketDay(b.startsAt, b.timezone)}, ${marketTime(b.startsAt, b.timezone)}`
+                    : null}
+                </p>
+
+                {b.money ? (
+                  <>
+                    <dl className="divide-cream-line border-cream-line mt-3 divide-y border-t">
+                      <Line
+                        label="Gross"
+                        value={formatPaise(b.money.grossPaise)}
+                        compact
+                      />
+                      <Line
+                        label="Yuvoy's commission"
+                        value={`− ${formatPaise(b.money.commissionPaise)}`}
+                        compact
+                      />
+                      <Line
+                        label="Refunds"
+                        value={`− ${formatPaise(b.money.refundsPaise)}`}
+                        compact
+                      />
+                      <Line
+                        label="Net"
+                        value={formatPaise(b.money.netPaise)}
+                        emphasis
+                        compact
+                      />
+                    </dl>
+                    {/*
+                      The per-row twin of the totals' check. `netPaise` is
+                      sent, not derived, so a row that disagrees with its own
+                      parts is told not to be reconciled against rather than
+                      quietly recomputed.
+                    */}
+                    {!bookingReconciles(b.money) ? (
+                      <p
+                        role="alert"
+                        className="text-terra-deep px-5 pb-4 text-sm font-bold"
+                      >
+                        These figures do not add up. Do not reconcile against
+                        this booking — send us the reference and we will find
+                        it.
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  /*
+                    "Absent, not zeroed." A booking that has captured nothing
+                    has nothing to reconcile, and a row of ₹0s would invite
+                    exactly that. `state` is a bare string in the contract, so
+                    it is shown rather than interpreted.
+                  */
+                  <p className="text-forest/70 border-cream-line mt-3 border-t px-5 py-4 text-sm">
+                    No money has moved for this booking yet.
+                    {b.state ? (
+                      <span className="font-bold"> · {b.state}</span>
+                    ) : null}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </Screen>
   );
 }
@@ -217,13 +337,21 @@ function Line({
   label,
   value,
   emphasis,
+  compact,
 }: {
   label: string;
   value: string;
   emphasis?: boolean;
+  /** A row inside a booking, not the month's total: tighter, and no display figure. */
+  compact?: boolean;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 px-5 py-4">
+    <div
+      className={cn(
+        "flex items-baseline justify-between gap-4 px-5",
+        compact ? "py-3" : "py-4",
+      )}
+    >
       <dt
         className={emphasis ? "text-base font-bold" : "text-forest/80 text-sm"}
       >
@@ -232,7 +360,9 @@ function Line({
       <dd
         className={
           emphasis
-            ? "font-display text-3xl leading-none"
+            ? compact
+              ? "text-base font-bold"
+              : "font-display text-3xl leading-none"
             : "text-forest/80 font-mono text-sm"
         }
       >

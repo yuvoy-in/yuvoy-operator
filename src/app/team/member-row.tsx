@@ -103,6 +103,22 @@ export function MemberRow({
         </p>
       )}
 
+      {member.phoneMasked ? (
+        /*
+          Four digits, masked by the API in SQL before they reach this portal.
+          Enough to catch an invitation typed with two digits transposed at six
+          in the morning; not enough to be a directory of an operator's staff.
+          The invite confirmation still echoes the whole number once, at the
+          moment of sending — that catches the typo a minute later; this
+          catches it a day later, which is when somebody actually looks
+          (yuvoy-api#62).
+        */
+        <p className="text-forest/80 mt-2 font-mono text-sm tracking-wider">
+          {member.pending ? "Sent to " : "Signs in with "}
+          {member.phoneMasked}
+        </p>
+      ) : null}
+
       <p className="text-forest/70 mt-2 text-xs">
         {member.pending ? (
           <>

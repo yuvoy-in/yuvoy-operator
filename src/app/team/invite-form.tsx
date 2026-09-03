@@ -134,11 +134,11 @@ export function InviteForm() {
         <Panel tone="done" role="status" className="p-4">
           <p className="text-base font-bold">Code sent to {state.sent.name}</p>
           {/*
-            The number is echoed because the list cannot show it. `TeamMember`
-            carries no phone, so once this re-renders the pending row is a name
-            with nothing to check a typo against — and an invitation sent to a
-            wrong number is an invitation a stranger can accept. Raised with
-            the backend; until it lands, this is the only place to check.
+            The whole number, echoed once, at the moment it matters most. The
+            pending row now shows its last four digits (`phoneMasked`,
+            yuvoy-api#62) — that catches a transposition a day later, when
+            somebody looks at the list; this catches it a minute later, while
+            the owner still remembers what they meant to type. Both stay.
           */}
           <p className="text-forest/80 mt-2 font-mono text-sm">
             {state.sent.phone}

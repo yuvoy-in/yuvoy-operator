@@ -156,9 +156,14 @@ expires unanswered is a traveller told no by a timer.
   number is not final, and nobody should plan against one that is not.
 - **A bank change in flight is shown as a payout hold**, above the number, because it
   changes what the number means: owed, and not moving.
-- **The per-booking gap is stated rather than hidden.** `GET /earnings` returns totals
-  only and `OperatorBooking` carries no money fields, so "why is _this_ booking less"
-  cannot be answered yet. Raised on `yuvoy-api` rather than worked around.
+- **Each booking shows its own arithmetic.** `OperatorBooking.money` (`yuvoy-api#60`,
+  3 Sep 2026) carries the same frozen figures the totals sum, unaggregated, so "why is
+  _this_ booking ₹200 less" is answered on the row. **The list is never summed**:
+  `/earnings` selects on when money moved, `/bookings` on when the trip runs, and the
+  caption says so — reconcile one booking against itself, not a page against a period.
+  A booking that has captured nothing carries no `money` and says "no money has moved",
+  never a row of zeroes; a row whose net disagrees with its own parts says so, the same
+  way the totals do.
 
 ### What O8 does, and the two things it cannot
 
@@ -324,11 +329,13 @@ logs, not in sunlight.
   design and **mints no session**: `/join` says so plainly and sends them to
   sign in, because a screen that implied otherwise leaves somebody tapping a
   portal that keeps asking them to sign in.
-- **The list cannot show a phone number.** `TeamMember` carries none, so a
-  pending row is a name with nothing to check a typo against — and an invitation
-  sent to a wrong number is one a stranger can accept. The invite confirmation
-  echoes what was typed, and the gap is raised on `yuvoy-api` rather than
-  papered over.
+- **The list shows four digits, never the number.** `TeamMember.phoneMasked`
+  (`••••0132`, masked in SQL before it reaches the API — `yuvoy-api#62`) sits on
+  every row, so an invitation typed with two digits transposed is visible the
+  next morning rather than never. The invite confirmation still echoes the whole
+  number once, at the moment of sending. And if the API ever returned more than
+  four digits, `toTeamPerson` drops the field rather than render a staff
+  directory.
 
 ### Capacity, and the three refusals that matter
 

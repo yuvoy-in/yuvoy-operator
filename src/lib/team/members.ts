@@ -23,6 +23,23 @@ export interface TeamPerson {
   state?: string;
   pending: boolean;
   lastSeenAt?: string;
+  /** `••••0132`. The API's mask, passed through only if it is one — see `maskedOnly`. */
+  phoneMasked?: string;
+}
+
+/**
+ * Four digits, or nothing.
+ *
+ * The API masks in SQL and returns `••••0132` (yuvoy-api#62). If a future
+ * contract — or a mock — ever put more of the number here, rendering it would
+ * turn this screen into the directory of an operator's staff that the mask
+ * exists to prevent. So anything with more than four digits is treated as not
+ * a mask, and the row shows nothing rather than a number.
+ */
+function maskedOnly(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const digits = value.replace(/\D/g, "");
+  return digits.length > 0 && digits.length <= 4 ? value : undefined;
 }
 
 /** Whatever `GET /team` returned, narrowed without inventing anything. */
@@ -33,6 +50,7 @@ export function toTeamPerson(raw: {
   state?: string;
   pending?: boolean;
   lastSeenAt?: string;
+  phoneMasked?: string;
 }): TeamPerson {
   return {
     id: raw.id ?? "",
@@ -46,6 +64,7 @@ export function toTeamPerson(raw: {
     */
     pending: raw.pending === true,
     lastSeenAt: raw.lastSeenAt,
+    phoneMasked: maskedOnly(raw.phoneMasked),
   };
 }
 

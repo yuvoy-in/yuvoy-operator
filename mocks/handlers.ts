@@ -170,11 +170,18 @@ function requireSession(request: Request) {
   return null;
 }
 
-/** The response shape: everything except the number, which is never returned. */
+/**
+ * The response shape: everything except the number — plus its last four.
+ *
+ * `phoneMasked` is derived here the way the API derives it in SQL, from the
+ * number that is never returned, so the mock cannot hand the client a mask
+ * that disagrees with the row. Four digits and never more: the API's own test
+ * is that "a correct mask beside a field that leaks is the same failure as no
+ * mask" (yuvoy-api#62), and this mock keeps that property.
+ */
 function publicMember(member: MockTeamMember) {
-  const { phone: _phone, ...rest } = member;
-  void _phone;
-  return rest;
+  const { phone, ...rest } = member;
+  return { ...rest, phoneMasked: `••••${phone.slice(-4)}` };
 }
 
 /**
@@ -212,6 +219,28 @@ function requireManager(request: Request, refusal: string) {
     return envelope("forbidden", refusal, 403);
   }
   return null;
+}
+
+/**
+ * What one captured booking contributed (yuvoy-api#60).
+ *
+ * ₹4,500 a seat and 15% commission — the rate `EARNINGS` implies (810,000 of
+ * 5,400,000), so the two fixtures describe one business rather than two.
+ * `bkg_3` carries a one-seat refund so the "− refunds" line is not always ₹0
+ * and the screen's WHICH-line-moved claim is exercised. Every row reconciles,
+ * so the per-row check runs on a passing case; the failing case is a unit
+ * test, because a mock that lies about arithmetic teaches the wrong thing.
+ */
+function bookingMoney(p: MockParty) {
+  const gross = 450_000 * p.guests;
+  const commission = Math.round(gross * 0.15);
+  const refunds = p.bookingId === "bkg_3" ? 450_000 : 0;
+  return {
+    grossPaise: gross,
+    commissionPaise: commission,
+    refundsPaise: refunds,
+    netPaise: gross - commission - refunds,
+  };
 }
 
 function partyOf(
@@ -759,6 +788,70 @@ export const handlers = [
           (slot.seatsSoldOffline ?? 0) + (offlineSold[slot.id] ?? 0),
       },
     });
+  }),
+
+  /* ------------------------------------------------------------ bookings - */
+
+  /**
+   * The bookings, with what each contributed.
+   *
+   * Derived from the same `SLOTS` the manifest reads and the same `REQUESTS`
+   * the queue reads, so a booking cannot appear here and nowhere else.
+   * Selected on the SLOT's `startsAt`, as the contract says — when the trip
+   * runs, not when it was made — which is the reason the screen must never
+   * sum this list against `/earnings`.
+   *
+   * Money sits on captured rows only. An unanswered seat request is a
+   * `pending_request` booking that has moved nothing, so it comes back with
+   * no `money` at all — "absent, not zeroed" — which is the branch the screen
+   * renders as "no money has moved". A live hold is not a booking and is not
+   * here.
+   */
+  http.get(url("/bookings"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const u = new URL(request.url);
+    const from = u.searchParams.get("from");
+    const to = u.searchParams.get("to");
+    const inWindow = (startsAt: string, timezone: string) => {
+      const day = marketDate(new Date(startsAt), timezone);
+      return (!from || day >= from) && (!to || day <= to);
+    };
+
+    const captured = SLOTS.flatMap((slot) =>
+      inWindow(slot.startsAt, slot.timezone)
+        ? slot.parties
+            .filter((p) => p.bookingId)
+            .map((p) => ({
+              id: p.bookingId,
+              reference: p.reference,
+              state: attendance[p.bookingId]?.outcome ?? p.state,
+              guests: p.guests,
+              experience: slot.title,
+              slot: { startsAt: slot.startsAt, timezone: slot.timezone },
+              contact: { name: p.name },
+              createdAt: new Date(
+                new Date(slot.startsAt).getTime() - 3 * 86_400_000,
+              ).toISOString(),
+              money: bookingMoney(p),
+            }))
+        : [],
+    );
+
+    const awaiting = REQUESTS.filter(
+      (r) => !answered[r.id] && inWindow(r.startsAt, r.timezone),
+    ).map((r) => ({
+      id: r.id,
+      state: "pending_request",
+      guests: r.guests,
+      experience: r.experience,
+      slot: { startsAt: r.startsAt, timezone: r.timezone },
+      contact: { name: r.contactName },
+      createdAt: r.requestedAt,
+    }));
+
+    return HttpResponse.json({ items: [...captured, ...awaiting] });
   }),
 
   /* ------------------------------------------------------------ requests - */

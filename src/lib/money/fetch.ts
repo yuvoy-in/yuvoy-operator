@@ -1,6 +1,7 @@
 import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
 import type { ChangeRequest, Earnings, EarningsState } from "./earnings";
+import { byDeparture, toBookingLine, type BookingLine } from "./bookings";
 
 export async function getEarnings(
   token: string,
@@ -44,5 +45,31 @@ export async function getChangeRequests(
     return data.requests ?? [];
   } catch {
     return [];
+  }
+}
+
+/**
+ * The bookings departing in a window, with what each contributed.
+ *
+ * Soft-failing, but not the way `getChangeRequests` is. That one degrades to
+ * an absent warning; this one is a section of the screen, so its two
+ * failures must never render alike: `null` is "we could not load it" and the
+ * screen says so, `[]` is "nothing departed in this window" and the screen
+ * says that instead. Either way the totals above it stay up — a list that
+ * could not load must not take the number down with it.
+ */
+export async function listBookings(
+  token: string,
+  from: string,
+  to: string,
+): Promise<BookingLine[] | null> {
+  try {
+    const { data, error } = await operatorApi(token).GET("/bookings", {
+      params: { query: { from, to } },
+    });
+    if (error) throw error;
+    return (data.items ?? []).map(toBookingLine).sort(byDeparture);
+  } catch {
+    return null;
   }
 }

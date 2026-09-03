@@ -124,6 +124,26 @@ test("the team is two lists: people, and invitations nobody has used", async ({
   await expect(
     page.getByText(/It grants nothing until they use it/),
   ).toBeVisible();
+
+  /*
+    Four digits on every row (`phoneMasked`, yuvoy-api#62) — the invitation's
+    especially, because it is the one a human typed at six in the morning and
+    the only place a typo grants a stranger access. "Sent to" on an
+    invitation, "Signs in with" on a person: the same field, two different
+    claims.
+  */
+  await expect(
+    page
+      .locator("li")
+      .filter({ hasText: "Ramesh Toppo" })
+      .getByText("Sent to ••••0104"),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("li")
+      .filter({ hasText: "Dev Kapoor" })
+      .getByText("Signs in with ••••0102"),
+  ).toBeVisible();
 });
 
 test("an owner cannot remove themselves, and the row says why", async ({
@@ -162,7 +182,7 @@ test("there is no Owner to invite, and the form says why not", async ({
   await expect(page.getByRole("radio", { name: /Staff/ })).toBeChecked();
 });
 
-test("inviting echoes the number back, because the list cannot show it", async ({
+test("inviting echoes the whole number once, and the pending row keeps its last four", async ({
   page,
 }, testInfo) => {
   const who = invitee("echo", testInfo);
@@ -170,10 +190,11 @@ test("inviting echoes the number back, because the list cannot show it", async (
   await invite(page, who);
 
   /*
-    `TeamMember` carries no phone, so once the list re-renders the pending row
-    is a name with nothing to check a typo against — and an invitation sent to
-    a wrong number is one a stranger can accept. Raised on yuvoy-api; until it
-    lands this confirmation is the only place to check.
+    Two checks against a typo, at two distances. The confirmation echoes the
+    whole number the moment it was sent, while the owner still remembers what
+    they meant to type; the row keeps the last four digits (`phoneMasked`,
+    yuvoy-api#62) for the morning after, when somebody actually looks at the
+    list. An invitation sent to a wrong number is one a stranger can accept.
   */
   await expect(page.getByText(who.phone)).toBeVisible();
   await expect(
@@ -183,9 +204,12 @@ test("inviting echoes the number back, because the list cannot show it", async (
   ).toBeVisible();
 
   // Revalidated: the pending row is the real confirmation, and it says what
-  // an invitation is.
+  // an invitation is — and to which four digits it went.
   const row = page.locator("li").filter({ hasText: who.name });
   await expect(row.getByText(/They have not signed in yet/)).toBeVisible();
+  await expect(
+    row.getByText(`Sent to ••••${who.phone.slice(-4)}`),
+  ).toBeVisible();
 });
 
 test("a number already on the account is refused with one message", async ({
