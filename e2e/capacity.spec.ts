@@ -28,6 +28,57 @@ function mySlot(name: string) {
     : "Snorkel trip to Elephant Beach";
 }
 
+/**
+ * A listing and a free day per project, for the same reason `mySlot` exists.
+ *
+ * Departures created by `POST /slots` live in the same shared mock state, and
+ * the endpoint is idempotent per listing + start time — so two projects adding
+ * the same trip on the same day at the same time would have one of them
+ * legitimately told "nothing to add" and fail a test about creating things.
+ * Different listing, different day, different time: no contention, and none of
+ * these collide with a fixture departure.
+ */
+function myListing(name: string) {
+  return name === "mobile"
+    ? { title: "Try-dive at Nemo Reef", offsetDays: 9, time: "08:15" }
+    : {
+        title: "Snorkel trip to Elephant Beach",
+        offsetDays: 11,
+        time: "08:45",
+      };
+}
+
+/** `YYYY-MM-DD`, n days after the market's today. Built in UTC, as dates are. */
+function dayAfter(today: string, n: number): string {
+  return new Date(Date.parse(`${today}T00:00:00Z`) + n * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** A weekday name that today is not, so a stale filter cannot match by luck. */
+function OTHER_WEEKDAY(today: string): string {
+  const names = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+  const dow = new Date(Date.parse(`${today}T00:00:00Z`)).getUTCDay();
+  return names[(dow + 3) % 7];
+}
+
+/** Opens the add-departures form and returns the market's today off it. */
+async function openAddDepartures(page: Page): Promise<string> {
+  await page.goto("/capacity");
+  await page.getByRole("button", { name: "Add departures" }).click();
+  const first = page.getByLabel("First day");
+  await expect(first).toBeVisible();
+  return (await first.inputValue()) || "";
+}
+
 test("the bar links to capacity, and capacity lists the fortnight", async ({
   page,
 }) => {
@@ -39,7 +90,13 @@ test("the bar links to capacity, and capacity lists the fortnight", async ({
     .click();
   await page.waitForURL("**/capacity");
   await expect(page.getByRole("heading", { name: "Capacity" })).toBeVisible();
-  await expect(page.getByText("Try-dive at Nemo Reef")).toBeVisible();
+  /*
+    `.first()`, because a departure is no longer a fixture-only thing. The
+    create test below adds one to this same listing, and the mock's state is
+    shared across projects — so "the fortnight lists this trip" is what this
+    asserts, not "exactly once".
+  */
+  await expect(page.getByText("Try-dive at Nemo Reef").first()).toBeVisible();
 });
 
 test("seats cannot go below what is already sold", async ({
@@ -48,9 +105,16 @@ test("seats cannot go below what is already sold", async ({
   await signIn(page);
   await page.goto("/capacity");
 
+  /*
+    The earliest matching row, and that is deterministic: departures are sorted
+    by start time and anything the create test adds is days later than the
+    fixtures. Scoped since `POST /slots` landed — before it, one title meant
+    one row.
+  */
   const row = page
     .locator("li")
-    .filter({ hasText: mySlot(testInfo.project.name) });
+    .filter({ hasText: mySlot(testInfo.project.name) })
+    .first();
   const field = row.getByLabel("Seats offered");
 
   // slot_dawn has 5 sold of 8; slot_late_morning has 1 of 12.
@@ -74,7 +138,7 @@ test("reducing to exactly what is sold is allowed", async ({
   await page.goto("/capacity");
 
   const title = mySlot(testInfo.project.name);
-  const row = page.locator("li").filter({ hasText: title });
+  const row = page.locator("li").filter({ hasText: title }).first();
   const sold = testInfo.project.name === "mobile" ? "5" : "1";
 
   await row.getByLabel("Seats offered").fill(sold);
@@ -125,7 +189,8 @@ test("an oversell is never rendered as a success", async ({
 
   const row = page
     .locator("li")
-    .filter({ hasText: mySlot(testInfo.project.name) });
+    .filter({ hasText: mySlot(testInfo.project.name) })
+    .first();
   await row.getByRole("button", { name: "I sold seats at my counter" }).click();
 
   // Far more than the boat holds, on purpose.
@@ -156,9 +221,224 @@ test("an oversell is never rendered as a success", async ({
   await expect(row.getByLabel("Seats you sold at your counter")).toBeVisible();
 });
 
+/**
+ * O9's missing half — `POST /slots`, yuvoy-in/yuvoy-operator#16.
+ *
+ * Until it landed, an operator wanting a Saturday morning trip had to ask
+ * somebody at Yuvoy: the screen could change how many seats an existing
+ * departure held and close a date, and nothing more.
+ */
+test("the number of departures is on the button before anything is sent", async ({
+  page,
+}) => {
+  /*
+    The guard this form is shaped around. `POST /slots` creates the cross
+    product of a range and a list of times, so "next Saturday at seven" and "a
+    departure every day for a fortnight" are one untouched date field apart —
+    and Yuvoy sells a seat on every one it makes. A confirmation dialog would
+    only have the operator confirm the same misunderstanding.
+  */
+  await signIn(page);
+  const today = await openAddDepartures(page);
+
+  // One day, one time.
+  await expect(
+    page.getByRole("button", { name: "Add 1 departure" }),
+  ).toBeVisible();
+
+  // A fortnight, same time: fourteen, said before the press.
+  await page.getByLabel("Last day").fill(dayAfter(today, 13));
+  await expect(
+    page.getByRole("button", { name: "Add 14 departures" }),
+  ).toBeVisible();
+
+  // Two times a day across that fortnight: twenty-eight.
+  await page.getByRole("button", { name: "Add another time" }).click();
+  await page.getByRole("textbox", { name: "Departure time 2" }).fill("14:00");
+  await expect(
+    page.getByRole("button", { name: "Add 28 departures" }),
+  ).toBeVisible();
+
+  /*
+    Saturdays only. Exactly two fall in any fourteen-day window, whatever day
+    the window opens on — which is why this can be asserted without knowing
+    what today is.
+  */
+  await page.getByRole("button", { name: "Remove departure time 2" }).click();
+  await page.getByRole("checkbox", { name: "Saturday" }).check();
+  await expect(
+    page.getByRole("button", { name: "Add 2 departures" }),
+  ).toBeVisible();
+});
+
+test("a weekday nothing in the range matches is refused, not sent", async ({
+  page,
+}) => {
+  /*
+    The API would answer `created: 0` for this, which is indistinguishable from
+    "they already existed". So the difference is caught here, where it can
+    still be explained.
+  */
+  await signIn(page);
+  const today = await openAddDepartures(page);
+
+  // A Monday-to-Wednesday range, asking for Saturdays.
+  const monday = (() => {
+    let d = Date.parse(`${today}T00:00:00Z`);
+    while (new Date(d).getUTCDay() !== 1) d += 86_400_000;
+    return new Date(d).toISOString().slice(0, 10);
+  })();
+  await page.getByLabel("First day").fill(monday);
+  await page.getByLabel("Last day").fill(dayAfter(monday, 2));
+  await page.getByRole("checkbox", { name: "Saturday" }).check();
+
+  await expect(page.getByText(/nothing to add/i)).toBeVisible();
+});
+
+test("the preview cannot say one thing while the form sends another", async ({
+  page,
+}) => {
+  /*
+    Three ways the count on the button and the body actually posted came apart,
+    each found by reading the form rather than by a failure:
+
+    1. Weekday chips only exist while the range spans days. Narrowing back to
+       one day unmounted their inputs while this component still held what was
+       ticked — so the preview filtered by a weekday the form was no longer
+       sending.
+    2. A cleared number field submits "", and `z.coerce.number()` reads "" as
+       zero. `cutoffHours` emptied would have become "bookings close 0 hours
+       before departure" rather than the default.
+    3. An empty time input was dropped server-side, so the server would have
+       created fewer departures than the operator was shown a count for.
+  */
+  await signIn(page);
+  const today = await openAddDepartures(page);
+
+  /*
+    1. Pick a weekday over a range, then collapse the range to one day.
+
+    The weekday must be one today is NOT, or the stale filter still matches and
+    the test passes against the bug. Written the other way round first, on a
+    Saturday, asserting "Saturday" — and it passed with the fix reverted.
+  */
+  const other = OTHER_WEEKDAY(today);
+  await page.getByLabel("Last day").fill(dayAfter(today, 13));
+  await page.getByRole("checkbox", { name: other }).check();
+  // Any single weekday falls exactly twice in a fourteen-day window.
+  await expect(
+    page.getByRole("button", { name: "Add 2 departures" }),
+  ).toBeVisible();
+
+  await page.getByLabel("Last day").fill(today);
+  await expect(page.getByRole("checkbox", { name: other })).toHaveCount(0);
+  /*
+    One departure, whatever today's weekday is. Before the fix this read
+    "nothing to add" on six days out of seven — a refusal of a plan the server
+    would have created.
+  */
+  await expect(
+    page.getByRole("button", { name: "Add 1 departure" }),
+  ).toBeVisible();
+
+  // 3. A half-typed second time is refused, not quietly dropped.
+  await page.getByRole("button", { name: "Add another time" }).click();
+  await expect(page.getByText("Times look like 07:00.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Add \d+/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Remove departure time 2" }).click();
+  await expect(
+    page.getByRole("button", { name: "Add 1 departure" }),
+  ).toBeVisible();
+});
+
+test("a departure is created, appears in the list, and is not created twice", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await signIn(page);
+  const mine = myListing(testInfo.project.name);
+  const today = await openAddDepartures(page);
+  const day = dayAfter(today, mine.offsetDays);
+
+  await page.getByLabel("Which trip").selectOption({ label: mine.title });
+  await page.getByLabel("First day").fill(day);
+  await page.getByLabel("Last day").fill(day);
+  await page.getByRole("textbox", { name: "Departure time 1" }).fill(mine.time);
+  await page.getByLabel("Seats on each departure").fill("6");
+
+  await page.getByRole("button", { name: "Add 1 departure" }).click();
+  await expect(page.getByText("1 departure added")).toBeVisible();
+
+  // It is on the list, read back from the server rather than assumed.
+  await page.goto("/capacity");
+  const row = page.locator("li").filter({ hasText: mine.title });
+  await expect(row.filter({ hasText: mine.time })).toHaveCount(1);
+
+  /*
+    And asking again does not sell the same boat twice. "Dates that already
+    have a departure at that time are left alone, so `created: 0` is a
+    legitimate answer and not a failure" — which the screen has to say as a
+    no-op rather than as an error, or an operator told "nothing was added"
+    reasonably tries again.
+  */
+  await page.getByRole("button", { name: "Add departures" }).click();
+  await page.getByLabel("Which trip").selectOption({ label: mine.title });
+  await page.getByLabel("First day").fill(day);
+  await page.getByLabel("Last day").fill(day);
+  await page.getByRole("textbox", { name: "Departure time 1" }).fill(mine.time);
+  await page.getByRole("button", { name: "Add 1 departure" }).click();
+
+  await expect(page.getByText("Nothing to add")).toBeVisible();
+  await expect(page.getByText(/never sells the same boat twice/)).toBeVisible();
+  // Still one row, not two.
+  await page.goto("/capacity");
+  await expect(
+    page
+      .locator("li")
+      .filter({ hasText: mine.title })
+      .filter({ hasText: mine.time }),
+  ).toHaveCount(1);
+});
+
+test("a departure says whether its seats are held, and says nothing when it does not know", async ({
+  page,
+}) => {
+  /*
+    `bookingMode` is per departure, not per listing — "a listing can carry
+    both". It changes what `remaining` means: on an `allotment` departure it is
+    seats Yuvoy holds; on a `request` one nothing is held until the operator
+    answers. A row without the field must say NEITHER, because defaulting to
+    `allotment` would promise held seats on a departure holding none.
+  */
+  await signIn(page);
+  await page.goto("/capacity");
+
+  const held = page
+    .locator("li")
+    .filter({ hasText: "Try-dive at Nemo Reef" })
+    .first();
+  await expect(held.first()).toContainText("Yuvoy holds these seats");
+
+  const asked = page
+    .locator("li")
+    .filter({ hasText: "Snorkel trip to Elephant Beach" });
+  await expect(asked.first()).toContainText("You answer each booking");
+
+  // The charter fixture carries no mode. The row says nothing either way.
+  const silent = page.locator("li").filter({ hasText: "Private boat charter" });
+  await expect(silent).toHaveCount(1);
+  await expect(silent).not.toContainText("Yuvoy holds these seats");
+  await expect(silent).not.toContainText("You answer each booking");
+});
+
 test("/capacity has no accessibility violations", async ({ page }) => {
   await signIn(page);
   await page.goto("/capacity");
+  // Both forms open, or the audit only ever sees two collapsed buttons.
+  await page.getByRole("button", { name: "Add departures" }).click();
+  await page
+    .getByRole("button", { name: "Close dates to new bookings" })
+    .click();
   await page.waitForLoadState("networkidle");
 
   const results = await new AxeBuilder({ page })

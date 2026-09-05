@@ -27,6 +27,7 @@ import {
   SLOTS,
   TEAM,
   type MockParty,
+  type MockSlot,
   type MockTeamMember,
 } from "./fixtures";
 
@@ -131,6 +132,14 @@ let uploadIntents: Record<
 /** Assets that finished processing, and what has been attested about them. */
 let mediaAssets: Record<string, { attested: boolean; withdrawn?: boolean }> =
   {};
+/**
+ * Departures created in this session, by `POST /slots`.
+ *
+ * Kept beside the fixtures rather than pushed into them: `SLOTS` is a `const`
+ * every other handler reads, and a test that added to it would leak into the
+ * next one through a module nothing resets.
+ */
+let createdSlots: MockSlot[] = [];
 
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
@@ -147,6 +156,7 @@ export function __resetOperatorMocks() {
   signups = [];
   uploadIntents = {};
   mediaAssets = {};
+  createdSlots = [];
   resetMockUploads();
 }
 
@@ -828,6 +838,113 @@ export const handlers = [
 
   /* --------------------------------------------------------- the day ----- */
 
+  /**
+   * Create departures — the one thing the capacity screen could not do.
+   *
+   * Two behaviours are modelled rather than stubbed, because the screen is
+   * built around both:
+   *
+   * 1. **The cross product.** A range and a list of times make one departure
+   *    per combination, filtered by `weekdays` where given. That is what makes
+   *    an untouched date field expensive, and it is what the form's live count
+   *    is checked against.
+   * 2. **Idempotence.** "Dates that already have a departure at that time are
+   *    left alone, so `created: 0` is a legitimate answer and not a failure."
+   *    A mock that created duplicates would let this portal ship a receipt for
+   *    a state the API never produces.
+   *
+   * A listing that is not this operator's answers **404, never 403** — the
+   * contract chose that so a refusal cannot confirm the listing exists.
+   */
+  http.post(url("/slots"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const me = sessionUser(request)!;
+    if (!canManage(me)) {
+      return envelope("forbidden", "STAFF cannot add departures.", 403);
+    }
+
+    const body = (await request.json()) as {
+      experienceId?: string;
+      fromDate?: string;
+      toDate?: string;
+      times?: string[];
+      weekdays?: number[];
+      seats?: number;
+      capacity?: number;
+      durationMinutes?: number;
+      cutoffHours?: number;
+    };
+
+    const listing = [...SLOTS, ...createdSlots].find(
+      (s) => s.experienceId === body.experienceId,
+    );
+    if (!listing) return envelope("not_found", "No such listing.", 404);
+
+    const times = (body.times ?? []).filter((t) => /^\d{2}:\d{2}$/.test(t));
+    const seats = body.seats ?? 0;
+    if (!body.fromDate || !times.length || seats < 1) {
+      return envelope(
+        "bad_request",
+        "A date, a time and seats are needed.",
+        400,
+      );
+    }
+
+    const from = Date.parse(`${body.fromDate}T00:00:00Z`);
+    const to = Date.parse(`${body.toDate || body.fromDate}T00:00:00Z`);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) {
+      return envelope("bad_request", "That date range runs backwards.", 400);
+    }
+
+    const wanted = new Set(body.weekdays ?? []);
+    const existing = new Set(
+      [...SLOTS, ...createdSlots]
+        .filter((s) => s.experienceId === body.experienceId)
+        .map((s) => `${s.startsAt}`),
+    );
+
+    let created = 0;
+    for (let t = from; t <= to; t += 86_400_000) {
+      const d = new Date(t);
+      if (wanted.size && !wanted.has(d.getUTCDay())) continue;
+      const day = d.toISOString().slice(0, 10);
+      for (const time of times) {
+        // The market is +05:30 and every fixture departure is stored that way.
+        const startsAt = `${day}T${time}:00+05:30`;
+        if (existing.has(startsAt)) continue;
+        existing.add(startsAt);
+        created += 1;
+        createdSlots.push({
+          id: `slot_new_${createdSlots.length}_${day.replace(/-/g, "")}_${time.replace(":", "")}`,
+          experienceId: listing.experienceId,
+          title: listing.title,
+          startsAt,
+          timezone: listing.timezone,
+          seats,
+          sold: 0,
+          remaining: seats,
+          bookingMode: listing.bookingMode,
+          status: "open",
+          meetingPoint: listing.meetingPoint,
+          parties: [],
+          seatsSoldOffline: 0,
+        });
+      }
+    }
+
+    return HttpResponse.json(
+      {
+        created,
+        note:
+          created === 0
+            ? "Every one of those already had a departure at that time."
+            : "They are on sale now.",
+      },
+      { status: 201 },
+    );
+  }),
+
   http.get(url("/slots"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
@@ -836,7 +953,9 @@ export const handlers = [
     const from = u.searchParams.get("from");
     const to = u.searchParams.get("to");
 
-    const inRange = SLOTS.filter((s) => {
+    // Created departures are read back like any other. A mock whose reads
+    // ignore its writes proves the message rendered and nothing about the row.
+    const inRange = [...SLOTS, ...createdSlots].filter((s) => {
       const day = new Intl.DateTimeFormat("en-CA", {
         timeZone: s.timezone,
       }).format(new Date(s.startsAt));
@@ -864,6 +983,9 @@ export const handlers = [
           seats,
           sold,
           remaining: Math.max(0, seats - sold),
+          // Omitted when the fixture omits it. One departure has no mode on
+          // purpose: the screen must say nothing rather than assume held seats.
+          ...(s.bookingMode ? { bookingMode: s.bookingMode } : {}),
           status: calledOff[s.id] ? "cancelled" : s.status,
         };
       }),

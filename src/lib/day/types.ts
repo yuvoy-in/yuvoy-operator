@@ -63,5 +63,39 @@ export interface OperatorSlot {
   seats: number;
   sold: number;
   remaining: number;
+  /**
+   * Whether this departure holds seats or waits on the operator to answer.
+   *
+   * On the departure rather than the listing, because "a listing can carry
+   * both, and this screen is looking at departures". It changes what
+   * `remaining` means: on an `allotment` departure it is seats Yuvoy is
+   * holding, and on a `request` one nothing is held until the operator says
+   * yes.
+   *
+   * Optional because the field is new (yuvoy-api@e16217a8) and a row without
+   * it must render as a row that says nothing, not as `allotment`. Guessing
+   * would put "3 seats left" against a departure holding none.
+   */
+  bookingMode?: "allotment" | "request";
   status: string;
+}
+
+/**
+ * One of the operator's listings, as far as this portal can know them.
+ *
+ * **Derived from departures, because there is no way to enumerate listings.**
+ * The operator contract has no `GET /experiences` — `POST /experiences/{id}/revisions`
+ * takes an id nothing hands out — so the only place a listing's id and title
+ * appear is on the departures it already has.
+ *
+ * That is a real limitation with a real edge: an operator whose listing has no
+ * departure anywhere in the window cannot add one to it, and an operator with
+ * no departures at all cannot add their first. The capacity screen says so
+ * rather than rendering an empty picker, and it is raised on yuvoy-api rather
+ * than papered over — a text field for a listing id would be worse, because
+ * the id is not something anybody has.
+ */
+export interface OperatorListing {
+  id: string;
+  title: string;
 }

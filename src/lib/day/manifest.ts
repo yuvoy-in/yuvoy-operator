@@ -1,6 +1,6 @@
 import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
-import type { Manifest, OperatorSlot } from "./types";
+import type { Manifest, OperatorListing, OperatorSlot } from "./types";
 
 export * from "./types";
 
@@ -52,7 +52,72 @@ export async function listSlots(
       seats: s.seats ?? 0,
       sold: s.sold ?? 0,
       remaining: s.remaining ?? 0,
+      /*
+        Left undefined when absent rather than defaulted. `allotment` is the
+        commoner mode and would be the tempting default, and it is the one that
+        makes a claim: it would put "3 seats left" against a departure that
+        holds nothing until the operator answers.
+      */
+      ...(s.bookingMode ? { bookingMode: s.bookingMode } : {}),
       status: s.status ?? "open",
     }))
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+/**
+ * How far either side of today to look for the operator's listings.
+ *
+ * Wider than the fortnight `/capacity` edits, and asymmetric on purpose. The
+ * operator who most needs to add a departure is the one with none in the next
+ * two weeks — the start of a season, or a schedule that has run out — and
+ * their listings are visible only in departures that have already sailed. A
+ * picker built from the editing window alone would be empty exactly when it
+ * matters.
+ */
+const LISTING_LOOKBACK_DAYS = 120;
+const LISTING_LOOKAHEAD_DAYS = 120;
+
+function shiftDate(day: string, days: number): string {
+  const t = Date.parse(`${day}T00:00:00Z`);
+  return new Date(t + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The operator's listings, as far as they can be known.
+ *
+ * See `OperatorListing`: there is no endpoint that enumerates them, so this
+ * reads them off the departures they appear on. An empty result means "we
+ * cannot see any", never "you have none" — and the screen says the former,
+ * because they are different sentences and only one of them is ours to say.
+ *
+ * Deduplicated by id, with the most recently seen title winning: a listing
+ * renamed since its older departures should show under the name it has now.
+ */
+export async function listListings(
+  token: string,
+  today: string,
+): Promise<OperatorListing[]> {
+  const { data, error } = await operatorApi(token).GET("/slots", {
+    params: {
+      query: {
+        from: shiftDate(today, -LISTING_LOOKBACK_DAYS),
+        to: shiftDate(today, LISTING_LOOKAHEAD_DAYS),
+      },
+    },
+  });
+  if (error) throw error;
+
+  const byId = new Map<string, OperatorListing>();
+  for (const s of [...(data.items ?? [])].sort((a, b) =>
+    (a.startsAt ?? "").localeCompare(b.startsAt ?? ""),
+  )) {
+    if (!s.experienceId) continue;
+    byId.set(s.experienceId, {
+      id: s.experienceId,
+      title: s.title ?? "Your trip",
+    });
+  }
+  return [...byId.values()].sort((a, b) =>
+    a.title.localeCompare(b.title, "en"),
+  );
 }

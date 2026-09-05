@@ -75,6 +75,15 @@ export interface MockSlot {
   seats: number;
   sold: number;
   remaining: number;
+  /**
+   * Held seats, or the operator answering.
+   *
+   * Optional here as it is in the contract, and one fixture leaves it out on
+   * purpose: a row that says nothing about its mode is the only way to test
+   * that the screen says nothing either, rather than defaulting to
+   * `allotment` and claiming seats are held that are not.
+   */
+  bookingMode?: "allotment" | "request";
   status: string;
   meetingPoint: string;
   calledOff?: { reasonCode: string };
@@ -100,6 +109,7 @@ export const SLOTS: MockSlot[] = [
     seats: 8,
     sold: 5,
     remaining: 3,
+    bookingMode: "allotment",
     status: "open",
     meetingPoint: "Beach 3 dive hut, 06:30",
     seatsSoldOffline: 2,
@@ -155,6 +165,12 @@ export const SLOTS: MockSlot[] = [
     seats: 12,
     sold: 1,
     remaining: 11,
+    /*
+      The one the screen must not guess. Nothing is held on a request-mode
+      departure until the operator answers, so "11 left" read as held seats is
+      a promise Yuvoy cannot keep.
+    */
+    bookingMode: "request",
     status: "open",
     meetingPoint: "Havelock jetty, gate 2",
     seatsSoldOffline: 0,

@@ -602,7 +602,14 @@ for (const f of walk(APP)) {
  *   - **OWNER only** — a 403 whose description names OWNER. Four endpoints:
  *     both team writes, the bank change, and the brake.
  *   - **OWNER or MANAGER** (`canManage`) — an operation that says "Requires
- *     OWNER or MANAGER", or whose 403 says "STAFF cannot …".
+ *     OWNER or MANAGER", or "OWNER or MANAGER only", or whose 403 says
+ *     "STAFF cannot …".
+ *
+ * The third phrasing was added when `POST /slots` landed saying "OWNER or
+ * MANAGER only." and this parser recognised none of it — so the one new write
+ * on the capacity screen was the one endpoint whose role gate nothing checked.
+ * A check that matches on prose grows a phrase every time the prose does, and
+ * the alternative — a list written here — is a list that goes stale silently.
  *
  * `pnpm contract:check` guarantees this file is the pinned document byte for
  * byte, so parsing it is safe and it stays true when the contract moves.
@@ -644,6 +651,7 @@ const NEEDS_MANAGE = [];
       OWNER_ONLY.push({ method: upper, path });
     } else if (
       /Requires OWNER or MANAGER/.test(block) ||
+      /OWNER or MANAGER only/.test(block) ||
       /STAFF cannot/.test(block)
     ) {
       NEEDS_MANAGE.push({ method: upper, path });

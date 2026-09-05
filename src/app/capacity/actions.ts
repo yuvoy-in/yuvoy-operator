@@ -12,11 +12,18 @@ import {
   capacityProblem,
   type BlackoutReason,
 } from "@/lib/day/capacity-types";
+import {
+  DEFAULT_CUTOFF_HOURS,
+  DEFAULT_DURATION_MINUTES,
+  countDepartures,
+  departureProblem,
+} from "@/lib/day/departures";
+import { marketDays } from "@/lib/format/market-time";
 
 /**
- * The three capacity writes.
+ * The four capacity writes.
  *
- * All three are OWNER or MANAGER, and all three refuse in ways that matter
+ * All four are OWNER or MANAGER, and all four refuse in ways that matter
  * more than they succeed — which is why every branch here says what actually
  * happened rather than "try again".
  */
@@ -288,5 +295,163 @@ export async function recordOfflineSale(
       if (err.status === 400) return { message: err.message };
     }
     return { message: "Not recorded. Try again." };
+  }
+}
+
+/* -------------------------------------------------------- new departures */
+
+export interface DepartureState {
+  message?: string;
+  field?: string;
+  result?: { created: number; asked: number; note?: string };
+}
+
+const departureSchema = z.object({
+  experienceId: z.string().min(1),
+  fromDate: z.string(),
+  toDate: z.string(),
+  times: z.array(z.string()).min(1).max(12),
+  weekdays: z.array(z.coerce.number().int().min(0).max(6)),
+  seats: z.coerce.number().int().min(1).max(MAX_SEATS),
+  /*
+    Empty is not zero. The field is optional in the contract and "defaults to
+    `seats`", so an untouched input must be omitted rather than sent as 0 —
+    which would be a boat that physically holds nobody.
+  */
+  capacity: z.union([
+    z.literal(""),
+    z.coerce.number().int().min(1).max(MAX_SEATS),
+  ]),
+  durationMinutes: z.coerce.number().int().min(15).max(1440),
+  cutoffHours: z.coerce.number().int().min(0).max(168),
+});
+
+/**
+ * Create departures.
+ *
+ * The one thing the capacity screen could not do. Until `POST /slots` an
+ * operator wanting a Saturday morning trip had to ask somebody at Yuvoy.
+ *
+ * **`created: 0` is a success.** "Dates that already have a departure at that
+ * time are left alone, so `created: 0` is a legitimate answer and not a
+ * failure — a retry after a timeout does not sell the same boat twice." So the
+ * result carries both what was asked for and what was made, and the screen
+ * says which of the two happened rather than rendering an error over an
+ * idempotent no-op.
+ *
+ * **404 is the answer for another operator's listing**, never 403: "you may
+ * not touch that" confirms it is there. The copy here must not undo that by
+ * implying the listing exists and is somebody else's.
+ */
+export async function addDepartures(
+  _prev: DepartureState,
+  form: FormData,
+): Promise<DepartureState> {
+  const parsed = departureSchema.safeParse({
+    experienceId: form.get("experienceId"),
+    fromDate: form.get("fromDate"),
+    toDate: form.get("toDate"),
+    /*
+      NOT filtered for empties. An empty time input is a half-filled form, and
+      dropping it here would have the server create fewer departures than the
+      operator was shown a count for — `departureProblem` refuses it instead,
+      with the same sentence the form already showed.
+    */
+    times: form.getAll("times").map(String),
+    weekdays: form.getAll("weekdays").map(String).filter(Boolean),
+    seats: form.get("seats"),
+    capacity: form.get("capacity") ?? "",
+    /*
+      `||`, not `??`, for both of these. A cleared number field submits `""`,
+      and `z.coerce.number()` reads `""` as **0** — so `??` would turn "I
+      emptied the box" into "bookings close 0 hours before departure", which is
+      a departure sellable up to the moment it leaves. `"0"` is a non-empty
+      string and still reaches the schema, so a deliberate zero survives.
+    */
+    durationMinutes: form.get("durationMinutes") || DEFAULT_DURATION_MINUTES,
+    cutoffHours: form.get("cutoffHours") || DEFAULT_CUTOFF_HOURS,
+  });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const field = String(issue.path[0] ?? "");
+    return {
+      field,
+      message:
+        field === "experienceId"
+          ? "Pick which trip these departures are for."
+          : field === "seats"
+            ? `How many seats? From 1 to ${MAX_SEATS}.`
+            : "Something in the form was not right. Check it and try again.",
+    };
+  }
+
+  const { experienceId, capacity, ...plan } = parsed.data;
+
+  /*
+    The market's today, not the phone's. A device an hour behind would let
+    somebody add a departure to a day that has already gone in the Andamans,
+    and the API would take it.
+  */
+  const { today } = await marketDays();
+  const problem = departureProblem(plan, today);
+  if (problem) return problem;
+
+  const { token, me } = await requireOperator();
+  if (!me.canManage) return { message: ROLE_REFUSAL };
+
+  const asked = countDepartures(plan);
+
+  try {
+    const { data, error } = await operatorApi(token).POST("/slots", {
+      body: {
+        experienceId,
+        fromDate: plan.fromDate,
+        toDate: plan.toDate,
+        times: plan.times,
+        /*
+          Omitted rather than sent empty. "Empty means every day in the range,
+          which is what a one-off departure wants" — and an empty array would
+          say the same thing, but omitting it is what the contract describes
+          and keeps the two readings from ever diverging.
+        */
+        ...(plan.weekdays.length ? { weekdays: plan.weekdays } : {}),
+        seats: plan.seats,
+        ...(typeof capacity === "number" ? { capacity } : {}),
+        durationMinutes: plan.durationMinutes,
+        cutoffHours: plan.cutoffHours,
+      },
+    });
+    if (error) throw error;
+
+    revalidatePath("/capacity");
+    revalidatePath("/today");
+    return { result: { created: data.created ?? 0, asked, note: data.note } };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return { message: "No signal. Nothing was added." };
+    }
+    if (err instanceof OperatorApiError) {
+      if (err.status === 403) {
+        return {
+          message:
+            "Your role cannot add departures. An owner or manager has to.",
+        };
+      }
+      if (err.isNotFound) {
+        /*
+          The contract answers 404 for a listing belonging to another operator
+          precisely so a 403 cannot confirm it is there. Saying "that is not
+          yours" here would hand back the confirmation the status code was
+          chosen to withhold.
+        */
+        return {
+          field: "experienceId",
+          message:
+            "We could not find that trip. Reload the page and pick it again.",
+        };
+      }
+      if (err.status === 400) return { message: err.message };
+    }
+    return { message: "Nothing was added. Try again." };
   }
 }

@@ -45,6 +45,26 @@ export function SlotCapacity({ slot }: { slot: OperatorSlot }) {
       <p className="text-forest/70 mt-1 text-sm">
         {slot.sold} of {slot.seats} sold · {slot.remaining} left
       </p>
+      {/*
+        What "left" means on this row, said only when the API says which.
+
+        `bookingMode` is per departure rather than per listing, because "a
+        listing can carry both". On an `allotment` departure the remaining
+        count is seats Yuvoy is holding; on a `request` one nothing is held
+        until the operator answers, so the same number means something else
+        entirely. Absent renders nothing at all — defaulting to `allotment`
+        would put a held-seats reading on a departure holding none.
+      */}
+      {slot.bookingMode === "request" ? (
+        <p className="text-forest/70 mt-1 text-xs">
+          You answer each booking on this one. Nothing is held until you say
+          yes.
+        </p>
+      ) : slot.bookingMode === "allotment" ? (
+        <p className="text-forest/70 mt-1 text-xs">
+          Yuvoy holds these seats. Travellers book them instantly.
+        </p>
+      ) : null}
 
       {/* ------------------------------------------------ seats offered -- */}
       <form action={setSeats} className="mt-4">

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
-import { listSlots } from "@/lib/day/manifest";
+import { listListings, listSlots } from "@/lib/day/manifest";
 import { marketDays } from "@/lib/format/market-time";
 import { Empty, Problem } from "@/components/ui/states";
 import { SlotCapacity } from "./slot-capacity";
 import { BlackoutForm } from "./blackout-form";
+import { DepartureForm } from "./departure-form";
 import { Screen } from "@/components/chrome/screen";
 
 export const metadata: Metadata = { title: "Capacity" };
@@ -31,7 +32,18 @@ export default async function CapacityPage() {
 
   const end = new Date(`${today}T00:00:00+05:30`);
   end.setDate(end.getDate() + DAYS_AHEAD);
-  const slots = await listSlots(token, today, end.toISOString().slice(0, 10));
+  /*
+    Two calls, in parallel, over different windows on purpose.
+
+    The fortnight is what this screen edits. The listings are read off a much
+    wider one because there is no `GET /experiences` — the only place a trip's
+    id and name appear is on its departures — and the operator who most needs
+    to add one is the operator with none in the next fortnight.
+  */
+  const [slots, listings] = await Promise.all([
+    listSlots(token, today, end.toISOString().slice(0, 10)),
+    listListings(token, today),
+  ]);
 
   return (
     <Screen>
@@ -54,6 +66,20 @@ export default async function CapacityPage() {
             title="You can see these, but not change them"
             body="Seats, closed dates and counter sales need an owner or a manager."
           />
+        </div>
+      ) : null}
+
+      {/*
+        Adding comes before closing, and both before the list.
+
+        The order is the order of the questions an operator arrives with: is
+        there a departure for Saturday, is the week off, and what do the ones I
+        have look like. Both forms are collapsed until pressed, so the list is
+        still the first thing on the screen.
+      */}
+      {me.canManage ? (
+        <div className="mt-8">
+          <DepartureForm listings={listings} today={today} />
         </div>
       ) : null}
 
