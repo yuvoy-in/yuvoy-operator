@@ -96,16 +96,38 @@ function shiftDate(day: string, days: number): string {
 export async function listListings(
   token: string,
   today: string,
-): Promise<OperatorListing[]> {
-  const { data, error } = await operatorApi(token).GET("/slots", {
-    params: {
-      query: {
-        from: shiftDate(today, -LISTING_LOOKBACK_DAYS),
-        to: shiftDate(today, LISTING_LOOKAHEAD_DAYS),
+): Promise<OperatorListing[] | null> {
+  let data;
+  try {
+    const res = await operatorApi(token).GET("/slots", {
+      params: {
+        query: {
+          from: shiftDate(today, -LISTING_LOOKBACK_DAYS),
+          to: shiftDate(today, LISTING_LOOKAHEAD_DAYS),
+        },
       },
-    },
-  });
-  if (error) throw error;
+    });
+    if (res.error) throw res.error;
+    data = res.data;
+  } catch {
+    /*
+      `null`, not a throw, and this is the only fetch in the portal that
+      swallows one.
+
+      Every other read on `/capacity` is the screen's subject: if the fortnight
+      cannot be loaded there is nothing to render and the error boundary is
+      right. This one is a picker for a form, over a window nine times wider
+      than the screen edits — the widest range this portal asks of `GET /slots`
+      anywhere. If the API rejects or times out on that range while answering
+      the fortnight fine, letting it throw would take a working seat-editing
+      screen down to an error page over a form nobody had opened.
+
+      So it degrades to "we could not load your trips", which the form says in
+      different words from "you appear to have none" — the two are different
+      facts and only one of them is a reason to message us.
+    */
+    return null;
+  }
 
   const byId = new Map<string, OperatorListing>();
   for (const s of [...(data.items ?? [])].sort((a, b) =>

@@ -12,13 +12,17 @@ import AxeBuilder from "@axe-core/playwright";
 
 const DEV_CODE = "424242";
 
-async function signIn(page: Page) {
+async function signInAs(page: Page, phone: string) {
   await page.goto("/sign-in");
-  await page.getByLabel("Your phone number").fill("+919000000101");
+  await page.getByLabel("Your phone number").fill(phone);
   await page.getByRole("button", { name: "Send me a code" }).click();
   await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/today");
+}
+
+async function signIn(page: Page) {
+  await signInAs(page, "+919000000101");
 }
 
 /** A departure per project: capacity writes mutate shared server state. */
@@ -429,6 +433,38 @@ test("a departure says whether its seats are held, and says nothing when it does
   await expect(silent).toHaveCount(1);
   await expect(silent).not.toContainText("Yuvoy holds these seats");
   await expect(silent).not.toContainText("You answer each booking");
+});
+
+test("a failed listing read costs the picker, not the screen", async ({
+  page,
+}) => {
+  /*
+    `/capacity` reads `GET /slots` twice: a fortnight for the screen, and ±120
+    days to find the operator's listings, which is the widest range this portal
+    asks for anywhere. Letting the second throw would take a working
+    seat-editing screen down to an error page over a form nobody had opened —
+    and it is the wider request, so it is the likelier one to be refused or to
+    time out.
+
+    This identity refuses the wide range and answers the fortnight.
+  */
+  await signInAs(page, "+919000000111");
+  await page.goto("/capacity");
+
+  // The screen is intact: the departures are there and still editable.
+  await expect(page.getByRole("heading", { name: "Capacity" })).toBeVisible();
+  await expect(page.getByLabel("Seats offered").first()).toBeVisible();
+
+  // Only the picker is gone, and it says which of the two absences this is.
+  await expect(
+    page.getByText("We could not load your trips just now"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Add departures" }),
+  ).toHaveCount(0);
+  // Not the other sentence. "You appear to have none" would send somebody to
+  // message us about a problem that was ours and momentary.
+  await expect(page.getByText(/none within four months/)).toHaveCount(0);
 });
 
 test("/capacity has no accessibility violations", async ({ page }) => {

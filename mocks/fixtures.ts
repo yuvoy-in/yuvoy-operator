@@ -541,6 +541,22 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
   },
   {
     /*
+      The wide read fails while the narrow one works.
+
+      `/capacity` asks `GET /slots` twice: a fortnight for the screen, and
+      ±120 days to find the operator's listings — the widest range this portal
+      requests anywhere. This identity refuses the wide one, which is the
+      failure that would otherwise take a working seat-editing screen down to
+      an error page over a form nobody had opened.
+    */
+    id: "usr_wide_read_fails",
+    name: "Wide Read",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000111",
+  },
+  {
+    /*
       The API having a bad minute — a 500 from `GET /me`, which is not an
       account state and must never render as one. Lands on the error boundary,
       where the answer is a retry rather than a sentence about suspension.
@@ -657,4 +673,6 @@ export const AWAITING_ID = "usr_awaiting";
 export const DROPPING_ID = "usr_upload_drops";
 /** A colleague holds the one upload slot, so they get the 409 that is left. */
 export const CONTENDED_ID = "usr_upload_contended";
+/** `GET /slots` refuses their wide range, and answers the fortnight. */
+export const WIDE_READ_FAILS_ID = "usr_wide_read_fails";
 export const FAILING_ID = "usr_api_failing";

@@ -27,6 +27,7 @@ import {
   SLOTS,
   TEAM,
   type MockParty,
+  WIDE_READ_FAILS_ID,
   type MockSlot,
   type MockTeamMember,
 } from "./fixtures";
@@ -952,6 +953,26 @@ export const handlers = [
     const u = new URL(request.url);
     const from = u.searchParams.get("from");
     const to = u.searchParams.get("to");
+
+    /*
+      One identity refuses a wide range and answers a narrow one.
+
+      `/capacity` reads this endpoint twice — a fortnight for the screen, ±120
+      days to find the listings — and the second is the widest request this
+      portal makes anywhere. Modelled because the interesting failure is not
+      "the API is down", which takes both calls with it: it is one call failing
+      while the other works, which is the case that decides whether the screen
+      degrades or disappears.
+    */
+    const me = sessionUser(request)!;
+    if (me.id === WIDE_READ_FAILS_ID && from && to) {
+      const days =
+        (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+        86_400_000;
+      if (days > 60) {
+        return envelope("internal_error", "Something went wrong.", 500);
+      }
+    }
 
     // Created departures are read back like any other. A mock whose reads
     // ignore its writes proves the message rendered and nothing about the row.

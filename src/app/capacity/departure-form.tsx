@@ -42,7 +42,8 @@ export function DepartureForm({
   listings,
   today,
 }: {
-  listings: OperatorListing[];
+  /** `null` means the listings could not be fetched. See `listListings`. */
+  listings: OperatorListing[] | null;
   today: string;
 }) {
   /*
@@ -66,7 +67,7 @@ function DepartureRound({
   today,
   onAgain,
 }: {
-  listings: OperatorListing[];
+  listings: OperatorListing[] | null;
   today: string;
   onAgain: () => void;
 }) {
@@ -151,11 +152,32 @@ function DepartureRound({
   }
 
   /*
-    No `GET /experiences` exists, so listings are read off the departures they
-    appear on. None visible is not "you have no listings" — it is "we cannot
-    see any", and those are different sentences. A free-text listing id would
-    be worse than this: the id is not something anybody has.
+    Two absences, two sentences, and they must not be collapsed into one.
+
+    `null` — the fetch failed. Nothing is known about this operator's trips and
+    a retry is the answer. Saying "you appear to have none" here would send
+    somebody to message us about a problem that was ours and momentary.
+
+    `[]` — the fetch worked and found nothing. There is no `GET /experiences`,
+    so listings are read off the departures they appear on, and a schedule that
+    ran out more than four months ago is invisible. That IS worth a message to
+    us, and it is raised on yuvoy-api#63. A free-text listing id would be worse
+    than either: the id is not something anybody has.
   */
+  if (listings === null) {
+    return (
+      <Panel tone="alert">
+        <p className="text-base font-bold">
+          We could not load your trips just now
+        </p>
+        <p className="text-forest/80 mt-2 text-sm">
+          Everything below still works — this is only the list of trips to add a
+          departure to. Reload the page to try again.
+        </p>
+      </Panel>
+    );
+  }
+
   if (listings.length === 0) {
     return (
       <Panel>
