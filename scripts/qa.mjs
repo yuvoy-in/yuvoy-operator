@@ -373,10 +373,14 @@ const UNAUTHENTICATED_ACTIONS = new Map([
   [
     join("src", "app", "signup", "actions.ts"),
     "O1. `POST /auth/signup` is public and unauthenticated: creating the " +
-      "account IS the point, and there is no session to check. It mints none " +
-      "either — the operator signs in through the ordinary flow afterwards, " +
-      "so one code path creates operator sessions rather than two. Rate " +
-      "limiting is the server's (429), not a gate this client can apply.",
+      "account IS the point, and there is no session to check. Since " +
+      "yuvoy-operator#20 this module also finishes the sign-in — signup, otp " +
+      "and session are one flow with no bounce to /sign-in — so it DOES mint " +
+      "a session, and all three calls are unauthenticated for the same " +
+      "reason. One code path still creates every operator session: both doors " +
+      "call `exchangeCode` in @/lib/auth/code and write the cookie with the " +
+      "same `writeSessionToken`. Rate limiting is the server's (429), not a " +
+      "gate this client can apply.",
   ],
 ]);
 
@@ -1004,6 +1008,78 @@ if (existsSync(STORE)) {
           `request, so there is nothing to gain by keeping one.`,
       );
     }
+  }
+}
+
+/* --------------- 13b. the proxy annotates, and decides nothing ----------- */
+
+/**
+ * `src/proxy.ts` (Next 16's replacement for `middleware.ts`) exists for one
+ * reason: a Server Component cannot read
+ * its own pathname, and `requireOperator()` needs it to build the `?next=` on
+ * the sign-in redirect (yuvoy-operator#18).
+ *
+ * It must never grow into an auth check. `requireOperator()` says why:
+ * this layer can only see that a cookie EXISTS, and a cookie whose session was
+ * revoked an hour ago exists exactly as hard as a good one. A gate here would
+ * look like security while being a redirect somebody holds a dead session
+ * past — and it is the most attractive place in the repository to put one,
+ * because it runs before everything.
+ *
+ * So the file is held to what it is: no session cookie, no API client, no
+ * cookie writes, no redirects.
+ */
+{
+  const mw = join(SRC, "proxy.ts");
+  if (existsSync(mw)) {
+    const src = code(mw);
+    const banned = [
+      [/SESSION_COOKIE|yvo_session/, "reads the session cookie"],
+      [/session-writes|cookies\(\)\s*\.set|\.cookies\.set/, "writes a cookie"],
+      [/operatorApi|server-client/, "calls the operator API"],
+      [/NextResponse\.redirect|NextResponse\.rewrite/, "redirects or rewrites"],
+      [/requireOperator|sessionState/, "makes a session decision"],
+    ];
+    for (const [pattern, what] of banned) {
+      if (pattern.test(src)) {
+        problems.push(
+          `src/proxy.ts ${what}. It annotates the request with its own ` +
+            `path and nothing else — middleware can only see that a cookie ` +
+            `exists, and a revoked session leaves a cookie exactly as real ` +
+            `as a live one. The decision belongs in requireOperator().`,
+        );
+      }
+    }
+  }
+}
+
+/* ------------ 14. no literal control characters in source ---------------- */
+
+/**
+ * A NUL, a DEL or a stray escape byte pasted into a source file.
+ *
+ * Written from a defect. `safeReturnPath` guards against response splitting by
+ * refusing control characters, and its regex was written by pasting the actual
+ * bytes in: `/[<NUL>-<US><DEL>-<APC>]/`. It worked, which is exactly why it
+ * needed catching — the file rendered as `/[-]/` in a review, in a diff and in
+ * a terminal, and nothing anywhere objected. eslint's `no-control-regex` is
+ * not enabled in this config and would not have seen literal bytes in any
+ * case, since it inspects escape sequences.
+ *
+ * Tab, newline and carriage return are the only ones a source file has any
+ * business containing.
+ */
+for (const f of [...files, join(ROOT, "scripts", "qa.mjs")]) {
+  const raw = readFileSync(f, "utf8");
+  const hit = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.exec(raw);
+  if (hit) {
+    const line = raw.slice(0, hit.index).split("\n").length;
+    problems.push(
+      `${rel(f)}:${line}: contains a literal control character ` +
+        `(U+${hit[0].codePointAt(0).toString(16).padStart(4, "0").toUpperCase()}). ` +
+        `Write it as an escape — a byte that renders as nothing is a byte ` +
+        `nobody reviews.`,
+    );
   }
 }
 

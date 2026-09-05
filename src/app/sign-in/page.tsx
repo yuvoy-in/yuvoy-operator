@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignInForm } from "./sign-in-form";
 import { ACCOUNT_PATH, sessionState } from "@/lib/auth/session";
+import { HOME_PATH, safeReturnPath } from "@/lib/auth/return-to";
 import { Screen } from "@/components/chrome/screen";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -15,7 +16,21 @@ export const metadata: Metadata = { title: "Sign in" };
 export const dynamic = "force-dynamic";
 
 /** O2 — daily access for the person running the boat, one hand free. */
-export default async function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  /*
+    Where they were heading before their session ran out (yuvoy-operator#18).
+
+    Validated here as well as at the redirect, because this value arrives in a
+    URL anybody can send an operator — it is not the one this portal put there
+    a moment ago. `safeReturnPath` bounds it to eight known routes on this
+    origin; everything else becomes `null` and the flow behaves as it did
+    before there was a return path.
+  */
+  const next = safeReturnPath((await searchParams).next);
   /*
     Asked of the server, not inferred from the cookie's existence. A session
     revoked an hour ago leaves a cookie exactly as real as a live one, and
@@ -31,7 +46,9 @@ export default async function SignInPage() {
     whose session may be fine.
   */
   const state = await sessionState();
-  if (state === "alive") redirect("/today");
+  // Already signed in and back on the bookmark: straight through, and to the
+  // page they were reaching for if there was one.
+  if (state === "alive") redirect(next ?? HOME_PATH);
   if (state === "not-active") redirect(ACCOUNT_PATH);
 
   return (
@@ -57,7 +74,7 @@ export default async function SignInPage() {
       <p className="text-forest/70 mt-3 text-base">
         No password. You sign in with a one-time code for your business.
       </p>
-      <SignInForm />
+      <SignInForm next={next} />
 
       {/*
         The way in for somebody who does not have an account yet — now a

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   requestCode,
   submitCode,
@@ -9,6 +9,8 @@ import {
 } from "./actions";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
+import { PhoneField } from "@/components/ui/phone-field";
+import { formatE164 } from "@/lib/auth/phone";
 
 /**
  * Two steps in one form, driven entirely by Server Actions.
@@ -19,7 +21,7 @@ import { inputClass } from "@/components/ui/input";
  * whole point of the portal's architecture and not an inconvenience to work
  * around later.
  */
-export function SignInForm() {
+export function SignInForm({ next }: { next?: string | null }) {
   const [state, act, pending] = useActionState<SignInState, FormData>(
     async (prev, form) => {
       if (prev.step === "code") return submitCode(prev, form);
@@ -37,35 +39,33 @@ export function SignInForm() {
   );
 
   /*
-    Remounted per attempt so the uncontrolled phone input re-reads its
-    `defaultValue`. React resets a form when its action completes, and
-    `defaultValue` alone does not re-apply without a remount — so without the
-    key, a refused number would be handed back and the field would still come
-    up empty.
+    Both buttons below send the number, so both wait for a whole one.
+
+    This lives here rather than inside `PhoneField` because the field cannot
+    know how many buttons depend on it. It resets with the form's `key`, which
+    is also what re-seeds the field after a refusal: React resets a form once
+    its action completes, so a remount is what puts the number the operator
+    typed back in front of them instead of an empty box. A `complete` that
+    survived that remount would leave a live button over a blank field.
   */
+  const [complete, setComplete] = useState(false);
+
   return (
     <form key={state.attempt ?? 0} action={act} className="mt-8 space-y-5">
+      {/*
+        Carried through both steps, because the code step is a new submission
+        and the URL is not re-read. Validated again in the action: a hidden
+        input is client-controlled, and this one decides a redirect.
+      */}
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       {state.step === "phone" ? (
-        <div>
-          <label htmlFor="phone" className="label text-forest/75">
-            Your phone number
-          </label>
-          <input
-            id="phone"
-            name="phone"
-            defaultValue={state.typed ?? ""}
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            required
-            autoFocus
-            placeholder="+91 90000 00101"
-            className={inputClass("mt-2 text-lg")}
-          />
-          <p className="text-forest/70 mt-2 text-sm">
-            The number Yuvoy has for your business.
-          </p>
-        </div>
+        <PhoneField
+          defaultValue={state.typed ?? ""}
+          autoFocus
+          invalid={Boolean(state.message)}
+          onCompleteChange={setComplete}
+          hint="The number Yuvoy has for your business."
+        />
       ) : (
         <div>
           <label htmlFor="code" className="label text-forest/75">
@@ -89,7 +89,7 @@ export function SignInForm() {
             a digit they mistyped on the previous step.
           */}
           <p className="text-forest/70 mt-2 text-sm">
-            For {state.phone}. It lasts a few minutes.
+            For {formatE164(state.phone ?? "")}. It lasts a few minutes.
           </p>
           {state.devCode ? (
             <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
@@ -107,7 +107,10 @@ export function SignInForm() {
         </p>
       ) : null}
 
-      <Button type="submit" disabled={pending}>
+      <Button
+        type="submit"
+        disabled={pending || (state.step === "phone" && !complete)}
+      >
         {pending
           ? "Working…"
           : state.step === "code"
@@ -135,7 +138,7 @@ export function SignInForm() {
             name="intent"
             value="have-code"
             variant="secondary"
-            disabled={pending}
+            disabled={pending || !complete}
           >
             I already have a code
           </Button>

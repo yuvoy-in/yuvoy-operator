@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { requireOperator } from "@/lib/auth/session";
+import { readSessionToken, requireOperator } from "@/lib/auth/session";
 import { getManifest } from "@/lib/day/manifest";
 import { orderParties, isHolding } from "@/lib/day/types";
 import { OperatorApiError } from "@/lib/api/errors";
@@ -18,7 +18,43 @@ import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
 
-export const metadata: Metadata = { title: "Manifest" };
+/**
+ * The departure, not the word "Manifest" — yuvoy-operator#21.
+ *
+ * "A browser tab shows roughly the first 20 characters and nothing else", and
+ * somebody with three manifests open needs to tell them apart. `Manifest ·
+ * Yuvoy for operators` three times does not, so the time and the trip lead:
+ * `07:00 Try-dive at Nemo Reef · Yuvoy for operators`.
+ *
+ * It reads the manifest it is about to render, which is free — Next dedupes
+ * the fetch between `generateMetadata` and the page in the same request, so
+ * this costs no extra call to the API.
+ *
+ * Every failure falls back to the plain word rather than throwing: a title is
+ * not worth a 500, and `notFound()` from here would pre-empt the page's own
+ * handling of the same 404, which is deliberately shaped to be no oracle.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slotId: string }>;
+}): Promise<Metadata> {
+  try {
+    const { slotId } = await params;
+    const token = await readSessionToken();
+    if (!token) return { title: "Manifest" };
+
+    const manifest = await getManifest(token, slotId);
+    const startsAt = manifest.startsAt ?? "";
+    const time = startsAt
+      ? marketTime(startsAt, manifest.timezone ?? "Asia/Kolkata")
+      : "";
+    const title = [time, manifest.experience].filter(Boolean).join(" ");
+    return { title: title || "Manifest" };
+  } catch {
+    return { title: "Manifest" };
+  }
+}
 
 /*
   Never prerendered, never cached, and re-read after every write. The manifest

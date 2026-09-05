@@ -1,7 +1,9 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { operatorApi } from "@/lib/api/server-client";
+import { signInPathFor } from "@/lib/auth/return-to";
+import { SESSION_PATH_HEADER } from "@/proxy";
 
 import { classifyMeFailure } from "@/lib/account/status";
 import { standingOf, type Standing } from "@/lib/account/standing";
@@ -30,6 +32,29 @@ export const ACCOUNT_PATH = "/account";
 export async function readSessionToken(): Promise<string | null> {
   const jar = await cookies();
   return jar.get(SESSION_COOKIE)?.value ?? null;
+}
+
+/**
+ * Where to send somebody who has to sign in first — carrying where they were.
+ *
+ * The path comes from the proxy header (`src/proxy.ts`), because a Server Component cannot
+ * read its own pathname and `Referrer-Policy: no-referrer` rules out the other
+ * way of knowing. Absent for any reason at all — a request the matcher skips,
+ * a header stripped somewhere — degrades to a plain `/sign-in`, which is what
+ * this did before there was a return path. It is a nicety, and a nicety must
+ * not be able to break the redirect it rides on.
+ *
+ * `signInPathFor` is what makes the value safe. It is request-controlled and
+ * would otherwise be an open redirect fired at the moment somebody has just
+ * signed in and is most inclined to trust the next page.
+ */
+async function signInRedirect(): Promise<string> {
+  try {
+    const jar = await headers();
+    return signInPathFor(jar.get(SESSION_PATH_HEADER), SIGN_IN_PATH);
+  } catch {
+    return SIGN_IN_PATH;
+  }
 }
 
 export interface OperatorIdentity {
@@ -100,7 +125,7 @@ export async function requireOperator(): Promise<{
   me: OperatorIdentity;
 }> {
   const token = await readSessionToken();
-  if (!token) redirect(SIGN_IN_PATH);
+  if (!token) redirect(await signInRedirect());
 
   try {
     const { data, error } = await operatorApi(token).GET("/me", {});
@@ -135,7 +160,7 @@ export async function requireOperator(): Promise<{
         the next successful sign-in overwrites it in the action phase, where
         writes are legal.
       */
-      redirect(SIGN_IN_PATH);
+      redirect(await signInRedirect());
     }
 
     /*

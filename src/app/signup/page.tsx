@@ -25,6 +25,13 @@ export const dynamic = "force-dynamic";
  * `PROSPECT` and cannot be booked by anybody until Yuvoy verifies it, so that
  * is said above the form, not in a footnote below it — and O3's `/account`
  * says the same thing again, with the detail, the moment they are inside.
+ *
+ * yuvoy-operator#20 asked for that reassurance to move into the portal. It
+ * moved off the **confirmation panel**, which is gone: creating an account now
+ * runs straight into the code step and then into `/today`. It stays here,
+ * before the form, because this is the moment it prevents the
+ * misunderstanding rather than explaining it afterwards — and the portal says
+ * it again from `AccountStanding` the second they land.
  */
 export default function SignUpPage() {
   return (

@@ -84,6 +84,72 @@ test("a dead session lands on the sign-in form, not an error page", async ({
   await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
 });
 
+test("being bounced off a page comes back to that page, not to Today", async ({
+  page,
+  baseURL,
+}) => {
+  /*
+    yuvoy-operator#18's second half, and the half that was actually missing.
+    The root already routed by session — `/` 307s to `/today`, which 307s to
+    `/sign-in` only when there is nobody signed in — but a session that ran out
+    mid-visit lost the page it ran out on. "An operator who taps a link to a
+    booking, gets bounced to sign-in and then lands on Today has to find that
+    booking again, usually on a phone, usually while somebody is standing in
+    front of them."
+  */
+  await page.context().addCookies([
+    {
+      name: "yvo_session",
+      value: "opsess_dead_e2e",
+      url: baseURL!,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+
+  await page.goto("/capacity");
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fcapacity$/);
+
+  await page.getByLabel("Your phone number").fill("9000000101");
+  await page.getByRole("button", { name: "Send me a code" }).click();
+  await page.getByLabel("Your code").fill(DEV_CODE);
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  // Back where they were headed, rather than on the day.
+  await page.waitForURL("**/capacity");
+  await expect(page.getByRole("heading", { name: "Capacity" })).toBeVisible();
+});
+
+test("a return path cannot be pointed off the site", async ({ page }) => {
+  /*
+    `?next=` is attacker-controlled by construction — anybody can send an
+    operator a link to `operators.yuvoy.in/sign-in?next=…`. Unchecked it
+    forwards them anywhere on the internet immediately AFTER a successful
+    sign-in, from a real Yuvoy URL, at the moment they are most inclined to
+    trust the next page. `safeReturnPath` bounds it; this is the rendered half
+    of the same guard its unit tests cover exhaustively.
+  */
+  await page.goto("/sign-in?next=https://example.com/phish");
+  await page.getByLabel("Your phone number").fill("9000000101");
+  await page.getByRole("button", { name: "Send me a code" }).click();
+  await page.getByLabel("Your code").fill(DEV_CODE);
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await page.waitForURL("**/today");
+  await expect(page).toHaveURL(/operators?\b|127\.0\.0\.1|localhost/);
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+});
+
+test("the root sends a signed-in operator to the portal, not to sign in", async ({
+  page,
+}) => {
+  // The half of #18 that already worked, pinned so it keeps working.
+  await signIn(page);
+  await page.goto("/");
+  await page.waitForURL("**/today");
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+});
+
 test("a wrong code says one thing, whatever was wrong with it", async ({
   page,
 }) => {

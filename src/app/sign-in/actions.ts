@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
-import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
+import { codeSchema, exchangeCode, sendCode } from "@/lib/auth/code";
+import { HOME_PATH, safeReturnPath } from "@/lib/auth/return-to";
 import { writeSessionToken } from "@/lib/auth/session-writes";
 
 /**
@@ -30,6 +31,14 @@ export interface SignInState {
   typed?: string;
   /** Bumped per submission, so the form remounts and re-reads `typed`. */
   attempt?: number;
+  /**
+   * Where to land afterwards, when they were bounced off somewhere.
+   *
+   * Carried in the state as well as the form because the code step is a second
+   * submission. Re-validated at the redirect regardless of how it arrived —
+   * both routes into it are client-controlled.
+   */
+  next?: string;
   /**
    * They arrived at the code step holding a code already, so nothing was sent.
    *
@@ -60,18 +69,6 @@ const phoneSchema = z
       ),
   );
 
-const codeSchema = z
-  .string()
-  .trim()
-  /*
-    Says nothing about where the code came from. It may have arrived by
-    WhatsApp or been issued by Yuvoy out of band, and this screen is never told
-    which — see yuvoy-api#59 and the sign-in copy rule in `pnpm qa`.
-  */
-  .regex(/^\d{4,8}$/, "A code is digits and nothing else.");
-
-const MOCKING = process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
-
 export async function requestCode(
   _prev: SignInState,
   form: FormData,
@@ -88,43 +85,21 @@ export async function requestCode(
     };
   }
 
-  try {
-    const { data, error } = await operatorApi().POST("/auth/otp", {
-      body: { phone: parsed.data },
-    });
-    if (error) throw error;
+  const next = safeReturnPath(String(form.get("next") ?? "")) ?? undefined;
 
-    /*
-      The response is identical for a number we know and one we do not — same
-      status, same body — and this screen must not undo that. Moving to the
-      code step either way is not a UI convenience: branching here would
-      rebuild the directory of "which businesses work with Yuvoy" that the
-      endpoint is carefully not.
-    */
-    return {
-      step: "code",
-      phone: parsed.data,
-      devCode: MOCKING ? data.devCode : undefined,
-    };
-  } catch (err) {
-    if (err instanceof OperatorApiError && err.status === 429) {
-      return {
-        step: "phone",
-        message: "Too many attempts. Wait a minute and try again.",
-        typed,
-        attempt,
-      };
-    }
-    if (err instanceof OperatorNetworkError) {
-      return { step: "phone", message: err.message, typed, attempt };
-    }
-    return {
-      step: "phone",
-      message: "We could not send a code just now. Try again shortly.",
-      typed,
-      attempt,
-    };
+  const sent = await sendCode(parsed.data);
+  if (!sent.ok) {
+    return { step: "phone", message: sent.message, typed, attempt, next };
   }
+
+  /*
+    The response is identical for a number we know and one we do not — same
+    status, same body — and this screen must not undo that. Moving to the code
+    step either way is not a UI convenience: branching here would rebuild the
+    directory of "which businesses work with Yuvoy" that the endpoint is
+    carefully not.
+  */
+  return { step: "code", phone: parsed.data, devCode: sent.devCode, next };
 }
 
 export async function submitCode(
@@ -137,54 +112,32 @@ export async function submitCode(
     return { ...prev, step: "code", message: parsed.error.issues[0].message };
   }
 
-  try {
-    const { data, error } = await operatorApi().POST("/auth/session", {
-      body: {
-        phone,
-        code: parsed.data,
-        device: "Yuvoy for operators (web)",
-      },
-    });
-    if (error) throw error;
-    if (!data.token) throw new Error("The server returned no session token.");
-
-    await writeSessionToken(data.token);
-  } catch (err) {
-    if (err instanceof OperatorApiError && err.status === 429) {
-      // Throttled. A different next step from a wrong code — wait, do not
-      // ask for another — so it gets its own sentence and nothing else.
-      return {
-        ...prev,
-        step: "code",
-        message: "Too many attempts. Wait a minute, then try the code again.",
-      };
-    }
-    if (err instanceof OperatorApiError && err.isUnauthorized) {
-      /*
-        Wrong, expired and used codes all answer 401 with one message, and
-        this screen keeps them one message. Telling somebody the code was
-        "already used" rather than "wrong" tells an attacker they had the
-        right number and the wrong window.
-      */
-      return {
-        ...prev,
-        step: "code",
-        message: "That code did not work. Ask for a new one.",
-      };
-    }
-    if (err instanceof OperatorNetworkError) {
-      return { ...prev, step: "code", message: err.message };
-    }
-    return {
-      ...prev,
-      step: "code",
-      message: "We could not sign you in just now. Try again shortly.",
-    };
+  /*
+    The same exchange `/signup` finishes on, so the two doors cannot drift
+    about what a wrong code or a throttle says. The cookie is written here
+    rather than inside it because Next allows a cookie write in the action
+    phase and nowhere else, and `pnpm qa` holds that boundary.
+  */
+  const result = await exchangeCode(phone, parsed.data);
+  if (!result.ok) {
+    return { ...prev, step: "code", message: result.message };
   }
+  await writeSessionToken(result.token);
 
-  // Outside the try: `redirect` throws by design, and catching it here would
-  // turn a successful sign-in into "we could not sign you in".
-  redirect("/today");
+  /*
+    Back to where they were headed, if that survived validation.
+
+    Checked here rather than trusted from the state: `next` reaches this action
+    through a hidden input, which is client-controlled, and an unchecked value
+    would be an open redirect fired at the exact moment somebody has signed in
+    successfully and is most inclined to trust the next page.
+
+    Outside any try: `redirect` throws by design, and catching it here would
+    turn a successful sign-in into "we could not sign you in".
+  */
+  const back =
+    safeReturnPath(prev.next ?? String(form.get("next") ?? "")) ?? HOME_PATH;
+  redirect(back);
 }
 
 export async function signOut(): Promise<void> {
@@ -246,5 +199,10 @@ export async function enterExistingCode(
       attempt: (_prev.attempt ?? 0) + 1,
     };
   }
-  return { step: "code", phone: parsed.data, existing: true };
+  return {
+    step: "code",
+    phone: parsed.data,
+    existing: true,
+    next: safeReturnPath(String(form.get("next") ?? "")) ?? undefined,
+  };
 }

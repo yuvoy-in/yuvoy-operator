@@ -1,16 +1,19 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { acceptInvite, type AcceptState } from "./actions";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { PhoneField } from "@/components/ui/phone-field";
 
 export function JoinForm() {
   const [state, act, pending] = useActionState<AcceptState, FormData>(
     acceptInvite,
     {},
   );
+  /** The submit waits for a whole number, as the other two doors do. */
+  const [complete, setComplete] = useState(false);
 
   if (state.accepted) {
     return (
@@ -35,24 +38,17 @@ export function JoinForm() {
 
   return (
     <form action={act} className="mt-8 space-y-5">
-      <div>
-        <label htmlFor="join-phone" className="label text-forest/75">
-          Your phone number
-        </label>
-        <input
-          id="join-phone"
-          name="phone"
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          required
-          placeholder="+919000000101"
-          className={inputClass("mt-2 font-mono")}
-        />
-        <p className="text-forest/70 mt-1.5 text-xs">
-          The number the invitation was sent to, with its country code.
-        </p>
-      </div>
+      {/*
+        The same field as sign-in and signup, and it was not in
+        yuvoy-operator#19's list — which is exactly why it goes in here. Three
+        phone fields with two of them fixed is the drift that issue is about.
+      */}
+      <PhoneField
+        id="join-phone"
+        autoFocus={false}
+        hint="The number the invitation was sent to."
+        onCompleteChange={setComplete}
+      />
 
       <div>
         <label htmlFor="join-code" className="label text-forest/75">
@@ -75,7 +71,7 @@ export function JoinForm() {
         </p>
       ) : null}
 
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending || !complete}>
         {pending ? "Accepting…" : "Accept the invitation"}
       </Button>
     </form>

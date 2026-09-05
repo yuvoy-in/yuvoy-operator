@@ -225,16 +225,31 @@ test("somebody who already holds a code never asks for one to be sent", async ({
   await page.waitForURL("**/today");
 });
 
-test("that door still validates the number, and still says nothing about channels", async ({
+test("that door still needs a whole number, and still says nothing about channels", async ({
   page,
 }) => {
+  /*
+    This used to assert a "country code" refusal after pressing. Since
+    yuvoy-operator#19 the field cannot produce a number without one — `+91` is
+    fixed furniture and it takes ten digits — so the refusal is unreachable
+    rather than merely handled, and the button waits instead of failing.
+
+    The stronger property is asserted in its place: an incomplete number never
+    reaches the code step by EITHER door, and neither door names a channel.
+  */
   await page.goto("/sign-in");
   await page.getByLabel("Your phone number").fill("98765");
-  await page.getByRole("button", { name: "I already have a code" }).click();
 
-  // Same rule as the send path — a bad number is caught before anything else.
-  await expect(page.locator("form").getByRole("alert")).toContainText(
-    "country code",
-  );
+  await expect(
+    page.getByRole("button", { name: "I already have a code" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Send me a code" }),
+  ).toBeDisabled();
+  await expect(page.getByText("5 more digits.")).toBeVisible();
   await expect(page.getByLabel("Your code")).toHaveCount(0);
+
+  // Nothing anywhere on the screen claims a code was sent by anything.
+  await expect(page.getByText(/we (sent|have sent|messaged)/i)).toHaveCount(0);
+  await expect(page.getByText(/WhatsApp|SMS/i)).toHaveCount(0);
 });
