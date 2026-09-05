@@ -10,7 +10,7 @@
 # of them is mid-integration: this ref is ahead of yuvoy-app's while the reels
 # upload catches up with yuvoy-api#66 §3. The two documents are separate files,
 # so being ahead here says nothing about the traveller contract — and the
-# traveller one moved on the same day with a defect in it (yuvoy-api#90), which
+# traveller one moved on the same day with a defect in it (yuvoy-api#92), which
 # is the reason yuvoy-app has not followed.
 #
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
@@ -24,9 +24,9 @@ path=contracts/operator-openapi.yaml
 # still absent, so /reels still says what it cannot show.
 #
 # Also additive and NOT yet consumed, each raised on its own issue:
-#   - `POST /slots` — an operator can create a departure  (yuvoy-operator#17)
-#   - `Slot.bookingMode` — allotment vs request, per departure  (#17)
-#   - `OperatorBooking.screening` — who was never screened  (yuvoy-operator#18)
+#   - `POST /slots` — an operator can create a departure  (yuvoy-operator#16)
+#   - `Slot.bookingMode` — allotment vs request, per departure  (#16)
+#   - `OperatorBooking.screening` — who was never screened  (yuvoy-operator#17)
 ref=e16217a843c456749d02997070d92b7cf67a33ab
 branch=master
 pinned_on=2026-09-05
