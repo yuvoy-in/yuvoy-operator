@@ -19,6 +19,18 @@ export interface SignInState {
   phone?: string;
   message?: string;
   /**
+   * The number exactly as typed, handed back when it is refused.
+   *
+   * React resets a form once its action completes and this input is
+   * uncontrolled, so without it a mistyped country code emptied the field and
+   * the operator retyped thirteen digits — on a phone, in sunlight. Raw
+   * rather than normalised: re-seeding a rewritten version of somebody's own
+   * input under a red message is its own small confusion.
+   */
+  typed?: string;
+  /** Bumped per submission, so the form remounts and re-reads `typed`. */
+  attempt?: number;
+  /**
    * They arrived at the code step holding a code already, so nothing was sent.
    *
    * Kept so the screen can avoid implying a delivery that did not happen —
@@ -64,9 +76,16 @@ export async function requestCode(
   _prev: SignInState,
   form: FormData,
 ): Promise<SignInState> {
-  const parsed = phoneSchema.safeParse(String(form.get("phone") ?? ""));
+  const typed = String(form.get("phone") ?? "");
+  const attempt = (_prev.attempt ?? 0) + 1;
+  const parsed = phoneSchema.safeParse(typed);
   if (!parsed.success) {
-    return { step: "phone", message: parsed.error.issues[0].message };
+    return {
+      step: "phone",
+      message: parsed.error.issues[0].message,
+      typed,
+      attempt,
+    };
   }
 
   try {
@@ -92,14 +111,18 @@ export async function requestCode(
       return {
         step: "phone",
         message: "Too many attempts. Wait a minute and try again.",
+        typed,
+        attempt,
       };
     }
     if (err instanceof OperatorNetworkError) {
-      return { step: "phone", message: err.message };
+      return { step: "phone", message: err.message, typed, attempt };
     }
     return {
       step: "phone",
       message: "We could not send a code just now. Try again shortly.",
+      typed,
+      attempt,
     };
   }
 }
@@ -213,9 +236,15 @@ export async function enterExistingCode(
   _prev: SignInState,
   form: FormData,
 ): Promise<SignInState> {
-  const parsed = phoneSchema.safeParse(String(form.get("phone") ?? ""));
+  const typed = String(form.get("phone") ?? "");
+  const parsed = phoneSchema.safeParse(typed);
   if (!parsed.success) {
-    return { step: "phone", message: parsed.error.issues[0].message };
+    return {
+      step: "phone",
+      message: parsed.error.issues[0].message,
+      typed,
+      attempt: (_prev.attempt ?? 0) + 1,
+    };
   }
   return { step: "code", phone: parsed.data, existing: true };
 }

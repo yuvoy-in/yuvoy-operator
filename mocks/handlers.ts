@@ -79,8 +79,9 @@ function sessionUser(request: Request): MockTeamMember | null {
   if (!match) return null;
   // A pending row is an invitation, not a user, and cannot hold a session.
   return (
-    [...team, ...OTHER_MEMBERS].find((m) => !m.pending && m.id === match[1]) ??
-    null
+    [...team, ...OTHER_MEMBERS, ...signups].find(
+      (m) => !m.pending && m.id === match[1],
+    ) ?? null
   );
 }
 
@@ -111,6 +112,16 @@ let stoppedChanges: string[] = [];
  * instead of restoring whatever the last test left behind.
  */
 let team: MockTeamMember[] = TEAM.map((m) => ({ ...m }));
+/**
+ * Operators who created their own account this session (O1, `POST
+ * /auth/signup`).
+ *
+ * A separate list rather than rows appended to `team`: a signup creates a NEW
+ * BUSINESS, not a colleague at the fixture's dive shop. Putting them in `team`
+ * would show a stranger on `/team` — which is the one screen whose whole
+ * subject is who can get into your business.
+ */
+let signups: MockTeamMember[] = [];
 /** Upload intents in flight, by operator. One at a time, as the API enforces. */
 let uploadIntents: Record<
   string,
@@ -132,6 +143,7 @@ export function __resetOperatorMocks() {
   bankChanges = [];
   stoppedChanges = [];
   team = TEAM.map((m) => ({ ...m }));
+  signups = [];
   uploadIntents = {};
   mediaAssets = {};
   resetMockUploads();
@@ -306,6 +318,58 @@ const relay = async (request: Request, recipientsOf: () => number | null) => {
 export const handlers = [
   /* -------------------------------------------------------------- auth --- */
 
+  /**
+   * O1 — an operator creates their own account.
+   *
+   * **The response is identical for a number that already has an account**,
+   * and this mock keeps it that way. A mock that 409'd a duplicate would let
+   * the portal ship a branch the real API never takes — and that branch would
+   * be the "is this phone a Yuvoy operator" oracle the endpoint is carefully
+   * not. So a duplicate creates nothing and answers exactly like a success.
+   *
+   * No session is minted, exactly as with `/team/accept`: they sign in through
+   * the ordinary flow afterwards.
+   */
+  http.post(url("/auth/signup"), async ({ request }) => {
+    const body = (await request.json()) as {
+      businessName?: string;
+      name?: string;
+      phone?: string;
+      email?: string;
+    };
+    const businessName = (body.businessName ?? "").trim();
+    const name = (body.name ?? "").trim();
+    const phone = (body.phone ?? "").trim();
+
+    if (
+      businessName.length < 2 ||
+      name.length < 2 ||
+      !/^\+[1-9]\d{7,14}$/.test(phone)
+    ) {
+      return envelope(
+        "invalid_input",
+        "A business name, a person and an E.164 number.",
+        400,
+      );
+    }
+
+    const taken = [...team, ...OTHER_MEMBERS, ...signups].some(
+      (m) => m.phone === phone,
+    );
+    if (!taken) {
+      signups.push({
+        id: `usr_signup_${Math.random().toString(36).slice(2, 10)}`,
+        name,
+        // The first OWNER of the new business, as the contract says.
+        roles: ["OWNER"],
+        state: "active",
+        phone,
+      });
+    }
+
+    return HttpResponse.json({ next: "sign_in" }, { status: 202 });
+  }),
+
   // Answers identically for a number we know and one we do not. The mock keeps
   // that property on purpose: a mock that 404s an unknown number would let a
   // client ship a branch the real API never takes.
@@ -333,7 +397,7 @@ export const handlers = [
         429,
       );
     }
-    const member = [...team, ...OTHER_MEMBERS].find(
+    const member = [...team, ...OTHER_MEMBERS, ...signups].find(
       (m) => !m.pending && m.phone === phone,
     );
     /*
@@ -375,8 +439,14 @@ export const handlers = [
       tested against.
     */
     const account =
-      me.id === PROSPECT_ID
-        ? ACCOUNT_PROSPECT
+      me.id === PROSPECT_ID || signups.some((sme) => sme.id === me.id)
+        ? /*
+            A brand-new account is PROSPECT and cannot be booked — that is the
+            whole safety property of self-signup, and a mock that handed one
+            ACCOUNT_LIVE would let this portal ship the congratulation the API
+            never earns.
+          */
+          ACCOUNT_PROSPECT
         : me.id === AWAITING_ID
           ? ACCOUNT_AWAITING
           : OTHER_MEMBERS.some((o) => o.id === me.id)

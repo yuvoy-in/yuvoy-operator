@@ -67,10 +67,14 @@ export const FOCUSED_ROUTE_PREFIXES = [
 ] as const;
 
 /**
- * BARE routes: no session, so no chrome at all. The sign-in door and the
- * invitation door draw the mark and nothing else.
+ * BARE routes: no session, so no chrome at all. The three doors — signing up,
+ * signing in, and accepting an invitation — draw the mark and nothing else.
+ *
+ * `/signup` does not collide with `/sign-in` under `startsWith`: neither is a
+ * prefix of the other. A test pins that, because a hyphen is a thin thing to
+ * rest a route match on.
  */
-export const BARE_ROUTE_PREFIXES = ["/sign-in", "/join"] as const;
+export const BARE_ROUTE_PREFIXES = ["/sign-in", "/signup", "/join"] as const;
 
 export function isFocusedRoute(pathname: string | null | undefined): boolean {
   if (!pathname) return false;

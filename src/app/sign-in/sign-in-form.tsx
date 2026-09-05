@@ -36,8 +36,15 @@ export function SignInForm() {
     { step: "phone" },
   );
 
+  /*
+    Remounted per attempt so the uncontrolled phone input re-reads its
+    `defaultValue`. React resets a form when its action completes, and
+    `defaultValue` alone does not re-apply without a remount — so without the
+    key, a refused number would be handed back and the field would still come
+    up empty.
+  */
   return (
-    <form action={act} className="mt-8 space-y-5">
+    <form key={state.attempt ?? 0} action={act} className="mt-8 space-y-5">
       {state.step === "phone" ? (
         <div>
           <label htmlFor="phone" className="label text-forest/75">
@@ -46,6 +53,7 @@ export function SignInForm() {
           <input
             id="phone"
             name="phone"
+            defaultValue={state.typed ?? ""}
             type="tel"
             inputMode="tel"
             autoComplete="tel"

@@ -70,18 +70,18 @@ the registry and `nav.test.ts` pins which routes are which.
 
 ## Built so far
 
-|         | Screen                                   | State                                                                  |
-| ------- | ---------------------------------------- | ---------------------------------------------------------------------- |
-| **O2**  | Operator signs in — phone, code, session | **Built**                                                              |
-| **O3**  | Getting approved                         | **Half built** — the contract cannot answer the other half, below      |
-| **O4**  | Payout details                           | **Built**                                                              |
-| **O5**  | Team access, and accepting an invitation | **Built**                                                              |
-| **O9**  | Seat requests and capacity               | **Built**                                                              |
-| **O10** | The day, and today's manifest            | **Built**                                                              |
-| **O11** | Earnings                                 | **Built**                                                              |
-| **O8**  | Upload a reel                            | **Built** — minus what the contract cannot serve, below                |
-| O6, O7  | Profile, listings                        | Not started — **both are contract-blocked**                            |
-| O1      | Operator signs up                        | **Closed** — `yuvoy.in/operators` already does it; sign-in links to it |
+|         | Screen                                   | State                                                                 |
+| ------- | ---------------------------------------- | --------------------------------------------------------------------- |
+| **O2**  | Operator signs in — phone, code, session | **Built**                                                             |
+| **O3**  | Getting approved                         | **Half built** — the contract cannot answer the other half, below     |
+| **O4**  | Payout details                           | **Built**                                                             |
+| **O5**  | Team access, and accepting an invitation | **Built**                                                             |
+| **O9**  | Seat requests and capacity               | **Built**                                                             |
+| **O10** | The day, and today's manifest            | **Built**                                                             |
+| **O11** | Earnings                                 | **Built**                                                             |
+| **O8**  | Upload a reel                            | **Built** — minus what the contract cannot serve, below               |
+| O6, O7  | Profile, listings                        | Not started — **both are contract-blocked**                           |
+| O1      | Operator signs up                        | **Built** — `/signup`, self-serve (D-029). Creates a PROSPECT account |
 
 O10 first because the brief says so: _"If you build one screen well, build the
 manifest."_ It is the screen an operator opens at 6am. O9 second because it is the one
@@ -336,6 +336,30 @@ logs, not in sunlight.
   number once, at the moment of sending. And if the API ever returned more than
   four digits, `toTeamPerson` drops the field rather than render a staff
   directory.
+
+### Signing up, and the two sentences the endpoint forces
+
+- **Creating an account is not being on sale.** `POST /auth/signup` creates the operator
+  at `PROSPECT`; nobody can book it until an admin moves it to `LIVE`. The screen says so
+  **above** the form, not in a footnote — an operator who believes otherwise waits for
+  bookings that were never possible and concludes we are broken. O3's `/account` then says
+  it again, with the detail, the moment they are inside.
+- **A number that already has an account gets the same `202`.** Deliberate: a different
+  answer would turn a public endpoint into a checker for whether a phone belongs to a
+  Yuvoy operator. So the success panel may not say "account created" — that is false for
+  half the people who will see it. It says the next step, which is true either way, and the
+  mock refuses to distinguish the two cases so no branch can be built against them.
+- **Two businesses may share a name**, so nothing implies a name is claimed or checked.
+- **No session is minted.** They sign in through the ordinary flow afterwards, so one code
+  path creates operator sessions rather than two — the same call `/join` makes.
+- **A refusal never empties the form.** React resets a form when its action completes and
+  these inputs are uncontrolled, so the action hands back what was typed and the form
+  remounts on an attempt counter to re-read it. The same defect had shipped on `/sign-in`
+  and is fixed there too; a test pins both.
+- **The email field is `type="text"` with an email keyboard**, not `type="email"`: native
+  validation blocks the submit with a browser tooltip, and "leave it blank if unsure" —
+  the part that matters, because the field is optional — would never be read. Same call
+  the capacity screen makes about `min`.
 
 ### Capacity, and the three refusals that matter
 

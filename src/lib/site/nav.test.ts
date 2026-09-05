@@ -23,6 +23,7 @@ describe("focused and bare routes", () => {
     ["/team", "focused"],
     ["/reels", "focused"],
     ["/sign-in", "bare"],
+    ["/signup", "bare"],
     ["/join", "bare"],
     ["/today", "root"],
     ["/today?day=2026-09-03", "root"],

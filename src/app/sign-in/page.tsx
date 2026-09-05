@@ -60,18 +60,16 @@ export default async function SignInPage() {
       <SignInForm />
 
       {/*
-        The way in for somebody who does not have an account yet.
-        Deliberately a LINK rather than a second form: applying posts to the
-        public contract, the applicant has no session, and the marketing
-        site's /operators page already does it. Two forms against one
-        endpoint means two copies of the validation and two places that have
-        to stay truthful about what applying means. See yuvoy-operator#2.
+        The way in for somebody who does not have an account yet — now a
+        screen in this portal rather than a link off it.
 
-        The host is yuvoy.in — the marketing site's own. The launch is on
-        app.yuvoy.in and operators.yuvoy.in (owner, 3 Sep 2026, yuvoy-app#12),
-        so the marketing site keeps the root domain and this link is direct.
-        The D-102 move of the app onto the root is deferred; if it ever happens
-        this host follows the marketing site, not the app.
+        It pointed at `yuvoy.in/operators` until 5 Sep 2026, on the reasoning
+        that signup was a marketing surface: the only endpoint was
+        `POST /v1/operator-applications`, which files an application for a
+        human to read. `POST /operator/v1/auth/signup` (D-029) is a different
+        thing on a different contract — it creates a real account with a real
+        session — so the form now lives where the account does.
+        See yuvoy-operator#2.
       */}
       {/*
         The other door. Somebody invited to an existing business has a code
@@ -93,14 +91,14 @@ export default async function SignInPage() {
 
       <p className="text-forest/70 mt-4 text-sm">
         Not on Yuvoy yet?{" "}
-        <a
-          href="https://yuvoy.in/operators"
+        <Link
+          href="/signup"
           className="text-terra-deep tap-target font-bold underline underline-offset-4"
         >
-          Apply to run experiences
-        </a>
-        . A person reads every application — nothing is public until we have
-        checked you out.
+          Create an account
+        </Link>
+        . You can sign in straight away — a person at Yuvoy checks your business
+        over before travellers can book you.
       </p>
     </Screen>
   );

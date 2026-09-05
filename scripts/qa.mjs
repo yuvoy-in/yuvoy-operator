@@ -370,6 +370,14 @@ const UNAUTHENTICATED_ACTIONS = new Map([
       "session is minted, so there is nothing here for requireOperator() to " +
       "check.",
   ],
+  [
+    join("src", "app", "signup", "actions.ts"),
+    "O1. `POST /auth/signup` is public and unauthenticated: creating the " +
+      "account IS the point, and there is no session to check. It mints none " +
+      "either — the operator signs in through the ordinary flow afterwards, " +
+      "so one code path creates operator sessions rather than two. Rate " +
+      "limiting is the server's (429), not a gate this client can apply.",
+  ],
 ]);
 
 /*
@@ -846,7 +854,15 @@ for (const [segment, info] of gateJustification) {
  * makes, not a claim about what happened.
  */
 {
-  const signIn = walk(join(APP, "sign-in")).filter((f) => /\.tsx?$/.test(f));
+  /*
+    `/signup` is held to the same rule. It sends nothing itself, but its
+    success copy is one careless edit away from "check your WhatsApp" — and
+    the channel a code arrives by is exactly what neither door is told.
+  */
+  const signIn = [
+    ...walk(join(APP, "sign-in")),
+    ...walk(join(APP, "signup")),
+  ].filter((f) => /\.tsx?$/.test(f));
   const banned =
     /\bwe (sent|send|have sent|messaged|texted)\b|\bWhatsApp\b|\bSMS\b|\btext message\b|\bsent to\b/i;
 
