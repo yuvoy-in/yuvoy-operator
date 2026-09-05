@@ -9,6 +9,10 @@ import {
 } from "./tus-server";
 import { validateRelay } from "../src/lib/day/relay-types";
 import {
+  ACCOUNT_AWAITING,
+  ACCOUNT_LIVE,
+  ACCOUNT_PROSPECT,
+  AWAITING_ID,
   CHANGE_REQUESTS,
   DEV_CODE,
   DROPPING_ID,
@@ -16,6 +20,7 @@ import {
   FAILING_ID,
   OPERATOR,
   OTHER_MEMBERS,
+  PROSPECT_ID,
   SUSPENDED_ID,
   REQUESTS,
   SLOTS,
@@ -361,12 +366,30 @@ export const handlers = [
     const failed = requireSession(request);
     if (failed) return failed;
     const me = sessionUser(request)!;
+    /*
+      `account` is per-BUSINESS, not per-user, so it is keyed off the identity
+      that stands in for one here. The upload-drop and API-failure identities
+      deliberately get NO account block: absent is a real response shape and
+      the contract says what it means — "unknown, never everything is fine" —
+      so the screen that must not read it as approval has something to be
+      tested against.
+    */
+    const account =
+      me.id === PROSPECT_ID
+        ? ACCOUNT_PROSPECT
+        : me.id === AWAITING_ID
+          ? ACCOUNT_AWAITING
+          : OTHER_MEMBERS.some((o) => o.id === me.id)
+            ? undefined
+            : ACCOUNT_LIVE;
+
     return HttpResponse.json({
       id: me.id,
       name: me.name,
       roles: me.roles,
       operatorId: OPERATOR.operatorId,
       canManage: canManage(me),
+      ...(account ? { account } : {}),
     });
   }),
 

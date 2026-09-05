@@ -466,6 +466,26 @@ export const TEAM: MockTeamMember[] = [
 export const OTHER_MEMBERS: MockTeamMember[] = [
   {
     /*
+      Signed up through `POST /auth/signup` and verified nothing yet — a real
+      session on an account that cannot sell. Before AccountStanding this
+      person was told "your account is live".
+    */
+    id: "usr_prospect",
+    name: "New Operator",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000105",
+  },
+  {
+    /** Everything sent; it is sitting in Yuvoy's queue. */
+    id: "usr_awaiting",
+    name: "Waiting Operator",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000106",
+  },
+  {
+    /*
       Signs in fine; the business account is on hold. The contract's own
       distinction: "the person is fine, the business relationship is not."
     */
@@ -501,7 +521,106 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
   },
 ];
 
+/* ------------------------------------------------------ account standing - */
+
+/**
+ * `AccountStanding` on `GET /me` — yuvoy-api#63, PR #83.
+ *
+ * Four accounts, because the screen has four states and three of them had
+ * never been rendered: live, blocked on the operator, blocked on Yuvoy, and
+ * an API that does not send the block at all.
+ *
+ * `state` is a bare string in the contract with no enum, and the API's own
+ * example (`PROSPECT`) is not among the schema's examples
+ * (`ONBOARDING`/`LIVE`/`PAUSED`). Both appear below on purpose: a client that
+ * branched on this value would be wrong on one of them, and the portal
+ * branches on `bookable` instead.
+ */
+export const ACCOUNT_LIVE = {
+  state: "LIVE",
+  bookable: true,
+  blocking: [],
+  credentials: [
+    {
+      type: "directorate_registration",
+      state: "verified",
+      mandatory: true,
+      issuer: "A&N Tourism Directorate",
+      // Far enough out to say nothing. The screen must not cry wolf.
+      expiresOn: marketDay(400),
+      verifiedAt: todayAt("10:00", -120),
+    },
+    {
+      type: "insurance",
+      state: "verified",
+      mandatory: true,
+      issuer: "New India Assurance",
+      /*
+        Inside the sixty-day window, so the one warning this portal raises
+        on its own is exercised on a LIVE account — which is exactly who it
+        is for. "A dive licence that lapses mid-season takes the listing
+        down, and an operator who was never shown the date finds out from a
+        cancelled booking."
+      */
+      expiresOn: marketDay(21),
+      verifiedAt: todayAt("10:00", -60),
+    },
+  ],
+};
+
+/** Signed up, verified nothing. After D-029 self-signup, the common case. */
+export const ACCOUNT_PROSPECT = {
+  state: "PROSPECT",
+  bookable: false,
+  blocking: [
+    {
+      code: "CREDENTIAL_MISSING",
+      label: "We still need your tourism department registration",
+      waitingOn: "operator",
+      since: todayAt("09:00", -3),
+    },
+    {
+      code: "CREDENTIAL_MISSING",
+      label: "We still need your insurance certificate",
+      waitingOn: "operator",
+      since: todayAt("09:00", -3),
+    },
+  ],
+  credentials: [],
+};
+
+/**
+ * Everything sent, nothing left for them to do.
+ *
+ * The case Hima called out: "an operator with everything done and no ability
+ * to sell gets AWAITING_REVIEW rather than an empty list. 'Nothing
+ * outstanding' shown to somebody who is not selling reads as a fault in us."
+ */
+export const ACCOUNT_AWAITING = {
+  state: "ONBOARDING",
+  bookable: false,
+  blocking: [
+    {
+      code: "AWAITING_REVIEW",
+      label: "Everything is in. A person at Yuvoy is checking it.",
+      waitingOn: "yuvoy",
+      since: todayAt("11:00", -1),
+    },
+  ],
+  credentials: [
+    {
+      type: "directorate_registration",
+      state: "pending",
+      mandatory: true,
+      issuer: "A&N Tourism Directorate",
+      expiresOn: marketDay(300),
+    },
+  ],
+};
+
 export const SUSPENDED_ID = "usr_suspended";
 /** Their uploads drop once, mid-chunk. See `mocks/tus-server.ts`. */
+export const PROSPECT_ID = "usr_prospect";
+export const AWAITING_ID = "usr_awaiting";
 export const DROPPING_ID = "usr_upload_drops";
 export const FAILING_ID = "usr_api_failing";

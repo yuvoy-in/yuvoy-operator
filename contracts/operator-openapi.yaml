@@ -81,6 +81,62 @@ security:
   - operatorSession: []
 
 paths:
+  /auth/signup:
+    post:
+      operationId: operatorSignUp
+      summary: Create an operator account
+      description: >-
+        An operator creates their own account and can sign in immediately.
+
+
+        **Signing in is not being sellable.** The account is created at
+        `PROSPECT` and cannot be booked by anybody; only an admin decision moves
+        it to `LIVE`. So verification still gates every rupee — it has simply
+        stopped gating whether somebody can sign in, add their listings and
+        prepare while they wait.
+
+
+        **The response is identical for a number that already has an account.**
+        This endpoint is public and unauthenticated; an error saying "already
+        registered" would turn it into a checker for whether a given phone
+        belongs to a Yuvoy operator. Somebody in that position discovers it by
+        asking for a sign-in code, which works — the account they were trying to
+        create is the one they already have.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [businessName, name, phone]
+              properties:
+                businessName:
+                  type: string
+                  description: What travellers will see.
+                name:
+                  type: string
+                  description: The person signing up — the first OWNER.
+                phone:
+                  type: string
+                  description: E.164. This is what they sign in with.
+                  examples: ["+919000000000"]
+                email: { type: string }
+      responses:
+        "202":
+          description: >-
+            Accepted. Ask for a sign-in code with the same number next. Returned
+            whether or not the account already existed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  next: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /auth/otp:
     post:
       tags: [auth]
@@ -545,6 +601,11 @@ paths:
                       OWNER or MANAGER. Capacity, closed dates, earnings and
                       listing edits require it — a staff member who can see
                       today's manifest does not need the margin on it.
+                  account:
+                    allOf: [{ $ref: "#/components/schemas/AccountStanding" }]
+                    description: >-
+                      Why this account can or cannot sell, and who has to move
+                      next. Absent means unknown — never "everything is fine".
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/AccountNotActive" }
 
@@ -1711,6 +1772,89 @@ components:
             be a directory of an operator's staff. The full number is masked in
             SQL and never enters the API process, so it cannot reach a log line
             or an error string by accident.
+
+    AccountStanding:
+      type: object
+      description: >-
+        Why this operator can or cannot sell, and **who has to move next**.
+
+
+        Derived on every read rather than stored. A stored status is a second
+        copy of the truth that goes stale the moment a credential expires on its
+        own — and expiry is exactly the case nobody remembers to write an update
+        for.
+      required: [state, bookable, blocking]
+      properties:
+        state:
+          type: string
+          description: The operator's commercial status.
+          examples: ["ONBOARDING", "LIVE", "PAUSED"]
+        bookable:
+          type: boolean
+          description: >-
+            Whether a traveller can book them right now. `LIVE` is the only
+            status that means yes; everything else, `PAUSED` included, is a no
+            with a different reason.
+        blocking:
+          type: array
+          description: Empty only when nothing is outstanding.
+          items: { $ref: "#/components/schemas/Blocker" }
+        credentials:
+          type: array
+          items: { $ref: "#/components/schemas/OperatorCredential" }
+
+    Blocker:
+      type: object
+      required: [code, label, waitingOn]
+      properties:
+        code:
+          type: string
+          description: >-
+            A closed set, so a client branches on the code and never on the
+            message — the same rule the error enum follows. `OTHER` exists so a
+            reason can be added operationally without a contract change and
+            without breaking a client: render `label` for anything you do not
+            recognise, including `OTHER`.
+          enum:
+            - CREDENTIAL_MISSING
+            - CREDENTIAL_UNVERIFIED
+            - CREDENTIAL_EXPIRED
+            - CREDENTIAL_REJECTED
+            - AWAITING_REVIEW
+            - OTHER
+        label:
+          type: string
+          description: Human-readable and safe to show unmodified.
+          examples: ["We still need your insurance certificate"]
+        since: { type: string, format: date-time }
+        waitingOn:
+          type: string
+          enum: [operator, yuvoy]
+          description: >-
+            **The field that stops the phone call.** "Pending" because we are
+            slow and "pending" because they have sent nothing read identically,
+            and an operator who cannot tell which has no choice but to ring
+            somebody.
+      
+    OperatorCredential:
+      type: object
+      description: A document Yuvoy holds, or is waiting for.
+      required: [type, state, mandatory]
+      properties:
+        type: { type: string, examples: ["directorate_registration", "insurance"] }
+        state: { type: string, enum: [pending, verified, rejected, expired] }
+        mandatory:
+          type: boolean
+          description: Whether the account can go LIVE without it.
+        issuer: { type: string }
+        expiresOn:
+          type: string
+          format: date
+          description: >-
+            A date, not an instant. A licence expires on a day, and sending a
+            timestamp invites a timezone bug on the one field an operator plans
+            a season around.
+        verifiedAt: { type: string, format: date-time }
 
     OperatorBooking:
       type: object

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { operatorApi } from "@/lib/api/server-client";
 
 import { classifyMeFailure } from "@/lib/account/status";
+import { standingOf, type Standing } from "@/lib/account/standing";
 
 /**
  * The operator session: reading it, and deciding what it means.
@@ -38,6 +39,16 @@ export interface OperatorIdentity {
   operatorId: string;
   /** OWNER or MANAGER. Capacity, earnings and call-off require it. */
   canManage: boolean;
+  /**
+   * Whether this account can sell, and what is outstanding — or `null` when
+   * the API did not say.
+   *
+   * Carried on the identity every screen already has, so a screen that needs
+   * to explain an empty day does not have to make a second `GET /me`. `null`
+   * is "unknown", never "fine": the contract is explicit, and a screen that
+   * treated an absent block as approval is exactly the bug this replaced.
+   */
+  account: Standing | null;
 }
 
 /**
@@ -102,6 +113,7 @@ export async function requireOperator(): Promise<{
         roles: data.roles ?? [],
         operatorId: data.operatorId ?? "",
         canManage: data.canManage ?? false,
+        account: standingOf(data.account),
       },
     };
   } catch (err) {

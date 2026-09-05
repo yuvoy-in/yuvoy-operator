@@ -4,6 +4,30 @@
  */
 
 export interface paths {
+    "/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an operator account
+         * @description An operator creates their own account and can sign in immediately.
+         *
+         *     **Signing in is not being sellable.** The account is created at `PROSPECT` and cannot be booked by anybody; only an admin decision moves it to `LIVE`. So verification still gates every rupee — it has simply stopped gating whether somebody can sign in, add their listings and prepare while they wait.
+         *
+         *     **The response is identical for a number that already has an account.** This endpoint is public and unauthenticated; an error saying "already registered" would turn it into a checker for whether a given phone belongs to a Yuvoy operator. Somebody in that position discovers it by asking for a sign-in code, which works — the account they were trying to create is the one they already have.
+         */
+        post: operations["operatorSignUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/otp": {
         parameters: {
             query?: never;
@@ -879,6 +903,64 @@ export interface components {
              */
             phoneMasked?: string;
         };
+        /**
+         * @description Why this operator can or cannot sell, and **who has to move next**.
+         *
+         *     Derived on every read rather than stored. A stored status is a second copy of the truth that goes stale the moment a credential expires on its own — and expiry is exactly the case nobody remembers to write an update for.
+         */
+        AccountStanding: {
+            /**
+             * @description The operator's commercial status.
+             * @example ONBOARDING
+             * @example LIVE
+             * @example PAUSED
+             */
+            state: string;
+            /** @description Whether a traveller can book them right now. `LIVE` is the only status that means yes; everything else, `PAUSED` included, is a no with a different reason. */
+            bookable: boolean;
+            /** @description Empty only when nothing is outstanding. */
+            blocking: components["schemas"]["Blocker"][];
+            credentials?: components["schemas"]["OperatorCredential"][];
+        };
+        Blocker: {
+            /**
+             * @description A closed set, so a client branches on the code and never on the message — the same rule the error enum follows. `OTHER` exists so a reason can be added operationally without a contract change and without breaking a client: render `label` for anything you do not recognise, including `OTHER`.
+             * @enum {string}
+             */
+            code: "CREDENTIAL_MISSING" | "CREDENTIAL_UNVERIFIED" | "CREDENTIAL_EXPIRED" | "CREDENTIAL_REJECTED" | "AWAITING_REVIEW" | "OTHER";
+            /**
+             * @description Human-readable and safe to show unmodified.
+             * @example We still need your insurance certificate
+             */
+            label: string;
+            /** Format: date-time */
+            since?: string;
+            /**
+             * @description **The field that stops the phone call.** "Pending" because we are slow and "pending" because they have sent nothing read identically, and an operator who cannot tell which has no choice but to ring somebody.
+             * @enum {string}
+             */
+            waitingOn: "operator" | "yuvoy";
+        };
+        /** @description A document Yuvoy holds, or is waiting for. */
+        OperatorCredential: {
+            /**
+             * @example directorate_registration
+             * @example insurance
+             */
+            type: string;
+            /** @enum {string} */
+            state: "pending" | "verified" | "rejected" | "expired";
+            /** @description Whether the account can go LIVE without it. */
+            mandatory: boolean;
+            issuer?: string;
+            /**
+             * Format: date
+             * @description A date, not an instant. A licence expires on a day, and sending a timestamp invites a timezone bug on the one field an operator plans a season around.
+             */
+            expiresOn?: string;
+            /** Format: date-time */
+            verifiedAt?: string;
+        };
         OperatorBooking: {
             id?: string;
             reference?: string;
@@ -996,6 +1078,45 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    operatorSignUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description What travellers will see. */
+                    businessName: string;
+                    /** @description The person signing up — the first OWNER. */
+                    name: string;
+                    /**
+                     * @description E.164. This is what they sign in with.
+                     * @example +919000000000
+                     */
+                    phone: string;
+                    email?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Accepted. Ask for a sign-in code with the same number next. Returned whether or not the account already existed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        next?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     requestOperatorOtp: {
         parameters: {
             query?: never;
@@ -1440,6 +1561,8 @@ export interface operations {
                         operatorId?: string;
                         /** @description OWNER or MANAGER. Capacity, closed dates, earnings and listing edits require it — a staff member who can see today's manifest does not need the margin on it. */
                         canManage?: boolean;
+                        /** @description Why this account can or cannot sell, and who has to move next. Absent means unknown — never "everything is fine". */
+                        account?: components["schemas"]["AccountStanding"];
                     };
                 };
             };

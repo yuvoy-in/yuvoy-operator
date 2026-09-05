@@ -11,9 +11,11 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 3 Sep 2026: two additive fields — `TeamMember.phoneMasked` (yuvoy-api#62,
-# PR #65) and `OperatorBooking.money` (yuvoy-api#60, PR #61). Consumed in the
-# same change as this bump: the team list and the earnings screen.
-ref=2dc9472adb63b5277112fe25a491979dbc814cd4
+# 5 Sep 2026: `AccountStanding` on `GET /me` — state, bookable, blocking[] and
+# credentials[] (yuvoy-api#63 O3, PR #83). Consumed in the same change: /account
+# stops claiming a PROSPECT is live, and says what is outstanding and who moves
+# next. Also lands `POST /auth/signup` (operator self-onboarding, D-029), which
+# this portal does NOT yet use — raised as yuvoy-operator#16.
+ref=2a8f2eebafe7a2f0954932c991a677a9a5cf1eeb
 branch=master
-pinned_on=2026-09-03
+pinned_on=2026-09-05

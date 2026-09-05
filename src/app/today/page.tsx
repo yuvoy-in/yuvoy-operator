@@ -5,6 +5,7 @@ import { listSlots } from "@/lib/day/manifest";
 import { listOpenRequests } from "@/lib/day/requests";
 import { urgencyOf } from "@/lib/day/request-types";
 import { dayCaption, marketDays, marketTime } from "@/lib/format/market-time";
+import { headline, splitByWaitingOn } from "@/lib/account/standing";
 import { Empty } from "@/components/ui/states";
 import { Screen } from "@/components/chrome/screen";
 import { Chip } from "@/components/ui/chip";
@@ -74,6 +75,43 @@ export default async function TodayPage({
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
         {dayCaption(date, today, tomorrow)}
       </h1>
+
+      {/*
+        The account cannot sell, said on the screen where the question is
+        actually asked.
+
+        A brand-new operator signs in and lands here — `/` redirects to
+        `/today` — and after self-signup (D-029) they are a PROSPECT with no
+        departures and nothing to run. Without this they meet "Nothing
+        scheduled", which reads as "you have not added anything" rather than
+        "you cannot sell yet". The Business door has the detail; this is the
+        pointer to it.
+
+        `account` is null when the API did not say. Nothing is claimed then —
+        an unknown standing must not produce a warning any more than it may
+        produce reassurance.
+      */}
+      {me.account && !me.account.bookable ? (
+        <Link
+          href="/account"
+          className={panelClass(
+            "alert",
+            "ease-interaction hover:bg-cream mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
+          )}
+        >
+          <span>
+            <span className="block text-base font-bold">
+              {headline(me.account).title}
+            </span>
+            <span className="text-forest/80 mt-1 block text-sm">
+              {splitByWaitingOn(me.account.blocking).operator.length > 0
+                ? "See what is outstanding"
+                : "See where it stands"}
+            </span>
+          </span>
+          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+        </Link>
+      ) : null}
 
       {!requestsResult.ok ? (
         <Panel role="status" className="mt-6 px-4 py-3 text-sm">

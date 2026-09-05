@@ -32,6 +32,46 @@ export function marketDate(date: Date, timeZone = "Asia/Kolkata"): string {
 }
 
 /**
+ * A bare `YYYY-MM-DD`, written the way an operator reads it.
+ *
+ * **Not an instant.** `OperatorCredential.expiresOn` is a date because "a
+ * licence expires on a day, and sending a timestamp invites a timezone bug on
+ * the one field an operator plans a season around" — so it is anchored to noon
+ * in the market's zone before formatting. `new Date("2026-11-30")` parses as
+ * UTC midnight, which is the previous evening in half the world; noon has no
+ * such edge on either side.
+ */
+export function marketDateLabel(
+  date: string,
+  timeZone = "Asia/Kolkata",
+): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone,
+  }).format(new Date(`${date}T12:00:00+05:30`));
+}
+
+/**
+ * Whole days from today to a bare date, counted in the MARKET's calendar.
+ *
+ * Negative is the past. Counted between two calendar days rather than by
+ * subtracting instants, for the reason `lastSeen` counts the same way: an
+ * operator standing in Havelock at 03:00 is in a different UTC day, and
+ * "expired yesterday" about a licence that is still valid is the kind of
+ * wrong that gets a screen ignored.
+ */
+export function daysUntilMarketDate(date: string, now: number): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const then = Date.parse(`${date}T00:00:00+05:30`);
+  if (Number.isNaN(then)) return null;
+  const today = Date.parse(`${marketDate(new Date(now))}T00:00:00+05:30`);
+  return Math.round((then - today) / 86_400_000);
+}
+
+/**
  * Whether a departure has set off yet.
  *
  * `completed` and `no_show` are refused by the API before the departure time
