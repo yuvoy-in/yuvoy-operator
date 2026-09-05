@@ -55,8 +55,12 @@ export async function createUploadIntent(): Promise<IntentState> {
     }
 
     /*
-      Handed to the client and never kept. "Returned once and never stored
-      server-side: it is a credential for writing video into our account."
+      Handed to the client and never kept, on either side. "`uploadUrl` is
+      never stored server-side: it is a credential for writing video into our
+      account." Since yuvoy-api#66 §3 it is DERIVED from the upload's own id
+      rather than remembered, which is what lets the API hand a working one
+      back after a reload without ever having stored it — so the client has no
+      reason to store it either, and `slot-store.ts` deliberately does not.
       Nothing here logs it, and `safePath` already strips query strings before
       any URL reaches a logger.
     */
@@ -80,15 +84,20 @@ export async function createUploadIntent(): Promise<IntentState> {
     if (err instanceof OperatorApiError) {
       if (err.status === 409) {
         /*
-          One at a time, and this is the message that has to carry the whole
-          awkward truth: the earlier upload cannot be resumed either, because
-          its URL was never persisted anywhere. Saying "try again later" would
-          leave somebody refreshing for an hour.
+          Kept, and reworded, because it is still declared in the contract while
+          meaning something much narrower than it used to.
+
+          Since yuvoy-api#66 §3 your OWN upload in flight comes back instead of
+          being refused, so this can no longer be the operator's own stranded
+          tab. What is left is somebody else holding the slot — a colleague, if
+          the quota is per operator rather than per user, which is the one thing
+          on that issue still unanswered. The copy is true under either reading
+          and promises nothing about a URL that can no longer be lost.
         */
         return {
           alreadyUploading: true,
           message:
-            "An upload is already going for this business. If it was you and the tab closed, it cannot be picked up again — wait for it to time out, or ask us to clear it.",
+            "An upload is already going for this business, started somewhere else. Yours will go once that one finishes or times out.",
         };
       }
       if (err.status === 403) {

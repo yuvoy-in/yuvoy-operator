@@ -14,8 +14,9 @@ import {
   type LocalVideoFacts,
   type PreflightProblem,
 } from "@/lib/media/preflight";
-import { TusError, readOffset, uploadResumable } from "@/lib/media/tus";
+import { TusError, readUploadState, uploadResumable } from "@/lib/media/tus";
 import { decideSlot, identityOf, type FileIdentity } from "@/lib/media/slot";
+import { forgetSlot, recallSlot, rememberSlot } from "@/lib/media/slot-store";
 import { marketTime } from "@/lib/format/market-time";
 import { RightsForm } from "./rights-form";
 import { Button } from "@/components/ui/button";
@@ -45,12 +46,16 @@ type Phase =
   /** Refused locally, before an upload slot was ever asked for. */
   | { name: "rejected"; problems: PreflightProblem[] }
   /**
-   * The slot holds bytes of a different clip. Nothing else may go in until
-   * that one finishes or the slot expires — see `decideSlot`.
+   * The slot holds bytes that are not this clip's. Nothing else may go in
+   * until that one finishes or the slot expires — see `decideSlot`.
+   *
+   * `by` is null when nothing can name them: another device, a colleague, or
+   * storage that was cleared. Two different sentences, because "choose X
+   * again" is no help when nothing knows what X was.
    */
   | {
       name: "held";
-      by: FileIdentity;
+      by: FileIdentity | null;
       uploaded: number | null;
       intent: UploadIntent;
     }
@@ -116,10 +121,14 @@ export function Uploader() {
   const abort = useRef<AbortController | null>(null);
 
   /*
-    "Keep this tab open" was load-bearing copy with nothing behind it: an
-    accidental close mid-upload burned the operator's single slot until it
-    timed out. The browser's own leave prompt is the only guard that exists
-    for that, so it is armed while bytes are moving or being processed.
+    Still armed, for a smaller reason than it used to have.
+
+    Closing mid-upload was once unrecoverable: the slot was burned until it
+    timed out. Since yuvoy-api#66 §3 it is recoverable — come back, choose the
+    same clip, carry on — so this is no longer the only thing standing between
+    an operator and a lost twenty minutes. It stays because recovering still
+    costs a few taps and a wait, and the one tap that avoids all of it is the
+    one the browser is offering.
   */
   const busy = phase.name === "uploading" || phase.name === "processing";
   useEffect(() => {
@@ -135,13 +144,18 @@ export function Uploader() {
     bytes it holds.
 
     An intent is not tied to a file: `POST /media/upload-intents` takes no
-    request body, a second one is refused with 409 while the first is open,
-    and there is no endpoint to hand one back. So the slot is reused rather
-    than re-asked for. But tus resumes from the SERVER's offset, and a slot
-    that has taken 1 MB of clip A must not be handed clip B: B would carry on
-    from A's offset and the result is one corrupt reel — A's head, B's tail —
-    confirmed, attested and sent to review. `bound` is set the moment bytes
-    start moving; `decideSlot` says what a newly chosen file may do.
+    request body and the API never learns what is going into the URL it hands
+    out. Since yuvoy-api#66 §3 asking again RESUMES the upload in flight rather
+    than refusing it, so the slot survives a reload — and so does the hazard.
+    tus resumes from the SERVER's offset, and a slot that has taken 1 MB of
+    clip A must not be handed clip B: B would carry on from A's offset and the
+    result is one corrupt reel — A's head, B's tail — confirmed, attested and
+    sent to review.
+
+    `bound` is what THIS page watched go in. It is null on every fresh load,
+    which is why it is no longer the only source: `recallSlot` is what the
+    browser remembers, and `decideSlot` weighs both against what the server
+    says it is holding.
   */
   const slot = useRef<{
     intent: UploadIntent;
@@ -184,33 +198,61 @@ export function Uploader() {
     }
 
     /*
-      Whose bytes does the slot hold? Asked of the server, not remembered:
-      `HEAD` is the truth about what landed, and only a confirmed zero means
-      the slot is clean enough to take a different clip. Not being able to
-      ask is treated as "held" — "probably fine" is how a corrupt reel reaches
-      a traveller's screen.
+      Whose bytes does the slot hold?
+
+      Asked of the server EVERY time, not only when this page happens to
+      remember binding it. That "only when bound" shortcut was correct while a
+      second intent was refused — a page that had just loaded could not obtain
+      a URL for an upload in progress, so a fresh page always meant a fresh
+      slot. Since §3 it does not, and the shortcut became the bug: a reloaded
+      page skipped the check entirely and resumed a different clip into
+      another one's offset.
+
+      A `HEAD` is one round trip and the upload opens with the same call
+      anyway, so nothing is spent that was not already being spent.
     */
+    const known = slot.current?.bound ?? recallSlot(intent.intentId);
+    let server = null;
+    try {
+      server = await readUploadState(intent.uploadUrl, fetch);
+    } catch {
+      /* Left null. `decideSlot` refuses rather than guesses. */
+    }
+
+    const decision = decideSlot(known, identityOf(file), server);
+
+    if (decision.kind === "unreachable") {
+      setPhase({
+        name: "failed",
+        message:
+          "We could not reach the upload server. Check your signal and try again — nothing has been sent.",
+      });
+      return;
+    }
+    if (decision.kind === "held") {
+      setPhase({
+        name: "held",
+        by: decision.by,
+        uploaded: decision.uploaded,
+        intent,
+      });
+      return;
+    }
+
     let resumeFrom = 0;
-    const bound = slot.current?.bound ?? null;
-    if (bound) {
-      let offset: number | null = null;
-      try {
-        offset = await readOffset(intent.uploadUrl, fetch);
-      } catch {
-        offset = null;
-      }
-      const decision = decideSlot(bound, identityOf(file), offset);
-      if (decision.kind === "held") {
-        setPhase({
-          name: "held",
-          by: decision.by,
-          uploaded: decision.uploaded,
-          intent,
-        });
-        return;
-      }
-      if (decision.kind === "fresh") slot.current!.bound = null;
-      else resumeFrom = decision.uploaded;
+    if (decision.kind === "resume") {
+      resumeFrom = decision.uploaded;
+      // Adopt what the browser remembered, so the rest of this page session
+      // reasons about a binding it did not personally watch happen.
+      slot.current = { intent, bound: known ?? identityOf(file) };
+    } else {
+      /*
+        A confirmed empty slot. Any binding either half remembers is about an
+        upload that is over, and keeping it would refuse the next clip on the
+        strength of a record the server has already contradicted.
+      */
+      slot.current = { intent, bound: null };
+      forgetSlot();
     }
 
     const facts = await readVideoFacts(file);
@@ -226,9 +268,16 @@ export function Uploader() {
   const send = useCallback(async (file: File, intent: UploadIntent) => {
     const controller = new AbortController();
     abort.current = controller;
-    // From here the slot belongs to this file. See `decideSlot`.
+    /*
+      From here the slot belongs to this file — recorded in two places, because
+      they answer two different questions. The ref is what this page knows; the
+      store is what survives it, and it is written BEFORE the first byte
+      because the reload we are protecting against can happen during the first
+      byte. It holds the file's identity and never the URL. See `slot-store`.
+    */
     const bound = identityOf(file);
     slot.current = { intent, bound };
+    rememberSlot(intent.intentId, bound);
     setPhase({ name: "uploading", file, intent, uploaded: 0, resumes: 0 });
     let lastResumes = 0;
 
@@ -283,6 +332,13 @@ export function Uploader() {
         return;
       }
       if (result.ready && result.mediaAssetId) {
+        /*
+          The slot is finished with, so the record of what was in it is too.
+          Left behind it would name a file for an intent that will never come
+          back — matched on the id, so harmless, but it is the operator's file
+          name sitting on their phone for no reason.
+        */
+        forgetSlot();
         setPhase({ name: "attesting", mediaAssetId: result.mediaAssetId });
         return;
       }
@@ -339,19 +395,35 @@ export function Uploader() {
       {phase.name === "held" ? (
         <div>
           <p role="alert" className="text-terra-deep text-sm font-bold">
-            {phase.uploaded === null
-              ? `This upload already holds another clip, ${phase.by.name}, and we could not check how much of it has arrived.`
-              : `This upload already holds ${formatBytes(phase.uploaded)} of ${phase.by.name}.`}
+            {phase.by
+              ? `This upload already holds ${formatBytes(phase.uploaded ?? 0)} of ${phase.by.name}.`
+              : `An upload is already going for this business, and it is not this clip — ${formatBytes(phase.uploaded ?? 0)} of something else has arrived.`}
           </p>
           {/*
-            One clip at a time is the API's rule, and the slot cannot be handed
-            back. What CAN happen is said plainly: the same clip carries on;
-            anything else waits.
+            One clip at a time is the API's rule. What CAN happen is said
+            plainly, and it depends on whether the bytes can be named.
+
+            Named: this phone started it, so "choose it again" is real advice.
+            Unnamed: another device, a colleague, or storage that was cleared —
+            and telling somebody to choose a clip nothing can name would be
+            advice they cannot act on. So they get the one true fact instead,
+            which is when the slot frees up.
           */}
           <p className="text-forest/70 mt-2 text-sm">
-            One clip at a time. Choose {phase.by.name} again and it carries on
-            from where it stopped. A different clip cannot go in until that one
-            finishes
+            {phase.by ? (
+              <>
+                One clip at a time. Choose {phase.by.name} again and it carries
+                on from where it stopped — this works after closing the tab or
+                restarting your phone. A different clip cannot go in until that
+                one finishes
+              </>
+            ) : (
+              <>
+                One clip at a time, and this browser did not start that one — so
+                it cannot be picked up from here. Whoever did can carry on with
+                it from their own phone. Anything else waits until it finishes
+              </>
+            )}
             {phase.intent.expiresAt
               ? ` or times out at ${marketTime(phase.intent.expiresAt, "Asia/Kolkata")}`
               : " or times out"}
@@ -455,15 +527,22 @@ export function Uploader() {
                 Upload it
               </Button>
               {/*
-                The awkward truth, said before they start rather than after
-                they lose it. The upload URL may not be persisted anywhere, and
-                a fresh intent is refused while one is in progress — so a closed
-                tab is an upload nobody can pick up.
+                This line used to be a warning and is now a reassurance, which
+                is the whole of yuvoy-api#66 §3 in one sentence. Asking for the
+                intent again returns the upload in flight with a fresh URL, so
+                a closed tab is recoverable rather than fatal.
+
+                It still says to stay, because staying is quicker than coming
+                back — and it says what happens if they cannot, because the
+                person this screen was written for is holding a phone on a boat
+                and the honest sentence is the one that stops them starting
+                over from zero.
               */}
               <p className="text-forest/70 mt-3 text-xs">
-                Keep this tab open until it finishes. Losing signal is fine — it
-                picks up where it left off — but closing the tab is not, and the
-                upload cannot be resumed afterwards.
+                Best to stay on this page until it finishes. Losing signal is
+                fine — it picks up where it left off. If the tab closes or your
+                phone restarts, come back here and choose the same clip: it
+                carries on from where it stopped.
               </p>
             </>
           )}
@@ -517,8 +596,15 @@ export function Uploader() {
           <p className="text-base font-bold" role="status">
             Uploaded. We are processing it now.
           </p>
+          {/*
+            The bytes are safe either way — "a job keeps polling whether or not
+            the client comes back" — but the rights step is on this page and
+            there is no `GET /media` to find the clip again from anywhere else.
+            So the ask is still to stay, and the way back is still said.
+          */}
           <p className="text-forest/70 mt-2 text-sm">
-            This takes a minute or two. Keep the tab open.
+            This takes a minute or two. Stay here if you can — if you lose the
+            page, choose the same clip again and we will pick it up from here.
           </p>
           {phase.resumes > 0 ? (
             <p className="text-forest/80 mt-2 text-sm">

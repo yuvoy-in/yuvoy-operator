@@ -509,6 +509,22 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
   },
   {
     /*
+      A colleague at the same business is already uploading.
+
+      Since yuvoy-api#66 §3 the upload endpoint RESUMES your own upload rather
+      than refusing it, so the only 409 left is somebody else holding the one
+      slot — if the quota is per operator rather than per user, which is still
+      open on that issue. The portal handles the refusal either way, and it
+      would otherwise be a contract branch nothing ever rendered.
+    */
+    id: "usr_upload_contended",
+    name: "Second Skipper",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000110",
+  },
+  {
+    /*
       The API having a bad minute — a 500 from `GET /me`, which is not an
       account state and must never render as one. Lands on the error boundary,
       where the answer is a retry rather than a sentence about suspension.
@@ -619,8 +635,10 @@ export const ACCOUNT_AWAITING = {
 };
 
 export const SUSPENDED_ID = "usr_suspended";
-/** Their uploads drop once, mid-chunk. See `mocks/tus-server.ts`. */
 export const PROSPECT_ID = "usr_prospect";
 export const AWAITING_ID = "usr_awaiting";
+/** Their uploads drop once, mid-chunk. See `mocks/tus-server.ts`. */
 export const DROPPING_ID = "usr_upload_drops";
+/** A colleague holds the one upload slot, so they get the 409 that is left. */
+export const CONTENDED_ID = "usr_upload_contended";
 export const FAILING_ID = "usr_api_failing";

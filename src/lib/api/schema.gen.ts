@@ -534,7 +534,17 @@ export interface paths {
         /** My departures */
         get: operations["listOperatorSlots"];
         put?: never;
-        post?: never;
+        /**
+         * Add departures
+         * @description The one thing the capacity screen could not do: create a departure. It could change how many seats an existing one held and close a date, so an operator wanting a Saturday morning trip had to ask somebody at Yuvoy.
+         *
+         *     **One shape covers both cases.** A single departure is a one-day range with one time and no weekday filter; a weekly pattern is a longer range with `weekdays`. Two endpoints would have been two ways to get the same row slightly wrong.
+         *
+         *     **Safe to press again.** Dates that already have a departure at that time are left alone, so `created: 0` is a legitimate answer and not a failure — a retry after a timeout does not sell the same boat twice.
+         *
+         *     OWNER or MANAGER only. A listing belonging to another operator answers **404**, never 403: "you may not touch that" confirms it is there.
+         */
+        post: operations["createOperatorSlots"];
         delete?: never;
         options?: never;
         head?: never;
@@ -648,7 +658,11 @@ export interface paths {
          * Get an upload slot for a reel
          * @description **Bytes never pass through this API.** The browser uploads directly to the video provider over tus, resumable in 5 MB chunks — on a 0.5-3 Mbps island uplink a non-resumable uploader is not slow, it is unusable.
          *
-         *     `uploadUrl` is returned **once and never stored server-side**: it is a credential for writing video into our account. Treat it as a secret, use it immediately, and do not persist it client-side either.
+         *     `uploadUrl` is **never stored server-side**: it is a credential for writing video into our account. Treat it as a secret and do not persist it client-side either.
+         *
+         *     **Asking again while an upload is in flight resumes it.** You get the same upload back with a fresh, working `uploadUrl` — not a `409`, and not a new slot. So a tab reload, a browser restart or a killed app recover by calling this endpoint again and `HEAD`ing the URL for the offset, which is ordinary tus.
+         *
+         *     This is why the URL is safe to withhold from you: it is derived from the upload's own id rather than kept, so the server can always hand it back without ever having stored it. Before this, "resumable" held for a dropped packet and not for a dropped tab — which on a twenty-minute upload is the failure that actually happens.
          */
         post: operations["createUploadIntent"];
         delete?: never;
@@ -836,6 +850,23 @@ export interface components {
                 /** Format: date-time */
                 arrivedAt?: string;
             }[];
+            /**
+             * @description **Present only on listings that ask a medical question.** Absent means the question does not apply — a snorkel trip carrying an empty screening object would invite a screen to render "not screened" against a party nobody was ever going to ask, and a false alarm on this signal teaches an instructor to skip the column.
+             *
+             *     **Never carries what anybody disclosed.** A manifest is read on a jetty, out loud, in front of other customers. The instructor needs to know a party was screened, not what they said.
+             *
+             *     The interesting case is `needsAttention` on a party with `declared: false`. A booking is refused outright on a declared condition, so everybody on this list declared clear — what can still go wrong is somebody arriving having never been asked.
+             */
+            screening?: {
+                /** @description This party answered the screener. */
+                declared: boolean;
+                /** @description Their answer. Only meaningful when `declared`. */
+                clear: boolean;
+                /** @description The one thing to highlight. Computed server-side so a phone, a printout and the admin console cannot disagree about who to stop. */
+                needsAttention: boolean;
+                /** @description The screener version answered. Reported, not compared: the listing carries no version of its own, so a "the question changed" flag would have nothing behind it. */
+                answeredVersion?: number;
+            };
             /** @description Computed server-side so three clients cannot disagree about them on a dock. `seatsSold` and `seatsSoldOffline` answer different questions and are deliberately separate. */
             totals?: {
                 parties?: number;
@@ -2017,12 +2048,72 @@ export interface operations {
                             seats?: number;
                             sold?: number;
                             remaining?: number;
+                            /**
+                             * @description Whether this departure holds seats (`allotment`) or waits on the operator to answer (`request`). The same enum the traveller catalog uses, because it is the same fact.
+                             *
+                             *     On the departure rather than the listing: a listing can carry both, and this screen is looking at departures. Without it the portal could only infer request mode indirectly, by noticing a row in the requests queue — an inference, and a wrong one for any departure nobody has asked about yet.
+                             * @enum {string}
+                             */
+                            bookingMode?: "allotment" | "request";
                             status?: string;
                         }[];
                     };
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    createOperatorSlots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    experienceId: string;
+                    /** Format: date */
+                    fromDate: string;
+                    /**
+                     * Format: date
+                     * @description Defaults to `fromDate` — a single day need not be said twice.
+                     */
+                    toDate?: string;
+                    times: string[];
+                    /** @description 0 is Sunday. Empty means every day in the range, which is what a one-off departure wants. */
+                    weekdays?: number[];
+                    /** @description How many seats are sold to Yuvoy on each departure. */
+                    seats: number;
+                    /** @description What the boat physically holds. Defaults to `seats`; larger when the operator also sells at the jetty. */
+                    capacity?: number;
+                    /** @default 120 */
+                    durationMinutes?: number;
+                    /**
+                     * @description How long before departure bookings close.
+                     * @default 4
+                     */
+                    cutoffHours?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Departures created. Existing ones on those dates were left alone. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        created?: number;
+                        note?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     setSlotCapacity: {

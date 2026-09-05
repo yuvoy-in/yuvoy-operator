@@ -209,13 +209,23 @@ resumable upload → confirm → rights attestation.
    hand for as long as the page is open, and the wrong file noticed immediately
    is the case that actually happens. Once the page unmounts the id is gone
    with it, and the screen says so rather than leaving it to be found out.
-3. **Resumption is scoped to the page session** — and that is the contract, not
-   a shortcut. The upload URL may not be persisted client-side, is never stored
-   server-side, and a fresh intent is refused while one is open. After a reload
-   there is no URL to resume to and no way to ask for it again. So the screen
-   says "keep this tab open" rather than implying a durability it does not have.
+   Both are raised on `yuvoy-api` rather than faked (`yuvoy-api#66` §1/§2).
 
-All three are raised on `yuvoy-api` rather than faked.
+**What it can now do, and what that cost:** resumption used to be scoped to the
+page session, because the upload URL may not be persisted client-side, was never
+stored server-side, and a fresh intent was refused while one was open. `yuvoy-api#66`
+§3 (PR #85) fixed that: asking again **returns the upload in flight** with a
+freshly derived URL, so a closed tab, a browser restart and a killed app all
+recover. That is O8's own acceptance criterion, and it is met.
+
+It also created the failure it now guards against. A page that has just loaded
+can hold a URL for bytes it never sent, and the old rule read "nothing bound" as
+"clean slot" — so a reload followed by a _different_ clip would have resumed at
+the abandoned one's offset: one file's head with another's tail, confirmed,
+attested and sent to a human reviewer. `src/lib/media/slot.ts` now treats a slot
+as clean only when the **server** says it holds nothing, and identifies the
+bytes from three independent signals, refusing when none of them can. See that
+file's header for why refusing is the right direction to be wrong in.
 
 ### What each role is offered, and where the refusal is said
 

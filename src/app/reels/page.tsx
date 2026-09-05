@@ -14,7 +14,9 @@ export const dynamic = "force-dynamic";
  * ## What this screen is, and what it deliberately is not
  *
  * It is the upload: intent → resumable upload → confirm → attest. All four
- * steps exist in the contract and all four are here.
+ * steps exist in the contract and all four are here, and since yuvoy-api#66 §3
+ * "resumable" means what it says: a dropped signal, a closed tab, a restarted
+ * phone. Come back, choose the same clip, carry on.
  *
  * It is **not a library of your clips**, because there is no endpoint that
  * lists them. `GET /media` does not exist, so nothing can show what has been

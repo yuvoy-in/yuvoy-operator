@@ -15,6 +15,7 @@ import {
   AWAITING_ID,
   CHANGE_REQUESTS,
   DEV_CODE,
+  CONTENDED_ID,
   DROPPING_ID,
   EARNINGS,
   FAILING_ID,
@@ -151,6 +152,41 @@ export function __resetOperatorMocks() {
 
 function envelope(code: string, message: string, status: number) {
   return HttpResponse.json({ error: { code, message } }, { status });
+}
+
+/**
+ * One upload slot, said the same way whether it is new or resumed.
+ *
+ * Factored out rather than duplicated because the two answers must be
+ * indistinguishable to a client: the whole point of the resume is that a
+ * reloaded page asks the same question and can act on the same answer.
+ *
+ * The URL is rebuilt from the upload id every time, which is the mock's way of
+ * modelling the property that makes this safe in production — "derived, not
+ * stored", so the server can always hand a working URL back without ever
+ * having kept one.
+ */
+function uploadIntent(id: string, uploadId: string) {
+  return HttpResponse.json(
+    {
+      intentId: id,
+      uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/uploads/${uploadId}`,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      maxBytes: 200 * 1024 * 1024,
+      maxSeconds: 60,
+      protocol: "tus",
+      /*
+        1 MB here, 5 MB in production. The chunk size is the SERVER's to decide
+        and the client's to honour — which is the property worth testing — so a
+        smaller one exercises the same loop with a quarter of the bytes going
+        over Playwright's wire. A client with its own idea of the chunk size is
+        a client that breaks the day the provider changes.
+      */
+      chunkBytes: 1024 * 1024,
+      aspectRatio: "9:16",
+    },
+    { status: 201 },
+  );
 }
 
 /** Every authenticated route answers 401 the same way. */
@@ -582,31 +618,49 @@ export const handlers = [
   /* ------------------------------------------------------------ media --- */
 
   /**
-   * An upload slot.
+   * An upload slot — or the one already in flight, handed back.
    *
    * The `uploadUrl` points at a DIFFERENT ORIGIN, because in production it
    * does: "bytes never pass through this API", the browser talks straight to
    * the video provider, and that is the one request in this portal MSW cannot
    * intercept. `mocks/tus-server.ts` is that origin.
    *
-   * The 409 is modelled rather than skipped. One upload at a time is what
-   * makes the whole flow unresumable across a reload — the client cannot ask
-   * for the URL again — and a mock that handed out a second intent would let
-   * this portal ship a recovery path the real API does not have.
+   * **Asking again while an upload is in flight resumes it** — yuvoy-api#66 §3,
+   * PR #85. The same `intentId`, over the same tus resource, with a fresh URL:
+   * not a 409, and deliberately not a new slot, because a new slot would also
+   * stop the 409 while silently abandoning the bytes the provider already
+   * holds. The mock returns the SAME id for the same reason the API's own
+   * tests assert it — handing back a different one would make a reload look
+   * recovered while the bytes it recovered belonged to nothing.
+   *
+   * The 409 is still declared in the contract and is still modelled, on one
+   * fixture identity, because one reachable cause is left: a second person at
+   * the same business, if the quota is per operator rather than per user.
+   * That question is open on yuvoy-api#66 and `/reels`' copy hedges to match.
    */
   http.post(url("/media/upload-intents"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
     const me = sessionUser(request)!;
 
-    const open = uploadIntents[me.id];
-    if (open && !open.confirmedAt) {
+    if (me.id === CONTENDED_ID) {
+      /*
+        A colleague at this business got there first, so there is nothing of
+        OURS to resume — the only 409 the endpoint can still produce, and only
+        if the quota is per operator rather than per user. Refused on the first
+        ask rather than the second, because that is what "somebody else already
+        has it" means; a 409 that only arrives after you have held the slot
+        yourself is modelling a different thing.
+      */
       return envelope(
         "conflict",
         "An upload is already in progress for this operator.",
         409,
       );
     }
+
+    const open = uploadIntents[me.id];
+    if (open && !open.confirmedAt) return uploadIntent(open.id, open.uploadId);
 
     const id = `upi_${Math.random().toString(36).slice(2, 10)}`;
     /*
@@ -619,26 +673,7 @@ export const handlers = [
     createMockUpload(uploadId);
     uploadIntents[me.id] = { id, uploadId };
 
-    return HttpResponse.json(
-      {
-        intentId: id,
-        uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/uploads/${uploadId}`,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        maxBytes: 200 * 1024 * 1024,
-        maxSeconds: 60,
-        protocol: "tus",
-        /*
-          1 MB here, 5 MB in production. The chunk size is the SERVER's to
-          decide and the client's to honour — which is the property worth
-          testing — so a smaller one exercises the same loop with a quarter of
-          the bytes going over Playwright's wire. A client with its own idea of
-          the chunk size is a client that breaks the day the provider changes.
-        */
-        chunkBytes: 1024 * 1024,
-        aspectRatio: "9:16",
-      },
-      { status: 201 },
-    );
+    return uploadIntent(id, uploadId);
   }),
 
   /**

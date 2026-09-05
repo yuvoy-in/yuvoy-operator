@@ -907,6 +907,98 @@ for (const required of ["error.tsx", "global-error.tsx", "not-found.tsx"]) {
   }
 }
 
+/* ------- 13. the one localStorage exception stays one, and stays safe ---- */
+
+/**
+ * `src/lib/media/slot-store.ts` is the only file in `src/` allowed to touch
+ * `localStorage`, and it is allowed to keep exactly one thing there.
+ *
+ * ## Why the exception exists
+ *
+ * yuvoy-api#66 §3 made an upload survive a browser restart: asking for the
+ * intent again returns the upload in flight. The page it comes back to has no
+ * memory of whose bytes are behind that URL, and resuming a different clip
+ * into them is a corrupt reel — one file's head, another's tail — carrying a
+ * signed rights attestation, sent to a human reviewer. So the browser
+ * remembers which file it put in: a name, a size, a modification time.
+ *
+ * ## Why it needs a check rather than a comment
+ *
+ * The eslint ban is switched off for that file, and a switched-off rule is an
+ * invitation. Two things can go wrong and neither shows up in review:
+ *
+ * 1. **The exception spreads.** Somebody adds a second file to the eslint
+ *    `files` list because they need "just one flag". The ban stops meaning
+ *    anything and nothing announces it.
+ * 2. **The credential goes in.** The contract is explicit that `uploadUrl` is
+ *    "a credential for writing video into our account … do not persist it
+ *    client-side either", and the shortest path to a working reload — for
+ *    somebody who has not read `slot.ts` — is to store the URL. It would work.
+ *    It is the one thing that must not.
+ *
+ * Both are caught here by reading the eslint config and the store itself,
+ * because the failure is a file's CONTENT, which no type and no test sees.
+ */
+const STORE = join(SRC, "lib/media/slot-store.ts");
+const ALLOWED_LOCALSTORAGE = new Set([
+  "src/lib/media/slot-store.ts",
+  "src/lib/media/slot-store.test.ts",
+  "e2e/reels.spec.ts",
+]);
+
+for (const f of files) {
+  if (!/\blocalStorage\b/.test(code(f))) continue;
+  if (ALLOWED_LOCALSTORAGE.has(rel(f))) continue;
+  problems.push(
+    `${rel(f)}: uses localStorage. It is banned in this portal — the session ` +
+      `is an httpOnly cookie precisely so nothing worth stealing is anywhere ` +
+      `a script can read. The single exception is src/lib/media/slot-store.ts.`,
+  );
+}
+
+const eslintConfigPath = join(ROOT, "eslint.config.mjs");
+if (existsSync(eslintConfigPath)) {
+  const cfg = readFileSync(eslintConfigPath, "utf8");
+  const exempted = [...cfg.matchAll(/"((?:src|e2e)\/[^"]*?)"/g)]
+    .map((m) => m[1])
+    .filter((f) => cfg.slice(cfg.indexOf("no-restricted-syntax")).includes(f));
+  for (const f of exempted) {
+    if (!ALLOWED_LOCALSTORAGE.has(f)) {
+      problems.push(
+        `eslint.config.mjs exempts ${f} from the localStorage ban, and ` +
+          `scripts/qa.mjs does not know about it. Widening that exception is ` +
+          `a decision, not an edit — add it here with its reason, or take it ` +
+          `out of the eslint config.`,
+      );
+    }
+  }
+}
+
+if (existsSync(STORE)) {
+  const store = code(STORE);
+  /*
+    The credential check. Anything that looks like it is reaching for the
+    upload URL — the field itself, or an http string — fails, because the one
+    unrecoverable mistake here is storing something the contract says must
+    never leave memory.
+  */
+  for (const [pattern, what] of [
+    [/\buploadUrl\b/, "the upload URL"],
+    [/https?:\/\//, "an absolute URL"],
+    [/\burl\b\s*:/, "a `url` field"],
+  ]) {
+    if (pattern.test(store)) {
+      problems.push(
+        `src/lib/media/slot-store.ts mentions ${what}. It may persist a file ` +
+          `IDENTITY and nothing else: "\`uploadUrl\` … is a credential for ` +
+          `writing video into our account … do not persist it client-side ` +
+          `either". Since yuvoy-api#66 §3 the API hands the URL back on ` +
+          `request, so there is nothing to gain by keeping one.`,
+      );
+    }
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);

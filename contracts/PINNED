@@ -5,17 +5,28 @@
 # have: `operator_id` is read from the session row and is never accepted as a
 # parameter in any position.
 #
-# Pinned to the same yuvoy-api commit yuvoy-app is pinned to, so the two
-# frontends cannot be reasoning about different versions of the same backend.
+# The intent is that both frontends pin one yuvoy-api commit, so they cannot be
+# reasoning about different versions of the same backend. They diverge while one
+# of them is mid-integration: this ref is ahead of yuvoy-app's while the reels
+# upload catches up with yuvoy-api#66 §3. The two documents are separate files,
+# so being ahead here says nothing about the traveller contract — and the
+# traveller one moved on the same day with a defect in it (yuvoy-api#90), which
+# is the reason yuvoy-app has not followed.
 #
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 5 Sep 2026: `AccountStanding` on `GET /me` — state, bookable, blocking[] and
-# credentials[] (yuvoy-api#63 O3, PR #83). Consumed in the same change: /account
-# stops claiming a PROSPECT is live, and says what is outstanding and who moves
-# next. Also lands `POST /auth/signup` (operator self-onboarding, D-029), which
-# this portal does NOT yet use — raised as yuvoy-operator#16.
-ref=2a8f2eebafe7a2f0954932c991a677a9a5cf1eeb
+# 5 Sep 2026 (second bump of the day): `POST /media/upload-intents` **resumes
+# the upload in flight** instead of answering 409 (yuvoy-api#66 §3, PR #85).
+# Consumed in the same change: the "keep this tab open" copy comes out, the
+# slot binding is remembered across a reload, and an unbound slot that already
+# holds bytes is refused rather than resumed into. `GET /media` (§1/§2) is
+# still absent, so /reels still says what it cannot show.
+#
+# Also additive and NOT yet consumed, each raised on its own issue:
+#   - `POST /slots` — an operator can create a departure  (yuvoy-operator#17)
+#   - `Slot.bookingMode` — allotment vs request, per departure  (#17)
+#   - `OperatorBooking.screening` — who was never screened  (yuvoy-operator#18)
+ref=e16217a843c456749d02997070d92b7cf67a33ab
 branch=master
 pinned_on=2026-09-05

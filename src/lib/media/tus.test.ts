@@ -3,6 +3,7 @@ import {
   TusError,
   nextChunk,
   readOffset,
+  readUploadState,
   uploadBackoffMs,
   uploadResumable,
 } from "./tus";
@@ -293,6 +294,51 @@ describe("reading the offset", () => {
     await readOffset("/u", fetchImpl);
     // A cached offset is a corrupt upload.
     expect(seen[0].cache).toBe("no-store");
+  });
+});
+
+describe("reading the declared length", () => {
+  /*
+    The server's own statement about the file it is holding, and the only
+    identity signal that survives cleared storage or a different device. See
+    `decideSlot`: it is what tells "carry on with your clip" from "that upload
+    is somebody else's".
+  */
+  const head = (headers: Record<string, string>) =>
+    (async () =>
+      new Response(null, { status: 200, headers })) as unknown as typeof fetch;
+
+  it("reads it when the provider declares and exposes it", async () => {
+    const state = await readUploadState(
+      "/u",
+      head({ "Upload-Offset": "1024", "Upload-Length": "4096" }),
+    );
+    expect(state).toEqual({ offset: 1024, declaredLength: 4096 });
+  });
+
+  it("is null while the upload is still deferred-length", async () => {
+    // Nothing has been PATCHed, so nobody has said how long the clip is.
+    const state = await readUploadState(
+      "/u",
+      head({ "Upload-Offset": "0", "Upload-Defer-Length": "1" }),
+    );
+    expect(state.declaredLength).toBeNull();
+  });
+
+  it("is null rather than zero when the header is not exposed", async () => {
+    /*
+      The one that would corrupt a file if it were coerced. `Number(null)` is
+      `0`, and a declared length of zero is a claim about an empty file —
+      "we do not know" and "it is empty" lead to opposite decisions, and only
+      one of them is safe.
+    */
+    const state = await readUploadState("/u", head({ "Upload-Offset": "512" }));
+    expect(state.declaredLength).toBeNull();
+    const zero = await readUploadState(
+      "/u",
+      head({ "Upload-Offset": "512", "Upload-Length": "0" }),
+    );
+    expect(zero.declaredLength).toBeNull();
   });
 });
 

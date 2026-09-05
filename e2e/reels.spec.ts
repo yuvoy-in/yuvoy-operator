@@ -22,12 +22,12 @@ import AxeBuilder from "@axe-core/playwright";
 /*
   Serial, and one project only.
 
-  An upload intent is a single per-operator slot — `POST /media/upload-intents`
-  answers 409 while one is open, and there is no endpoint to hand one back. The
-  mock holds that state in the Next server process both Playwright projects
-  share, so two projects uploading as the same operator are two tests competing
-  for one slot. That is the domain, not flakiness, and it is the same shape the
-  bank change has.
+  An upload intent is a single per-operator slot, and since yuvoy-api#66 §3
+  asking again RESUMES it rather than refusing — which makes the sharing worse,
+  not better: two projects uploading as the same operator would now be handed
+  the same in-flight upload and PATCH two different files into it. The mock
+  holds that state in the Next server process both projects share. That is the
+  domain, not flakiness, and it is the same shape the bank change has.
 
   The desktop skips are declared rather than hidden.
 */
@@ -44,6 +44,8 @@ const DEV_CODE = "424242";
 const OWNER = "+919000000101";
 /** Their uploads drop once, mid-chunk. */
 const DROPPING = "+919000000107";
+/** A colleague at their business already holds the one upload slot. */
+const CONTENDED = "+919000000110";
 
 async function signIn(page: Page, phone = OWNER) {
   await page.goto("/sign-in");
@@ -72,6 +74,11 @@ function clip(megabytes: number) {
   };
 }
 
+/** The same, under a name of its own, for tests that need two clips. */
+function testInfoClip(megabytes: number, name: string) {
+  return { ...clip(megabytes), name };
+}
+
 async function choose(page: Page, file: ReturnType<typeof clip>) {
   await page.goto("/reels");
   await page.getByLabel("Choose a clip").setInputFiles(file);
@@ -92,12 +99,12 @@ test("a clip goes up, is processed, and ends at an attestation", async ({
   ).toBeVisible();
 
   /*
-    The awkward truth, before they commit twenty minutes to it. The upload URL
-    may not be persisted and a second intent is refused while one is open, so a
-    closed tab is an upload nobody can pick up.
+    The line that used to be a warning and is now a reassurance. Since
+    yuvoy-api#66 §3 a closed tab is recoverable, so the copy says how rather
+    than telling somebody not to close it.
   */
   await expect(
-    page.getByText(/Keep this tab open until it finishes/),
+    page.getByText(/come back here and choose the same clip/),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Upload it" }).click();
@@ -207,6 +214,212 @@ test("a slot holding one clip's bytes refuses another, and resumes the first", a
   await expect(page.getByText("Your clip is uploaded")).toBeVisible({
     timeout: 60_000,
   });
+});
+
+/**
+ * The three cases yuvoy-api#66 §3 was raised for.
+ *
+ * `POST /media/upload-intents` used to answer 409 while an upload was open, so
+ * a reload stranded it: the URL may not be persisted client-side and was never
+ * stored server-side. PR #85 made the endpoint return the upload in flight with
+ * a fresh URL, which is what makes O8's own acceptance criterion — "close the
+ * app, come back, and have it finish" — reachable at all.
+ *
+ * It also made a corrupt reel reachable, which is the second test here. Before
+ * the change a reloaded page could not obtain a URL at all; now it can, and the
+ * page it reloaded into has no memory of whose bytes the slot holds. Resuming
+ * blind would PATCH the new clip at the old clip's offset — one file's head
+ * with another's tail, confirmed, attested and sent to a human reviewer.
+ */
+test("a reload does not strand the upload — the same clip carries on and finishes", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  await signIn(page);
+
+  const reef = testInfo.outputPath("reload-reef.mp4");
+  writeFileSync(reef, Buffer.alloc(3 * 1024 * 1024, 7));
+
+  // The first chunk lands; the rest die on the wire, as a jetty link does.
+  let patches = 0;
+  await page.route(/\/uploads\//, (route) => {
+    if (route.request().method() === "PATCH" && ++patches > 1) {
+      return route.abort("connectionreset");
+    }
+    return route.continue();
+  });
+
+  await page.goto("/reels");
+  await page.getByLabel("Choose a clip").setInputFiles(reef);
+  await page.getByRole("button", { name: "Upload it" }).click();
+  /*
+    How many chunks land before the link dies is the wire's business, not this
+    test's — pinning an exact offset here would assert the abort's timing
+    rather than the recovery. What matters is that it stopped part-way.
+  */
+  await expect(
+    page.getByText(/It stopped at [\d.]+ MB of 3\.0 MB/),
+  ).toBeVisible({ timeout: 60_000 });
+
+  /*
+    The tab goes. Everything the page held — the intent, the URL, which file
+    the slot was bound to — goes with it. This is the reload the old contract
+    could not survive.
+  */
+  await page.unroute(/\/uploads\//);
+  await page.goto("/reels");
+
+  await page.getByLabel("Choose a clip").setInputFiles(reef);
+  await expect(
+    page.getByText(/Picks up from [\d.]+ MB already uploaded/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Upload it" }).click();
+  await expect(page.getByText("Your clip is uploaded")).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
+test("after a reload, a different clip is refused rather than resumed into", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  await signIn(page);
+
+  const reef = testInfo.outputPath("blind-reef.mp4");
+  writeFileSync(reef, Buffer.alloc(3 * 1024 * 1024, 7));
+  const harbour = testInfo.outputPath("blind-harbour.mp4");
+  writeFileSync(harbour, Buffer.alloc(2 * 1024 * 1024, 9));
+
+  let patches = 0;
+  await page.route(/\/uploads\//, (route) => {
+    if (route.request().method() === "PATCH" && ++patches > 1) {
+      return route.abort("connectionreset");
+    }
+    return route.continue();
+  });
+
+  await page.goto("/reels");
+  await page.getByLabel("Choose a clip").setInputFiles(reef);
+  await page.getByRole("button", { name: "Upload it" }).click();
+  await expect(
+    page.getByText(/It stopped at [\d.]+ MB of 3\.0 MB/),
+  ).toBeVisible({ timeout: 60_000 });
+
+  await page.unroute(/\/uploads\//);
+  await page.goto("/reels");
+
+  /*
+    A different clip, into a slot holding 1 MB of the first one — and a page
+    with no in-memory record of that, because it has just been created. The
+    refusal has to come from what the server says the slot holds, not from what
+    this page remembers about it.
+  */
+  await page.getByLabel("Choose a clip").setInputFiles(harbour);
+  /*
+    And the refusal names what it can and does not invent what it cannot. This
+    browser's record is keyed on the intent id and the reload kept it, but the
+    clip it names is not the one just picked — so the operator is told the slot
+    is busy and which clip would resume it, not "choose a clip nothing knows".
+  */
+  await expect(
+    page.getByRole("alert").filter({ hasText: "already holds" }),
+  ).toContainText("blind-reef.mp4");
+  await expect(page.getByText(/One clip at a time/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Upload it" })).toHaveCount(0);
+});
+
+test("with nothing remembered, the server's own declared length decides", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  /*
+    The operator who cleared their site data, or came back on the laptop. There
+    is no local record of the upload at all, so the only thing that can tell
+    "this is my clip" from "this is somebody else's" is `Upload-Length` — the
+    provider's own statement of how big the file it is holding is.
+
+    ❌ NOT proven here: that Cloudflare Stream exposes `Upload-Length` across
+    origins. The mock does (`mocks/tus-server.ts` lists it in
+    `Access-Control-Expose-Headers`), and tus 1.0.0 requires the header on a
+    HEAD once the length is known — but the CORS exposure is the provider's
+    choice and is unverifiable until an account exists. If it is absent this
+    degrades to a refusal, never to a wrong resume: `decideSlot` reads an
+    unreadable length as "we do not know".
+  */
+  await signIn(page);
+
+  const reef = testInfo.outputPath("amnesia-reef.mp4");
+  writeFileSync(reef, Buffer.alloc(3 * 1024 * 1024, 7));
+  const harbour = testInfo.outputPath("amnesia-harbour.mp4");
+  writeFileSync(harbour, Buffer.alloc(2 * 1024 * 1024, 9));
+
+  let patches = 0;
+  await page.route(/\/uploads\//, (route) => {
+    if (route.request().method() === "PATCH" && ++patches > 1) {
+      return route.abort("connectionreset");
+    }
+    return route.continue();
+  });
+
+  await page.goto("/reels");
+  await page.getByLabel("Choose a clip").setInputFiles(reef);
+  await page.getByRole("button", { name: "Upload it" }).click();
+  await expect(
+    page.getByText(/It stopped at [\d.]+ MB of 3\.0 MB/),
+  ).toBeVisible({ timeout: 60_000 });
+
+  // Everything this browser knew about the slot, gone.
+  await page.unroute(/\/uploads\//);
+  await page.evaluate(() => window.localStorage.clear());
+  await page.goto("/reels");
+
+  // A different clip: refused, and it cannot name what is in the way.
+  await page.getByLabel("Choose a clip").setInputFiles(harbour);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "not this clip" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/this browser did not start that one/),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Upload it" })).toHaveCount(0);
+
+  // The right clip: recognised by its size alone, and it finishes.
+  await page.getByRole("button", { name: "Pick a clip again" }).click();
+  await page.getByLabel("Choose a clip").setInputFiles(reef);
+  await expect(
+    page.getByText(/Picks up from [\d.]+ MB already uploaded/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Upload it" }).click();
+  await expect(page.getByText("Your clip is uploaded")).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
+test("a slot somebody else is holding is refused, and says so truthfully", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  /*
+    The only 409 `POST /media/upload-intents` can still produce. Since
+    yuvoy-api#66 §3 your own upload in flight comes back rather than being
+    refused, so a refusal means somebody else has the slot — a colleague, if
+    the quota is per operator rather than per user, which is still open on that
+    issue. The copy has to be true under either reading, and must not promise
+    anything about a URL that can no longer be lost.
+  */
+  await signIn(page, CONTENDED);
+  await page.goto("/reels");
+  await page
+    .getByLabel("Choose a clip")
+    .setInputFiles(testInfoClip(1, "colleague.mp4"));
+
+  await expect(
+    page.getByRole("alert").filter({ hasText: "already going" }),
+  ).toContainText("started somewhere else");
+  await expect(page.getByRole("button", { name: "Upload it" })).toHaveCount(0);
+  // The old copy told them it "cannot be picked up again". It can, by whoever
+  // started it, so that sentence is gone rather than reworded.
+  await expect(page.getByText(/cannot be picked up/)).toHaveCount(0);
 });
 
 test("a file that is not a video never leaves the phone", async ({ page }) => {

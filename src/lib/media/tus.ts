@@ -4,12 +4,18 @@
  * ## Why not a library
  *
  * `tus-js-client` is the obvious choice and it is 40 kB of a protocol we use
- * three verbs of. What it mostly adds is what we are explicitly told **not**
- * to do: URL storage, so an upload survives a reload. The contract forbids it
- * — "`uploadUrl` … is a credential for writing video into our account. Treat
- * it as a secret, use it immediately, and **do not persist it client-side
- * either**" — so the one feature worth importing a library for is the one
- * feature we may not use. See `RESUME_BOUNDARY` below.
+ * three verbs of. What it mostly adds is URL storage — keeping the upload URL
+ * in `localStorage` so an upload survives a reload — and the contract forbids
+ * exactly that: "`uploadUrl` is **never stored server-side**: it is a
+ * credential for writing video into our account. Treat it as a secret and do
+ * not persist it client-side either."
+ *
+ * Since yuvoy-api#66 §3 (PR #85) we do not need to. `POST /media/upload-intents`
+ * **returns the upload already in flight** with a freshly derived URL rather
+ * than a 409, so a reloaded page asks the API for the URL instead of
+ * remembering it. That is strictly better than a library's storage: the
+ * credential is short-lived and re-obtainable, and it never sits in a place a
+ * later script can read.
  *
  * ## What resumable means here, exactly
  *
@@ -18,21 +24,13 @@
  * dropout costs 40 seconds rather than the whole upload. `HEAD` is what makes
  * it safe — the server's offset is the truth, and a client that assumed its
  * own would write good bytes into the wrong part of the file.
+ *
+ * It now also survives a reload, a browser restart and a killed app. **That
+ * cuts both ways**, which is why `slot.ts` exists: the URL comes back, but the
+ * page it comes back to has no memory of whose bytes are behind it, and a
+ * resume into the wrong file is a corrupt reel rather than a failed upload.
+ * Nothing here decides that — this file moves bytes to an offset it was given.
  */
-
-export const RESUME_BOUNDARY = `
-  Resumption is scoped to this page session, and that is a property of the
-  contract rather than a shortcut.
-
-  tus resumes by PATCHing to the upload URL. That URL may not be persisted
-  client-side, is never stored server-side, and a fresh
-  \`POST /media/upload-intents\` answers 409 while one is in progress. So after
-  a reload there is no URL to resume to and no way to ask for it again — the
-  upload is unrecoverable by construction, not by omission.
-
-  Raised on yuvoy-api. Until it moves, the screen says "keep this tab open"
-  rather than implying a durability it does not have.
-`;
 
 export const TUS_VERSION = "1.0.0";
 
@@ -93,12 +91,40 @@ export function nextChunk(
   return { start: offset, end: Math.min(total, offset + chunkBytes) };
 }
 
-/** Ask the server where it actually got to. Its answer wins over ours. */
-export async function readOffset(
+/** What the server says about the upload behind a URL. */
+export interface UploadState {
+  /** Bytes it holds. The truth; ours never wins over it. */
+  offset: number;
+  /**
+   * The total length whoever started this upload declared, if it can be read.
+   *
+   * `null` in two different situations that this deliberately does not
+   * distinguish, because the caller must be conservative about both: the
+   * length has not been declared yet (nothing has been PATCHed, so the upload
+   * is still `Upload-Defer-Length`), or the provider does not expose the header
+   * across origins. Either way we do not know how big the file behind this
+   * upload is, and `decideSlot` treats not knowing as not knowing.
+   *
+   * When it IS readable it is the strongest identity signal available — it is
+   * the server's own statement about the file it is holding, and it survives a
+   * browser whose storage was cleared and a device that was never the one that
+   * started the upload.
+   */
+  declaredLength: number | null;
+}
+
+/**
+ * Ask the server where it actually got to, and how big it thinks the file is.
+ *
+ * Both come off one `HEAD`, because they are one question — "what is in this
+ * upload" — and asking twice would let the two answers come from either side
+ * of a chunk landing.
+ */
+export async function readUploadState(
   url: string,
   fetchImpl: typeof fetch,
   signal?: AbortSignal,
-): Promise<number> {
+): Promise<UploadState> {
   const res = await fetchImpl(url, {
     method: "HEAD",
     headers: { "Tus-Resumable": TUS_VERSION },
@@ -135,7 +161,28 @@ export async function readOffset(
       0,
     );
   }
-  return offset;
+
+  /*
+    Absent is normal and must never read as zero — `Upload-Length: 0` would
+    mean an empty file and a zero here would mean "we do not know", and those
+    lead to opposite decisions. Not exposed cross-origin is the same as not
+    declared, on purpose: see `UploadState.declaredLength`.
+  */
+  const rawLength = res.headers.get("Upload-Length");
+  const length =
+    rawLength === null || rawLength.trim() === "" ? NaN : Number(rawLength);
+  const declaredLength = Number.isFinite(length) && length > 0 ? length : null;
+
+  return { offset, declaredLength };
+}
+
+/** Just the offset, for the upload loop, which has no use for the rest. */
+export async function readOffset(
+  url: string,
+  fetchImpl: typeof fetch,
+  signal?: AbortSignal,
+): Promise<number> {
+  return (await readUploadState(url, fetchImpl, signal)).offset;
 }
 
 export async function uploadResumable(options: TusOptions): Promise<void> {
