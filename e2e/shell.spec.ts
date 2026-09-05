@@ -84,3 +84,59 @@ for (const route of ["/today", "/requests", "/capacity", "/account"]) {
     expect(results.violations).toEqual([]);
   });
 }
+
+/**
+ * The rail is pinned, and it is the height of the WINDOW.
+ *
+ * As an ordinary flex item it scrolled away, and every screen in this portal
+ * is long enough for that to bite: all six measured taller than a 720px
+ * window, /team at 2339px. An operator halfway down the team list had no
+ * navigation at all. Being a flex item also stretched it to the DOCUMENT's
+ * height, so the rail was 2339px of chrome drawing 250px of links.
+ *
+ * Neither is visible in a screenshot of the top of the page, which is why this
+ * measures. Desktop only: below `lg` there is no rail and the bar is fixed.
+ */
+test("the rail stays put while the page scrolls", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(Boolean(isMobile), "no rail below lg");
+  await signIn(page);
+
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("no viewport");
+  const rail = page.locator("aside");
+
+  // /team is the longest screen in the portal, and the one an operator scrolls.
+  await page.goto("/team");
+  await page.waitForLoadState("networkidle");
+
+  const before = await rail.boundingBox();
+  if (!before) throw new Error("no rail");
+
+  expect(
+    before.height,
+    "the rail is as tall as the window, not the document",
+  ).toBeLessThanOrEqual(viewport.height + 1);
+
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(250);
+
+  expect(
+    await page.evaluate(() => window.scrollY),
+    "the page scrolled",
+  ).toBeGreaterThan(500);
+
+  const after = await rail.boundingBox();
+  if (!after) throw new Error("no rail after scrolling");
+  expect(
+    Math.abs(after.y - before.y),
+    "the rail did not move with the page",
+  ).toBeLessThan(2);
+
+  // And it is still a usable navigation once you are down the page.
+  await expect(
+    page.getByRole("navigation", { name: /Primary/i }).getByRole("link"),
+  ).toHaveCount(4);
+});
