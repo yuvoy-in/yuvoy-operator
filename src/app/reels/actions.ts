@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
@@ -29,6 +30,8 @@ export interface UploadIntent {
   chunkBytes: number;
   maxBytes: number;
   maxSeconds: number;
+  /** The file length fixed into the tus slot. */
+  sizeBytes: number;
   aspectRatio?: string;
   expiresAt?: string;
 }
@@ -40,13 +43,19 @@ export interface IntentState {
   alreadyUploading?: boolean;
 }
 
-export async function createUploadIntent(): Promise<IntentState> {
+export async function createUploadIntent(
+  sizeBytes: number,
+): Promise<IntentState> {
+  const parsedSize = z.number().int().positive().safeParse(sizeBytes);
+  if (!parsedSize.success) {
+    return { message: "That file is empty, so there is nothing to upload." };
+  }
   const { token } = await requireOperator();
 
   try {
     const { data, error } = await operatorApi(token).POST(
       "/media/upload-intents",
-      {},
+      { body: { sizeBytes: parsedSize.data } },
     );
     if (error) throw error;
 
@@ -73,6 +82,7 @@ export async function createUploadIntent(): Promise<IntentState> {
         chunkBytes: data.chunkBytes ?? 5 * 1024 * 1024,
         maxBytes: data.maxBytes ?? 200 * 1024 * 1024,
         maxSeconds: data.maxSeconds ?? 60,
+        sizeBytes: data.sizeBytes ?? parsedSize.data,
         aspectRatio: data.aspectRatio,
         expiresAt: data.expiresAt,
       },
@@ -255,12 +265,7 @@ export async function attestRights(
     );
     if (error) throw error;
 
-    /*
-      No `revalidatePath`. There is nothing on this page the server could
-      re-render that says more than this does — `GET /media` does not exist, so
-      the list a revalidation would refresh is a list we cannot fetch. The
-      returned note is the only record of what just happened.
-    */
+    revalidatePath("/reels");
     return { done: { note: data.note } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
@@ -296,11 +301,9 @@ const withdrawSchema = z.object({
 /**
  * Take a clip down.
  *
- * Reachable for the clip the operator has **just** submitted, and only that
- * one, because `GET /media` does not exist and the id is otherwise
- * unrecoverable the moment this page unmounts. That is a real limitation and
- * the screen says so — but the case it does cover is the common one: the wrong
- * file, noticed immediately.
+ * The submission receipt covers the common case: the wrong file, noticed
+ * immediately. The library now keeps the clip visible after this component
+ * unmounts, so withdrawal can also be offered there independently.
  *
  * "Two acts that fail independently, and only the first is transactional: it
  * comes off Yuvoy immediately, and the original is deleted at the video
@@ -331,6 +334,7 @@ export async function withdrawMedia(
       },
     );
     if (error) throw error;
+    revalidatePath("/reels");
     return { withdrawn: { note: data.note } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
@@ -347,5 +351,60 @@ export async function withdrawMedia(
       };
     }
     return { message: "It was not taken down. Try again." };
+  }
+}
+
+/* --------------------------------------------------------------- attach -- */
+
+export interface AttachState {
+  message?: string;
+  done?: boolean;
+}
+
+const attachSchema = z.object({
+  mediaAssetId: z.string().min(1),
+  experienceId: z.string().min(1),
+  role: z.enum(["hero", "gallery"]),
+});
+
+/** Attach a human-approved clip to one of this operator's listings. */
+export async function attachMedia(
+  _prev: AttachState,
+  form: FormData,
+): Promise<AttachState> {
+  const parsed = attachSchema.safeParse({
+    mediaAssetId: String(form.get("mediaAssetId") ?? ""),
+    experienceId: String(form.get("experienceId") ?? ""),
+    role: String(form.get("role") ?? "gallery"),
+  });
+  if (!parsed.success) {
+    return { message: "Choose a listing and where this clip should appear." };
+  }
+
+  const { token } = await requireOperator();
+  try {
+    const { error } = await operatorApi(token).POST("/media/{id}/publish", {
+      params: { path: { id: parsed.data.mediaAssetId } },
+      body: {
+        experienceId: parsed.data.experienceId,
+        role: parsed.data.role,
+      },
+    });
+    if (error) throw error;
+    revalidatePath("/reels");
+    return { done: true };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return { message: "No signal. The clip was not attached — try again." };
+    }
+    if (err instanceof OperatorApiError) {
+      if (err.isNotFound) {
+        return { message: "That clip is not approved for this listing." };
+      }
+      if (err.status === 409 || err.status === 502) {
+        return { message: err.message };
+      }
+    }
+    return { message: "The clip was not attached. Try again." };
   }
 }

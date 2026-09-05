@@ -565,10 +565,10 @@ test("the wrong clip can be taken down, while the page is still open", async ({
 
   /*
     The case that actually happens: the wrong file, noticed immediately. There
-    is no `GET /media`, so this id is unrecoverable once the page unmounts —
-    and the screen says exactly that rather than leaving it to be discovered.
+    is also a durable reel library now, so the receipt makes clear that leaving
+    this screen no longer strands the takedown action.
   */
-  await expect(page.getByText(/Only while this page is open/)).toBeVisible();
+  await expect(page.getByText(/also appear in your reel list/)).toBeVisible();
   await page.getByRole("button", { name: "Wrong clip? Take it down" }).click();
 
   // A closed set, because the counts matter — a consent takedown arriving
@@ -586,29 +586,29 @@ test("the wrong clip can be taken down, while the page is still open", async ({
     operator who asked because somebody objected that the footage is gone when
     it is not, yet.
   */
-  await expect(page.getByText("Taken down")).toBeVisible();
+  await expect(
+    page.getByRole("paragraph").filter({ hasText: "Taken down" }),
+  ).toBeVisible();
   await expect(
     page.getByText(/deleted at the video provider shortly/),
   ).toBeVisible();
 });
 
-test("the screen says what it cannot show, rather than looking empty", async ({
-  page,
-}) => {
+test("approved footage can be attached to a listing", async ({ page }) => {
   await signIn(page);
   await page.goto("/reels");
 
-  /*
-    There is no `GET /media`, so nothing can list what has been uploaded,
-    approved or published — and publish and withdraw are blocked on the same
-    absence. An operator who sends three clips and finds no list would
-    reasonably conclude they were lost.
-  */
+  await expect(page.getByRole("heading", { name: "Your reels" })).toBeVisible();
+  const approved = page
+    .getByText("Choose the listing it belongs to.")
+    .locator("..");
+  await approved.getByLabel("Listing").selectOption("exp_dive");
+  await approved.getByLabel("Gallery").check();
+  await approved.getByRole("button", { name: "Attach to listing" }).click();
+
+  await expect(page.getByText("Listing: Reef dive")).toBeVisible();
   await expect(
-    page.getByText(/cannot yet show you the clips you have already sent/),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/Nothing you upload is lost by this/),
+    page.getByText("This clip is available to travellers."),
   ).toBeVisible();
 });
 

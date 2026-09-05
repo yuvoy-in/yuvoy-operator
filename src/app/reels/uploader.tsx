@@ -143,10 +143,11 @@ export function Uploader() {
     The upload slot, kept across file changes — and bound to the file whose
     bytes it holds.
 
-    An intent is not tied to a file: `POST /media/upload-intents` takes no
-    request body and the API never learns what is going into the URL it hands
-    out. Since yuvoy-api#66 §3 asking again RESUMES the upload in flight rather
-    than refusing it, so the slot survives a reload — and so does the hazard.
+    An intent is tied to a byte length, not a file identity: the API knows how
+    many bytes belong in the provider slot but cannot know their filename or
+    modification time. Since yuvoy-api#66 §3 asking again RESUMES the upload in
+    flight rather than refusing it, the slot survives a reload — and so does
+    the hazard.
     tus resumes from the SERVER's offset, and a slot that has taken 1 MB of
     clip A must not be handed clip B: B would carry on from A's offset and the
     result is one corrupt reel — A's head, B's tail — confirmed, attested and
@@ -185,7 +186,7 @@ export function Uploader() {
     // moves.
     let intent = slot.current?.intent;
     if (!intent) {
-      const started = await createUploadIntent();
+      const started = await createUploadIntent(file.size);
       if (!started.intent) {
         setPhase({
           name: "failed",
@@ -217,6 +218,20 @@ export function Uploader() {
       server = await readUploadState(intent.uploadUrl, fetch);
     } catch {
       /* Left null. `decideSlot` refuses rather than guesses. */
+    }
+
+    // tus fixes the length when the slot is created. On a resumed intent the
+    // API echoes the original length, so a different file must be refused even
+    // when the provider HEAD response omits its declared length. Ask for HEAD
+    // first so the operator can still see how many bytes are already safe.
+    if (intent.sizeBytes !== file.size) {
+      setPhase({
+        name: "held",
+        by: known,
+        uploaded: server?.offset ?? null,
+        intent,
+      });
+      return;
     }
 
     const decision = decideSlot(known, identityOf(file), server);
@@ -346,15 +361,13 @@ export function Uploader() {
     }
 
     /*
-      Sixty seconds of polling is up. There is no `GET /media` to check on it
-      later (yuvoy-api#66), so "check back shortly" pointed at nothing — the
-      one way to look again is the way in: the same clip picked again resumes
-      at the server's offset, which is the end, and asks the API once more.
+      Sixty seconds of polling is up. The library can show the processing row
+      later; choosing the same file remains the direct way to ask again now.
     */
     setPhase({
       name: "failed",
       message:
-        "The video is taking longer than usual to process. Nothing is lost — choose the same clip again and we will check on it.",
+        "The video is taking longer than usual to process. Nothing is lost — it will stay in your reel list, or choose the same clip again to check now.",
       bound: identityOf(file),
       uploaded: file.size,
     });

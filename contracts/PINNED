@@ -16,17 +16,11 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 5 Sep 2026 (second bump of the day): `POST /media/upload-intents` **resumes
-# the upload in flight** instead of answering 409 (yuvoy-api#66 §3, PR #85).
-# Consumed in the same change: the "keep this tab open" copy comes out, the
-# slot binding is remembered across a reload, and an unbound slot that already
-# holds bytes is refused rather than resumed into. `GET /media` (§1/§2) is
-# still absent, so /reels still says what it cannot show.
-#
-# Also additive and NOT yet consumed, each raised on its own issue:
-#   - `POST /slots` — an operator can create a departure  (yuvoy-operator#16)
-#   - `Slot.bookingMode` — allotment vs request, per departure  (#16)
-#   - `OperatorBooking.screening` — who was never screened  (yuvoy-operator#17)
-ref=e16217a843c456749d02997070d92b7cf67a33ab
+# 6 Sep 2026: reel upload sends the real file length, `GET /media` supplies the
+# operator's durable clip library, `GET /experiences` supplies attachment
+# choices, and publishing can report a retryable video-delivery failure. This
+# portal consumes all four so an approved reel can be attached without an
+# administrator copying database ids.
+ref=0354227511a0e1dc5cce1e8e131514926b0148ec
 branch=master
-pinned_on=2026-09-05
+pinned_on=2026-09-06
