@@ -1,7 +1,9 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
+import { writeSessionToken } from "@/lib/auth/session-writes";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 
 /**
@@ -17,11 +19,20 @@ import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
  * other is sign-in. Both are the same shape: the *code* is the authorisation,
  * and there is no session yet to check because producing one is the point.
  *
- * **No session is minted here**, on the API side either: "they sign in through
- * the ordinary flow afterwards, so one code path creates operator sessions
- * rather than two — and the second one would be the one written in a hurry."
- * So the success state sends them to sign-in rather than pretending they are
- * in, which is the single most important thing this screen gets right.
+ * **Accepting now signs them in** (yuvoy-api#109, consumed for
+ * yuvoy-operator#25). The API used to mint no session here — "they sign in
+ * through the ordinary flow afterwards, so one code path creates operator
+ * sessions rather than two" — and this screen correctly said so. It now
+ * answers with the same `StartSession` sign-in makes, so the second code path
+ * never existed: there is one exchange, and this is a second door onto it.
+ *
+ * Same reasoning as O1's signup: they proved a code seconds ago, and a second
+ * identical challenge is the same gate twice.
+ *
+ * The fallback is kept and is not theoretical: `token` is "present unless the
+ * account itself cannot hold a session, in which case `next` says so and the
+ * join still happened". That case must not read as a failure — they ARE on the
+ * account — so it lands on the old wording rather than an error.
  */
 
 const acceptSchema = z.object({
@@ -45,7 +56,13 @@ const acceptSchema = z.object({
 
 export interface AcceptState {
   message?: string;
-  accepted?: boolean;
+  /**
+   * Joined, but not signed in.
+   *
+   * The narrow case where the account cannot hold a session. A successful
+   * accept that DID sign them in never reaches a state at all — it redirects.
+   */
+  joinedWithoutSession?: boolean;
 }
 
 export async function acceptInvite(
@@ -60,6 +77,8 @@ export async function acceptInvite(
     return { message: parsed.error.issues[0].message };
   }
 
+  let session: string | undefined;
+
   try {
     /*
       No token passed. `POST /team/accept` carries `security: []` in the
@@ -70,15 +89,17 @@ export async function acceptInvite(
       body: parsed.data,
     });
     if (error) throw error;
-    if (data.accepted === false) {
+
+    /*
+      `joined: false` on a 201 is not a shape the contract describes, but it is
+      cheap to refuse and the alternative — signing somebody into a business
+      the server just said it did not add them to — is not.
+    */
+    if (data.joined === false) {
       return { message: "That invitation could not be accepted." };
     }
-    /*
-      The response carries `next`, and it is deliberately not used to navigate.
-      There is exactly one next step and this build knows it; following a
-      server-supplied string would turn a 200 into whatever URL it contained.
-    */
-    return { accepted: true };
+
+    session = data.token;
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: err.message };
@@ -98,4 +119,17 @@ export async function acceptInvite(
     }
     return { message: "We could not accept that invitation just now." };
   }
+
+  /*
+    Outside the try/catch, and after the cookie: `redirect` throws by design,
+    and catching it would turn a successful accept into "we could not accept
+    that invitation just now".
+
+    The response also carries `next`, and it is deliberately not followed.
+    There is exactly one next step and this build knows it; navigating to a
+    server-supplied string would turn a 201 into whatever URL it contained.
+  */
+  if (!session) return { joinedWithoutSession: true };
+  await writeSessionToken(session);
+  redirect("/today");
 }

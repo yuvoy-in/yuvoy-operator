@@ -6,17 +6,34 @@ import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { INVITABLE_ROLES, type InvitableRole } from "@/lib/team/roles";
+import { ASSIGNABLE_ROLES, type AssignableRole } from "@/lib/team/access";
 
 /**
- * O5's two writes. Both are **OWNER only** on the server, and this file's job
- * is to surface that refusal rather than to second-guess it.
+ * O5's writes. Every one of them is **OWNER or ADMIN** on the server, and this
+ * file's job is to surface each refusal rather than to second-guess it.
  *
- * Note which gate is used: `roles.includes("OWNER")`, never `canManage`.
- * `canManage` is "OWNER or MANAGER" and it is the gate for capacity, closed
- * dates, earnings and listing edits — not for this. A manager who could add a
- * staff account could hand out access to a business that is not theirs, and
- * `pnpm qa` now fails a segment that calls an OWNER-only endpoint and decides
- * on `canManage`.
+ * Note which gate is used: explicit roles, never `canManage`. `canManage` is
+ * "OWNER or MANAGER" and it is the gate for capacity, closed dates, earnings
+ * and listing edits — not for this. A manager who could add a staff account
+ * could hand out access to a business that is not theirs, and `pnpm qa` fails
+ * a segment that calls one of these endpoints and decides on `canManage`.
+ *
+ * ## Why the three access writes revalidate and `remove` does not
+ *
+ * The rule this repo settled on: **revalidate only when the re-render shows
+ * more than the message would.** Changing a role, holding and restoring all
+ * change something the list itself displays — the chips, the state, which
+ * controls the row offers — so the list becoming right IS the confirmation,
+ * and it is a better one than a sentence.
+ *
+ * Removing is the opposite and stays as it was: revalidating makes the row
+ * vanish, taking with it the one fact the operator needed back — that the
+ * phone in somebody's pocket stopped working *now*, not at their next
+ * sign-in.
+ *
+ * All three access writes end the person's sessions, which the screen says
+ * before the tap rather than after it: somebody demoted mid-shift is signed
+ * out, and an operator who does not expect that will think the portal broke.
  */
 
 const MOCKING = process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
@@ -238,4 +255,157 @@ export async function removeMember(
   }
 
   return { removed: true };
+}
+
+/* ------------------------------------------------------- manage access ---- */
+
+export interface AccessState {
+  message?: string;
+  /** Set when the write landed, so the row can say what it did. */
+  done?: "role" | "hold" | "restore";
+}
+
+const idSchema = z.string().min(1);
+
+/**
+ * The refusals every access write shares, turned into one sentence each.
+ *
+ * Shared deliberately: four endpoints with the same 403 and the same
+ * `409 cannot_change_access` should not drift into four different accounts of
+ * what happened, and the difference between them is only ever the verb.
+ */
+function accessFailure(err: unknown, verb: string): AccessState {
+  if (err instanceof OperatorNetworkError) {
+    return {
+      message: `No signal. Nothing changed — ${verb} again when you have one.`,
+    };
+  }
+  if (err instanceof OperatorApiError) {
+    if (err.code === "cannot_change_access") {
+      /*
+        The screen already withholds both cases beside the row, so reaching
+        here means the account changed underneath — the other owner was
+        removed a minute ago on somebody else's phone.
+      */
+      return {
+        message:
+          "That cannot be changed — it is either your own access, or the last owner. Refresh to see who is on the account now.",
+      };
+    }
+    if (err.status === 403) {
+      return {
+        message: "You cannot change this person's access. An owner can.",
+      };
+    }
+    if (err.isNotFound) {
+      /*
+        404 covers three different things — not on this team, not currently
+        working, not on hold — and the contract deliberately does not tell
+        "gone" from "belongs to somebody else" apart. One message, and it says
+        the only useful thing: what you are looking at is out of date.
+      */
+      return {
+        message:
+          "That is not what this account looks like now. Refresh the list.",
+      };
+    }
+    if (err.status === 400 && err.message) return { message: err.message };
+  }
+  return { message: `That did not work. Try again.` };
+}
+
+/**
+ * Change what somebody can do.
+ *
+ * "The role is **replaced**, not added to" — the picker is a choice of one and
+ * the endpoint's semantics match it, so there is nothing to reconcile here.
+ * `OWNER` is not in `ASSIGNABLE_ROLES`, so it cannot be sent even by a hand
+ * -crafted form post: the schema refuses it before the request exists.
+ */
+export async function setMemberRole(
+  _prev: AccessState,
+  form: FormData,
+): Promise<AccessState> {
+  const parsed = z
+    .object({
+      id: idSchema,
+      role: z.enum(
+        ASSIGNABLE_ROLES as unknown as [AssignableRole, ...AssignableRole[]],
+      ),
+    })
+    .safeParse({
+      id: String(form.get("id") ?? ""),
+      role: String(form.get("role") ?? ""),
+    });
+  if (!parsed.success) return { message: "Choose a role." };
+
+  const { token } = await requireOperator();
+
+  try {
+    const { error } = await operatorApi(token).PUT("/team/{id}/role", {
+      params: { path: { id: parsed.data.id } },
+      body: { role: parsed.data.role },
+    });
+    if (error) throw error;
+  } catch (err) {
+    return accessFailure(err, "change it");
+  }
+
+  // The chips, the description and which controls the row offers all change.
+  // The list is a better confirmation than a sentence.
+  revalidatePath("/team");
+  return { done: "role" };
+}
+
+/**
+ * Pause somebody's login without taking their access away.
+ *
+ * "The row, the role and the history stay; `restore` is one call back." So the
+ * held member must remain visible with a state and a way back, rather than
+ * disappearing — a person who vanishes from this list reads as removed, which
+ * is the other verb entirely.
+ */
+export async function holdMember(
+  _prev: AccessState,
+  form: FormData,
+): Promise<AccessState> {
+  const parsed = idSchema.safeParse(String(form.get("id") ?? ""));
+  if (!parsed.success) return { message: "Nothing to pause." };
+
+  const { token } = await requireOperator();
+
+  try {
+    const { error } = await operatorApi(token).POST("/team/{id}/hold", {
+      params: { path: { id: parsed.data } },
+    });
+    if (error) throw error;
+  } catch (err) {
+    return accessFailure(err, "pause them");
+  }
+
+  revalidatePath("/team");
+  return { done: "hold" };
+}
+
+/** Give held access back, with the role they had. */
+export async function restoreMember(
+  _prev: AccessState,
+  form: FormData,
+): Promise<AccessState> {
+  const parsed = idSchema.safeParse(String(form.get("id") ?? ""));
+  if (!parsed.success) return { message: "Nothing to restore." };
+
+  const { token } = await requireOperator();
+
+  try {
+    const { error } = await operatorApi(token).POST("/team/{id}/restore", {
+      params: { path: { id: parsed.data } },
+    });
+    if (error) throw error;
+  } catch (err) {
+    return accessFailure(err, "restore them");
+  }
+
+  revalidatePath("/team");
+  return { done: "restore" };
 }

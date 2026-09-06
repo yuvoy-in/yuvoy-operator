@@ -6,13 +6,15 @@
  * An owner who reads "staff can only see the manifest" and hands a phone to a
  * skipper on that basis is relying on this file being true:
  *
- *   - `GET /me` · `canManage` — "OWNER or MANAGER. Capacity, closed dates,
- *     earnings and listing edits require it."
+ *   - `GET /me` · `canManage` — "OWNER, **ADMIN** or MANAGER. Capacity, closed
+ *     dates, earnings and listing edits require it."
  *   - `POST /requests/{id}/accept` — 403 "STAFF cannot commit seats."
  *   - `POST /requests/{id}/decline` — 403 "STAFF cannot answer requests."
- *   - `POST /slots/{id}/call-off` — "Requires OWNER or MANAGER."
+ *   - `POST /slots/{id}/call-off` — "Requires OWNER, **ADMIN** or MANAGER."
  *   - `POST /change-requests/bank` — "Three gates, not one: OWNER only …"
- *   - `POST /team` — "OWNER or ADMIN." `DELETE /team/{id}` — 403 "OWNER only."
+ *   - `POST /team`, `PUT /team/{id}/role`, `POST /team/{id}/hold`,
+ *     `.../restore` and `DELETE /team/{id}` — "OWNER or ADMIN only, and an
+ *     ADMIN cannot change an OWNER or another ADMIN."
  *
  * Note what is NOT claimed: media and reels carry a generic `Forbidden` with
  * no role named, so this file says nothing about them. A role description is
@@ -37,28 +39,27 @@ export function isInvitableRole(v: string): v is InvitableRole {
 }
 
 /**
- * Strength order — and ADMIN broke the reason there was one.
+ * Strength order — and the roles nest again.
  *
- * `roles` is plural on `TeamMember`, so a member may hold two. The roles used
- * to nest: `canManage` is "OWNER or MANAGER" and everything STAFF may do a
- * MANAGER may also do, so the strongest role described the whole of somebody's
- * access and collapsing to it lost nothing.
+ * `roles` is plural on `TeamMember`, so a member may hold two, and the order
+ * decides which single description is shown.
  *
- * **ADMIN does not nest with MANAGER.** An ADMIN may invite people and a
- * MANAGER may not; a MANAGER has `canManage` — capacity, closed dates,
- * earnings — and an ADMIN does not, because `GET /me` still defines that as
- * "OWNER or MANAGER". Neither contains the other.
+ * ## The correction, 6 September 2026
  *
- * So the order below is about seniority, not capability, and it is only safe
- * because of what it is used for: picking ONE description to show. Anyone
- * holding both roles is described by the ADMIN entry, which names both what it
- * adds and what it does not carry, rather than quietly implying a superset.
- * Every role held is still shown as its own chip.
+ * This file used to say "**ADMIN does not nest with MANAGER**", on the grounds
+ * that `canManage` was "OWNER or MANAGER" and therefore excluded ADMIN. That
+ * was true when it was written and **is no longer**: `canManage` is now
+ * "OWNER, ADMIN or MANAGER", and the contract gives the reason — "ADMIN holds
+ * it because the role exists for an owner who is off the island: one who could
+ * add a manager but not close a date would be a stand-in for nothing."
  *
- * (That an ADMIN cannot set seats is surprising enough to be worth checking —
- * raised on yuvoy-operator#23. Rendered as the contract states it either way:
- * inventing a capability is the one direction this screen must never be wrong
- * in.)
+ * So ADMIN now strictly contains MANAGER: everything a manager may do, plus
+ * this list. The order below is a real superset chain again — OWNER ⊃ ADMIN ⊃
+ * MANAGER ⊃ STAFF — and collapsing to the strongest loses nothing. Every role
+ * held is still shown as its own chip.
+ *
+ * The question raised on yuvoy-operator#23 — whether an admin really could not
+ * set seats — is answered, and the answer was no.
  */
 export function roleRank(role: string): number {
   switch (role) {
@@ -104,26 +105,34 @@ export function describeRole(role: string): RoleDescription | null {
       return {
         label: "Admin",
         /*
-          Exactly the two things the contract grants: `GET /team` is "OWNER or
-          ADMIN only" and `POST /team` is "OWNER or ADMIN". Nothing else names
-          ADMIN anywhere in the document.
+          This was WRONG until 6 September, and wrong in the worst direction.
+
+          It read: "Sees this list and can add people to it", and cannot
+          "remove anybody … change seats or see earnings." Every one of those
+          exclusions except the payout one has since become false — `canManage`
+          gained ADMIN, and `DELETE /team/{id}` widened to OWNER or ADMIN
+          (yuvoy-api#109).
+
+          An owner handing somebody an admin role on the strength of "cannot
+          see earnings" was being told something untrue about who can read
+          their margins. Caught by `pnpm qa`'s contract parse changing buckets
+          under the re-pin, not by anybody reading this.
         */
-        can: "Sees this list and can add people to it — the stand-in for an owner who is off the island.",
+        can: "Everything a manager can, plus this list — the stand-in for an owner who is off the island.",
         /*
-          `DELETE /team/{id}` is 403 "OWNER only", the bank change is OWNER
-          only, and `canManage` is still "OWNER or MANAGER" — so an admin has
-          less day-to-day power than a manager, which is worth saying out loud
-          rather than leaving somebody to discover.
+          What actually remains OWNER-only: the bank change ("Three gates, not
+          one: OWNER only"), and acting on an owner or another admin, which is
+          the 403 all four access endpoints carry.
         */
         cannot:
-          "Cannot remove anybody, cannot change payout details, and cannot change seats or see earnings.",
+          "Cannot change payout details, and cannot change the owner or another admin.",
       };
     case "MANAGER":
       return {
         label: "Manager",
         can: "Seats, closed dates, seat requests, calling off a departure, earnings and listing edits.",
         cannot:
-          "Cannot change payout details, and cannot add or remove people.",
+          "Cannot change payout details, and cannot add, remove or pause people.",
       };
     case "STAFF":
       return {

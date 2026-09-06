@@ -1,7 +1,9 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
+import { writeSessionToken } from "@/lib/auth/session-writes";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { codeSchema } from "@/lib/auth/code";
 
@@ -31,6 +33,14 @@ const phoneSchema = z
   .regex(/^\+[1-9]\d{7,14}$/, "Enter your number.");
 
 export interface JoinState {
+  /**
+   * `done` is now the NARROW case, not the success one.
+   *
+   * Accepting signs them in, so the ordinary path redirects into the portal
+   * and never renders a step. This is reached only when the account itself
+   * cannot hold a session — the join happened, so it is not an error
+   * (yuvoy-operator#25).
+   */
   step: "phone" | "code" | "done";
   message?: string;
   /** E.164, carried between steps. */
@@ -147,8 +157,10 @@ export async function acceptJoin(
     return { ...prev, step: "code", message: parsed.error.issues[0].message };
   }
 
+  let session: string | undefined;
+
   try {
-    const { error } = await operatorApi().POST("/join/{token}/accept", {
+    const { data, error } = await operatorApi().POST("/join/{token}/accept", {
       params: { path: { token } },
       body: {
         phone,
@@ -159,7 +171,7 @@ export async function acceptJoin(
       },
     });
     if (error) throw error;
-    return { ...prev, step: "done" };
+    session = data.token;
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { ...prev, step: "code", message: "No signal. Nothing changed." };
@@ -213,4 +225,21 @@ export async function acceptJoin(
       message: "That did not work. Try the code again.",
     };
   }
+
+  /*
+    Signed in, and into the portal (yuvoy-operator#25). They proved a code
+    seconds ago; a second identical challenge is the same gate twice, and it
+    was the one thing that made accepting an invitation feel like it had not
+    worked.
+
+    Outside the try/catch and after the cookie, because `redirect` throws by
+    design — catching it would turn a successful accept into "that did not
+    work. Try the code again."
+
+    `next` comes back too and is deliberately not followed: navigating to a
+    server-supplied string would turn a 201 into whatever URL it contained.
+  */
+  if (!session) return { ...prev, step: "done" };
+  await writeSessionToken(session);
+  redirect("/today");
 }

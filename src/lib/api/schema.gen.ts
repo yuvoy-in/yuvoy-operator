@@ -392,9 +392,77 @@ export interface paths {
          * Accept an invitation
          * @description Unauthenticated, because accepting an invitation is what somebody does before they have an account. Scoped by the invite code: hashed, attempt-limited, seven-day expiry.
          *
-         *     **No session is minted here.** They sign in through the ordinary flow afterwards, so one code path creates operator sessions rather than two — and the second one would be the one written in a hurry.
+         *     **Signs them in.** The code they have just proved is the same proof a session needs, so this answers with one — the same `StartSession` call sign-in makes, with the same refusals. Both doors into a team agree about what accepting gets you.
          */
         post: operations["acceptOperatorInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team/{id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change what somebody can do
+         * @description The role is **replaced**, not added to. The screen driving this is a choice of one, so "Manager" means "manager, and not the other thing" — an endpoint that quietly left a second role attached would grant more than the person choosing it believed they were granting.
+         *
+         *     Their sessions end, so the change is true immediately rather than whenever a fourteen-day session happens to lapse.
+         *
+         *     `OWNER` cannot be given and an owner's role cannot be changed here. The owner is whoever the payout account belongs to; that moves deliberately, not from a login.
+         */
+        put: operations["setOperatorUserRole"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team/{id}/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause somebody's access
+         * @description Stops them signing in without taking their access away. For the skipper who is off for the season, and for access somebody wants stopped today and decided about later.
+         *
+         *     The row, the role and the history stay; `restore` is one call back. Their sessions end immediately, because a hold that waits for a session to lapse is not a hold.
+         *
+         *     A held number is simply not found by the sign-in code request. It is not told it is on hold — that endpoint tells nobody anything about who exists.
+         */
+        post: operations["holdOperatorUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Give held access back
+         * @description With the role they had. No session is minted and none is returned: the ones they held were revoked when the hold went on, and coming back means signing in.
+         */
+        post: operations["restoreOperatorUser"];
         delete?: never;
         options?: never;
         head?: never;
@@ -561,7 +629,7 @@ export interface paths {
          * Grant the seats
          * @description This is the moment the seats come into existence. Before it the departure could sell nothing; after it, it can sell exactly this party.
          *
-         *     Taken under the departure's row lock, so two staff answering two requests on two phones cannot together commit more seats than the boat holds. Requires OWNER or MANAGER.
+         *     Taken under the departure's row lock, so two staff answering two requests on two phones cannot together commit more seats than the boat holds. Requires OWNER, ADMIN or MANAGER.
          *
          *     On success the traveller has an ordinary hold with a clock on it — the same thing a direct-booking traveller gets at checkout — and is told to pay before it lapses.
          */
@@ -679,7 +747,7 @@ export interface paths {
          *
          *     Full refunds regardless of the cancellation policy. Those tiers price a traveller changing their mind; nobody changed their mind here, and applying a 50% tier to somebody whose trip was called off by weather is the fastest way to lose a market where every traveller talks to the next one at the same guesthouse.
          *
-         *     `confirmSlotId` must equal the departure's own id. Not a boolean: a checkbox is one mis-tap on a wet phone away from cancelling a full boat, and this is the only action in the portal that cannot be undone. Requires OWNER or MANAGER.
+         *     `confirmSlotId` must equal the departure's own id. Not a boolean: a checkbox is one mis-tap on a wet phone away from cancelling a full boat, and this is the only action in the portal that cannot be undone. Requires OWNER, ADMIN or MANAGER.
          */
         post: operations["callOffDeparture"];
         delete?: never;
@@ -706,7 +774,7 @@ export interface paths {
          *
          *     **Safe to press again.** Dates that already have a departure at that time are left alone, so `created: 0` is a legitimate answer and not a failure — a retry after a timeout does not sell the same boat twice.
          *
-         *     OWNER or MANAGER only. A listing belonging to another operator answers **404**, never 403: "you may not touch that" confirms it is there.
+         *     OWNER, ADMIN or MANAGER only. A listing belonging to another operator answers **404**, never 403: "you may not touch that" confirms it is there.
          */
         post: operations["createOperatorSlots"];
         delete?: never;
@@ -734,7 +802,7 @@ export interface paths {
          *
          *     Reducing to *exactly* what is sold is allowed: that closes the departure without stranding anyone. A refused reduction returns `409` with copy telling the operator what to do instead, which clients should render verbatim rather than replacing with a generic error.
          *
-         *     Requires OWNER or MANAGER.
+         *     Requires OWNER, ADMIN or MANAGER.
          */
         patch: operations["setSlotCapacity"];
         trace?: never;
@@ -754,7 +822,7 @@ export interface paths {
          *
          *     An operator who assumes closing the calendar cancelled the bookings will simply not turn up, so clients must render `note` when `existingBookings > 0`.
          *
-         *     Requires OWNER or MANAGER.
+         *     Requires OWNER, ADMIN or MANAGER.
          */
         post: operations["addBlackout"];
         delete?: never;
@@ -774,7 +842,7 @@ export interface paths {
          * What I have earned
          * @description Summed from figures **frozen at capture**, so a commission change today cannot restate what was earned last week. `state` is `provisional` until a payout period is locked — say so in the UI, because nobody should plan against a number that can still move.
          *
-         *     Requires OWNER or MANAGER.
+         *     Requires OWNER, ADMIN or MANAGER.
          */
         get: operations["getOperatorEarnings"];
         put?: never;
@@ -894,6 +962,14 @@ export interface paths {
          *     **Asking again while an upload is in flight resumes it.** You get the same upload back with a fresh, working `uploadUrl` — not a `409`, and not a new slot. So a tab reload, a browser restart or a killed app recover by calling this endpoint again and `HEAD`ing the URL for the offset, which is ordinary tus.
          *
          *     This is why the URL is safe to withhold from you: it is derived from the upload's own id rather than kept, so the server can always hand it back without ever having stored it. Before this, "resumable" held for a dropped packet and not for a dropped tab — which on a twenty-minute upload is the failure that actually happens.
+         *
+         *     ## The length is fixed here, not on the PATCH
+         *
+         *     `sizeBytes` becomes the tus `Upload-Length` at slot creation, so the upload is **not** length-deferred. Under tus, `Upload-Length` on a `PATCH` is only meaningful while the length is still deferred, so there is nothing for a chunk to declare.
+         *
+         *     **Cloudflare accepts a redundant `Upload-Length` on a `PATCH` anyway.** Verified against the live provider on 2026-09-06: two identical one-megabyte final chunks against two real slots, one with the header and one without, both answered `204` and both left the offset complete. A strict tus server would refuse it; this one does not. So sending it is harmless today and wrong in principle — and a mock that refuses it is stricter than production, which will fail a client for something the provider permits.
+         *
+         *     The reliable thing to branch on is the opening `HEAD`: it returns `Upload-Length` and no `Upload-Defer-Length`, which says the length is already fixed and the client has nothing to declare.
          */
         post: operations["createUploadIntent"];
         delete?: never;
@@ -1827,7 +1903,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Joined. */
+            /** @description Joined, and signed in. The code they just proved is the proof a session needs, and asking for it twice in a row is the same gate twice rather than a second one. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1835,6 +1911,14 @@ export interface operations {
                 content: {
                     "application/json": {
                         joined?: boolean;
+                        /** @description Opaque bearer, the same shape and lifetime `POST /auth/session` returns. Present unless the account itself cannot hold a session, in which case `next` says so and the join still happened. */
+                        token?: string;
+                        user?: {
+                            id?: string;
+                            name?: string;
+                            roles?: string[];
+                        };
+                        operatorId?: string;
                         next?: string;
                     };
                 };
@@ -2177,7 +2261,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            /** @description OWNER only. */
+            /** @description OWNER or ADMIN only. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2213,19 +2297,171 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Accepted. Sign in next. */
-            200: {
+            /** @description Accepted, and signed in. */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        accepted?: boolean;
+                        joined?: boolean;
+                        /** @description Opaque bearer, the same shape and lifetime `POST /auth/session` returns. Present unless the account itself cannot hold a session, in which case `next` says so and the join still happened. */
+                        token?: string;
+                        user?: {
+                            id?: string;
+                            name?: string;
+                            roles?: string[];
+                        };
+                        operatorId?: string;
                         next?: string;
                     };
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    setOperatorUserRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    role: "ADMIN" | "MANAGER" | "STAFF";
+                };
+            };
+        };
+        responses: {
+            /** @description Changed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description OWNER or ADMIN only, and an ADMIN cannot change an OWNER or another ADMIN. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `cannot_change_access` — including changing your own. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    holdOperatorUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Held */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description OWNER or ADMIN only, and an ADMIN cannot hold an OWNER or another ADMIN. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not on this team, or not currently working. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `cannot_change_access` — your own access, or the last owner. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    restoreOperatorUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Working again. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description OWNER or ADMIN only, and an ADMIN cannot restore an OWNER or another ADMIN. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not on this team, or not on hold. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `cannot_change_access` — including your own access. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     removeOperatorUser: {
@@ -2247,7 +2483,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            /** @description OWNER only. */
+            /** @description OWNER or ADMIN only. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2288,7 +2524,10 @@ export interface operations {
                         name?: string;
                         roles?: string[];
                         operatorId?: string;
-                        /** @description OWNER or MANAGER. Capacity, closed dates, earnings and listing edits require it — a staff member who can see today's manifest does not need the margin on it. */
+                        /**
+                         * @description OWNER, ADMIN or MANAGER. Capacity, closed dates, earnings and listing edits require it — a staff member who can see today's manifest does not need the margin on it.
+                         *     ADMIN holds it because the role exists for an owner who is off the island: one who could add a manager but not close a date would be a stand-in for nothing.
+                         */
                         canManage?: boolean;
                         /** @description Why this account can or cannot sell, and who has to move next. Absent means unknown — never "everything is fine". */
                         account?: components["schemas"]["AccountStanding"];

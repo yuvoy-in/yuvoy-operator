@@ -90,33 +90,81 @@ describe("narrowing what the API returned", () => {
 
 describe("who may be removed", () => {
   const me = "usr_me";
+  const OWNER = ["OWNER"];
+  const ADMIN = ["ADMIN"];
 
-  it("refuses to remove yourself, and says so beside the row", () => {
+  it("refuses to remove yourself, and says nothing about it", () => {
+    /*
+      yuvoy-operator#25 §4. It used to read "This is you. Another owner has to
+      remove you." — a sentence explaining an internal rule beside a row with
+      the reader's own name on it. Not offering the control says it.
+    */
     const team = [
-      person({ id: me, roles: ["OWNER"] }),
-      person({ id: "usr_2", roles: ["OWNER"] }),
+      person({ id: me, roles: OWNER }),
+      person({ id: "usr_2", roles: OWNER }),
     ];
-    const r = removability(team[0], me, team);
+    const r = removability(team[0], me, OWNER, team);
     expect(r.removable).toBe(false);
-    expect(r.reason).toMatch(/This is you/);
+    expect(r.reason).toBeUndefined();
   });
 
-  it("refuses to remove the last owner, and says what breaks", () => {
+  it("refuses to remove the last owner, and that one DOES say why", () => {
+    /*
+      The one reason that survives the cut. An owner would read a missing
+      Remove here as a bug, and it is not inferable from the row — but it is
+      stated as a fact with no next step, because there is none: an owner
+      cannot be invited from this portal.
+    */
     const team = [
-      person({ id: "usr_owner", roles: ["OWNER"] }),
-      person({ id: me, roles: ["MANAGER"] }),
+      person({ id: "usr_owner", roles: OWNER }),
+      person({ id: me, roles: OWNER }),
     ];
-    const r = removability(team[0], me, team);
+    const only = [team[0]];
+    const r = removability(team[0], me, OWNER, only);
     expect(r.removable).toBe(false);
-    expect(r.reason).toMatch(/approve a bank change/);
+    expect(r.reason).toBe("The only owner.");
   });
 
   it("allows removing an owner once there are two", () => {
     const team = [
-      person({ id: "usr_owner", roles: ["OWNER"] }),
-      person({ id: me, roles: ["OWNER"] }),
+      person({ id: "usr_owner", roles: OWNER }),
+      person({ id: me, roles: OWNER }),
     ];
-    expect(removability(team[0], me, team).removable).toBe(true);
+    expect(removability(team[0], me, OWNER, team).removable).toBe(true);
+  });
+
+  it("lets an ADMIN remove, which used to be OWNER only", () => {
+    // `DELETE /team/{id}` widened to "OWNER or ADMIN" in yuvoy-api#109. An
+    // admin exists because the owner may be off the island.
+    const team = [
+      person({ id: me, roles: ADMIN }),
+      person({ id: "usr_staff", roles: ["STAFF"] }),
+    ];
+    expect(removability(team[1], me, ADMIN, team).removable).toBe(true);
+  });
+
+  it("does not let an ADMIN remove an owner or another admin", () => {
+    // "An ADMIN cannot change an OWNER or another ADMIN" — 403.
+    const team = [
+      person({ id: me, roles: ADMIN }),
+      person({ id: "usr_owner", roles: OWNER }),
+      person({ id: "usr_admin2", roles: ADMIN }),
+    ];
+    expect(removability(team[1], me, ADMIN, team).removable).toBe(false);
+    expect(removability(team[2], me, ADMIN, team).removable).toBe(false);
+  });
+
+  it("offers nothing at all to a MANAGER", () => {
+    /*
+      `canManage` is "OWNER or MANAGER" and gates capacity, earnings and
+      listing edits — never this. A manager who could remove people could hand
+      out access to a business that is not theirs.
+    */
+    const team = [
+      person({ id: me, roles: ["MANAGER"] }),
+      person({ id: "usr_staff", roles: ["STAFF"] }),
+    ];
+    expect(removability(team[1], me, ["MANAGER"], team).removable).toBe(false);
   });
 
   it("allows revoking an invitation, including one to an owner", () => {
@@ -126,17 +174,17 @@ describe("who may be removed", () => {
       leaves the account ownerless — the guard is about active owners.
     */
     const team = [
-      person({ id: "usr_owner", roles: ["OWNER"] }),
-      person({ id: "inv_x", roles: ["OWNER"], pending: true }),
+      person({ id: "usr_owner", roles: OWNER }),
+      person({ id: "inv_x", roles: OWNER, pending: true }),
     ];
-    expect(removability(team[1], me, team).removable).toBe(true);
+    expect(removability(team[1], me, OWNER, team).removable).toBe(true);
   });
 
   it("does not mistake an invitation id for your own user id", () => {
     // Both are opaque strings from the same endpoint. A pending row is an
     // invitation and can never be "you", whatever its id happens to be.
     const team = [person({ id: me, pending: true })];
-    expect(removability(team[0], me, team).removable).toBe(true);
+    expect(removability(team[0], me, OWNER, team).removable).toBe(true);
   });
 });
 

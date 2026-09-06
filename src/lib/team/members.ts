@@ -111,25 +111,36 @@ export interface Removability {
 export function removability(
   member: TeamPerson,
   meId: string,
+  myRoles: readonly string[],
   team: readonly TeamPerson[],
 ): Removability {
-  if (!member.pending && member.id === meId) {
-    return {
-      removable: false,
-      reason: "This is you. Another owner has to remove you.",
-    };
+  // OWNER or ADMIN, widened from OWNER-only (yuvoy-api#109) — and an admin
+  // may not remove an owner or another admin, the same 403 the other three
+  // access endpoints carry. No reason on either: not offering the control is
+  // the answer, and your own row has your name on it (yuvoy-operator#25 §4).
+  if (!myRoles.includes("OWNER") && !myRoles.includes("ADMIN")) {
+    return { removable: false };
+  }
+  if (!member.pending && member.id === meId) return { removable: false };
+  if (
+    !myRoles.includes("OWNER") &&
+    (member.roles.includes("OWNER") || member.roles.includes("ADMIN"))
+  ) {
+    return { removable: false };
   }
 
+  /*
+    The one refusal that survives the copy cut. An owner would otherwise read
+    a missing Remove on the only owner as a bug, and it is not inferable from
+    the row. Stated as a fact with no next step attached, because there is
+    none — an owner cannot be invited from this portal.
+  */
   if (
     !member.pending &&
     member.roles.includes("OWNER") &&
     activeOwnerCount(team) <= 1
   ) {
-    return {
-      removable: false,
-      reason:
-        "The only owner. An account with no owner cannot approve a bank change, receive a step-up code, or invite anybody.",
-    };
+    return { removable: false, reason: "The only owner." };
   }
 
   return { removable: true };

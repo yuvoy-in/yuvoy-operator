@@ -16,21 +16,30 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 6 Sep 2026, third bump. Forward from 03542275, which was master head when the
-# reels attach work was written and had already been overtaken twice.
+# 6 Sep 2026, fourth bump. Forward from a12944e, diffed as a parsed schema
+# tree rather than as text — the last two defects on these documents were both
+# YAML that parsed cleanly into the wrong place (yuvoy-api#92, #103).
 #
-# Consumed in this change (yuvoy-operator#23): the join flow —
-# `GET /join/{token}`, `POST /join/{token}/code`, `POST /join/{token}/accept` —
-# plus `ADMIN` on the role model and `joinUrl` on `POST`/`GET /team`. Without
-# them an owner could not get anybody onto their team at all: the invite
-# produced a code nothing delivers and a link the screen threw away.
+# Consumed in this change (yuvoy-operator#25): managing access from the Team
+# screen — `PUT /team/{id}/role`, `POST /team/{id}/hold`, `.../restore` — and
+# `DELETE /team/{id}` widening from OWNER-only to OWNER or ADMIN.
+#
+# ONE BREAKING CHANGE, and it is the reason this bump is not bookkeeping:
+# `POST /team/accept` answered `200 {accepted, next}` and now answers
+# `201 {joined, next, token, user, operatorId}`. `accepted` is GONE. A client
+# reading it gets `undefined`, which is falsy, so a successful accept would
+# have read as a failure. Consumed here rather than tolerated: accepting now
+# writes the session cookie and lands them inside the portal, the same
+# `StartSession` sign-in makes.
+#
+# `POST /join/{token}/accept` gained the same three session fields, additively.
 #
 # Landed and NOT consumed, each on its own issue:
 #   - `/experiences` + `/experiences/{id}`  — yuvoy-operator#22, Activities half
 #   - `/profile`, `/credentials`, `/logo`   — yuvoy-operator#7 (O6)
 #
-# Still wrong upstream: `Manifest.screening` is one flag for a whole boat
-# rather than one per party (yuvoy-api#103). yuvoy-operator#17 is blocked on it.
-ref=a12944e58e5ce775481b324397eeb01b66fad5a0
+# Fixed upstream since the last pin: `Manifest.screening` is now per party
+# (yuvoy-api#103 → #106), which unblocked and shipped yuvoy-operator#17.
+ref=d40ae3b1a97e62fa344905a53921d7c7f74e8c54
 branch=master
 pinned_on=2026-09-06

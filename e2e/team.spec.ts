@@ -115,7 +115,7 @@ test("the team is two lists: people, and invitations nobody has used", async ({
       .locator("li")
       .filter({ hasText: "Dev Kapoor" })
       .getByText(
-        "Cannot change payout details, and cannot add or remove people.",
+        "Cannot change payout details, and cannot add, remove or pause people.",
       ),
   ).toBeVisible();
 
@@ -152,20 +152,139 @@ test("the team is two lists: people, and invitations nobody has used", async ({
   ).toBeVisible();
 });
 
-test("an owner cannot remove themselves, and the row says why", async ({
+test("an owner's own row offers nothing, and does not explain why", async ({
   page,
 }) => {
   await signIn(page);
   await page.goto("/team");
 
   /*
-    `409 cannot_remove` is "yourself, or the last owner", and both are knowable
-    from what is on screen. Same call as O9's grant ceiling: disable the
-    control and say why, rather than explain a refusal afterwards.
+    `409 cannot_change_access` covers your own access on all four writes, and
+    it is knowable from what is on screen — so the controls are withheld rather
+    than offered and refused. Same call as O9's grant ceiling.
+
+    What is NOT here any more is the sentence. It read "This is you. Another
+    owner has to remove you.", and the owner cut that pattern
+    (yuvoy-operator#25 §4): the row has the reader's own name on it, so not
+    offering the control already says it.
   */
   const own = page.locator("li").filter({ hasText: "Priya Raut" });
-  await expect(own.getByText("This is you.", { exact: false })).toBeVisible();
   await expect(own.getByRole("button", { name: "Remove" })).toHaveCount(0);
+  await expect(own.getByRole("button", { name: "Change role" })).toHaveCount(0);
+  await expect(own.getByRole("button", { name: "Pause access" })).toHaveCount(
+    0,
+  );
+  await expect(own.getByText("This is you", { exact: false })).toHaveCount(0);
+  await expect(
+    own.getByText("Another owner has to remove you", { exact: false }),
+  ).toHaveCount(0);
+});
+
+test("an owner changes a role, pauses access and gives it back", async ({
+  page,
+}, testInfo) => {
+  /*
+    Its own fixture row, one per project.
+
+    All three writes mutate state in the shared Next server process and this
+    walkthrough leaves somebody demoted — so a member both projects edit is a
+    race in the FIXTURE, and using `usr_manager_dev` would take the Earnings
+    link away from whichever `roles.spec.ts` ran second. Same call
+    `slot_calloff_a` and `slot_calloff_b` make on the day screen.
+  */
+  const who =
+    testInfo.project.name === "mobile"
+      ? "Access Fixture A"
+      : "Access Fixture B";
+
+  await signIn(page);
+  await page.goto("/team");
+
+  const dev = page.locator("li").filter({ hasText: who });
+
+  // Change role — replaced, not added to.
+  await dev.getByRole("button", { name: "Change role" }).click();
+  /*
+    Said before the tap, not after. All three writes end that person's
+    sessions, and somebody demoted mid-shift is signed out of the manifest they
+    are holding — copy §4 keeps precisely because it changes what an owner does
+    with it.
+  */
+  await expect(
+    dev.getByText(`signs ${who} out everywhere`, { exact: false }),
+  ).toBeVisible();
+  await dev.getByRole("radio", { name: /^Staff/ }).check();
+  await dev.getByRole("button", { name: "Save role" }).click();
+
+  /*
+    No success message: the list is the confirmation, and it says more than a
+    sentence could. Asserted on the ROLE CHIP rather than on any "Staff" —
+    the same word is a radio label inside the form, and an assertion either
+    could satisfy would not be testing the list at all.
+  */
+  const devAfter = page.locator("li").filter({ hasText: who });
+  const chips = devAfter.locator("span.label");
+  await expect(chips.filter({ hasText: /^Staff$/ })).toHaveCount(1);
+  await expect(chips.filter({ hasText: /^Manager$/ })).toHaveCount(0);
+
+  /*
+    Pause — the person, the role and the history stay.
+
+    The role form has closed itself by now: it must, because the row it sits in
+    has re-rendered with different controls and the open form would hide them.
+  */
+  await expect(devAfter.getByRole("button", { name: "Save role" })).toHaveCount(
+    0,
+  );
+  await devAfter.getByRole("button", { name: "Pause access" }).click();
+  await devAfter.getByRole("button", { name: "Pause access" }).last().click();
+
+  const paused = page.locator("li").filter({ hasText: who });
+  await expect(paused.getByText("Paused", { exact: true })).toBeVisible();
+  await expect(paused.getByText("Staff", { exact: true })).toBeVisible();
+  // Held, not removed: still on the list, with a way back and no Pause.
+  await expect(
+    paused.getByRole("button", { name: "Give access back" }),
+  ).toBeVisible();
+  await expect(
+    paused.getByRole("button", { name: "Pause access" }),
+  ).toHaveCount(0);
+
+  // And back.
+  await paused.getByRole("button", { name: "Give access back" }).click();
+  await paused.getByRole("button", { name: "Give access back" }).last().click();
+  const restored = page.locator("li").filter({ hasText: who });
+  await expect(restored.getByText("Paused", { exact: true })).toHaveCount(0);
+  await expect(
+    restored.getByRole("button", { name: "Pause access" }),
+  ).toBeVisible();
+});
+
+test("no screen explains a rule the missing control already stated", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#25 §4, swept across the portal rather than only on Team.
+    "The pattern to remove is a sentence that explains an internal rule where
+    the interface has already made the answer obvious."
+
+    Asserted as an absence on the served page, because the failure mode is
+    somebody adding one back in good faith while explaining a 403.
+  */
+  await signIn(page);
+  for (const route of ["/team", "/account", "/payouts", "/reels"]) {
+    await page.goto(route);
+    const text = (await page.locator("body").innerText()).toLowerCase();
+    for (const banned of [
+      "another owner has to remove you",
+      "this is you.",
+      "you cannot do this because",
+    ]) {
+      expect(text, `${route} still explains a rule: "${banned}"`).not.toContain(
+        banned,
+      );
+    }
+  }
 });
 
 test("there is no Owner to invite, and the form says why not", async ({
@@ -265,7 +384,7 @@ test("revoking an invitation says the code stops working", async ({
   ).toBeVisible();
 });
 
-test("accepting an invitation does not sign you in", async ({
+test("accepting an invitation signs you in, and lands you in the portal", async ({
   page,
 }, testInfo) => {
   const who = invitee("accept", testInfo);
@@ -280,23 +399,18 @@ test("accepting an invitation does not sign you in", async ({
   await page.getByRole("button", { name: "Accept the invitation" }).click();
 
   /*
-    "No session is minted here. They sign in through the ordinary flow
-    afterwards, so one code path creates operator sessions rather than two."
-    A screen that implied otherwise would leave somebody tapping a portal that
-    keeps asking them to sign in.
-  */
-  await expect(page.getByText("You are on the account")).toBeVisible();
-  await expect(page.getByText("Accepting does not sign you in.")).toBeVisible();
+    This used to end on "Accepting does not sign you in", which was correct:
+    the API minted no session and the screen said so rather than blurring it.
 
-  // And they really are on the account: the ordinary sign-in now works for a
-  // number that was not a member two steps ago.
-  // The link inside the success panel, not the "Already accepted?" one below.
-  await page.getByRole("status").getByRole("link", { name: "Sign in" }).click();
-  await page.getByLabel("Your phone number").fill(who.phone);
-  await page.getByRole("button", { name: "Send me a code" }).click();
-  await page.getByLabel("Your code").fill(DEV_CODE);
-  await page.getByRole("button", { name: "Sign in" }).click();
+    yuvoy-api#109 changed the endpoint — "the code they have just proved is the
+    same proof a session needs" — so the second identical challenge is gone.
+    Same reasoning O1's signup already followed.
+  */
   await page.waitForURL("**/today");
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(page.getByText("Accepting does not sign you in.")).toHaveCount(
+    0,
+  );
 });
 
 test("a wrong code on /join gives one answer, whatever went wrong", async ({
@@ -324,13 +438,21 @@ test("removing somebody ends their access now, and says so", async ({
   await signIn(page);
   await invite(page, who);
 
-  // Accept, so the row is a person rather than an invitation.
+  /*
+    Accept, so the row is a person rather than an invitation. Accepting now
+    signs them in and lands them on Today (yuvoy-api#109), so this leaves the
+    owner's session behind — hence the sign-in back in afterwards.
+  */
   await page.goto("/join");
   await page.getByLabel("Your phone number").fill(who.phone);
   await page.getByLabel("The code we sent you").fill(DEV_CODE);
   await page.getByRole("button", { name: "Accept the invitation" }).click();
-  await expect(page.getByText("You are on the account")).toBeVisible();
+  await page.waitForURL("**/today");
 
+  // Back as the owner. The invitee's session is live in this browser now, so
+  // it has to go first — `/sign-in` sends a signed-in operator to the portal.
+  await page.context().clearCookies();
+  await signIn(page);
   await page.goto("/team");
   const row = page.locator("li").filter({ hasText: who.name });
   await expect(row.getByText("No sign-in recorded")).toBeVisible();
@@ -360,12 +482,17 @@ test("a manager sees the team and is told they cannot change it", async ({
   await page.goto("/team");
 
   /*
-    Up front, not after a tap. `POST /team` and `DELETE /team/{id}` are both
-    403 "OWNER only" — and `canManage` is OWNER **or** MANAGER, so gating this
-    screen on it would have offered a manager a form that fails.
+    Up front, not after a tap. Every team write is 403 "OWNER or ADMIN only" —
+    and `canManage` now includes ADMIN as well as MANAGER, so gating this
+    screen on it would offer a manager a form that fails.
+
+    "An owner or an admin", not "the owner": an admin reading the old sentence
+    on a screen full of controls they CAN use was being told something false.
   */
   await expect(
-    page.getByText("Only the owner can add or remove people."),
+    page.getByText(
+      "Only an owner or an admin can change who is on this account.",
+    ),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Send the invitation" }),
@@ -389,32 +516,47 @@ test("/team has no accessibility violations", async ({ page }) => {
   expect(results.violations).toEqual([]);
 });
 
-test("the owner is shown the join link, because nothing delivers it", async ({
+test("the join link is a copy control on the invitation, and never a URL on screen", async ({
   page,
 }) => {
   /*
-    yuvoy-operator#23. `POST /team` returns `joinUrl` precisely so the inviter
-    can pass it on themselves — there is no WhatsApp delivery yet, so the
-    queued message never arrives. The portal dropped the field, which made
-    inviting somebody a dead end for the invitee: the owner saw a confirmation
-    and the invited person heard nothing at all.
+    yuvoy-operator#23 put `joinUrl` on the screen at all — there is no WhatsApp
+    delivery yet, so the queued message never arrives and the inviter has to
+    pass the link on themselves.
+
+    #25 §1 cut it back. It sat permanently at the top of this screen as well as
+    on the receipt; now it appears on the row of somebody who has not joined,
+    and as a COPY control rather than raw text — "a raw
+    https://operators.yuvoy.in/join/l1F-… in the layout reads as debug output".
+
+    The property the permanent block protected is unchanged and is asserted
+    here: an owner does NOT have to re-invite to see the link, which would
+    replace the code the invitee is holding.
   */
   await signIn(page);
   await page.goto("/team");
 
-  // On the screen permanently, not only in the flash after a submit: an owner
-  // who invited somebody yesterday must not have to re-invite to see it again,
-  // because re-inviting replaces the code the invitee is holding.
-  await expect(page.getByText("Your join link")).toBeVisible();
-  await expect(page.getByText(/\/join\/jn_/)).toBeVisible();
+  await expect(page.getByText("Your join link")).toHaveCount(0);
+  await expect(page.getByText(/\/join\/jn_/)).toHaveCount(0);
+
+  const pending = page.locator("li").filter({ hasText: "Ramesh Toppo" });
+  await expect(
+    pending.getByRole("button", { name: "Copy invite link" }),
+  ).toBeVisible();
 });
 
-test("an admin can invite, and cannot remove", async ({ page }) => {
+test("an admin manages the team, but not the owner and not another admin", async ({
+  page,
+}) => {
   /*
-    `POST /team` is "OWNER or ADMIN"; `DELETE /team/{id}` is still 403 "OWNER
-    only". The two stopped being one question, and the portal was gating both
-    on OWNER — so an admin, who exists precisely because the owner may be off
-    the island, saw a screen with nothing on it they could act on.
+    `DELETE /team/{id}` used to be 403 "OWNER only" while `POST /team` was
+    "OWNER or ADMIN", and this test asserted that split. yuvoy-api#109 closed
+    it: all four writes are "OWNER or ADMIN only, and an ADMIN cannot change an
+    OWNER or another ADMIN".
+
+    So the ceiling moved from "what" to "on whom" — which is what this now
+    checks, because a screen offering an admin a control the server refuses on
+    the owner's row is the failure that replaced the old one.
   */
   await signIn(page, ADMIN);
   await page.goto("/team");
@@ -422,10 +564,33 @@ test("an admin can invite, and cannot remove", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Add somebody" }),
   ).toBeVisible();
-  await expect(page.getByText("Your join link")).toBeVisible();
 
-  // And the ceiling is still said, rather than discovered at a 403.
-  await expect(page.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
+  // On a staff member: everything.
+  const staff = page.locator("li").filter({ hasText: "Arun Biswas" });
+  await expect(staff.getByRole("button", { name: "Remove" })).toBeVisible();
+  await expect(
+    staff.getByRole("button", { name: "Change role" }),
+  ).toBeVisible();
+  await expect(
+    staff.getByRole("button", { name: "Pause access" }),
+  ).toBeVisible();
+
+  // On the owner: nothing, and no sentence explaining it (§4).
+  const owner = page.locator("li").filter({ hasText: "Priya Raut" });
+  await expect(owner.getByRole("button", { name: "Remove" })).toHaveCount(0);
+  await expect(owner.getByRole("button", { name: "Change role" })).toHaveCount(
+    0,
+  );
+  await expect(owner.getByRole("button", { name: "Pause access" })).toHaveCount(
+    0,
+  );
+
+  // On their own row: nothing either.
+  const self = page.locator("li").filter({ hasText: "Nisha Fernandes" });
+  await expect(self.getByRole("button", { name: "Remove" })).toHaveCount(0);
+  await expect(self.getByRole("button", { name: "Change role" })).toHaveCount(
+    0,
+  );
 });
 
 test("a staff member gets neither the form nor the link", async ({ page }) => {
@@ -480,7 +645,7 @@ test("a number nobody invited is told so, and told what to do", async ({
   await expect(page.getByLabel("Your code")).toHaveCount(0);
 });
 
-test("an invited number joins, and is told that joining is not signing in", async ({
+test("an invited number joins, and is signed straight in", async ({
   page,
 }, testInfo) => {
   /*
@@ -505,10 +670,14 @@ test("an invited number joins, and is told that joining is not signing in", asyn
   await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Join", exact: true }).click();
 
-  await expect(page.getByText(/You are on Reef Divers Havelock/)).toBeVisible();
-  // Accepting mints no session, on purpose — one code path creates every
-  // operator session.
-  await expect(page.getByText(/does not sign you in/)).toBeVisible();
+  /*
+    Accepting now signs them in and lands them in the portal (yuvoy-api#109).
+    It used to end on a panel saying "accepting does not sign you in", which
+    was true then and is a second identical challenge now — they proved a code
+    seconds ago.
+  */
+  await page.waitForURL("**/today");
+  await expect(page.getByText(/does not sign you in/)).toHaveCount(0);
 });
 
 test("joining from another business asks first, and names what is lost", async ({
@@ -558,7 +727,9 @@ test("joining from another business asks first, and names what is lost", async (
   await expect(submit).toBeEnabled();
   await submit.click();
 
-  await expect(page.getByText(/You are on Reef Divers Havelock/)).toBeVisible();
+  // And straight into the portal — as the new business, having just lost the
+  // old one.
+  await page.waitForURL("**/today");
 });
 
 test("/join has no accessibility violations", async ({ page }) => {

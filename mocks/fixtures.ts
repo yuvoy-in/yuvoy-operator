@@ -540,10 +540,14 @@ export const TEAM: MockTeamMember[] = [
       An active ADMIN — the stand-in for an owner who is off the island.
 
       Added when the backend started accepting the role (yuvoy-operator#23).
-      Without one, the split that matters could not be tested at all: an admin
-      may invite (`POST /team` is "OWNER or ADMIN") and may not remove
-      (`DELETE /team/{id}` is still 403 "OWNER only"), and the portal was
-      gating both on OWNER.
+      Without one, the split that matters could not be tested at all.
+
+      What that split IS changed on 6 September (yuvoy-api#109): an admin may
+      now remove people, change roles, hold and restore — `DELETE /team/{id}`
+      widened from OWNER-only — and `canManage` gained ADMIN, so an admin can
+      also set seats and read earnings. What is left to them alone: they may
+      not act on an OWNER or on another ADMIN, and they may not raise a bank
+      change. This row is what exercises both halves.
     */
     id: "usr_admin_nisha",
     name: "Nisha Fernandes",
@@ -551,6 +555,35 @@ export const TEAM: MockTeamMember[] = [
     state: "active",
     lastSeenAt: todayAt("07:20"),
     phone: "+919000000114",
+  },
+  /*
+    Two managers that exist only to have their access changed, one per
+    Playwright project.
+
+    Changing a role, holding and restoring all mutate state in the shared Next
+    server process, and the walkthrough leaves somebody demoted — so a member
+    two projects can both edit is a race in the FIXTURE, and it would take the
+    Earnings link away from whichever `roles.spec.ts` ran second. Exactly the
+    call `slot_calloff_a` and `slot_calloff_b` make on the day screen.
+
+    `usr_manager_dev` is deliberately NOT used for it: three other specs assert
+    what a manager is offered, and they rely on that row still being a manager.
+  */
+  {
+    id: "usr_access_a",
+    name: "Access Fixture A",
+    roles: ["MANAGER"],
+    state: "active",
+    lastSeenAt: todayAt("09:10", -1),
+    phone: "+919000000121",
+  },
+  {
+    id: "usr_access_b",
+    name: "Access Fixture B",
+    roles: ["MANAGER"],
+    state: "active",
+    lastSeenAt: todayAt("09:15", -1),
+    phone: "+919000000122",
   },
   {
     // `id` is the INVITATION, not a user. Nothing is granted until it is used.

@@ -16,12 +16,26 @@ import { Panel } from "@/components/ui/panel";
  * waiting for one to arrive" — and the portal threw it away, which made
  * inviting somebody a dead end for the invitee. yuvoy-operator#23.
  *
- * ## Why it lives here and not only in the flash after a submit
+ * ## Where it appears, and where it deliberately no longer does
  *
- * `GET /team` returns it too. An owner who invited somebody yesterday, closed
- * the tab, and now needs to send the link again should not have to re-invite
- * to see it — and re-inviting "replaces the open invitation rather than adding
- * one", so the code the invitee is holding would stop working.
+ * Twice: on the invite receipt, and on the pending row of somebody who has not
+ * joined. It used to sit permanently at the top of the Team screen as well,
+ * and the owner cut that (yuvoy-operator#25 §1).
+ *
+ * The constraint the third copy was protecting still holds, and the pending
+ * row is what holds it: `GET /team` returns the link, so an owner who invited
+ * somebody yesterday and closed the tab does not have to re-invite to see it —
+ * and re-inviting "replaces the open invitation rather than adding one", so
+ * the code the invitee is holding would stop working.
+ *
+ * ## `compact` — a copy control, and no URL on screen
+ *
+ * "A raw `https://operators.yuvoy.in/join/l1F-cHTNRK-…` in the layout reads as
+ * debug output. A 'Copy invite link' control that copies it is the whole
+ * requirement — the person never needs to read it." That is the pending row's
+ * shape. The receipt keeps the readable URL, because that is the one moment
+ * somebody may want to read it aloud, photograph it, or type it into another
+ * device.
  *
  * ## What it does not do
  *
@@ -30,7 +44,16 @@ import { Panel } from "@/components/ui/panel";
  * sign in as any operator. The link is safe to show and the code is not: the
  * link "grants nothing on its own — the number must already have been invited".
  */
-export function JoinLink({ url, note }: { url: string; note?: string }) {
+export function JoinLink({
+  url,
+  note,
+  compact = false,
+}: {
+  url: string;
+  note?: string;
+  /** The row form: a copy control and nothing else. See above. */
+  compact?: boolean;
+}) {
   /*
     Three states, not two. "Copied" that never goes away is a button that looks
     broken the second time somebody needs it, and a failure has to say so —
@@ -48,6 +71,22 @@ export function JoinLink({ url, note }: { url: string; note?: string }) {
       setState("failed");
     }
   };
+
+  if (compact) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={copy} variant="secondary" block={false}>
+          {state === "copied" ? "Copied ✓" : "Copy invite link"}
+        </Button>
+        {state === "failed" ? (
+          <p role="status" className="text-forest/80 text-sm">
+            Could not copy it here. Open this page on another device, or invite
+            them again to see the link.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <Panel>

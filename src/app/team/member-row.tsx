@@ -3,7 +3,10 @@
 import { useActionState, useState } from "react";
 import { removeMember, type RemoveState } from "./actions";
 import { describeRole, roleLabel, strongestRole } from "@/lib/team/roles";
+import type { Allowed } from "@/lib/team/access";
 import type { Removability, TeamPerson } from "@/lib/team/members";
+import { AccessControls } from "./access-controls";
+import { JoinLink } from "./join-link";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { panelClass } from "@/components/ui/panel";
@@ -22,13 +25,30 @@ export function MemberRow({
   member,
   removability,
   lastSeenLabel,
-  canRemove,
+  held,
+  canRole,
+  canHoldThem,
+  canRestoreThem,
+  joinUrl,
 }: {
   member: TeamPerson;
   removability: Removability;
   lastSeenLabel: string | null;
-  /** Whether this login may remove anybody at all. OWNER only. */
-  canRemove: boolean;
+  /** Their login is paused. The row must show it and offer the way back. */
+  held: boolean;
+  canRole: Allowed;
+  canHoldThem: Allowed;
+  canRestoreThem: Allowed;
+  /**
+   * The business's join link, on a PENDING row only.
+   *
+   * It used to sit permanently at the top of this screen as well, and the
+   * owner cut that (yuvoy-operator#25 §1). It belongs here because this is
+   * where somebody looks when an invitation has not been taken up — and it
+   * must stay reachable somewhere other than the invite receipt, since
+   * re-inviting to see it again replaces the code the invitee is holding.
+   */
+  joinUrl?: string;
 }) {
   const [state, act, pending] = useActionState<RemoveState, FormData>(
     removeMember,
@@ -81,6 +101,14 @@ export function MemberRow({
           {member.roles.length === 0 ? (
             <span className="label text-forest/70">No role</span>
           ) : null}
+          {/*
+            A hold "keeps the person, the role and the history" and only stops
+            the login, so a held member stays in this list rather than
+            vanishing — and must therefore LOOK different, beside the role they
+            still hold. Accent rather than neutral: it is a state that needs
+            answering, not a fact.
+          */}
+          {held ? <Chip tone="accent">Paused</Chip> : null}
         </div>
       </div>
 
@@ -135,11 +163,13 @@ export function MemberRow({
             */}
             {lastSeenLabel ?? "No sign-in recorded"}
             {/*
-              `state` is a bare string in the contract with no enum, so it is
-              shown rather than interpreted. "active" is the ordinary case and
-              says nothing worth the line.
+              `state` is a bare string in the contract with no enum. One value
+              is now interpreted — `suspended`, which becomes the Paused chip
+              above (see `HELD_STATE`) — and every OTHER non-active value is
+              still shown rather than read, because a state this build has
+              never heard of is not one it should describe.
             */}
-            {member.state && member.state !== "active" ? (
+            {member.state && member.state !== "active" && !held ? (
               <span className="text-terra-deep font-bold">
                 {" "}
                 · {member.state}
@@ -149,7 +179,34 @@ export function MemberRow({
         )}
       </p>
 
-      {canRemove ? (
+      {/*
+        The link to hand over, on the row it is about.
+
+        It sat permanently at the top of this screen as well, and the owner cut
+        that (§1). Here it is attached to the invitation somebody is actually
+        chasing — and as a copy control rather than a URL in the layout, since
+        "a raw https://operators.yuvoy.in/join/l1F-… reads as debug output" and
+        the person copying it never needs to read it.
+      */}
+      {member.pending && joinUrl ? (
+        <div className="mt-4">
+          <JoinLink url={joinUrl} compact />
+        </div>
+      ) : null}
+
+      {/*
+        Role, hold and restore. Rendered from what this login may actually do
+        to THIS person, which the server states per endpoint and this screen
+        does not re-argue after a 403.
+      */}
+      <AccessControls
+        member={member}
+        canRole={canRole}
+        canHoldThem={canHoldThem}
+        canRestoreThem={canRestoreThem}
+      />
+
+      {removability.removable || removability.reason ? (
         removability.removable ? (
           confirming ? (
             <form action={act} className="mt-4">

@@ -2,10 +2,16 @@ import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
 import { listTeam } from "@/lib/team/fetch";
 import { lastSeen, removability, splitTeam } from "@/lib/team/members";
+import {
+  canChangeRole,
+  canHold,
+  canManageAccess,
+  canRestore,
+  isHeld,
+} from "@/lib/team/access";
 import { now } from "@/lib/format/market-time";
 import { Empty } from "@/components/ui/states";
 import { InviteForm } from "./invite-form";
-import { JoinLink } from "./join-link";
 import { MemberRow } from "./member-row";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
@@ -51,8 +57,7 @@ export default async function TeamPage() {
     person able to add somebody — gating the form on OWNER left them looking at
     a screen that told them nothing they could act on.
   */
-  const isOwner = me.roles.includes("OWNER");
-  const canInvite = isOwner || me.roles.includes("ADMIN");
+  const canInvite = canManageAccess(me.roles);
   const { people, invitations } = splitTeam(team.people);
 
   return (
@@ -73,10 +78,20 @@ export default async function TeamPage() {
         staff are told they cannot answer it before they choose a reason:
         finding out at the end is worse than not being offered it.
       */}
+      {/*
+        Said up front, not after a tap. Same call as the request queue, where
+        staff are told they cannot answer it before they choose a reason:
+        finding out at the end is worse than not being offered it.
+
+        "Owner or admin" rather than "the owner" — every one of the four access
+        endpoints is OWNER or ADMIN now, and an admin reading "only the owner"
+        on a screen full of controls they CAN use would be told something false
+        about their own account.
+      */}
       {!canInvite ? (
         <Panel className="mt-6 p-4 text-sm">
-          Only the owner can add or remove people. You can see who is on the
-          account.
+          Only an owner or an admin can change who is on this account. You can
+          see who is on it.
         </Panel>
       ) : null}
 
@@ -97,9 +112,17 @@ export default async function TeamPage() {
               <MemberRow
                 key={member.id}
                 member={member}
-                removability={removability(member, me.id, team.people)}
+                removability={removability(
+                  member,
+                  me.id,
+                  me.roles,
+                  team.people,
+                )}
                 lastSeenLabel={lastSeen(member.lastSeenAt, at)}
-                canRemove={isOwner}
+                held={isHeld(member)}
+                canRole={canChangeRole(member, me.id, me.roles)}
+                canHoldThem={canHold(member, me.id, me.roles, team.people)}
+                canRestoreThem={canRestore(member, me.id, me.roles)}
               />
             ))}
           </ul>
@@ -120,9 +143,24 @@ export default async function TeamPage() {
               <MemberRow
                 key={invite.id}
                 member={invite}
-                removability={removability(invite, me.id, team.people)}
+                removability={removability(
+                  invite,
+                  me.id,
+                  me.roles,
+                  team.people,
+                )}
                 lastSeenLabel={null}
-                canRemove={isOwner}
+                held={false}
+                canRole={canChangeRole(invite, me.id, me.roles)}
+                canHoldThem={canHold(invite, me.id, me.roles, team.people)}
+                canRestoreThem={canRestore(invite, me.id, me.roles)}
+                /*
+                  The link, on the row somebody is actually chasing. `joinUrl`
+                  is "present only for a caller who can invite", so the server
+                  answers that question and this screen does not derive a
+                  second opinion from roles.
+                */
+                joinUrl={team.joinUrl}
               />
             ))}
           </ul>
@@ -136,26 +174,16 @@ export default async function TeamPage() {
           </h2>
 
           {/*
-            The link, on the screen rather than only in the flash after a
-            submit.
+            No join link here any more (yuvoy-operator#25 §1). It sat
+            permanently above this form, and the owner cut it: the link appears
+            exactly twice now, on the invite receipt and on the pending row of
+            whoever has not joined.
 
-            There is no WhatsApp delivery yet, so the invitation message never
-            arrives — and this used to be the only thing that could have
-            bridged that, thrown away by the action that received it. An owner
-            invited somebody, saw a confirmation, and the invited person heard
-            nothing at all.
-
-            Rendered on the API's own signal: `joinUrl` is "present only for a
-            caller who can invite", so the server answers that question and the
-            screen does not derive a second opinion from roles — which is
-            exactly the opinion that drifted when ADMIN was added.
+            The property that block was protecting is unchanged — an owner does
+            NOT have to re-invite to see the link again, which would replace
+            the code the invitee is holding. The pending row carries it, which
+            is also where somebody chasing an invitation actually looks.
           */}
-          {team.joinUrl ? (
-            <div className="mt-4">
-              <JoinLink url={team.joinUrl} note={team.joinNote} />
-            </div>
-          ) : null}
-
           <div className="mt-4">
             <InviteForm />
           </div>

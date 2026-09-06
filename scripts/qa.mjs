@@ -629,6 +629,7 @@ for (const f of walk(APP)) {
  * byte, so parsing it is safe and it stays true when the contract moves.
  */
 const OWNER_ONLY = [];
+const OWNER_OR_ADMIN = [];
 const NEEDS_MANAGE = [];
 {
   const lines = readFileSync(
@@ -657,13 +658,33 @@ const NEEDS_MANAGE = [];
     const block = operationBlock(opStart);
     const upper = method.toUpperCase();
 
-    // A 403 block that names OWNER: OWNER only, and a MANAGER also gets it.
+    /*
+      Three buckets, not two — and the third exists because the second was
+      silently wrong.
+
+      This used to read "a 403 naming OWNER means OWNER only". On 6 September
+      the contract widened five endpoints from "OWNER or MANAGER" to "OWNER,
+      ADMIN or MANAGER" and four from OWNER-only to "OWNER or ADMIN", and this
+      parse quietly re-bucketed all nine: `NEEDS_MANAGE` dropped from seven
+      entries to three, and the OWNER-or-ADMIN endpoints landed in OWNER_ONLY.
+
+      Nothing failed loudly. The check went on running against a picture of the
+      contract that was two changes out of date, which is the failure mode a
+      contract-derived check exists to avoid — so the wording is now matched
+      precisely rather than by whether OWNER appears anywhere near a 403.
+    */
     const four03 = block.match(
       /\n {8}"403":[\s\S]*?(?=\n {8}"\d{3}":|\n {4}[a-z]+:|$)/,
     );
-    if (four03 && /\bOWNER\b/.test(four03[0])) {
+    const refusal = four03 ? four03[0] : "";
+
+    if (/OWNER or ADMIN/.test(refusal) || /OWNER or ADMIN only/.test(block)) {
+      OWNER_OR_ADMIN.push({ method: upper, path });
+    } else if (refusal && /\bOWNER\b/.test(refusal)) {
       OWNER_ONLY.push({ method: upper, path });
     } else if (
+      /Requires OWNER, ADMIN or MANAGER/.test(block) ||
+      /OWNER, ADMIN or MANAGER only/.test(block) ||
       /Requires OWNER or MANAGER/.test(block) ||
       /OWNER or MANAGER only/.test(block) ||
       /STAFF cannot/.test(block)
@@ -690,6 +711,45 @@ const NEEDS_MANAGE = [];
     }
   }
   finish();
+}
+
+/*
+  Each bucket is expected to be non-empty AND to have at least as many entries
+  as the contract had when this was last checked. A parse that silently finds
+  fewer is the failure this section exists to prevent, and "greater than zero"
+  did not catch it: NEEDS_MANAGE fell from seven to three and stayed green.
+*/
+/*
+  A snapshot of the contract at yuvoy-api@d40ae3b, deliberately updated by hand
+  when it moves — never widened to make a run green.
+
+  Bumping one of these DOWN means a permission was relaxed, and that is the
+  moment to re-read `src/lib/team/roles.ts`: every description in it is a
+  promise to an owner about who can see their margins, and the last relaxation
+  made one of them false for four days.
+
+    OWNER_ONLY     POST /change-requests/bank
+    OWNER_OR_ADMIN POST /change-requests/{id}/cancel, POST /team,
+                   PUT /team/{id}/role, POST /team/{id}/hold,
+                   POST /team/{id}/restore, DELETE /team/{id}
+    NEEDS_MANAGE   accept, decline, call-off, POST /slots, PATCH /slots/{id},
+                   POST /blackouts, GET /earnings
+*/
+const FLOORS = { OWNER_ONLY: 1, OWNER_OR_ADMIN: 6, NEEDS_MANAGE: 7 };
+for (const [name, bucket] of Object.entries({
+  OWNER_ONLY,
+  OWNER_OR_ADMIN,
+  NEEDS_MANAGE,
+})) {
+  if (bucket.length < FLOORS[name]) {
+    problems.push(
+      `scripts/qa.mjs: the contract parse found ${bucket.length} ${name} ` +
+        `endpoints and expected at least ${FLOORS[name]}. Either the contract ` +
+        `relaxed a permission — in which case every role description in ` +
+        `src/lib/team/roles.ts is now a claim to re-check — or this parse ` +
+        `stopped matching its own wording. Both are silent otherwise.`,
+    );
+  }
 }
 
 if (OWNER_ONLY.length === 0 || NEEDS_MANAGE.length === 0) {
@@ -768,12 +828,25 @@ for (const page of pages) {
 
   const gatesOnOwner = /"OWNER"|'OWNER'/.test(segmentSource);
   const gatesOnManage = /\bcanManage\b/.test(segmentSource);
+  /*
+    An OWNER-or-ADMIN gate may be spelled here or borrowed from the one place
+    that states the rule. `canManageAccess` is that place — it is the shared
+    "OWNER or ADMIN" predicate — so a segment calling it is gated, and the
+    literal is not required to be re-typed into every route that needs it.
+  */
+  const gatesOnAdmin = /"ADMIN"|'ADMIN'|\bcanManageAccess\b/.test(
+    segmentSource,
+  );
 
   const ownerCalls = OWNER_ONLY.filter(({ method, path }) =>
     source.includes(`${method}("${path}"`),
   ).map(({ method, path }) => `${method} ${path}`);
 
   const manageCalls = NEEDS_MANAGE.filter(({ method, path }) =>
+    source.includes(`${method}("${path}"`),
+  ).map(({ method, path }) => `${method} ${path}`);
+
+  const adminCalls = OWNER_OR_ADMIN.filter(({ method, path }) =>
     source.includes(`${method}("${path}"`),
   ).map(({ method, path }) => `${method} ${path}`);
 
@@ -796,6 +869,29 @@ for (const page of pages) {
   }
 
   /*
+    OWNER **or** ADMIN. A separate bucket from OWNER_ONLY since 6 September,
+    because four team endpoints and the bank-change brake widened to admit an
+    admin — and a route that gates them on OWNER alone hides from an admin
+    exactly the screen the role exists for. Wrong in the direction that
+    matters: telling somebody they may not do what the server would allow.
+  */
+  if (adminCalls.length && !gatesOnOwner && !gatesOnAdmin) {
+    problems.push(
+      `${rel(segment)}: reaches ${adminCalls.join(", ")} (OWNER or ADMIN in ` +
+        `the contract) but nothing in this route decides on either role. ` +
+        `Gate on \`canManageAccess(me.roles)\`.`,
+    );
+  }
+  if (adminCalls.length && gatesOnOwner && !gatesOnAdmin) {
+    problems.push(
+      `${rel(segment)}: gates ${adminCalls.join(", ")} on OWNER alone, but the ` +
+        `contract allows OWNER or ADMIN. An admin exists for an owner who is ` +
+        `off the island; hiding this from them is the wrong direction to be ` +
+        `wrong in.`,
+    );
+  }
+
+  /*
     The other direction, and it caught a real one.
 
     A first draft of `/reels` gated uploading on `canManage`. Nothing in the
@@ -810,8 +906,8 @@ for (const page of pages) {
     on `canManage` and calls nothing gated of its own, which is correct.
   */
   gateJustification.set(segment, {
-    gates: gatesOnManage || gatesOnOwner,
-    own: manageCalls.length + ownerCalls.length > 0,
+    gates: gatesOnManage || gatesOnOwner || gatesOnAdmin,
+    own: manageCalls.length + ownerCalls.length + adminCalls.length > 0,
     links: [...code(page).matchAll(/href=\{?["'`](\/[^"'`}\s]*)["'`]/g)].map(
       (m) => m[1].split("?")[0].split("#")[0],
     ),

@@ -65,10 +65,48 @@ describe("what each role is told it can do", () => {
   });
 
   it("says a manager cannot manage the team, because the API refuses it", () => {
-    // `POST /team` and `DELETE /team/{id}` are both 403 "OWNER only." A screen
-    // that implied otherwise would be teaching an owner something untrue about
-    // who can hand out access.
-    expect(describeRole("MANAGER")?.cannot).toMatch(/add or remove people/);
+    // Every team write is 403 "OWNER or ADMIN only." A screen that implied
+    // otherwise would be teaching an owner something untrue about who can hand
+    // out access. "Pause" is in the sentence now because pausing is a thing
+    // that exists (yuvoy-api#109).
+    expect(describeRole("MANAGER")?.cannot).toMatch(
+      /add, remove or pause people/,
+    );
+  });
+
+  it("does not claim an admin is weaker than a manager — it is not, any more", () => {
+    /*
+      This copy was WRONG for four days and wrong in the worst direction. It
+      said an admin "cannot remove anybody … cannot change seats or see
+      earnings", on the strength of `canManage` being "OWNER or MANAGER".
+
+      `canManage` is now "OWNER, ADMIN or MANAGER" — "ADMIN holds it because
+      the role exists for an owner who is off the island: one who could add a
+      manager but not close a date would be a stand-in for nothing" — and
+      `DELETE /team/{id}` widened to OWNER or ADMIN. An owner handing out an
+      admin role on the old sentence was being told something untrue about who
+      can read their margins.
+    */
+    const admin = describeRole("ADMIN")!;
+    expect(admin.cannot).not.toMatch(/earnings/);
+    expect(admin.cannot).not.toMatch(/seats/);
+    expect(admin.cannot).not.toMatch(/remove anybody/);
+
+    // What genuinely remains: the bank change is OWNER-only, and an admin may
+    // not act on an owner or another admin.
+    expect(admin.cannot).toMatch(/payout details/);
+    expect(admin.cannot).toMatch(/owner or another admin/);
+  });
+
+  it("ranks ADMIN above MANAGER, which is a superset again", () => {
+    /*
+      `roleRank` was documented as "seniority, not capability" precisely
+      because ADMIN and MANAGER did not nest. They do now — ADMIN has
+      `canManage` plus the team writes — so collapsing a two-role member to the
+      strongest loses nothing.
+    */
+    expect(roleRank("ADMIN")).toBeGreaterThan(roleRank("MANAGER"));
+    expect(strongestRole(["MANAGER", "ADMIN"])).toBe("ADMIN");
   });
 
   it("claims nothing at all about a role it does not know", () => {

@@ -53,13 +53,12 @@ export function JoinTokenForm({
           You are on {state.invited?.businessName ?? businessName ?? "the team"}
         </p>
         {/*
-          Accepting is not signing in, and this must not blur that: the API
-          mints no session here, on purpose, so one code path creates every
-          operator session. Same call `/join` has always made.
+          Reached only when the account cannot hold a session — the join
+          happened, so this is not an error. The ordinary path signs them in
+          and redirects, and never renders this panel at all.
         */}
         <p className="text-forest/80 mt-2 text-sm">
-          Accepting does not sign you in. Sign in with the same number and ask
-          for a code.
+          Sign in with the same number and ask for a code.
         </p>
         <ButtonLink href="/sign-in" className="mt-5">
           Go to sign in

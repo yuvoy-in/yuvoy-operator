@@ -551,13 +551,30 @@ paths:
                     step. Send it after the person has agreed, never by default.
       responses:
         "201":
-          description: Joined.
+          description: >-
+            Joined, and signed in. The code they just proved is the proof a
+            session needs, and asking for it twice in a row is the same gate
+            twice rather than a second one.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   joined: { type: boolean }
+                  token:
+                    type: string
+                    description: >-
+                      Opaque bearer, the same shape and lifetime
+                      `POST /auth/session` returns. Present unless the account
+                      itself cannot hold a session, in which case `next` says so
+                      and the join still happened.
+                  user:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+                      roles: { type: array, items: { type: string } }
+                  operatorId: { type: string }
                   next: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404":
@@ -923,7 +940,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403":
-          description: OWNER only.
+          description: OWNER or ADMIN only.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -944,9 +961,10 @@ paths:
         attempt-limited, seven-day expiry.
 
 
-        **No session is minted here.** They sign in through the ordinary flow
-        afterwards, so one code path creates operator sessions rather than two —
-        and the second one would be the one written in a hurry.
+        **Signs them in.** The code they have just proved is the same proof a
+        session needs, so this answers with one — the same `StartSession` call
+        sign-in makes, with the same refusals. Both doors into a team agree
+        about what accepting gets you.
       operationId: acceptOperatorInvite
       requestBody:
         required: true
@@ -959,16 +977,155 @@ paths:
                 phone: { type: string }
                 code:  { type: string }
       responses:
-        "200":
-          description: Accepted. Sign in next.
+        "201":
+          description: Accepted, and signed in.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  accepted: { type: boolean }
+                  joined: { type: boolean }
+                  token:
+                    type: string
+                    description: >-
+                      Opaque bearer, the same shape and lifetime
+                      `POST /auth/session` returns. Present unless the account
+                      itself cannot hold a session, in which case `next` says so
+                      and the join still happened.
+                  user:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+                      roles: { type: array, items: { type: string } }
+                  operatorId: { type: string }
                   next: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /team/{id}/role:
+    put:
+      tags: [account]
+      summary: Change what somebody can do
+      description: >
+        The role is **replaced**, not added to. The screen driving this is a
+        choice of one, so "Manager" means "manager, and not the other thing" —
+        an endpoint that quietly left a second role attached would grant more
+        than the person choosing it believed they were granting.
+
+
+        Their sessions end, so the change is true immediately rather than
+        whenever a fourteen-day session happens to lapse.
+
+
+        `OWNER` cannot be given and an owner's role cannot be changed here. The
+        owner is whoever the payout account belongs to; that moves deliberately,
+        not from a login.
+      operationId: setOperatorUserRole
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [ADMIN, MANAGER, STAFF]
+      responses:
+        "204": { description: Changed, and signed out everywhere. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: >-
+            OWNER or ADMIN only, and an ADMIN cannot change an OWNER or another
+            ADMIN.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "`cannot_change_access` — including changing your own."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /team/{id}/hold:
+    post:
+      tags: [account]
+      summary: Pause somebody's access
+      description: >
+        Stops them signing in without taking their access away. For the skipper
+        who is off for the season, and for access somebody wants stopped today
+        and decided about later.
+
+
+        The row, the role and the history stay; `restore` is one call back.
+        Their sessions end immediately, because a hold that waits for a session
+        to lapse is not a hold.
+
+
+        A held number is simply not found by the sign-in code request. It is not
+        told it is on hold — that endpoint tells nobody anything about who
+        exists.
+      operationId: holdOperatorUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Held, and signed out everywhere. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: >-
+            OWNER or ADMIN only, and an ADMIN cannot hold an OWNER or another
+            ADMIN.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not on this team, or not currently working.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: >-
+            `cannot_change_access` — your own access, or the last owner.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /team/{id}/restore:
+    post:
+      tags: [account]
+      summary: Give held access back
+      description: >
+        With the role they had. No session is minted and none is returned: the
+        ones they held were revoked when the hold went on, and coming back means
+        signing in.
+      operationId: restoreOperatorUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Working again. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: >-
+            OWNER or ADMIN only, and an ADMIN cannot restore an OWNER or another
+            ADMIN.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not on this team, or not on hold.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: "`cannot_change_access` — including your own access."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /team/{id}:
     delete:
@@ -992,7 +1149,7 @@ paths:
         "204": { description: Removed, and signed out everywhere. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403":
-          description: OWNER only.
+          description: OWNER or ADMIN only.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1023,9 +1180,13 @@ paths:
                   canManage:
                     type: boolean
                     description: >-
-                      OWNER or MANAGER. Capacity, closed dates, earnings and
-                      listing edits require it — a staff member who can see
+                      OWNER, ADMIN or MANAGER. Capacity, closed dates, earnings
+                      and listing edits require it — a staff member who can see
                       today's manifest does not need the margin on it.
+
+                      ADMIN holds it because the role exists for an owner who is
+                      off the island: one who could add a manager but not close a
+                      date would be a stand-in for nothing.
                   account:
                     allOf: [{ $ref: "#/components/schemas/AccountStanding" }]
                     description: >-
@@ -1209,7 +1370,7 @@ paths:
 
         Taken under the departure's row lock, so two staff answering two
         requests on two phones cannot together commit more seats than the boat
-        holds. Requires OWNER or MANAGER.
+        holds. Requires OWNER, ADMIN or MANAGER.
 
 
         On success the traveller has an ordinary hold with a clock on it — the
@@ -1439,7 +1600,7 @@ paths:
         `confirmSlotId` must equal the departure's own id. Not a boolean: a
         checkbox is one mis-tap on a wet phone away from cancelling a full boat,
         and this is the only action in the portal that cannot be undone.
-        Requires OWNER or MANAGER.
+        Requires OWNER, ADMIN or MANAGER.
       operationId: callOffDeparture
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -1503,7 +1664,7 @@ paths:
         failure — a retry after a timeout does not sell the same boat twice.
 
 
-        OWNER or MANAGER only. A listing belonging to another operator answers
+        OWNER, ADMIN or MANAGER only. A listing belonging to another operator answers
         **404**, never 403: "you may not touch that" confirms it is there.
       requestBody:
         required: true
@@ -1619,7 +1780,7 @@ paths:
         verbatim rather than replacing with a generic error.
 
 
-        Requires OWNER or MANAGER.
+        Requires OWNER, ADMIN or MANAGER.
       operationId: setSlotCapacity
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -1659,7 +1820,7 @@ paths:
         `existingBookings > 0`.
 
 
-        Requires OWNER or MANAGER.
+        Requires OWNER, ADMIN or MANAGER.
       operationId: addBlackout
       requestBody:
         required: true
@@ -1704,7 +1865,7 @@ paths:
         against a number that can still move.
 
 
-        Requires OWNER or MANAGER.
+        Requires OWNER, ADMIN or MANAGER.
       operationId: getOperatorEarnings
       parameters:
         - { name: from, in: query, schema: { type: string, format: date } }
@@ -1969,6 +2130,30 @@ paths:
         back without ever having stored it. Before this, "resumable" held for a
         dropped packet and not for a dropped tab — which on a twenty-minute
         upload is the failure that actually happens.
+
+
+        ## The length is fixed here, not on the PATCH
+
+
+        `sizeBytes` becomes the tus `Upload-Length` at slot creation, so the
+        upload is **not** length-deferred. Under tus, `Upload-Length` on a
+        `PATCH` is only meaningful while the length is still deferred, so there
+        is nothing for a chunk to declare.
+
+
+        **Cloudflare accepts a redundant `Upload-Length` on a `PATCH` anyway.**
+        Verified against the live provider on 2026-09-06: two identical
+        one-megabyte final chunks against two real slots, one with the header
+        and one without, both answered `204` and both left the offset complete.
+        A strict tus server would refuse it; this one does not. So sending it is
+        harmless today and wrong in principle — and a mock that refuses it is
+        stricter than production, which will fail a client for something the
+        provider permits.
+
+
+        The reliable thing to branch on is the opening `HEAD`: it returns
+        `Upload-Length` and no `Upload-Defer-Length`, which says the length is
+        already fixed and the client has nothing to declare.
       operationId: createUploadIntent
       requestBody:
         required: true

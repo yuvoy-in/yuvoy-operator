@@ -321,6 +321,72 @@ function requireInviter(request: Request) {
 }
 
 /**
+ * The 403 every access write shares — OWNER or ADMIN, and an admin may not act
+ * on an owner or on another admin.
+ *
+ * Modelled rather than collapsed into `requireInviter`, because the extra
+ * clause is the whole difference between the two: an admin who could demote
+ * another admin could demote the owner's stand-in and then invite themselves a
+ * replacement. A mock that gated these on "owner or admin" alone would let the
+ * portal ship a Team screen offering an admin controls the API refuses.
+ *
+ * Returns the refusal, or `null`, or the target member when it is allowed.
+ */
+function requireAccessManager(request: Request, targetId: string) {
+  const failed = requireSession(request);
+  if (failed) return { refusal: failed, member: null };
+
+  const roles = sessionUser(request)!.roles;
+  if (!roles.includes("OWNER") && !roles.includes("ADMIN")) {
+    return {
+      refusal: envelope(
+        "forbidden",
+        "Only an owner or an admin can do that.",
+        403,
+      ),
+      member: null,
+    };
+  }
+
+  const member = team.find((m) => m.id === targetId);
+  // 404 covers "not on this team" and "belongs to somebody else" alike, and
+  // deliberately does not tell them apart.
+  if (!member) {
+    return {
+      refusal: envelope("not_found", "No such member.", 404),
+      member: null,
+    };
+  }
+
+  if (
+    !roles.includes("OWNER") &&
+    (member.roles.includes("OWNER") || member.roles.includes("ADMIN"))
+  ) {
+    return {
+      refusal: envelope(
+        "forbidden",
+        "An admin cannot change an owner or another admin.",
+        403,
+      ),
+      member: null,
+    };
+  }
+
+  if (member.id === sessionUser(request)!.id) {
+    return {
+      refusal: envelope(
+        "cannot_change_access",
+        "You cannot change your own access.",
+        409,
+      ),
+      member: null,
+    };
+  }
+
+  return { refusal: null, member };
+}
+
+/**
  * OWNER or MANAGER — `canManage`, exactly as `GET /me` defines it.
  *
  * Every write that commits seats or money is gated on it in the contract:
@@ -679,9 +745,14 @@ export const handlers = [
   /*
     Unauthenticated by design — `security: []` in the contract, because
     accepting an invitation is what somebody does BEFORE they have an account.
-    Note what it does not do: mint a session. "They sign in through the
-    ordinary flow afterwards, so one code path creates operator sessions rather
-    than two."
+
+    It now DOES mint a session (yuvoy-api#109): "the code they have just proved
+    is the same proof a session needs, so this answers with one — the same
+    `StartSession` call sign-in makes". Which means the field name changed too:
+    `accepted` is gone and `joined` replaced it, on a 201 rather than a 200.
+    That is a breaking change and the mock models it exactly, because a mock
+    still answering `accepted` would let the portal keep reading a field the
+    API no longer sends.
   */
   http.post(url("/team/accept"), async ({ request }) => {
     const body = (await request.json()) as { phone?: string; code?: string };
@@ -702,9 +773,17 @@ export const handlers = [
     invite.id = `usr_${Math.random().toString(36).slice(2, 10)}`;
     invite.pending = false;
     invite.state = "active";
-    // They have accepted, not signed in. `lastSeenAt` stays absent.
 
-    return HttpResponse.json({ accepted: true, next: "sign_in" });
+    return HttpResponse.json(
+      {
+        joined: true,
+        token: sessionTokenFor(invite.id),
+        user: { id: invite.id, name: invite.name, roles: invite.roles },
+        operatorId: OPERATOR.operatorId,
+        next: "portal",
+      },
+      { status: 201 },
+    );
   }),
 
   /* --------------------------------------------------- join by link ----- */
@@ -815,8 +894,19 @@ export const handlers = [
     invite.pending = false;
     invite.state = "active";
 
+    /*
+      The session, same as `/team/accept` (yuvoy-api#109). Both doors into a
+      team now agree about what accepting gets you — which is the whole reason
+      the API added it to both rather than one.
+    */
     return HttpResponse.json(
-      { joined: true, next: "sign_in" },
+      {
+        joined: true,
+        token: sessionTokenFor(invite.id),
+        user: { id: invite.id, name: invite.name, roles: invite.roles },
+        operatorId: OPERATOR.operatorId,
+        next: "portal",
+      },
       { status: 201 },
     );
   }),
@@ -1064,13 +1154,122 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
 
+  /**
+   * Change what somebody can do. The role is REPLACED, not added to.
+   *
+   * Modelled as a replacement rather than a merge because that is the one
+   * thing about this endpoint a client could get wrong invisibly: a mock that
+   * appended would let a picker ship that quietly grants more than the person
+   * choosing it believes.
+   */
+  http.put(url("/team/:id/role"), async ({ request, params }) => {
+    const { refusal, member } = requireAccessManager(
+      request,
+      String(params.id),
+    );
+    if (refusal) return refusal;
+
+    const body = (await request.json()) as { role?: string };
+    const role = body.role ?? "";
+    if (!["ADMIN", "MANAGER", "STAFF"].includes(role)) {
+      // OWNER lands here too, on purpose: "`OWNER` cannot be given."
+      return envelope("invalid_input", "ADMIN, MANAGER or STAFF.", 400);
+    }
+    if (member!.roles.includes("OWNER")) {
+      return envelope(
+        "cannot_change_access",
+        "An owner's role is not changed here.",
+        409,
+      );
+    }
+
+    member!.roles = [role];
+    // In the real API their sessions end here. There is no session state to
+    // revoke in this mock; the replacement is what a client can observe.
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  /**
+   * Pause a login. The row, the role and the history stay.
+   *
+   * A held member keeps coming back from `GET /team` with `state: "suspended"`
+   * — the mock keeps them in the list for exactly that reason. One that
+   * removed them would let a screen ship that makes a hold look like a
+   * removal, which is the confusion this endpoint exists to remove.
+   */
+  http.post(url("/team/:id/hold"), async ({ request, params }) => {
+    const { refusal, member } = requireAccessManager(
+      request,
+      String(params.id),
+    );
+    if (refusal) return refusal;
+
+    if (member!.pending || member!.state === "suspended") {
+      // "Not on this team, or not currently working."
+      return envelope("not_found", "Not currently working.", 404);
+    }
+    const owners = team.filter(
+      (m) => !m.pending && m.roles.includes("OWNER"),
+    ).length;
+    if (member!.roles.includes("OWNER") && owners <= 1) {
+      return envelope(
+        "cannot_change_access",
+        "You cannot pause the last owner.",
+        409,
+      );
+    }
+
+    member!.state = "suspended";
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  /** Give held access back, with the role they had. No session is minted. */
+  http.post(url("/team/:id/restore"), async ({ request, params }) => {
+    const { refusal, member } = requireAccessManager(
+      request,
+      String(params.id),
+    );
+    if (refusal) return refusal;
+
+    if (member!.pending || member!.state !== "suspended") {
+      // "Not on this team, or not on hold."
+      return envelope("not_found", "Not on hold.", 404);
+    }
+
+    member!.state = "active";
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  /*
+    "OWNER **or** ADMIN, was OWNER-only" (yuvoy-api#109). The seniority clause
+    comes with it: an admin may not remove an owner or another admin.
+  */
   http.delete(url("/team/:id"), async ({ request, params }) => {
-    const failed = requireOwner(request);
+    const failed = requireSession(request);
     if (failed) return failed;
+    const myRoles = sessionUser(request)!.roles;
+    if (!myRoles.includes("OWNER") && !myRoles.includes("ADMIN")) {
+      return envelope(
+        "forbidden",
+        "Only an owner or an admin can do that.",
+        403,
+      );
+    }
 
     const id = String(params.id);
     const member = team.find((m) => m.id === id);
     if (!member) return envelope("not_found", "No such member.", 404);
+
+    if (
+      !myRoles.includes("OWNER") &&
+      (member.roles.includes("OWNER") || member.roles.includes("ADMIN"))
+    ) {
+      return envelope(
+        "forbidden",
+        "An admin cannot remove an owner or another admin.",
+        403,
+      );
+    }
 
     if (!member.pending) {
       if (member.id === sessionUser(request)!.id) {
@@ -1529,15 +1728,31 @@ export const handlers = [
   /* ------------------------------------------------------ bank change --- */
 
   http.post(url("/change-requests/bank"), async ({ request }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-
     /*
       The gates are enforced, not assumed. A mock that raises a change without
       step-up would let the client ship without the code step — and the first
       time anybody found out would be in production, on the one flow where the
       whole design is the gate.
+
+      **Both** gates, since 6 September. The contract has always said the 403
+      is "also returned to anyone who is not the OWNER" and this mock checked
+      only the step-up, so the client's own OWNER gate on the bank form had
+      never once been exercised against a refusal — the same hole the 2
+      September audit found across the manager-only writes.
+
+      The role is checked FIRST: somebody who may not do this at all should be
+      refused for who they are, not sent to fetch a code that will not help.
+      Note that requesting the code is deliberately open to anybody — "the code
+      goes to the OWNER's number whoever asks" — so this is the only place the
+      role can be refused.
+
+      This is now the ONLY genuinely OWNER-only endpoint in the contract:
+      `POST /change-requests/{id}/cancel` widened to OWNER or ADMIN, and so did
+      all four team writes.
     */
+    const failed = requireOwner(request);
+    if (failed) return failed;
+
     if (!steppedUp) {
       return envelope("step_up_required", "Ask for a code first.", 403);
     }

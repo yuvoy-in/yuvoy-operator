@@ -15,19 +15,21 @@ export function JoinForm() {
   /** The submit waits for a whole number, as the other two doors do. */
   const [complete, setComplete] = useState(false);
 
-  if (state.accepted) {
+  /*
+    Accepting signs them in, so the ordinary success path never reaches here —
+    the action redirects into the portal (yuvoy-operator#25).
+
+    This is the narrow case the contract names: `token` is "present unless the
+    account itself cannot hold a session, in which case `next` says so and the
+    join still happened". They ARE on the account, so it is not an error, and
+    the old wording is still exactly right for it.
+  */
+  if (state.joinedWithoutSession) {
     return (
       <Panel tone="done" role="status" className="mt-8">
         <p className="text-base font-bold">You are on the account</p>
-        {/*
-          Accepting is not signing in, and the screen must not blur that. The
-          API mints no session here on purpose — one code path creates operator
-          sessions rather than two. So this says what actually happened and
-          points at the ordinary door.
-        */}
         <p className="text-forest/80 mt-2 text-sm">
-          Accepting does not sign you in. Sign in with the same number and we
-          will send you a fresh code.
+          Sign in with the same number and we will send you a fresh code.
         </p>
         <ButtonLink href="/sign-in" className="mt-4">
           Sign in
