@@ -3,13 +3,27 @@
  * in the portal. The floating tab bar and the desktop rail both derive from
  * it, and a route is added here in the same change that ships its page.
  *
- * Four destinations. The day is what an operator opens at 6am; requests have
+ * Five destinations. The day is what an operator opens at 6am; requests have
  * a clock on them; capacity is "the single most important number in the
- * system"; and everything about the business itself — money, people, footage,
- * whether the account can trade — sits behind one door.
+ * system"; **services** is what the business actually consists of — what they
+ * sell and the footage that sells it; and everything else about the business —
+ * money, people, whether the account can trade — sits behind one door.
+ *
+ * ## Why services is a stop rather than another thing behind Business
+ *
+ * Owner ruling, 6 September 2026 (yuvoy-operator#22). Reels lived under the
+ * Business door and Activities did not exist at all, which meant an operator
+ * could sign in, read what was outstanding on their account, and then do
+ * nothing about the two things the business IS.
+ *
+ * Business is the back office — money, people, standing. The catalogue is not
+ * back office: adding a listing and putting a clip on it is the work, and
+ * burying it two taps behind a door named for the paperwork is what made it
+ * unreachable. So the bar went from four stops to five.
  */
 
-export type NavIcon = "today" | "requests" | "capacity" | "business";
+export type NavIcon =
+  "today" | "requests" | "capacity" | "services" | "business";
 
 export interface NavItem {
   href: string;
@@ -39,6 +53,18 @@ export const NAV: readonly NavItem[] = [
     match: (p) => p.startsWith("/capacity"),
   },
   {
+    href: "/services/activities",
+    label: "Services",
+    icon: "services",
+    /*
+      The section, not the page. `/services` has two pages under it and the
+      stop points at the first — an operator opening this tab is far more often
+      adding or fixing a listing than looking at footage, and a hub in between
+      would be a tap that shows them nothing.
+    */
+    match: (p) => p.startsWith("/services"),
+  },
+  {
     href: "/account",
     label: "Business",
     icon: "business",
@@ -46,8 +72,7 @@ export const NAV: readonly NavItem[] = [
       p.startsWith("/account") ||
       p.startsWith("/earnings") ||
       p.startsWith("/payouts") ||
-      p.startsWith("/team") ||
-      p.startsWith("/reels"),
+      p.startsWith("/team"),
   },
 ] as const;
 
@@ -55,15 +80,21 @@ export const NAV: readonly NavItem[] = [
  * FOCUSED routes: screens an operator goes INTO rather than between.
  *
  * On a phone these hide the floating bar and carry a back control. The
- * manifest sits under Today; the money, people and footage screens sit under
- * Business, and each goes back to the door it came through.
+ * manifest sits under Today; the money and people screens sit under Business,
+ * and each goes back to the door it came through.
+ *
+ * **Services is NOT focused**, and that is the difference between a stop and a
+ * screen you go into. Activities and Reels are two halves of one job — "this
+ * activity has no video" and "this clip is attached to nothing" are the same
+ * question asked from both ends — so an operator moves between them
+ * constantly, and a back disc that leaves the section would be in the way
+ * every time.
  */
 export const FOCUSED_ROUTE_PREFIXES = [
   "/today/",
   "/earnings",
   "/payouts",
   "/team",
-  "/reels",
 ] as const;
 
 /**

@@ -144,6 +144,23 @@ export function FilmIcon(props: IconProps) {
   );
 }
 
+/**
+ * Services — the catalogue: a stack of what a business offers.
+ *
+ * Deliberately not a shopping tag or a cart. Nothing is bought here; an
+ * operator is writing what they run and attaching the footage that sells it,
+ * and a till glyph over that reads as somebody else's job.
+ */
+export function LayersIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3 3 7.5l9 4.5 9-4.5L12 3Z" />
+      <path d="m3 12.5 9 4.5 9-4.5" />
+      <path d="m3 17 9 4.5 9-4.5" />
+    </Icon>
+  );
+}
+
 export function CheckIcon(props: IconProps) {
   return (
     <Icon {...props}>

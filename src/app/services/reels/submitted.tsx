@@ -59,7 +59,7 @@ export function Submitted({
           {state.withdrawn.note ??
             "It is off Yuvoy. The original is deleted at the video provider shortly afterwards."}
         </p>
-        <ButtonLink href="/reels" variant="secondary" className="mt-4">
+        <ButtonLink href="/services/reels" variant="secondary" className="mt-4">
           Add another
         </ButtonLink>
       </Panel>

@@ -228,6 +228,27 @@
   min-width: 3.5rem;
 }
 
+/**
+ * A scroller with no visible bar.
+ *
+ * Used by the floating tab bar, which is five stops wide since
+ * yuvoy-operator#22 and would clip a destination on a screen under 360px
+ * rather than lose one. A scrollbar inside a 56px pill is noise; the overflow
+ * is the point, not the chrome around it.
+ *
+ * Scrolling still works by touch and by wheel, and keyboard focus scrolls the
+ * container into view on its own — so nothing here hides a control from
+ * anybody who cannot drag.
+ */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* ------------------------------------------------------------ the chassis */
 
 /**

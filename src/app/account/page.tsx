@@ -188,11 +188,20 @@ export default async function AccountPage() {
                   />
                 </>
               ) : null}
+              {/*
+                Reels moved out of this door and into Manage services
+                (yuvoy-operator#22) — what a business sells and the footage
+                that sells it are the work, not the back office.
+
+                The way in stays here because this is where it has been since
+                v2.7 and an operator's hand knows the path; it now points at
+                the section rather than owning it.
+              */}
               <Door
-                href="/reels"
+                href="/services/reels"
                 icon={FilmIcon}
                 title="Add a reel"
-                body="One upright clip of the real thing does more than a page of description."
+                body="One upright clip of the real thing does more than a page of description. Under Services."
               />
             </ul>
           </section>

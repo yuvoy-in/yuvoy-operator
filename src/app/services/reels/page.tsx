@@ -6,6 +6,7 @@ import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { AttachForm, type ListingOption } from "./attach-form";
 import { Uploader } from "./uploader";
+import { SectionSwitch } from "../section-switch";
 
 export const metadata: Metadata = { title: "Reels" };
 export const dynamic = "force-dynamic";
@@ -75,16 +76,30 @@ export default async function ReelsPage() {
   if (experienceResult.error) throw experienceResult.error;
 
   const items: MediaItem[] = mediaResult.data.items ?? [];
+
+  /*
+    Approved, and on nothing. Only `approved` counts: a clip still in review is
+    not work waiting on the operator, and saying so about every unfinished
+    upload would make the notice worth ignoring.
+  */
+  const unattached = items.filter(
+    (m) => m.state === "approved" && !m.listing?.experienceId,
+  ).length;
   const listings: ListingOption[] = (experienceResult.data.experiences ?? [])
     .filter((item) => item.id && item.title)
     .map((item) => ({ id: item.id!, title: item.title!, status: item.status }));
 
   return (
-    <Screen
-      nav={{ back: { href: "/account", label: "your business" } }}
-      stageLabel="Reels"
-    >
-      <p className="eyebrow text-terra-deep">Your footage</p>
+    /*
+      A tab root, not a focused screen. Reels lived behind the Business door
+      with a back disc out to it; since yuvoy-operator#22 it is one half of
+      Manage services, and an operator moves between these two lists
+      constantly — "this activity has no video" and "this clip is attached to
+      nothing" are the same question from both ends. A back control that left
+      the section would be in the way every time.
+    */
+    <Screen stageLabel="Services">
+      <p className="eyebrow text-terra-deep">Manage services</p>
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
         Reels
       </h1>
@@ -92,6 +107,31 @@ export default async function ReelsPage() {
         Upload the real experience, let Yuvoy review it, then attach the
         approved clip to the right listing.
       </p>
+
+      <SectionSwitch activities={listings.length} reels={items.length} />
+
+      {/*
+        The cross-link, asked from the footage's end.
+
+        `listing` on a media item is "absent means attached to nothing, which
+        is exactly where a reel sits between finishing upload and appearing
+        anywhere". That absence is the loudest thing this screen can say: an
+        approved clip attached to nothing is work already done that no
+        traveller can see.
+      */}
+      {unattached > 0 ? (
+        <Panel tone="alert" className="mt-6 p-4">
+          <p className="text-terra-deep text-sm font-bold">
+            {unattached === 1
+              ? "One approved clip is not on any activity."
+              : `${unattached} approved clips are not on any activity.`}
+          </p>
+          <p className="text-forest/80 mt-1.5 text-sm">
+            Nobody can see it until it is attached. Choose a listing on the clip
+            below.
+          </p>
+        </Panel>
+      ) : null}
 
       <Panel className="mt-8">
         <h2 className="font-display text-2xl">Add a reel</h2>

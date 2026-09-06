@@ -25,12 +25,22 @@ test("the sign-in door draws no navigation", async ({ page }) => {
   );
 });
 
-test("a tab root names exactly four destinations, and says where you are", async ({
+test("a tab root names exactly five destinations, and says where you are", async ({
   page,
 }) => {
+  /*
+    Five since yuvoy-operator#22. Services joined the bar because the catalogue
+    — what a business sells and the footage that sells it — is the work rather
+    than the back office, and burying it behind the Business door is what made
+    it unreachable.
+
+    The count is asserted rather than left loose: a sixth stop is a width
+    decision, not a routing one, and the bar is already about 330px at its
+    longest.
+  */
   await signIn(page);
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-  await expect(nav.getByRole("link")).toHaveCount(4);
+  await expect(nav.getByRole("link")).toHaveCount(5);
   await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Today/i);
 });
 
@@ -39,6 +49,7 @@ test("the bar reaches every destination", async ({ page }) => {
   for (const [name, path, heading] of [
     ["Requests", "/requests", "Requests"],
     ["Capacity", "/capacity", "Capacity"],
+    ["Services", "/services/activities", "Activities"],
     ["Business", "/account", "Your account is live"],
   ] as const) {
     await page
@@ -47,7 +58,14 @@ test("the bar reaches every destination", async ({ page }) => {
       .getByRole("link", { name })
       .click();
     await page.waitForURL(`**${path}`);
-    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    /*
+      `exact`, because Activities carries a section heading counting them —
+      "4 activities" — and a substring match resolves to both. The page's own
+      h1 is what says you arrived.
+    */
+    await expect(
+      page.getByRole("heading", { name: heading, exact: true }),
+    ).toBeVisible();
   }
 });
 
@@ -67,11 +85,18 @@ test("a focused screen hides the bar and offers a way back", async ({
   if (isMobile) {
     await expect(primary).toHaveCount(0);
   } else {
-    await expect(primary.getByRole("link")).toHaveCount(4);
+    await expect(primary.getByRole("link")).toHaveCount(5);
   }
 });
 
-for (const route of ["/today", "/requests", "/capacity", "/account"]) {
+for (const route of [
+  "/today",
+  "/requests",
+  "/capacity",
+  "/services/activities",
+  "/services/reels",
+  "/account",
+]) {
   test(`${route} has no accessibility violations with the new chrome`, async ({
     page,
   }) => {
@@ -138,5 +163,5 @@ test("the rail stays put while the page scrolls", async ({
   // And it is still a usable navigation once you are down the page.
   await expect(
     page.getByRole("navigation", { name: /Primary/i }).getByRole("link"),
-  ).toHaveCount(4);
+  ).toHaveCount(5);
 });

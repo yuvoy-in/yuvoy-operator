@@ -272,7 +272,13 @@ test("no screen explains a rule the missing control already stated", async ({
     somebody adding one back in good faith while explaining a 403.
   */
   await signIn(page);
-  for (const route of ["/team", "/account", "/payouts", "/reels"]) {
+  for (const route of [
+    "/team",
+    "/account",
+    "/payouts",
+    "/services/reels",
+    "/services/activities",
+  ]) {
     await page.goto(route);
     const text = (await page.locator("body").innerText()).toLowerCase();
     for (const banned of [

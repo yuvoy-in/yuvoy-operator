@@ -80,7 +80,7 @@ function testInfoClip(megabytes: number, name: string) {
 }
 
 async function choose(page: Page, file: ReturnType<typeof clip>) {
-  await page.goto("/reels");
+  await page.goto("/services/reels");
   await page.getByLabel("Choose a clip").setInputFiles(file);
 }
 
@@ -183,7 +183,7 @@ test("a slot holding one clip's bytes refuses another, and resumes the first", a
     return route.continue();
   });
 
-  await page.goto("/reels");
+  await page.goto("/services/reels");
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await page.getByRole("button", { name: "Upload it" }).click();
   await expect(page.getByText(/It stopped at 1\.0 MB of 3\.0 MB/)).toBeVisible({
@@ -249,7 +249,7 @@ test("a reload does not strand the upload — the same clip carries on and finis
     return route.continue();
   });
 
-  await page.goto("/reels");
+  await page.goto("/services/reels");
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await page.getByRole("button", { name: "Upload it" }).click();
   /*
@@ -267,7 +267,7 @@ test("a reload does not strand the upload — the same clip carries on and finis
     could not survive.
   */
   await page.unroute(/\/uploads\//);
-  await page.goto("/reels");
+  await page.goto("/services/reels");
 
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await expect(
@@ -298,7 +298,7 @@ test("after a reload, a different clip is refused rather than resumed into", asy
     return route.continue();
   });
 
-  await page.goto("/reels");
+  await page.goto("/services/reels");
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await page.getByRole("button", { name: "Upload it" }).click();
   await expect(
@@ -306,7 +306,7 @@ test("after a reload, a different clip is refused rather than resumed into", asy
   ).toBeVisible({ timeout: 60_000 });
 
   await page.unroute(/\/uploads\//);
-  await page.goto("/reels");
+  await page.goto("/services/reels");
 
   /*
     A different clip, into a slot holding 1 MB of the first one — and a page
@@ -361,7 +361,7 @@ test("with nothing remembered, the server's own declared length decides", async 
     return route.continue();
   });
 
-  await page.goto("/reels");
+  await page.goto("/services/reels");
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await page.getByRole("button", { name: "Upload it" }).click();
   await expect(
@@ -371,7 +371,7 @@ test("with nothing remembered, the server's own declared length decides", async 
   // Everything this browser knew about the slot, gone.
   await page.unroute(/\/uploads\//);
   await page.evaluate(() => window.localStorage.clear());
-  await page.goto("/reels");
+  await page.goto("/services/reels");
 
   // A different clip: refused, and it cannot name what is in the way.
   await page.getByLabel("Choose a clip").setInputFiles(harbour);
@@ -408,7 +408,7 @@ test("a slot somebody else is holding is refused, and says so truthfully", async
     anything about a URL that can no longer be lost.
   */
   await signIn(page, CONTENDED);
-  await page.goto("/reels");
+  await page.goto("/services/reels");
   await page
     .getByLabel("Choose a clip")
     .setInputFiles(testInfoClip(1, "colleague.mp4"));
@@ -424,7 +424,7 @@ test("a slot somebody else is holding is refused, and says so truthfully", async
 
 test("a file that is not a video never leaves the phone", async ({ page }) => {
   await signIn(page);
-  await page.goto("/reels");
+  await page.goto("/services/reels");
   await page.getByLabel("Choose a clip").setInputFiles({
     name: "boat.heic",
     mimeType: "image/heic",
@@ -596,11 +596,18 @@ test("the wrong clip can be taken down, while the page is still open", async ({
 
 test("approved footage can be attached to a listing", async ({ page }) => {
   await signIn(page);
-  await page.goto("/reels");
+  await page.goto("/services/reels");
 
   await expect(page.getByRole("heading", { name: "Your reels" })).toBeVisible();
+  /*
+    `.first()`: there is more than one approved clip in the fixtures now — one
+    of them exists precisely to stay attached to nothing, so the cross-link on
+    the Services section has something real to count. Attaching either proves
+    the same thing.
+  */
   const approved = page
     .getByText("Choose the listing it belongs to.")
+    .first()
     .locator("..");
   await approved.getByLabel("Listing").selectOption("exp_dive");
   await approved.getByLabel("Gallery").check();
@@ -612,9 +619,9 @@ test("approved footage can be attached to a listing", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("/reels has no accessibility violations", async ({ page }) => {
+test("/services/reels has no accessibility violations", async ({ page }) => {
   await signIn(page);
-  await page.goto("/reels");
+  await page.goto("/services/reels");
   await page.waitForLoadState("networkidle");
 
   const results = await new AxeBuilder({ page })

@@ -44,6 +44,29 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
+  /**
+   * Where Manage services used to be — yuvoy-operator#22.
+   *
+   * `/reels` was a focused screen behind the Business door and is now half of
+   * the Services section. Operators have the old URL in a browser history and
+   * on at least one printed onboarding note, so it forwards rather than 404s.
+   *
+   * **307, not 308.** A permanent redirect is cached by the browser forever,
+   * and this section is new enough that its shape may still move; a 308 held
+   * on a phone would then point somewhere that no longer exists, with no way
+   * to clear it remotely. The same call yuvoy-app made for its marketing
+   * redirects. Promote after a season.
+   */
+  async redirects() {
+    return [
+      { source: "/reels", destination: "/services/reels", permanent: false },
+      {
+        source: "/services",
+        destination: "/services/activities",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

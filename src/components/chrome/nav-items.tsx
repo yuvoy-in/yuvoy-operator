@@ -9,6 +9,7 @@ import {
   BriefcaseIcon,
   CalendarIcon,
   ClockIcon,
+  LayersIcon,
   TicketIcon,
 } from "@/components/ui/icons";
 
@@ -16,14 +17,23 @@ const ICONS: Record<NavIcon, ComponentType<{ className?: string }>> = {
   today: CalendarIcon,
   requests: ClockIcon,
   capacity: TicketIcon,
+  services: LayersIcon,
   business: BriefcaseIcon,
 };
 
 /**
  * The floating tab bar (phone) and the rail (desktop) render the same
  * registry in two orientations. In the bar the active destination opens into
- * a cream pill carrying its name; the other three are discs holding only
+ * a cream pill carrying its name; the other four are discs holding only
  * their glyph, named for a screen reader.
+ *
+ * ## Five stops, and the width that buys
+ *
+ * Four discs at 48px, one open pill, `gap-1` between and `p-1.5` around comes
+ * to roughly 330px with the longest label. That fits the 412px the mobile
+ * suite runs at and a 360px phone; below 360px it would not, and the pill
+ * scrolls rather than clipping — `overflow-x-auto` with the scrollbar hidden,
+ * so the worst case is a nudge rather than a destination nobody can reach.
  */
 export function NavList({ orientation }: { orientation: "bar" | "rail" }) {
   const pathname = usePathname() ?? "";

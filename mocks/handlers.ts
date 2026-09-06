@@ -143,10 +143,158 @@ type MockMediaAsset = {
   rejection?: { code: string; note?: string };
 };
 
-const mockExperiences = [
-  { id: "exp_dive", title: "Reef dive", status: "live" },
-  { id: "exp_boat", title: "Island boat day", status: "draft" },
-];
+/**
+ * The operator's listings — one per status the screen has to tell apart.
+ *
+ * `status` is what a client renders; `publicationState` and `review` are the
+ * parts it is derived from, and both are sent so a client that tried to
+ * recombine them would get a DIFFERENT answer here than the server's. That is
+ * the mistake the contract warns about, and a mock that only sent `status`
+ * could not catch it.
+ */
+type MockExperience = {
+  id: string;
+  slug?: string;
+  title: string;
+  summary?: string;
+  description?: string;
+  category?: string;
+  destination?: string;
+  status: string;
+  publicationState?: string;
+  bookingMode?: string;
+  durationMinutes?: number;
+  maxPartySize?: number;
+  unitPricePaise?: number | null;
+  pricingUnit?: string;
+  meetingPoint?: string;
+  upcomingDepartures?: number;
+  sellable?: boolean;
+  review?: {
+    state: string;
+    since?: string;
+    rejectionCode?: string;
+    rejectionNote?: string;
+  };
+};
+
+function seedExperiences(): MockExperience[] {
+  return [
+    {
+      id: "exp_dive",
+      slug: "reef-dive",
+      title: "Reef dive",
+      summary: "A guided dive on the house reef.",
+      category: "adventure",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      bookingMode: "allotment",
+      durationMinutes: 180,
+      maxPartySize: 6,
+      unitPricePaise: 450000,
+      pricingUnit: "per_person",
+      meetingPoint: "Beach 3 dive hut",
+      upcomingDepartures: 4,
+      sellable: true,
+      review: { state: "applied" },
+    },
+    {
+      id: "exp_boat",
+      slug: "island-boat-day",
+      title: "Island boat day",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "draft",
+      publicationState: "draft",
+      // No price — "saves but cannot be approved". The one fixture that proves
+      // the form says so while they are writing rather than after a review.
+      unitPricePaise: null,
+      sellable: false,
+      upcomingDepartures: 0,
+    },
+    {
+      id: "exp_sunset",
+      slug: "sunset-cruise",
+      title: "Sunset cruise",
+      category: "local_life",
+      destination: "andaman/neil",
+      /*
+        On sale AND with us. The state the contract calls out: "a published
+        listing with a submitted edit is live and in review", and a client
+        recombining the parts would call it one or the other.
+      */
+      status: "live_changes_in_review",
+      publicationState: "published",
+      unitPricePaise: 300000,
+      sellable: true,
+      upcomingDepartures: 2,
+      review: { state: "submitted", since: new Date().toISOString() },
+    },
+    /*
+      Two live listings that exist only to have a change proposed on them, one
+      per Playwright project.
+
+      A revision moves `status` in the shared Next server process, so a listing
+      both projects can submit against is a race in the FIXTURE — and it would
+      take "On sale" away from whichever assertion ran second. Exactly the call
+      `slot_calloff_a` and `slot_calloff_b` make on the day screen.
+
+      `exp_dive` is deliberately NOT used for it: other checks rely on that row
+      still reading as plainly on sale.
+    */
+    {
+      id: "exp_revision_a",
+      slug: "revision-fixture-a",
+      title: "Lagoon snorkel (revision fixture A)",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      unitPricePaise: 220000,
+      pricingUnit: "per_person",
+      meetingPoint: "Beach 3 dive hut",
+      upcomingDepartures: 1,
+      sellable: true,
+      review: { state: "applied" },
+    },
+    {
+      id: "exp_revision_b",
+      slug: "revision-fixture-b",
+      title: "Lagoon snorkel (revision fixture B)",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      unitPricePaise: 220000,
+      pricingUnit: "per_person",
+      meetingPoint: "Beach 3 dive hut",
+      upcomingDepartures: 1,
+      sellable: true,
+      review: { state: "applied" },
+    },
+    {
+      id: "exp_night",
+      slug: "night-fishing",
+      title: "Night fishing",
+      category: "local_life",
+      destination: "andaman/havelock",
+      status: "changes_rejected",
+      publicationState: "draft",
+      unitPricePaise: 340000,
+      sellable: true,
+      upcomingDepartures: 0,
+      review: {
+        state: "rejected",
+        since: new Date().toISOString(),
+        rejectionCode: "meeting_point_unclear",
+        rejectionNote: "Which jetty gate? A traveller cannot find this.",
+      },
+    },
+  ];
+}
+
+let mockExperiences: MockExperience[] = seedExperiences();
 
 function seedMediaAssets(): Record<string, MockMediaAsset> {
   return {
@@ -159,6 +307,22 @@ function seedMediaAssets(): Record<string, MockMediaAsset> {
       attested: true,
       state: "attested",
       durationSeconds: 18,
+    },
+    /*
+      An approved clip attached to NOTHING, and nothing in the suite attaches
+      it.
+
+      `listing` absent is "exactly where a reel sits between finishing upload
+      and appearing anywhere", and it is the loudest thing the Reels screen can
+      say — approved work no traveller can see. The attach test consumes
+      `med_approved_fixture` on the mobile project, and the two projects share
+      one Next server, so a check reading that state needs a clip of its own or
+      it passes alone and fails in a full run.
+    */
+    med_unattached_fixture: {
+      attested: true,
+      state: "approved",
+      durationSeconds: 31,
     },
   };
 }
@@ -188,6 +352,7 @@ export function __resetOperatorMocks() {
   signups = [];
   uploadIntents = {};
   mediaAssets = seedMediaAssets();
+  mockExperiences = seedExperiences();
   createdSlots = [];
   resetMockUploads();
 }
@@ -917,6 +1082,144 @@ export const handlers = [
     const failed = requireSession(request);
     if (failed) return failed;
     return HttpResponse.json({ experiences: mockExperiences });
+  }),
+
+  /**
+   * Write a new listing. Lands as a DRAFT and reaches nobody.
+   *
+   * The defaults are the API's, not the form's — "party size 6, `per_person`,
+   * `request` mode, 120 minutes" — so a minimal create here produces the same
+   * listing the real one would, and a form that quietly re-sent its own
+   * defaults would show up as a difference.
+   */
+  http.post(url("/experiences"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const body = (await request.json()) as Record<string, unknown>;
+    const title = String(body.title ?? "").trim();
+    const category = String(body.category ?? "").trim();
+    const destination = String(body.destination ?? "").trim();
+
+    if (!title || !category || !destination) {
+      return envelope(
+        "invalid_input",
+        "A title, a category and a destination.",
+        400,
+      );
+    }
+
+    /*
+      "A destination key in your own market. One belonging to another market is
+      refused." Modelled, because it is the single most likely 400 an operator
+      will meet — the portal cannot enumerate destinations, so they type one —
+      and the screen renders the API's own sentence for exactly this case.
+    */
+    if (!destination.startsWith("andaman/")) {
+      return envelope(
+        "invalid_input",
+        `"${destination}" is not a place in your market. Yours all start with "andaman/".`,
+        400,
+      );
+    }
+
+    const slug =
+      String(body.slug ?? "").trim() ||
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+
+    if (mockExperiences.some((e) => e.slug === slug)) {
+      return envelope("conflict", "That slug is taken.", 409);
+    }
+
+    const priceRaw = body.unitPricePaise;
+    const unitPricePaise =
+      typeof priceRaw === "number" && priceRaw > 0 ? priceRaw : null;
+
+    const created: MockExperience = {
+      id: `exp_${Math.random().toString(36).slice(2, 10)}`,
+      slug,
+      title,
+      category,
+      destination,
+      summary: body.summary ? String(body.summary) : undefined,
+      description: body.description ? String(body.description) : undefined,
+      status: "draft",
+      publicationState: "draft",
+      bookingMode: String(body.bookingMode ?? "request"),
+      durationMinutes: Number(body.durationMinutes ?? 120),
+      maxPartySize: Number(body.maxPartySize ?? 6),
+      unitPricePaise,
+      pricingUnit: String(body.pricingUnit ?? "per_person"),
+      upcomingDepartures: 0,
+      // "A listing without `unitPricePaise` can be saved but cannot be
+      // approved, which the response reports as `sellable: false`."
+      sellable: unitPricePaise !== null,
+    };
+    mockExperiences.push(created);
+
+    return HttpResponse.json(
+      { id: created.id, status: "draft", next: "submit_for_review" },
+      { status: 201 },
+    );
+  }),
+
+  http.get(url("/experiences/:id"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const found = mockExperiences.find((e) => e.id === String(params.id));
+    // Gone and belonging-to-somebody-else are one answer, as everywhere else.
+    if (!found) return envelope("not_found", "No such listing.", 404);
+    return HttpResponse.json(found);
+  }),
+
+  /**
+   * Propose a change — **never a write to the live listing.**
+   *
+   * The mock moves `status` and leaves the listing's own fields alone, which
+   * is the behaviour a screen would otherwise get wrong: a client that
+   * expected its edit to appear immediately would look broken against the real
+   * API and correct against a mock that applied it.
+   *
+   * A draft becomes `in_review`. A published listing becomes
+   * `live_changes_in_review` and KEEPS SELLING — "bookings already made are
+   * unaffected either way; their terms were snapshotted at checkout".
+   */
+  http.post(url("/experiences/:id/revisions"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const listing = mockExperiences.find((e) => e.id === String(params.id));
+    if (!listing) return envelope("not_found", "No such listing.", 404);
+
+    const body = (await request.json()) as Record<string, unknown>;
+    if (!body || Object.keys(body).length === 0) {
+      return envelope("invalid_input", "Nothing to change.", 400);
+    }
+
+    if (
+      listing.status === "in_review" ||
+      listing.status === "live_changes_in_review"
+    ) {
+      return envelope(
+        "conflict",
+        "There is already a change with us on this listing.",
+        409,
+      );
+    }
+
+    listing.status =
+      listing.publicationState === "published"
+        ? "live_changes_in_review"
+        : "in_review";
+    listing.review = { state: "submitted", since: new Date().toISOString() };
+
+    return HttpResponse.json(
+      { state: "submitted", next: "wait_for_review" },
+      { status: 201 },
+    );
   }),
 
   http.get(url("/media"), async ({ request }) => {
