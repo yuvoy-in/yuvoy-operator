@@ -59,9 +59,21 @@ interface Upload {
 
 const uploads = new Map<string, Upload>();
 
-export function createMockUpload(id: string): void {
+/**
+ * @param length The size the slot was opened for, or `null` to defer it.
+ *
+ * Since yuvoy-api@4b714570 `POST /media/upload-intents` takes `sizeBytes` and
+ * fixes the length at creation, so production passes a number and the client
+ * must NOT send `Upload-Length` on its first chunk. `null` keeps the older
+ * deferred behaviour reachable — the client reads `Upload-Defer-Length` off a
+ * `HEAD` rather than assuming either, and both paths are worth exercising.
+ */
+export function createMockUpload(
+  id: string,
+  length: number | null = null,
+): void {
   uploads.set(id, {
-    length: null,
+    length,
     offset: 0,
     dropOnce: id.endsWith("-drop"),
     dropped: false,
@@ -159,8 +171,19 @@ function handle(req: IncomingMessage, res: ServerResponse) {
     return res.end();
   }
 
-  // Declared once, with the first chunk, and never revised afterwards.
+  /*
+    Declared once, with the first chunk, and never revised afterwards.
+
+    A client sending it against an upload whose length is already fixed is a
+    tus protocol error, and the mock refuses it rather than shrugging: that is
+    exactly the mistake this portal made for a day after the API started fixing
+    lengths at creation, and a mock that tolerated it would let it ship again.
+  */
   const declared = Number(req.headers["upload-length"]);
+  if (upload.length !== null && req.headers["upload-length"] !== undefined) {
+    res.statusCode = 400;
+    return res.end();
+  }
   if (upload.length === null && Number.isFinite(declared) && declared > 0) {
     upload.length = declared;
   }

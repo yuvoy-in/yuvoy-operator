@@ -31,6 +31,16 @@ export interface UploadIntent {
   maxSeconds: number;
   aspectRatio?: string;
   expiresAt?: string;
+  /**
+   * The size this slot was opened for, echoed back by the API.
+   *
+   * The contract asks callers to check it: "a mismatch is the difference
+   * between an upload that finishes and one that stalls at 100%." It is also
+   * the strongest identity signal the client has for whose bytes a slot holds
+   * — better than the provider's `Upload-Length`, because it comes from our
+   * own API rather than from a header that may not survive CORS.
+   */
+  sizeBytes?: number;
 }
 
 export interface IntentState {
@@ -40,19 +50,57 @@ export interface IntentState {
   alreadyUploading?: boolean;
 }
 
-export async function createUploadIntent(): Promise<IntentState> {
+/**
+ * Open an upload slot, for a file of a known size.
+ *
+ * `sizeBytes` became **required** in yuvoy-api@4b714570, and it is not a
+ * formality: tus fixes the upload length when the slot is created, so a slot
+ * opened for the 200 MB ceiling when the clip is 6 MB never completes — the
+ * provider goes on waiting for 194 MB that will never arrive, while the
+ * reported offset looks perfectly correct. The upload is unfinishable from its
+ * first chunk and nothing says so.
+ *
+ * This was a breaking change to a live endpoint with no deprecation window, so
+ * the deployed portal was answered `400` until this shipped. Raised on
+ * yuvoy-operator#24.
+ */
+export async function createUploadIntent(
+  sizeBytes: number,
+): Promise<IntentState> {
   const { token } = await requireOperator();
+
+  /*
+    Refused here rather than sent. A zero or a NaN would be a 400 from the API
+    and a round trip to learn something the browser already knows — and
+    `localRefusals` has already turned away an empty file by this point, so
+    reaching this branch means something is wrong with the caller, not the clip.
+  */
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+    return { message: "We could not read that file. Choose it again." };
+  }
 
   try {
     const { data, error } = await operatorApi(token).POST(
       "/media/upload-intents",
-      {},
+      { body: { sizeBytes } },
     );
     if (error) throw error;
 
     if (!data.uploadUrl || !data.intentId) {
       return { message: "We could not start the upload. Try again." };
     }
+
+    /*
+      The echo is carried, not judged here.
+
+      The contract asks callers to check it — "a mismatch is the difference
+      between an upload that finishes and one that stalls at 100%" — and a
+      mismatch means this slot was opened for a different file, which is
+      exactly the question `decideSlot` already answers. Refusing here instead
+      would be a second place deciding the same thing, and the worse of the
+      two: this action does not know the file's NAME, so it could only say
+      "a different clip" where the screen can say which one to choose again.
+    */
 
     /*
       Handed to the client and never kept, on either side. "`uploadUrl` is
@@ -75,6 +123,7 @@ export async function createUploadIntent(): Promise<IntentState> {
         maxSeconds: data.maxSeconds ?? 60,
         aspectRatio: data.aspectRatio,
         expiresAt: data.expiresAt,
+        sizeBytes: data.sizeBytes,
       },
     };
   } catch (err) {
@@ -102,6 +151,20 @@ export async function createUploadIntent(): Promise<IntentState> {
       }
       if (err.status === 403) {
         return { message: "Your role cannot upload footage." };
+      }
+      if (err.status === 400) {
+        /*
+          "No `sizeBytes`, or a file larger than we accept." The size is always
+          sent above, so in practice this is the ceiling — and the API refuses
+          before an intent exists, deliberately, so a refusal does not burn the
+          operator's one concurrent slot. The server's own sentence is more
+          specific than ours about which ceiling was hit.
+        */
+        return {
+          message:
+            err.message ||
+            "That clip is too large to upload. Try a shorter one.",
+        };
       }
       if (err.code === "media_unavailable") {
         /*

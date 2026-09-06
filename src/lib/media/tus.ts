@@ -96,6 +96,20 @@ export interface UploadState {
   /** Bytes it holds. The truth; ours never wins over it. */
   offset: number;
   /**
+   * Whether the server is still waiting to be told how long the upload is.
+   *
+   * `Upload-Defer-Length: 1` on a `HEAD`. It decides whether the first PATCH
+   * may carry `Upload-Length`: tus allows that header only while the length is
+   * deferred, and sending it against an upload whose length is already fixed
+   * is a protocol error the provider may refuse.
+   *
+   * Since yuvoy-api@4b714570 the API opens the slot with the size the client
+   * sent, so in production this is normally `false` — but it is read rather
+   * than assumed, because the two behaviours differ by a 400 on the first
+   * chunk and the client cannot tell which server it is talking to.
+   */
+  deferLength: boolean;
+  /**
    * The total length whoever started this upload declared, if it can be read.
    *
    * `null` in two different situations that this deliberately does not
@@ -173,7 +187,15 @@ export async function readUploadState(
     rawLength === null || rawLength.trim() === "" ? NaN : Number(rawLength);
   const declaredLength = Number.isFinite(length) && length > 0 ? length : null;
 
-  return { offset, declaredLength };
+  /*
+    Absent is treated as "not deferred", which is the safe direction: it means
+    the first chunk goes without `Upload-Length`, and a server that actually
+    wanted one answers 400 immediately rather than accepting an upload it can
+    never finish.
+  */
+  const deferLength = res.headers.get("Upload-Defer-Length") === "1";
+
+  return { offset, declaredLength, deferLength };
 }
 
 /** Just the offset, for the upload loop, which has no use for the rest. */
@@ -199,7 +221,8 @@ export async function uploadResumable(options: TusOptions): Promise<void> {
 
   const total = file.size;
   let resumes = 0;
-  let offset = await readOffset(url, fetchImpl, signal);
+  const opening = await readUploadState(url, fetchImpl, signal);
+  let offset = opening.offset;
   onProgress?.({ uploaded: offset, total, resumes });
 
   let attempt = 0;
@@ -217,13 +240,22 @@ export async function uploadResumable(options: TusOptions): Promise<void> {
           "Upload-Offset": String(offset),
           "Content-Type": "application/offset+octet-stream",
           /*
-            Declared with the first chunk, because the slot was created without
-            it. `POST /media/upload-intents` takes no request body — the API
-            cannot know how big the clip is — so the upload is created with
-            `Upload-Defer-Length` and the client is the only one that knows.
-            Omit this and the provider never learns when the file is finished.
+            Declared with the first chunk ONLY while the server says it is
+            still waiting to be told.
+
+            It used to be sent unconditionally, on the reasoning that
+            `POST /media/upload-intents` took no body so the slot was always
+            created with `Upload-Defer-Length`. That stopped being true in
+            yuvoy-api@4b714570, which takes `sizeBytes` and fixes the length at
+            creation — and tus allows this header only while the length is
+            deferred, so sending it anyway is a protocol error the provider may
+            refuse. Read from the opening `HEAD` rather than assumed, because
+            both servers are otherwise indistinguishable until the first chunk
+            fails.
           */
-          ...(offset === 0 ? { "Upload-Length": String(total) } : {}),
+          ...(offset === 0 && opening.deferLength
+            ? { "Upload-Length": String(total) }
+            : {}),
         },
         body: file.slice(chunk.start, chunk.end),
         signal,

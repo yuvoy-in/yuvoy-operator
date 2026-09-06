@@ -128,7 +128,7 @@ let signups: MockTeamMember[] = [];
 /** Upload intents in flight, by operator. One at a time, as the API enforces. */
 let uploadIntents: Record<
   string,
-  { id: string; uploadId: string; confirmedAt?: number }
+  { id: string; uploadId: string; sizeBytes: number; confirmedAt?: number }
 > = {};
 /** Assets that finished processing, and what has been attested about them. */
 let mediaAssets: Record<string, { attested: boolean; withdrawn?: boolean }> =
@@ -177,10 +177,11 @@ function envelope(code: string, message: string, status: number) {
  * stored", so the server can always hand a working URL back without ever
  * having kept one.
  */
-function uploadIntent(id: string, uploadId: string) {
+function uploadIntent(id: string, uploadId: string, sizeBytes: number) {
   return HttpResponse.json(
     {
       intentId: id,
+      sizeBytes,
       uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/uploads/${uploadId}`,
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       maxBytes: 200 * 1024 * 1024,
@@ -670,8 +671,36 @@ export const handlers = [
       );
     }
 
+    const body = (await request.json().catch(() => ({}))) as {
+      sizeBytes?: number;
+    };
+    const sizeBytes = Number(body.sizeBytes);
+    /*
+      Required since yuvoy-api@4b714570, and refused BEFORE an intent exists —
+      "a refusal that burned the operator's one concurrent slot would lock them
+      out of retrying".
+    */
+    if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+      return envelope("bad_request", "A file size is needed.", 400);
+    }
+    if (sizeBytes > 200 * 1024 * 1024) {
+      return envelope(
+        "bad_request",
+        "That clip is larger than we accept.",
+        400,
+      );
+    }
+
     const open = uploadIntents[me.id];
-    if (open && !open.confirmedAt) return uploadIntent(open.id, open.uploadId);
+    /*
+      A resume echoes the size the slot was ORIGINALLY opened for, not the one
+      just asked for: "on a resume this is ignored — the original size wins,
+      because tus already fixed it." The client compares the echo against its
+      file and refuses the slot when they differ.
+    */
+    if (open && !open.confirmedAt) {
+      return uploadIntent(open.id, open.uploadId, open.sizeBytes);
+    }
 
     const id = `upi_${Math.random().toString(36).slice(2, 10)}`;
     /*
@@ -681,10 +710,16 @@ export const handlers = [
       never run.
     */
     const uploadId = `${id}${me.id === DROPPING_ID ? "-drop" : ""}`;
-    createMockUpload(uploadId);
-    uploadIntents[me.id] = { id, uploadId };
+    /*
+      Opened at the size the client asked for, as production does since
+      yuvoy-api@4b714570 — "tus fixes the upload length when the slot is
+      created". The client reads `Upload-Defer-Length` off a HEAD to decide
+      whether to declare it, so this is what makes it read `false`.
+    */
+    createMockUpload(uploadId, sizeBytes);
+    uploadIntents[me.id] = { id, uploadId, sizeBytes };
 
-    return uploadIntent(id, uploadId);
+    return uploadIntent(id, uploadId, sizeBytes);
   }),
 
   /**

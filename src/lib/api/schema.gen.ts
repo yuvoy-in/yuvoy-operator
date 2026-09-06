@@ -122,6 +122,168 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The business's own mark */
+        get: operations["getOperatorLogo"];
+        /**
+         * Set the logo to an image you uploaded
+         * @description Confirms the upload with the image host before saving it. A client that says it finished and a file that actually exists are different claims, and storing an unconfirmed id produces a card with a broken image — worse than the plain one it replaced.
+         *
+         *     Replacing a logo deletes the previous image, so changing it ten times does not leave ten stored images behind. Editable after go-live, unlike the rest of the business details: a logo is presentation, not identity, and nothing was verified against it.
+         */
+        put: operations["setOperatorLogo"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/logo/upload-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get a one-time URL to upload a logo to
+         * @description The browser posts the file straight to the image host. Bytes never pass through our API, for the same reason video does not.
+         *
+         *     Post the file as multipart form-data with the field name `file` to `uploadUrl`, then `PUT /logo` with the `imageId`. The slot expires in 30 minutes: long enough to find a file on a phone over an island connection, short enough that a URL captured from a browser is not a standing write credential.
+         */
+        post: operations["createLogoUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/join/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which business is asking
+         * @description **One link per business**, not one per invitation — the owner sends the same URL to everybody they add.
+         *
+         *     Unauthenticated: somebody who is not yet a user has to see who is asking before handing over a phone number. It says which business, and nothing else: whoever opened the link has not identified themselves yet, so there is nobody to tell anything about.
+         *
+         *     The link grants nothing on its own.
+         */
+        get: operations["previewJoin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/join/{token}/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send me the code
+         * @description A number nobody invited is refused **before anything is sent**. That this reveals whether a number was invited is deliberate: the alternative is a page that fires one-time codes at any phone somebody types, which is a free SMS gateway pointed at strangers.
+         *
+         *     On success the response says what they are joining as, and — if this number already works with another business — names the one they would be leaving, so the screen can ask before they accept.
+         */
+        post: operations["requestJoinCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/join/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join the business
+         * @description If this number already works with another business, the first attempt answers **409 `confirmation_required`** — the screen must ask before retrying with `confirmLeaving: true`.
+         *
+         *     One number works with one business at a time. The previous membership is ended and its sessions dropped, so somebody who has left cannot keep reading their old employer's manifest from an open tab. That business is told somebody has gone, and not told where.
+         */
+        post: operations["acceptJoin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The business behind the account */
+        get: operations["getBusinessDetails"];
+        /**
+         * Tell us about the business
+         * @description Legal name, entity type, GSTIN and a registered address — the set an invoice and a payout both need. Collected during onboarding rather than chased at the first payout run, which is the worst moment to discover an operator has no registered address on file.
+         *
+         *     A whole document, not a patch of single fields: this is one form filled in during onboarding, and partial writes would leave it half-saved in ways the completeness check then has to reason about.
+         *
+         *     **Self-serve only until the account is LIVE.** After that the verified documents were checked against the legal name on file, so changing it without anybody looking would make the verification meaningless — the response says so via `editable`, and a write answers `409`.
+         */
+        put: operations["saveBusinessDetails"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send us a document we asked for
+         * @description `GET /me` names what is outstanding and who it is waiting on. This is how an operator acts on the half that is waiting on them — until it existed the screen named a blocker and then asked them to ring us.
+         *
+         *     **Nothing filed here is ever verified.** The state is fixed server-side and the operator is taken from the session, so neither verifying your own document nor filing one against another operator is expressible in a request. Verification is somebody at Yuvoy looking at the document, and a self-service path to `verified` would make the credential gate decorative.
+         *
+         *     Sending the same kind twice replaces the earlier pending one rather than stacking beside it: two pending rows for one document is a queue of duplicates for whoever checks them.
+         */
+        post: operations["submitCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/change-requests": {
         parameters: {
             query?: never;
@@ -202,7 +364,9 @@ export interface paths {
         put?: never;
         /**
          * Invite somebody
-         * @description OWNER only. `MANAGER` or `STAFF` — **OWNER cannot be invited**, because the owner is the person whose bank account this is, and that is not a thing one login should be able to hand to a phone number.
+         * @description OWNER or ADMIN. `ADMIN`, `MANAGER` or `STAFF` — **OWNER cannot be invited**, because the owner is the person whose bank account this is, and that is not a thing one login should be able to hand to a phone number.
+         *
+         *     ADMIN may invite because the reason that role exists is an owner who is not on the island and cannot be the only person able to add somebody.
          *
          *     A number already belonging to any operator is refused with the same message as any other failure, so this endpoint cannot be used to find out which businesses are on Yuvoy — the same reason sign-in answers identically for known and unknown numbers.
          *
@@ -621,6 +785,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/experiences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Everything you sell, or are trying to
+         * @description Drafts included. The catalog has always shown unpublished listings to Yuvoy and never to the people who run them, so an operator could not read back what we had written on their behalf.
+         */
+        get: operations["listOperatorExperiences"];
+        put?: never;
+        /**
+         * Write a new listing
+         * @description Lands as a **draft** and reaches nobody. Sending it for review is a separate act (`POST /experiences/{id}/revisions`) and approval is what publishes it — a listing is a promise to a traveller, and the person making the promise is not the person who checks it.
+         *
+         *     `slug` is optional; one is proposed from the title if it is omitted. A listing without `unitPricePaise` can be saved but cannot be approved, which the response reports as `sellable: false`.
+         */
+        post: operations["createOperatorExperience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/experiences/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One listing, in the shape you can edit */
+        get: operations["getOperatorExperience"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/experiences/{id}/revisions": {
         parameters: {
             query?: never;
@@ -639,6 +846,30 @@ export interface paths {
          *     Changes to price, safety notes, inclusions, requirements, duration or party size are *material* and need review before going live.
          */
         post: operations["submitExperienceRevision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My clips
+         * @description An operator's own clips, newest first.
+         *
+         *     Without this the portal could show nothing after the upload screen — not what was processing, not what a reviewer approved, not what was live — and `publish` and `withdraw` were unreachable from any interface, because both need a media id the client only held for the seconds after `complete` returned it.
+         *
+         *     **No playback URL.** An unpublished clip needs a signed, short-lived one, and minting per row on a list nobody may be watching hands out credentials for footage no moderator has seen.
+         */
+        get: operations["listOperatorMedia"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -765,10 +996,69 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        BusinessDetails: {
+            /** @description What travellers see. Not editable here. */
+            displayName?: string;
+            legalName?: string;
+            entityType?: string;
+            gstin?: string;
+            address?: {
+                line1?: string;
+                line2?: string;
+                locality?: string;
+                region?: string;
+                postalCode?: string;
+                country?: string;
+            };
+            /** @description Field names still outstanding. Empty means complete. Named rather than a bare boolean so a form can mark the specific rows. */
+            missing?: string[];
+            /** @description False once the account is LIVE. Render the form read-only rather than accepting edits that will be refused. */
+            editable?: boolean;
+            /** Format: date-time */
+            submittedAt?: string;
+        };
+        OperatorExperience: {
+            id?: string;
+            slug?: string;
+            title?: string;
+            summary?: string;
+            description?: string;
+            category?: string;
+            destination?: string;
+            /**
+             * @description The one word to show. Derived from the publication state and the latest revision together, because neither answers "where is this" alone — a published listing with a submitted edit is live AND in review, and a draft whose revision was rejected is "we came back to you" rather than "draft".
+             * @enum {string}
+             */
+            status?: "draft" | "in_review" | "live" | "live_changes_in_review" | "changes_rejected" | "withdrawn";
+            /** @enum {string} */
+            publicationState?: "draft" | "in_review" | "published" | "withdrawn";
+            bookingMode?: string;
+            durationMinutes?: number;
+            maxPartySize?: number;
+            /** Format: int64 */
+            unitPricePaise?: number | null;
+            pricingUnit?: string;
+            meetingPoint?: string;
+            inclusions?: string[];
+            requirements?: string[];
+            safetyNotes?: string;
+            upcomingDepartures?: number;
+            /** @description False when there is no price. Such a listing saves but cannot be approved, and an operator should learn that while writing it rather than after waiting for a review. */
+            sellable?: boolean;
+            /** @description Where the latest submission got to. Absent if nothing was ever sent. */
+            review?: {
+                /** @enum {string} */
+                state?: "draft" | "submitted" | "in_review" | "approved" | "rejected" | "withdrawn" | "applied";
+                /** Format: date-time */
+                since?: string;
+                rejectionCode?: string;
+                rejectionNote?: string;
+            };
+        };
         Error: {
             error: {
                 /** @enum {string} */
-                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "internal_error" | "session_expired" | "account_not_active" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "step_up_required" | "request_not_open" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove";
+                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "internal_error" | "session_expired" | "account_not_active" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "confirmation_required" | "step_up_required" | "request_not_open" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove";
                 /** @description Human-readable; safe to show. */
                 message: string;
                 /** @description Field-level messages, keyed by field name. */
@@ -918,7 +1208,7 @@ export interface components {
         TeamMember: {
             id?: string;
             name?: string;
-            roles?: ("OWNER" | "MANAGER" | "STAFF")[];
+            roles?: ("OWNER" | "ADMIN" | "MANAGER" | "STAFF")[];
             state?: string;
             /** @description An invitation nobody has accepted yet. `id` is the invitation, not a user. */
             pending?: boolean;
@@ -958,7 +1248,7 @@ export interface components {
              * @description A closed set, so a client branches on the code and never on the message — the same rule the error enum follows. `OTHER` exists so a reason can be added operationally without a contract change and without breaking a client: render `label` for anything you do not recognise, including `OTHER`.
              * @enum {string}
              */
-            code: "CREDENTIAL_MISSING" | "CREDENTIAL_UNVERIFIED" | "CREDENTIAL_EXPIRED" | "CREDENTIAL_REJECTED" | "AWAITING_REVIEW" | "OTHER";
+            code: "BUSINESS_DETAILS_INCOMPLETE" | "CREDENTIAL_MISSING" | "CREDENTIAL_UNVERIFIED" | "CREDENTIAL_EXPIRED" | "CREDENTIAL_REJECTED" | "AWAITING_REVIEW" | "OTHER";
             /**
              * @description Human-readable and safe to show unmodified.
              * @example We still need your insurance certificate
@@ -1213,7 +1503,7 @@ export interface operations {
                         user: {
                             id?: string;
                             name?: string;
-                            roles?: ("OWNER" | "MANAGER" | "STAFF")[];
+                            roles?: ("OWNER" | "ADMIN" | "MANAGER" | "STAFF")[];
                         };
                         operatorId: string;
                     };
@@ -1299,6 +1589,401 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getOperatorLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description `logoUrl` is absent when there is no logo, and also when image hosting is unavailable — a blank string could not tell those apart. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        imageId?: string;
+                        logoUrl?: string;
+                        /** Format: date-time */
+                        uploadedAt?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    setOperatorLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description From the upload intent. */
+                    imageId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        logoUrl?: string;
+                    };
+                };
+            };
+            /** @description The upload has not arrived at the host yet. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `media_unavailable` — the image host could not be reached. Retry safely. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `media_unavailable` — image hosting is not configured on this service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createLogoUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A slot to upload into. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        imageId?: string;
+                        uploadUrl?: string;
+                        /** Format: date-time */
+                        expiresAt?: string;
+                        /** Format: int64 */
+                        maxBytes?: number;
+                        next?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `media_unavailable` — the image host could not mint a slot. Retry safely. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `media_unavailable` — image hosting is not configured on this service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewJoin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The business behind the link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        businessName?: string;
+                        next?: string;
+                    };
+                };
+            };
+            /** @description Not a link we recognise. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    requestJoinCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description E.164. */
+                    phone: string;
+                };
+            };
+        };
+        responses: {
+            /** @description A code is on its way. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sent?: boolean;
+                        businessName?: string;
+                        /** @enum {string} */
+                        role?: "ADMIN" | "MANAGER" | "STAFF";
+                        name?: string;
+                        leavingBusiness?: string;
+                        note?: string;
+                        /** @description Non-production only. */
+                        devCode?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description No invitation for that number. The message names the business and says to ask its owner or an admin to send one — render it, because it is the only useful next step. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    acceptJoin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    phone: string;
+                    code: string;
+                    /** @description Required only when `leavingBusiness` came back from the code step. Send it after the person has agreed, never by default. */
+                    confirmLeaving?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Joined. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        joined?: boolean;
+                        next?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description No invitation for that number. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `confirmation_required` — accepting removes them from another business and they have not agreed yet. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getBusinessDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What we hold, and what is still outstanding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessDetails"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveBusinessDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalName: string;
+                    /** @enum {string} */
+                    entityType: "sole_proprietor" | "partnership" | "llp" | "private_limited" | "society" | "trust";
+                    /** @description 15 characters, or absent. Deliberately optional — plenty of island operators are under the registration threshold, and demanding a number they cannot legally obtain would block exactly the businesses this marketplace exists for. */
+                    gstin?: string;
+                    addressLine1: string;
+                    addressLine2?: string;
+                    locality: string;
+                    region: string;
+                    /** @description Six digits. */
+                    postalCode: string;
+                    /** @default IN */
+                    country?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. The body is the same shape as GET. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessDetails"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `details_locked` — the account is LIVE; these change by asking us. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    submitCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    type: "directorate_registration" | "instructor_cert" | "oxygen" | "equipment" | "boat" | "insurance" | "bank" | "gst";
+                    issuer?: string;
+                    identifier?: string;
+                    /** Format: date */
+                    issuedOn?: string;
+                    /** Format: date */
+                    expiresOn?: string;
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Filed, and waiting to be checked. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        type?: string;
+                        /** @enum {string} */
+                        state?: "pending";
+                        next?: string;
+                        /** @description An earlier pending document of this kind was superseded. */
+                        replacedPrevious?: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description `already_current` — we already hold a verified one that is not near expiry. Refused rather than filed: a new pending row against an operator who is currently selling would take them off sale, so being organised early would be punished. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listOperatorChangeRequests: {
@@ -1402,7 +2087,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            /** @description OWNER only. */
+            /** @description OWNER or ADMIN only. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -1440,6 +2125,13 @@ export interface operations {
                 content: {
                     "application/json": {
                         team?: components["schemas"]["TeamMember"][];
+                        /**
+                         * @description The business's own join link, present only for a caller who can invite. Show it to copy: on an island the person doing the inviting is usually standing next to the person being invited, and a link they can paste beats waiting for one to arrive.
+                         *
+                         *     The same URL for everybody this business adds. It grants nothing on its own — the number must already have been invited.
+                         */
+                        joinUrl?: string;
+                        joinNote?: string;
                     };
                 };
             };
@@ -1459,7 +2151,7 @@ export interface operations {
                     phone: string;
                     name: string;
                     /** @enum {string} */
-                    role: "MANAGER" | "STAFF";
+                    role: "ADMIN" | "MANAGER" | "STAFF";
                 };
             };
         };
@@ -1472,6 +2164,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         sent?: boolean;
+                        /**
+                         * @description The business's join link, returned so the inviter can pass it on themselves. The same URL for everybody this business adds, and the same one shown on `GET /team`.
+                         *
+                         *     We queue a message too, but on an island the person doing the inviting is usually standing next to the person being invited.
+                         */
+                        joinUrl?: string;
                         /** @description Development only. */
                         devCode?: string;
                     };
@@ -2234,6 +2932,123 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    listOperatorExperiences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your listings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        experiences?: components["schemas"]["OperatorExperience"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createOperatorExperience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                    /** @description Optional. Proposed from the title if omitted. */
+                    slug?: string;
+                    summary?: string;
+                    description?: string;
+                    category: string;
+                    /** @description A destination key in your own market. One belonging to another market is refused. */
+                    destination: string;
+                    /**
+                     * @default request
+                     * @enum {string}
+                     */
+                    bookingMode?: "allotment" | "request";
+                    /** @default 120 */
+                    durationMinutes?: number;
+                    /** @default 6 */
+                    maxPartySize?: number;
+                    /** Format: int64 */
+                    unitPricePaise?: number;
+                    /**
+                     * @default per_person
+                     * @enum {string}
+                     */
+                    pricingUnit?: "per_person" | "per_group";
+                    meetingPoint?: string;
+                    inclusions?: string[];
+                    requirements?: string[];
+                    safetyNotes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created as a draft. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        /** @enum {string} */
+                        status?: "draft";
+                        next?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `conflict` — that slug is taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getOperatorExperience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The listing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorExperience"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     submitExperienceRevision: {
         parameters: {
             query?: never;
@@ -2271,7 +3086,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    createUploadIntent: {
+    listOperatorMedia: {
         parameters: {
             query?: never;
             header?: never;
@@ -2279,6 +3094,66 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Clips belonging to the signed-in operator. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items?: {
+                            id?: string;
+                            /** @description Where the clip is: `uploaded`, `processing`, `ready`, `attested`, `in_moderation`, `approved`, `published`, `rejected`, `quarantined`, `withdrawn` or `failed`. */
+                            state?: string;
+                            posterUrl?: string;
+                            durationSeconds?: number;
+                            /** Format: date-time */
+                            createdAt?: string;
+                            /**
+                             * @description Why a reviewer refused it. A clip that disappears into "rejected" with no reason is a support conversation, and the codes are a closed set so a screen can render them rather than paraphrase.
+                             *
+                             *     `UNSAFE_PRACTICE_SHOWN` appears with state `quarantined`, not `rejected` — it is a signal about how the operator runs trips, not a note about the video.
+                             */
+                            rejection?: {
+                                code?: string;
+                                note?: string;
+                            };
+                            /** @description The listing this clip is published against. Absent means uploaded and attached to nothing, which is where a reel sits between finishing and publication. */
+                            listing?: {
+                                experienceId?: string;
+                                title?: string;
+                                state?: string;
+                            };
+                        }[];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createUploadIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: int64
+                     * @description **The file's actual size in bytes.** The browser knows it; we cannot.
+                     *
+                     *     tus fixes the upload length when the slot is created. A slot opened for the 200 MB ceiling when the clip is 6 MB never completes — the provider goes on waiting for 194 MB that do not exist. The first chunk lands, the last cannot, and the reported offset looks perfectly correct while the upload is already unfinishable.
+                     *
+                     *     On a resume this is ignored: the original size wins, because tus already fixed it. Picking a different file after a reload means starting a new upload, not continuing this one.
+                     */
+                    sizeBytes: number;
+                };
+            };
+        };
         responses: {
             /** @description An upload slot. */
             201: {
@@ -2288,6 +3163,11 @@ export interface operations {
                 content: {
                     "application/json": {
                         intentId?: string;
+                        /**
+                         * Format: int64
+                         * @description The size this slot was opened for, echoed back. Check it against the file you are about to send: a mismatch is the difference between an upload that finishes and one that stalls at 100%.
+                         */
+                        sizeBytes?: number;
                         /** Format: uri */
                         uploadUrl?: string;
                         /** Format: date-time */
@@ -2299,6 +3179,15 @@ export interface operations {
                         chunkBytes?: number;
                         aspectRatio?: string;
                     };
+                };
+            };
+            /** @description No `sizeBytes`, or a file larger than we accept. Refused before an upload URL exists rather than after bytes have moved, and no intent is created — a refusal that burned the operator's one concurrent slot would lock them out of retrying. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -2464,6 +3353,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description This listing already shows as many clips as we display. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The approved clip could not be made public at the video provider. Retry safely. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

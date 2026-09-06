@@ -237,7 +237,7 @@ paths:
                       name: { type: string }
                       roles:
                         type: array
-                        items: { type: string, enum: [OWNER, MANAGER, STAFF] }
+                        items: { type: string, enum: [OWNER, ADMIN, MANAGER, STAFF] }
                   operatorId: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -316,6 +316,401 @@ paths:
                 properties:
                   steppedUpUntil: { type: string, format: date-time }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /logo:
+    get:
+      tags: [account]
+      summary: The business's own mark
+      operationId: getOperatorLogo
+      responses:
+        "200":
+          description: >-
+            `logoUrl` is absent when there is no logo, and also when image
+            hosting is unavailable — a blank string could not tell those apart.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imageId: { type: string }
+                  logoUrl: { type: string }
+                  uploadedAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [account]
+      summary: Set the logo to an image you uploaded
+      description: >
+        Confirms the upload with the image host before saving it. A client that
+        says it finished and a file that actually exists are different claims,
+        and storing an unconfirmed id produces a card with a broken image —
+        worse than the plain one it replaced.
+
+
+        Replacing a logo deletes the previous image, so changing it ten times
+        does not leave ten stored images behind. Editable after go-live, unlike
+        the rest of the business details: a logo is presentation, not identity,
+        and nothing was verified against it.
+      operationId: setOperatorLogo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageId]
+              properties:
+                imageId: { type: string, description: From the upload intent. }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { logoUrl: { type: string } }
+        "400":
+          description: The upload has not arrived at the host yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502":
+          description: "`media_unavailable` — the image host could not be reached. Retry safely."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: "`media_unavailable` — image hosting is not configured on this service."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /logo/upload-intents:
+    post:
+      tags: [account]
+      summary: Get a one-time URL to upload a logo to
+      description: >
+        The browser posts the file straight to the image host. Bytes never pass
+        through our API, for the same reason video does not.
+
+
+        Post the file as multipart form-data with the field name `file` to
+        `uploadUrl`, then `PUT /logo` with the `imageId`. The slot expires in 30
+        minutes: long enough to find a file on a phone over an island
+        connection, short enough that a URL captured from a browser is not a
+        standing write credential.
+      operationId: createLogoUpload
+      responses:
+        "201":
+          description: A slot to upload into.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imageId: { type: string }
+                  uploadUrl: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  maxBytes: { type: integer, format: int64 }
+                  next: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502":
+          description: "`media_unavailable` — the image host could not mint a slot. Retry safely."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: "`media_unavailable` — image hosting is not configured on this service."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /join/{token}:
+    get:
+      tags: [account]
+      summary: Which business is asking
+      description: >
+        **One link per business**, not one per invitation — the owner sends the
+        same URL to everybody they add.
+
+
+        Unauthenticated: somebody who is not yet a user has to see who is asking
+        before handing over a phone number. It says which business, and nothing
+        else: whoever opened the link has not identified themselves yet, so
+        there is nobody to tell anything about.
+
+
+        The link grants nothing on its own.
+      operationId: previewJoin
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The business behind the link.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  businessName: { type: string }
+                  next: { type: string }
+        "404":
+          description: Not a link we recognise.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /join/{token}/code:
+    post:
+      tags: [account]
+      summary: Send me the code
+      description: >
+        A number nobody invited is refused **before anything is sent**. That
+        this reveals whether a number was invited is deliberate: the alternative
+        is a page that fires one-time codes at any phone somebody types, which
+        is a free SMS gateway pointed at strangers.
+
+
+        On success the response says what they are joining as, and — if this
+        number already works with another business — names the one they would be
+        leaving, so the screen can ask before they accept.
+      operationId: requestJoinCode
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, description: E.164. }
+      responses:
+        "202":
+          description: A code is on its way.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent: { type: boolean }
+                  businessName: { type: string }
+                  role: { type: string, enum: [ADMIN, MANAGER, STAFF] }
+                  name: { type: string }
+                  leavingBusiness: { type: string }
+                  note: { type: string }
+                  devCode: { type: string, description: Non-production only. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: >-
+            No invitation for that number. The message names the business and
+            says to ask its owner or an admin to send one — render it, because
+            it is the only useful next step.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /join/{token}/accept:
+    post:
+      tags: [account]
+      summary: Join the business
+      description: >
+        If this number already works with another business, the first attempt
+        answers **409 `confirmation_required`** — the screen must ask before
+        retrying with `confirmLeaving: true`.
+
+
+        One number works with one business at a time. The previous membership is
+        ended and its sessions dropped, so somebody who has left cannot keep
+        reading their old employer's manifest from an open tab. That business is
+        told somebody has gone, and not told where.
+      operationId: acceptJoin
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string }
+                code: { type: string }
+                confirmLeaving:
+                  type: boolean
+                  description: >-
+                    Required only when `leavingBusiness` came back from the code
+                    step. Send it after the person has agreed, never by default.
+      responses:
+        "201":
+          description: Joined.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  joined: { type: boolean }
+                  next: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: No invitation for that number.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: >-
+            `confirmation_required` — accepting removes them from another
+            business and they have not agreed yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /profile:
+    get:
+      tags: [account]
+      summary: The business behind the account
+      operationId: getBusinessDetails
+      responses:
+        "200":
+          description: What we hold, and what is still outstanding.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusinessDetails" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [account]
+      summary: Tell us about the business
+      description: >
+        Legal name, entity type, GSTIN and a registered address — the set an
+        invoice and a payout both need. Collected during onboarding rather than
+        chased at the first payout run, which is the worst moment to discover an
+        operator has no registered address on file.
+
+
+        A whole document, not a patch of single fields: this is one form filled
+        in during onboarding, and partial writes would leave it half-saved in
+        ways the completeness check then has to reason about.
+
+
+        **Self-serve only until the account is LIVE.** After that the verified
+        documents were checked against the legal name on file, so changing it
+        without anybody looking would make the verification meaningless — the
+        response says so via `editable`, and a write answers `409`.
+      operationId: saveBusinessDetails
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legalName, entityType, addressLine1, locality, region, postalCode]
+              properties:
+                legalName: { type: string }
+                entityType:
+                  type: string
+                  enum: [sole_proprietor, partnership, llp, private_limited, society, trust]
+                gstin:
+                  type: string
+                  description: >-
+                    15 characters, or absent. Deliberately optional — plenty of
+                    island operators are under the registration threshold, and
+                    demanding a number they cannot legally obtain would block
+                    exactly the businesses this marketplace exists for.
+                addressLine1: { type: string }
+                addressLine2: { type: string }
+                locality: { type: string }
+                region: { type: string }
+                postalCode: { type: string, description: "Six digits." }
+                country: { type: string, default: "IN" }
+      responses:
+        "200":
+          description: Saved. The body is the same shape as GET.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusinessDetails" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: "`details_locked` — the account is LIVE; these change by asking us."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /credentials:
+    post:
+      tags: [account]
+      summary: Send us a document we asked for
+      description: >
+        `GET /me` names what is outstanding and who it is waiting on. This is
+        how an operator acts on the half that is waiting on them — until it
+        existed the screen named a blocker and then asked them to ring us.
+
+
+        **Nothing filed here is ever verified.** The state is fixed server-side
+        and the operator is taken from the session, so neither verifying your own
+        document nor filing one against another operator is expressible in a
+        request. Verification is somebody at Yuvoy looking at the document, and a
+        self-service path to `verified` would make the credential gate
+        decorative.
+
+
+        Sending the same kind twice replaces the earlier pending one rather than
+        stacking beside it: two pending rows for one document is a queue of
+        duplicates for whoever checks them.
+      operationId: submitCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  enum: [directorate_registration, instructor_cert, oxygen, equipment, boat, insurance, bank, gst]
+                issuer: { type: string }
+                identifier: { type: string }
+                issuedOn: { type: string, format: date }
+                expiresOn: { type: string, format: date }
+                notes: { type: string }
+      responses:
+        "201":
+          description: Filed, and waiting to be checked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  type: { type: string }
+                  state: { type: string, enum: [pending] }
+                  next: { type: string }
+                  replacedPrevious:
+                    type: boolean
+                    description: An earlier pending document of this kind was superseded.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: >
+            `already_current` — we already hold a verified one that is not near
+            expiry. Refused rather than filed: a new pending row against an
+            operator who is currently selling would take them off sale, so being
+            organised early would be punished.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /change-requests:
     get:
@@ -422,7 +817,7 @@ paths:
         "204": { description: Stopped. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403":
-          description: OWNER only.
+          description: OWNER or ADMIN only.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -454,14 +849,33 @@ paths:
                   team:
                     type: array
                     items: { $ref: "#/components/schemas/TeamMember" }
+                  joinUrl:
+                    type: string
+                    description: >-
+                      The business's own join link, present only for a caller who
+                      can invite. Show it to copy: on an island the person doing
+                      the inviting is usually standing next to the person being
+                      invited, and a link they can paste beats waiting for one to
+                      arrive.
+
+
+                      The same URL for everybody this business adds. It grants
+                      nothing on its own — the number must already have been
+                      invited.
+                  joinNote: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [account]
       summary: Invite somebody
       description: >
-        OWNER only. `MANAGER` or `STAFF` — **OWNER cannot be invited**, because
-        the owner is the person whose bank account this is, and that is not a
-        thing one login should be able to hand to a phone number.
+        OWNER or ADMIN. `ADMIN`, `MANAGER` or `STAFF` — **OWNER cannot be
+        invited**, because the owner is the person whose bank account this is,
+        and that is not a thing one login should be able to hand to a phone
+        number.
+
+
+        ADMIN may invite because the reason that role exists is an owner who is
+        not on the island and cannot be the only person able to add somebody.
 
 
         A number already belonging to any operator is refused with the same
@@ -484,7 +898,7 @@ paths:
               properties:
                 phone: { type: string }
                 name:  { type: string }
-                role:  { type: string, enum: [MANAGER, STAFF] }
+                role:  { type: string, enum: [ADMIN, MANAGER, STAFF] }
       responses:
         "202":
           description: Sent.
@@ -494,6 +908,17 @@ paths:
                 type: object
                 properties:
                   sent: { type: boolean }
+                  joinUrl:
+                    type: string
+                    description: >-
+                      The business's join link, returned so the inviter can pass
+                      it on themselves. The same URL for everybody this business
+                      adds, and the same one shown on `GET /team`.
+
+
+                      We queue a message too, but on an island the person doing
+                      the inviting is usually standing next to the person being
+                      invited.
                   devCode: { type: string, description: Development only. }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1303,6 +1728,104 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /experiences:
+    get:
+      tags: [listings]
+      summary: Everything you sell, or are trying to
+      description: >
+        Drafts included. The catalog has always shown unpublished listings to
+        Yuvoy and never to the people who run them, so an operator could not
+        read back what we had written on their behalf.
+      operationId: listOperatorExperiences
+      responses:
+        "200":
+          description: Your listings.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  experiences:
+                    type: array
+                    items: { $ref: "#/components/schemas/OperatorExperience" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [listings]
+      summary: Write a new listing
+      description: >
+        Lands as a **draft** and reaches nobody. Sending it for review is a
+        separate act (`POST /experiences/{id}/revisions`) and approval is what
+        publishes it — a listing is a promise to a traveller, and the person
+        making the promise is not the person who checks it.
+
+
+        `slug` is optional; one is proposed from the title if it is omitted.
+        A listing without `unitPricePaise` can be saved but cannot be approved,
+        which the response reports as `sellable: false`.
+      operationId: createOperatorExperience
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, category, destination]
+              properties:
+                title: { type: string }
+                slug: { type: string, description: "Optional. Proposed from the title if omitted." }
+                summary: { type: string }
+                description: { type: string }
+                category: { type: string }
+                destination:
+                  type: string
+                  description: >-
+                    A destination key in your own market. One belonging to
+                    another market is refused.
+                bookingMode: { type: string, enum: [allotment, request], default: request }
+                durationMinutes: { type: integer, default: 120 }
+                maxPartySize: { type: integer, default: 6 }
+                unitPricePaise: { type: integer, format: int64 }
+                pricingUnit: { type: string, enum: [per_person, per_group], default: per_person }
+                meetingPoint: { type: string }
+                inclusions: { type: array, items: { type: string } }
+                requirements: { type: array, items: { type: string } }
+                safetyNotes: { type: string }
+      responses:
+        "201":
+          description: Created as a draft.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status: { type: string, enum: [draft] }
+                  next: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: "`conflict` — that slug is taken."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /experiences/{id}:
+    get:
+      tags: [listings]
+      summary: One listing, in the shape you can edit
+      operationId: getOperatorExperience
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The listing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperatorExperience" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /experiences/{id}/revisions:
     post:
       tags: [capacity]
@@ -1348,6 +1871,77 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /media:
+    get:
+      tags: [media]
+      summary: My clips
+      operationId: listOperatorMedia
+      description: >-
+        An operator's own clips, newest first.
+
+
+        Without this the portal could show nothing after the upload screen — not
+        what was processing, not what a reviewer approved, not what was live —
+        and `publish` and `withdraw` were unreachable from any interface, because
+        both need a media id the client only held for the seconds after
+        `complete` returned it.
+
+
+        **No playback URL.** An unpublished clip needs a signed, short-lived one,
+        and minting per row on a list nobody may be watching hands out
+        credentials for footage no moderator has seen.
+      responses:
+        "200":
+          description: Clips belonging to the signed-in operator.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        state:
+                          type: string
+                          description: >-
+                            Where the clip is: `uploaded`, `processing`,
+                            `ready`, `attested`, `in_moderation`, `approved`,
+                            `published`, `rejected`, `quarantined`, `withdrawn`
+                            or `failed`.
+                        posterUrl: { type: string }
+                        durationSeconds: { type: number }
+                        createdAt: { type: string, format: date-time }
+                        rejection:
+                          type: object
+                          description: >-
+                            Why a reviewer refused it. A clip that disappears
+                            into "rejected" with no reason is a support
+                            conversation, and the codes are a closed set so a
+                            screen can render them rather than paraphrase.
+
+
+                            `UNSAFE_PRACTICE_SHOWN` appears with state
+                            `quarantined`, not `rejected` — it is a signal about
+                            how the operator runs trips, not a note about the
+                            video.
+                          properties:
+                            code: { type: string }
+                            note: { type: string }
+                        listing:
+                          type: object
+                          description: >-
+                            The listing this clip is published against. Absent
+                            means uploaded and attached to nothing, which is
+                            where a reel sits between finishing and publication.
+                          properties:
+                            experienceId: { type: string }
+                            title: { type: string }
+                            state: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /media/upload-intents:
     post:
       tags: [media]
@@ -1376,6 +1970,34 @@ paths:
         dropped packet and not for a dropped tab — which on a twenty-minute
         upload is the failure that actually happens.
       operationId: createUploadIntent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [sizeBytes]
+              properties:
+                sizeBytes:
+                  type: integer
+                  format: int64
+                  description: >-
+                    **The file's actual size in bytes.** The browser knows it;
+                    we cannot.
+
+
+                    tus fixes the upload length when the slot is created. A slot
+                    opened for the 200 MB ceiling when the clip is 6 MB never
+                    completes — the provider goes on waiting for 194 MB that do
+                    not exist. The first chunk lands, the last cannot, and the
+                    reported offset looks perfectly correct while the upload is
+                    already unfinishable.
+
+
+                    On a resume this is ignored: the original size wins, because
+                    tus already fixed it. Picking a different file after a
+                    reload means starting a new upload, not continuing this one.
       responses:
         "201":
           description: An upload slot.
@@ -1385,6 +2007,14 @@ paths:
                 type: object
                 properties:
                   intentId: { type: string }
+                  sizeBytes:
+                    type: integer
+                    format: int64
+                    description: >-
+                      The size this slot was opened for, echoed back. Check it
+                      against the file you are about to send: a mismatch is the
+                      difference between an upload that finishes and one that
+                      stalls at 100%.
                   uploadUrl: { type: string, format: uri }
                   expiresAt: { type: string, format: date-time }
                   maxBytes: { type: integer }
@@ -1393,6 +2023,15 @@ paths:
                   chunkBytes: { type: integer }
                   aspectRatio: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "400":
+          description: >-
+            No `sizeBytes`, or a file larger than we accept. Refused before an
+            upload URL exists rather than after bytes have moved, and no intent
+            is created — a refusal that burned the operator's one concurrent
+            slot would lock them out of retrying.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: An upload is already in progress for this operator.
           content:
@@ -1569,6 +2208,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: The approved clip could not be made public at the video provider. Retry safely.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
 components:
   securitySchemes:
@@ -1618,6 +2262,80 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    BusinessDetails:
+      type: object
+      properties:
+        displayName: { type: string, description: "What travellers see. Not editable here." }
+        legalName: { type: string }
+        entityType: { type: string }
+        gstin: { type: string }
+        address:
+          type: object
+          properties:
+            line1: { type: string }
+            line2: { type: string }
+            locality: { type: string }
+            region: { type: string }
+            postalCode: { type: string }
+            country: { type: string }
+        missing:
+          type: array
+          description: >-
+            Field names still outstanding. Empty means complete. Named rather
+            than a bare boolean so a form can mark the specific rows.
+          items: { type: string }
+        editable:
+          type: boolean
+          description: >-
+            False once the account is LIVE. Render the form read-only rather
+            than accepting edits that will be refused.
+        submittedAt: { type: string, format: date-time }
+
+    OperatorExperience:
+      type: object
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        title: { type: string }
+        summary: { type: string }
+        description: { type: string }
+        category: { type: string }
+        destination: { type: string }
+        status:
+          type: string
+          enum: [draft, in_review, live, live_changes_in_review, changes_rejected, withdrawn]
+          description: >-
+            The one word to show. Derived from the publication state and the
+            latest revision together, because neither answers "where is this"
+            alone — a published listing with a submitted edit is live AND in
+            review, and a draft whose revision was rejected is "we came back to
+            you" rather than "draft".
+        publicationState: { type: string, enum: [draft, in_review, published, withdrawn] }
+        bookingMode: { type: string }
+        durationMinutes: { type: integer }
+        maxPartySize: { type: integer }
+        unitPricePaise: { type: integer, format: int64, nullable: true }
+        pricingUnit: { type: string }
+        meetingPoint: { type: string }
+        inclusions: { type: array, items: { type: string } }
+        requirements: { type: array, items: { type: string } }
+        safetyNotes: { type: string }
+        upcomingDepartures: { type: integer }
+        sellable:
+          type: boolean
+          description: >-
+            False when there is no price. Such a listing saves but cannot be
+            approved, and an operator should learn that while writing it rather
+            than after waiting for a review.
+        review:
+          type: object
+          description: Where the latest submission got to. Absent if nothing was ever sent.
+          properties:
+            state: { type: string, enum: [draft, submitted, in_review, approved, rejected, withdrawn, applied] }
+            since: { type: string, format: date-time }
+            rejectionCode: { type: string }
+            rejectionNote: { type: string }
+
     Error:
       type: object
       required: [error]
@@ -1642,12 +2360,15 @@ components:
                 - would_strand_travellers
                 - upload_in_progress
                 - media_unavailable
+                - media_delivery_unavailable
                 # Refused for saying it wrong rather than for lacking
                 # permission. Each is a different next step for the caller: fix
                 # the code, echo the confirmation, pick a role that exists.
                 - invalid_reason_code
                 - confirmation_required
                 - invalid_role
+                - already_current
+                - confirmation_required
                 # Emitted by handlers and previously undeclared. Found once
                 # the response validator began checking error envelopes rather
                 # than skipping any response whose body nothing described.
@@ -1886,7 +2607,7 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
-        roles: { type: array, items: { type: string, enum: [OWNER, MANAGER, STAFF] } }
+        roles: { type: array, items: { type: string, enum: [OWNER, ADMIN, MANAGER, STAFF] } }
         state: { type: string }
         pending:
           type: boolean
@@ -1957,6 +2678,7 @@ components:
             without breaking a client: render `label` for anything you do not
             recognise, including `OTHER`.
           enum:
+            - BUSINESS_DETAILS_INCOMPLETE
             - CREDENTIAL_MISSING
             - CREDENTIAL_UNVERIFIED
             - CREDENTIAL_EXPIRED

@@ -16,17 +16,24 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 5 Sep 2026 (second bump of the day): `POST /media/upload-intents` **resumes
-# the upload in flight** instead of answering 409 (yuvoy-api#66 §3, PR #85).
-# Consumed in the same change: the "keep this tab open" copy comes out, the
-# slot binding is remembered across a reload, and an unbound slot that already
-# holds bytes is refused rather than resumed into. `GET /media` (§1/§2) is
-# still absent, so /reels still says what it cannot show.
+# 6 Sep 2026: a large additive bump. `GET /experiences` + `/experiences/{id}`
+# (yuvoy-api#63 O7), `GET /media` (yuvoy-api#66 §1/§2 — the reels list, publish
+# and withdraw are driveable at last), `/profile` + `/credentials` (O6),
+# `/logo`, and the new join flow: `GET /join/{token}`, `POST /join/{token}/code`
+# and `.../accept`, plus `ADMIN` on the role model and `joinUrl` on `POST /team`
+# (yuvoy-api PRs #98/#100/#101).
 #
-# Also additive and NOT yet consumed, each raised on its own issue:
-#   - `POST /slots` — an operator can create a departure  (yuvoy-operator#16)
-#   - `Slot.bookingMode` — allotment vs request, per departure  (#16)
-#   - `OperatorBooking.screening` — who was never screened  (yuvoy-operator#17)
-ref=e16217a843c456749d02997070d92b7cf67a33ab
+# Consumed in this change: the join flow and ADMIN only (yuvoy-operator#23) —
+# an owner could not get anybody onto their team at all, which is the one that
+# was blocking real use.
+#
+# Landed and NOT yet consumed, each on its own issue:
+#   - `/experiences`, `/media`      — yuvoy-operator#22 (with #8 and #9)
+#   - `/profile`, `/credentials`    — yuvoy-operator#7 (O6)
+#
+# Still wrong upstream and still unconsumable: `Manifest.screening` sits beside
+# `parties` instead of inside each one, so it is one flag for a whole boat.
+# yuvoy-api#103; yuvoy-operator#17 is blocked on it and says so.
+ref=4b7145706ea432cbafa2690720182a67958dd9f1
 branch=master
-pinned_on=2026-09-05
+pinned_on=2026-09-06
