@@ -179,10 +179,36 @@ function handle(req: IncomingMessage, res: ServerResponse) {
     `sizeBytes`: the header had always been sent unconditionally, correctly,
     right up until the slot stopped being created with a deferred length. A
     mock that tolerated it would let it ship again.
+
+    ## This is deliberately STRICTER than production, and stays that way
+
+    @Himacharan128 measured the real Cloudflare Stream account on 6 Sep 2026
+    (yuvoy-operator#24): a final chunk sent WITH `Upload-Length` against a
+    fixed-length slot returned `204`, and so did the control without it.
+    Cloudflare tolerates the redundant header today.
+
+    Kept strict anyway, because the two are answering different questions.
+    Cloudflare's job is to accept the upload; this file's job is to fail the
+    one regression that has actually bitten us. Loosening it to match would
+    delete the only thing standing between `4c7da30` and shipping again — and
+    "the provider happens to tolerate it" is an implementation detail we do
+    not control, not a promise in the tus spec.
+
+    The cost Hima named is real — a mock that refuses what production permits
+    can fail a correct client for nothing — so the refusal is paid for by
+    saying exactly what it wants instead of answering a bare `400`. A client
+    that meets this has the fix in front of it.
   */
   if (upload.length !== null && req.headers["upload-length"] !== undefined) {
     res.statusCode = 400;
-    return res.end();
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.end(
+      "Upload-Length was sent against a slot whose length is already fixed. " +
+        "Branch on the opening HEAD: declare a length only when it answers " +
+        "Upload-Defer-Length. This mock is deliberately stricter than " +
+        "Cloudflare Stream, which tolerates the redundant header " +
+        "(measured 2026-09-06, yuvoy-operator#24).",
+    );
   }
 
   // Declared once, with the first chunk, and never revised afterwards.
