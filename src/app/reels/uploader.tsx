@@ -185,14 +185,7 @@ export function Uploader() {
     // moves.
     let intent = slot.current?.intent;
     if (!intent) {
-      /*
-        The slot is opened FOR THIS FILE, at its exact size. tus fixes the
-        upload length at creation, so a slot opened for the wrong size is an
-        upload that can never finish — the provider waits for bytes that do not
-        exist while the offset looks correct the whole way. See
-        `createUploadIntent`.
-      */
-      const started = await createUploadIntent(file.size);
+      const started = await createUploadIntent();
       if (!started.intent) {
         setPhase({
           name: "failed",
@@ -221,21 +214,7 @@ export function Uploader() {
     const known = slot.current?.bound ?? recallSlot(intent.intentId);
     let server = null;
     try {
-      const state = await readUploadState(intent.uploadUrl, fetch);
-      /*
-        `intent.sizeBytes` wins over the provider's `Upload-Length`.
-
-        Both answer "how big is the file in this slot", and the API's echo is
-        the better witness: it comes from our own server rather than from a
-        header that may not survive the provider's CORS, and since
-        yuvoy-api@4b714570 it is the size the slot was actually opened for.
-        The contract asks for it to be checked, and this is the check —
-        `decideSlot` refuses a slot whose declared size is not this file's.
-      */
-      server = {
-        ...state,
-        declaredLength: intent.sizeBytes ?? state.declaredLength,
-      };
+      server = await readUploadState(intent.uploadUrl, fetch);
     } catch {
       /* Left null. `decideSlot` refuses rather than guesses. */
     }
