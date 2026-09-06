@@ -371,6 +371,16 @@ const UNAUTHENTICATED_ACTIONS = new Map([
       "check.",
   ],
   [
+    join("src", "app", "join", "[token]", "actions.ts"),
+    "O5, the link half. `GET /join/{token}`, `POST /join/{token}/code` and " +
+      "`POST /join/{token}/accept` all carry `security: []` — the person " +
+      "opening the link has no account, which is the entire point of it. No " +
+      "session is minted either; they sign in afterwards through the ordinary " +
+      "flow, so one code path still creates every operator session. The " +
+      "invitation is the authorisation, and the link grants nothing without a " +
+      "number that was already invited.",
+  ],
+  [
     join("src", "app", "signup", "actions.ts"),
     "O1. `POST /auth/signup` is public and unauthenticated: creating the " +
       "account IS the point, and there is no session to check. Since " +

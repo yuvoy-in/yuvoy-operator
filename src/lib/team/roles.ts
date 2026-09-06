@@ -1,5 +1,5 @@
 /**
- * The three roles, and what each of them may actually do.
+ * The four roles, and what each of them may actually do.
  *
  * Every claim on this screen is a promise about access, so every claim here is
  * taken from `contracts/operator-openapi.yaml` rather than from the design.
@@ -12,14 +12,14 @@
  *   - `POST /requests/{id}/decline` — 403 "STAFF cannot answer requests."
  *   - `POST /slots/{id}/call-off` — "Requires OWNER or MANAGER."
  *   - `POST /change-requests/bank` — "Three gates, not one: OWNER only …"
- *   - `POST /team` and `DELETE /team/{id}` — 403 "OWNER only."
+ *   - `POST /team` — "OWNER or ADMIN." `DELETE /team/{id}` — 403 "OWNER only."
  *
  * Note what is NOT claimed: media and reels carry a generic `Forbidden` with
  * no role named, so this file says nothing about them. A role description is
  * only worth having if an operator can act on it.
  */
 
-export const OPERATOR_ROLES = ["OWNER", "MANAGER", "STAFF"] as const;
+export const OPERATOR_ROLES = ["OWNER", "ADMIN", "MANAGER", "STAFF"] as const;
 export type OperatorRole = (typeof OPERATOR_ROLES)[number];
 
 /**
@@ -29,7 +29,7 @@ export type OperatorRole = (typeof OPERATOR_ROLES)[number];
  * account this is, and that is not a thing one login should be able to hand
  * to a phone number." The first owner is created by Yuvoy.
  */
-export const INVITABLE_ROLES = ["MANAGER", "STAFF"] as const;
+export const INVITABLE_ROLES = ["ADMIN", "MANAGER", "STAFF"] as const;
 export type InvitableRole = (typeof INVITABLE_ROLES)[number];
 
 export function isInvitableRole(v: string): v is InvitableRole {
@@ -37,17 +37,34 @@ export function isInvitableRole(v: string): v is InvitableRole {
 }
 
 /**
- * Strength order, and the reason there is one.
+ * Strength order — and ADMIN broke the reason there was one.
  *
- * `roles` is plural on `TeamMember`, so a member may hold two. In this system
- * the roles nest — `canManage` is "OWNER or MANAGER", and everything STAFF may
- * do a MANAGER may also do — so the strongest role a person holds describes
- * their access. Every role they hold is still shown; only the description is
- * collapsed.
+ * `roles` is plural on `TeamMember`, so a member may hold two. The roles used
+ * to nest: `canManage` is "OWNER or MANAGER" and everything STAFF may do a
+ * MANAGER may also do, so the strongest role described the whole of somebody's
+ * access and collapsing to it lost nothing.
+ *
+ * **ADMIN does not nest with MANAGER.** An ADMIN may invite people and a
+ * MANAGER may not; a MANAGER has `canManage` — capacity, closed dates,
+ * earnings — and an ADMIN does not, because `GET /me` still defines that as
+ * "OWNER or MANAGER". Neither contains the other.
+ *
+ * So the order below is about seniority, not capability, and it is only safe
+ * because of what it is used for: picking ONE description to show. Anyone
+ * holding both roles is described by the ADMIN entry, which names both what it
+ * adds and what it does not carry, rather than quietly implying a superset.
+ * Every role held is still shown as its own chip.
+ *
+ * (That an ADMIN cannot set seats is surprising enough to be worth checking —
+ * raised on yuvoy-operator#23. Rendered as the contract states it either way:
+ * inventing a capability is the one direction this screen must never be wrong
+ * in.)
  */
 export function roleRank(role: string): number {
   switch (role) {
     case "OWNER":
+      return 4;
+    case "ADMIN":
       return 3;
     case "MANAGER":
       return 2;
@@ -82,6 +99,24 @@ export function describeRole(role: string): RoleDescription | null {
       return {
         label: "Owner",
         can: "Everything, including where the money goes and who is on this list.",
+      };
+    case "ADMIN":
+      return {
+        label: "Admin",
+        /*
+          Exactly the two things the contract grants: `GET /team` is "OWNER or
+          ADMIN only" and `POST /team` is "OWNER or ADMIN". Nothing else names
+          ADMIN anywhere in the document.
+        */
+        can: "Sees this list and can add people to it — the stand-in for an owner who is off the island.",
+        /*
+          `DELETE /team/{id}` is 403 "OWNER only", the bank change is OWNER
+          only, and `canManage` is still "OWNER or MANAGER" — so an admin has
+          less day-to-day power than a manager, which is worth saying out loud
+          rather than leaving somebody to discover.
+        */
+        cannot:
+          "Cannot remove anybody, cannot change payout details, and cannot change seats or see earnings.",
       };
     case "MANAGER":
       return {

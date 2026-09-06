@@ -16,11 +16,21 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 6 Sep 2026: reel upload sends the real file length, `GET /media` supplies the
-# operator's durable clip library, `GET /experiences` supplies attachment
-# choices, and publishing can report a retryable video-delivery failure. This
-# portal consumes all four so an approved reel can be attached without an
-# administrator copying database ids.
-ref=0354227511a0e1dc5cce1e8e131514926b0148ec
+# 6 Sep 2026, third bump. Forward from 03542275, which was master head when the
+# reels attach work was written and had already been overtaken twice.
+#
+# Consumed in this change (yuvoy-operator#23): the join flow —
+# `GET /join/{token}`, `POST /join/{token}/code`, `POST /join/{token}/accept` —
+# plus `ADMIN` on the role model and `joinUrl` on `POST`/`GET /team`. Without
+# them an owner could not get anybody onto their team at all: the invite
+# produced a code nothing delivers and a link the screen threw away.
+#
+# Landed and NOT consumed, each on its own issue:
+#   - `/experiences` + `/experiences/{id}`  — yuvoy-operator#22, Activities half
+#   - `/profile`, `/credentials`, `/logo`   — yuvoy-operator#7 (O6)
+#
+# Still wrong upstream: `Manifest.screening` is one flag for a whole boat
+# rather than one per party (yuvoy-api#103). yuvoy-operator#17 is blocked on it.
+ref=a12944e58e5ce775481b324397eeb01b66fad5a0
 branch=master
 pinned_on=2026-09-06

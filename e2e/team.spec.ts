@@ -22,6 +22,12 @@ const DEV_CODE = "424242";
 const OWNER = "+919000000101";
 /** Dev Kapoor, MANAGER — the read-only view of this screen. */
 const MANAGER = "+919000000102";
+/** Arun, STAFF — sees the list and nothing to act on. */
+const STAFF = "+919000000103";
+/** Nisha, ADMIN — may invite, may not remove. See yuvoy-operator#23. */
+const ADMIN = "+919000000114";
+/** The business's one join link, the same for everybody it adds. */
+const JOIN_TOKEN = "jn_reefdivers";
 
 type Slot = "echo" | "revoke" | "accept" | "remove";
 const SLOTS: Slot[] = ["echo", "revoke", "accept", "remove"];
@@ -77,7 +83,7 @@ async function invite(
   await page.getByLabel("Their phone number").fill(who.phone);
   await page.getByRole("radio", { name: role, exact: false }).check();
   await page.getByRole("button", { name: "Send the invitation" }).click();
-  await expect(page.getByText(`Code sent to ${who.name}`)).toBeVisible();
+  await expect(page.getByText(`${who.name} is invited`)).toBeVisible();
 }
 
 test("the team is two lists: people, and invitations nobody has used", async ({
@@ -381,6 +387,178 @@ test("/team has no accessibility violations", async ({ page }) => {
     .analyze();
 
   expect(results.violations).toEqual([]);
+});
+
+test("the owner is shown the join link, because nothing delivers it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#23. `POST /team` returns `joinUrl` precisely so the inviter
+    can pass it on themselves — there is no WhatsApp delivery yet, so the
+    queued message never arrives. The portal dropped the field, which made
+    inviting somebody a dead end for the invitee: the owner saw a confirmation
+    and the invited person heard nothing at all.
+  */
+  await signIn(page);
+  await page.goto("/team");
+
+  // On the screen permanently, not only in the flash after a submit: an owner
+  // who invited somebody yesterday must not have to re-invite to see it again,
+  // because re-inviting replaces the code the invitee is holding.
+  await expect(page.getByText("Your join link")).toBeVisible();
+  await expect(page.getByText(/\/join\/jn_/)).toBeVisible();
+});
+
+test("an admin can invite, and cannot remove", async ({ page }) => {
+  /*
+    `POST /team` is "OWNER or ADMIN"; `DELETE /team/{id}` is still 403 "OWNER
+    only". The two stopped being one question, and the portal was gating both
+    on OWNER — so an admin, who exists precisely because the owner may be off
+    the island, saw a screen with nothing on it they could act on.
+  */
+  await signIn(page, ADMIN);
+  await page.goto("/team");
+
+  await expect(
+    page.getByRole("heading", { name: "Add somebody" }),
+  ).toBeVisible();
+  await expect(page.getByText("Your join link")).toBeVisible();
+
+  // And the ceiling is still said, rather than discovered at a 403.
+  await expect(page.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
+});
+
+test("a staff member gets neither the form nor the link", async ({ page }) => {
+  await signIn(page, STAFF);
+  await page.goto("/team");
+
+  await expect(page.getByRole("heading", { name: "Add somebody" })).toHaveCount(
+    0,
+  );
+  // The link is rendered on the API's own signal — `joinUrl` is "present only
+  // for a caller who can invite" — so this proves the server's answer is what
+  // the screen uses, not a second opinion derived from roles.
+  await expect(page.getByText("Your join link")).toHaveCount(0);
+});
+
+test("the link names the business before anybody types a number", async ({
+  page,
+}) => {
+  /*
+    "Somebody who is not yet a user has to see who is asking before handing
+    over a phone number." `GET /join/{token}` is unauthenticated and says which
+    business and nothing else.
+  */
+  await page.goto(`/join/${JOIN_TOKEN}`);
+  await expect(
+    page.getByRole("heading", { name: /Join Reef Divers Havelock/ }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Your phone number")).toBeVisible();
+});
+
+test("a link nobody recognises is a 404, not a retry", async ({ page }) => {
+  const res = await page.goto("/join/jn_nonsense");
+  expect(res!.status()).toBe(404);
+});
+
+test("a number nobody invited is told so, and told what to do", async ({
+  page,
+}) => {
+  /*
+    Refused BEFORE anything is sent, and the contract says why: "the
+    alternative is a page that fires one-time codes at any phone somebody
+    types, which is a free SMS gateway pointed at strangers." The API's own
+    sentence names the business and the next step, so it is rendered as it came.
+  */
+  await page.goto(`/join/${JOIN_TOKEN}`);
+  await page.getByLabel("Your phone number").fill("9000099999");
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.locator("form").getByRole("alert")).toContainText(
+    /No invitation for that number/,
+  );
+  await expect(page.getByLabel("Your code")).toHaveCount(0);
+});
+
+test("an invited number joins, and is told that joining is not signing in", async ({
+  page,
+}, testInfo) => {
+  /*
+    Accepting CONSUMES the invitation — it flips from pending to active in the
+    mock state both Playwright projects share, so the second project to run
+    finds nothing to accept. That is the domain, not flakiness: an invitation
+    is used once. Declared rather than hidden, the same call reels and payouts
+    make.
+  */
+  test.skip(
+    testInfo.project.name !== "mobile",
+    "accepting an invitation consumes it — single-tenant by design, so it runs on the primary project only",
+  );
+
+  await page.goto(`/join/${JOIN_TOKEN}`);
+  await page.getByLabel("Your phone number").fill("9000000113");
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // What they are accepting, before they accept it.
+  await expect(page.getByText(/as Staff/)).toBeVisible();
+
+  await page.getByLabel("Your code").fill(DEV_CODE);
+  await page.getByRole("button", { name: "Join", exact: true }).click();
+
+  await expect(page.getByText(/You are on Reef Divers Havelock/)).toBeVisible();
+  // Accepting mints no session, on purpose — one code path creates every
+  // operator session.
+  await expect(page.getByText(/does not sign you in/)).toBeVisible();
+});
+
+test("joining from another business asks first, and names what is lost", async ({
+  page,
+}, testInfo) => {
+  /*
+    Accepting CONSUMES the invitation — it flips from pending to active in the
+    mock state both Playwright projects share, so the second project to run
+    finds nothing to accept. That is the domain, not flakiness: an invitation
+    is used once. Declared rather than hidden, the same call reels and payouts
+    make.
+  */
+  test.skip(
+    testInfo.project.name !== "mobile",
+    "accepting an invitation consumes it — single-tenant by design, so it runs on the primary project only",
+  );
+
+  /*
+    The destructive one. "One number works with one business at a time. The
+    previous membership is ended and its sessions dropped, so somebody who has
+    left cannot keep reading their old employer's manifest from an open tab."
+
+    That is the right behaviour and exactly why it needs a deliberate tap: it
+    happens to a person who may be standing on a jetty using the other
+    business's app right now. `confirmLeaving` is never sent by default, and
+    the API refuses with 409 until it is.
+  */
+  await page.goto(`/join/${JOIN_TOKEN}`);
+  await page.getByLabel("Your phone number").fill("9000000112");
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(
+    page.getByText(/This will take you off Havelock Water Sports/),
+  ).toBeVisible();
+  await expect(page.getByText(/including on any device already/)).toBeVisible();
+
+  // Nothing may be sent while the question is unanswered.
+  const submit = page.getByRole("button", {
+    name: /Join and leave Havelock Water Sports/,
+  });
+  await expect(submit).toBeDisabled();
+
+  await page.getByLabel("Your code").fill(DEV_CODE);
+  await expect(submit).toBeDisabled();
+
+  await page.getByRole("checkbox", { name: /take me off/ }).check();
+  await expect(submit).toBeEnabled();
+  await submit.click();
+
+  await expect(page.getByText(/You are on Reef Divers Havelock/)).toBeVisible();
 });
 
 test("/join has no accessibility violations", async ({ page }) => {

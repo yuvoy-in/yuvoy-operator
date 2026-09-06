@@ -5,6 +5,7 @@ import { lastSeen, removability, splitTeam } from "@/lib/team/members";
 import { now } from "@/lib/format/market-time";
 import { Empty } from "@/components/ui/states";
 import { InviteForm } from "./invite-form";
+import { JoinLink } from "./join-link";
 import { MemberRow } from "./member-row";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
@@ -43,9 +44,16 @@ export default async function TeamPage() {
     403 "OWNER only", and gating this screen on `canManage` would offer a
     manager an invite form that fails — while teaching them, wrongly, that they
     are allowed to hand out access to somebody else's business.
+
+    `POST /team` is now "OWNER or **ADMIN**" and `DELETE /team/{id}` is still
+    403 "OWNER only", so the two stopped being one question. An admin exists
+    precisely because an owner may be off the island and cannot be the only
+    person able to add somebody — gating the form on OWNER left them looking at
+    a screen that told them nothing they could act on.
   */
   const isOwner = me.roles.includes("OWNER");
-  const { people, invitations } = splitTeam(team);
+  const canInvite = isOwner || me.roles.includes("ADMIN");
+  const { people, invitations } = splitTeam(team.people);
 
   return (
     <Screen
@@ -65,7 +73,7 @@ export default async function TeamPage() {
         staff are told they cannot answer it before they choose a reason:
         finding out at the end is worse than not being offered it.
       */}
-      {!isOwner ? (
+      {!canInvite ? (
         <Panel className="mt-6 p-4 text-sm">
           Only the owner can add or remove people. You can see who is on the
           account.
@@ -89,7 +97,7 @@ export default async function TeamPage() {
               <MemberRow
                 key={member.id}
                 member={member}
-                removability={removability(member, me.id, team)}
+                removability={removability(member, me.id, team.people)}
                 lastSeenLabel={lastSeen(member.lastSeenAt, at)}
                 canRemove={isOwner}
               />
@@ -112,7 +120,7 @@ export default async function TeamPage() {
               <MemberRow
                 key={invite.id}
                 member={invite}
-                removability={removability(invite, me.id, team)}
+                removability={removability(invite, me.id, team.people)}
                 lastSeenLabel={null}
                 canRemove={isOwner}
               />
@@ -121,11 +129,33 @@ export default async function TeamPage() {
         </section>
       ) : null}
 
-      {isOwner ? (
+      {canInvite ? (
         <section className="mt-10" aria-labelledby="invite">
           <h2 id="invite" className="label text-forest/75">
             Add somebody
           </h2>
+
+          {/*
+            The link, on the screen rather than only in the flash after a
+            submit.
+
+            There is no WhatsApp delivery yet, so the invitation message never
+            arrives — and this used to be the only thing that could have
+            bridged that, thrown away by the action that received it. An owner
+            invited somebody, saw a confirmation, and the invited person heard
+            nothing at all.
+
+            Rendered on the API's own signal: `joinUrl` is "present only for a
+            caller who can invite", so the server answers that question and the
+            screen does not derive a second opinion from roles — which is
+            exactly the opinion that drifted when ADMIN was added.
+          */}
+          {team.joinUrl ? (
+            <div className="mt-4">
+              <JoinLink url={team.joinUrl} note={team.joinNote} />
+            </div>
+          ) : null}
+
           <div className="mt-4">
             <InviteForm />
           </div>

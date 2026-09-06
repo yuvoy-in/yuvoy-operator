@@ -19,16 +19,21 @@ describe("who may be invited", () => {
       account this is, and that is not a thing one login should be able to hand
       to a phone number." The API refuses it; the form must not offer it.
     */
-    expect(INVITABLE_ROLES).toEqual(["MANAGER", "STAFF"]);
+    expect(INVITABLE_ROLES).toEqual(["ADMIN", "MANAGER", "STAFF"]);
     expect(isInvitableRole("OWNER")).toBe(false);
+    expect(isInvitableRole("ADMIN")).toBe(true);
     expect(isInvitableRole("MANAGER")).toBe(true);
     expect(isInvitableRole("STAFF")).toBe(true);
   });
 
-  it("refuses anything that is not one of the two", () => {
-    expect(isInvitableRole("ADMIN")).toBe(false);
+  it("refuses anything that is not one of the three", () => {
+    // ADMIN moved from this list to the one above when the backend started
+    // accepting it (yuvoy-operator#23). The portal went on offering two roles
+    // for as long as this test went on asserting two — which is the test doing
+    // its job right up until the contract moved and nobody moved it.
     expect(isInvitableRole("")).toBe(false);
     expect(isInvitableRole("staff")).toBe(false);
+    expect(isInvitableRole("Admin")).toBe(false);
   });
 });
 

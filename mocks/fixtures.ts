@@ -432,6 +432,36 @@ export interface MockTeamMember {
  * the refusal an operator meets most often, and the one the API answers with
  * `409 cannot_remove`.
  */
+/**
+ * One join link per business — the same URL for everybody they add.
+ *
+ * It "grants nothing on its own: the number must already have been invited",
+ * which is what makes it safe on a screen and in a forwarded message.
+ */
+export const JOIN_TOKEN = "jn_reefdivers";
+
+/**
+ * The BUSINESS's name, which is not `OPERATOR.name` — that is the person.
+ *
+ * The join flow is the first screen in this portal that has to name the
+ * business to somebody who does not work there yet, and reaching for
+ * `OPERATOR.name` renders "Join Priya Raut", which is an invitation from a
+ * stranger rather than from a dive shop. Caught by an e2e; the distinction is
+ * worth a constant so the next screen does not make the same reach.
+ */
+export const BUSINESS_NAME = "Reef Divers Havelock";
+export const JOIN_URL = `https://operators.yuvoy.in/join/${JOIN_TOKEN}`;
+
+/**
+ * A pending invitation whose number already works with another business.
+ *
+ * Exists so the destructive path is reachable: accepting ends that membership
+ * and drops its sessions, so the screen must ask first. Without a fixture for
+ * it, neither the warning panel nor the `409 confirmation_required` branch
+ * would ever render in a test.
+ */
+export const LEAVING_PHONE = "+919000000112";
+
 export const TEAM: MockTeamMember[] = [
   {
     id: OPERATOR.id,
@@ -458,6 +488,23 @@ export const TEAM: MockTeamMember[] = [
     phone: "+919000000103",
   },
   {
+    /*
+      An active ADMIN — the stand-in for an owner who is off the island.
+
+      Added when the backend started accepting the role (yuvoy-operator#23).
+      Without one, the split that matters could not be tested at all: an admin
+      may invite (`POST /team` is "OWNER or ADMIN") and may not remove
+      (`DELETE /team/{id}` is still 403 "OWNER only"), and the portal was
+      gating both on OWNER.
+    */
+    id: "usr_admin_nisha",
+    name: "Nisha Fernandes",
+    roles: ["ADMIN"],
+    state: "active",
+    lastSeenAt: todayAt("07:20"),
+    phone: "+919000000114",
+  },
+  {
     // `id` is the INVITATION, not a user. Nothing is granted until it is used.
     id: "inv_ramesh",
     name: "Ramesh Toppo",
@@ -465,6 +512,36 @@ export const TEAM: MockTeamMember[] = [
     state: "invited",
     pending: true,
     phone: "+919000000104",
+  },
+  {
+    /*
+      Invited as ADMIN, and their number already works with another business.
+
+      Two things nothing else in these fixtures covers: the role the portal
+      could not even offer until yuvoy-operator#23, and the accept that ends an
+      existing membership — which the screen has to ask about before it sends
+      `confirmLeaving`, and which the API refuses with a 409 until it does.
+    */
+    id: "inv_joinlink",
+    name: "Sunil Ekka",
+    roles: ["STAFF"],
+    state: "invited",
+    pending: true,
+    /*
+      Reserved for the join-by-link e2e, which ACCEPTS it — flipping it from
+      pending to active. Ramesh's invitation was used at first and another test
+      asserts on it being unused, so the two quietly fought. A consuming test
+      needs a fixture nobody else reads.
+    */
+    phone: "+919000000113",
+  },
+  {
+    id: "inv_lakshmi",
+    name: "Lakshmi Rao",
+    roles: ["ADMIN"],
+    state: "invited",
+    pending: true,
+    phone: LEAVING_PHONE,
   },
 ];
 

@@ -17,6 +17,10 @@ import {
   DEV_CODE,
   CONTENDED_ID,
   DROPPING_ID,
+  BUSINESS_NAME,
+  JOIN_TOKEN,
+  JOIN_URL,
+  LEAVING_PHONE,
   EARNINGS,
   FAILING_ID,
   OPERATOR,
@@ -294,6 +298,29 @@ function requireOwner(request: Request) {
 }
 
 /**
+ * OWNER **or ADMIN** — who may invite.
+ *
+ * Deliberately not the same guard as `requireOwner`, because the two stopped
+ * being one question: `POST /team` is "OWNER or ADMIN" while
+ * `DELETE /team/{id}` is still 403 "OWNER only". "ADMIN may invite because the
+ * reason that role exists is an owner who is not on the island and cannot be
+ * the only person able to add somebody."
+ *
+ * The mock keeping them apart is what makes the portal's own split testable —
+ * a mock that gated both on OWNER would let the invite form go on being hidden
+ * from an admin and nothing would notice.
+ */
+function requireInviter(request: Request) {
+  const failed = requireSession(request);
+  if (failed) return failed;
+  const roles = sessionUser(request)!.roles;
+  if (!roles.includes("OWNER") && !roles.includes("ADMIN")) {
+    return envelope("forbidden", "Only an owner or an admin can do that.", 403);
+  }
+  return null;
+}
+
+/**
  * OWNER or MANAGER — `canManage`, exactly as `GET /me` defines it.
  *
  * Every write that commits seats or money is gated on it in the contract:
@@ -551,14 +578,34 @@ export const handlers = [
    */
   http.get(url("/team"), async ({ request }) => {
     // Session only. `GET /team` has no role gate in the contract — every role
-    // may see who is on the account; only the writes are OWNER only.
+    // may see who is on the account. The WRITES differ from each other now:
+    // inviting is OWNER or ADMIN, removing is still OWNER only.
     const failed = requireSession(request);
     if (failed) return failed;
-    return HttpResponse.json({ team: team.map(publicMember) });
+
+    /*
+      "Present only for a caller who can invite." Modelled rather than sent to
+      everybody, because the portal renders the link on exactly that signal —
+      a mock that always sent it would let a staff member's screen offer a join
+      link and nothing would catch it.
+    */
+    const roles = sessionUser(request)!.roles;
+    const canInvite = roles.includes("OWNER") || roles.includes("ADMIN");
+
+    return HttpResponse.json({
+      team: team.map(publicMember),
+      ...(canInvite
+        ? {
+            joinUrl: JOIN_URL,
+            joinNote:
+              "Send this to anybody you have added. The same link works for all of them, and only for a number you have already invited.",
+          }
+        : {}),
+    });
   }),
 
   http.post(url("/team"), async ({ request }) => {
-    const failed = requireOwner(request);
+    const failed = requireInviter(request);
     if (failed) return failed;
 
     const body = (await request.json()) as {
@@ -617,8 +664,14 @@ export const handlers = [
       phone,
     });
 
+    /*
+      `joinUrl` alongside the queued message, because there is no delivery yet
+      and "on an island the person doing the inviting is usually standing next
+      to the person being invited". The portal used to drop this, which made
+      inviting somebody a dead end for the invitee.
+    */
     return HttpResponse.json(
-      { sent: true, devCode: DEV_CODE },
+      { sent: true, joinUrl: JOIN_URL, devCode: DEV_CODE },
       { status: 202 },
     );
   }),
@@ -652,6 +705,120 @@ export const handlers = [
     // They have accepted, not signed in. `lastSeenAt` stays absent.
 
     return HttpResponse.json({ accepted: true, next: "sign_in" });
+  }),
+
+  /* --------------------------------------------------- join by link ----- */
+
+  /**
+   * One link per business, not one per invitation.
+   *
+   * Unauthenticated on purpose: "somebody who is not yet a user has to see who
+   * is asking before handing over a phone number." It says which business and
+   * nothing else — whoever opened the link has not identified themselves yet.
+   */
+  http.get(url("/join/:token"), async ({ params }) => {
+    if (String(params.token) !== JOIN_TOKEN) {
+      return envelope("not_found", "Not a link we recognise.", 404);
+    }
+    return HttpResponse.json({
+      businessName: BUSINESS_NAME,
+      next: "code",
+    });
+  }),
+
+  /**
+   * A number nobody invited is refused BEFORE anything is sent.
+   *
+   * "That this reveals whether a number was invited is deliberate: the
+   * alternative is a page that fires one-time codes at any phone somebody
+   * types." The mock keeps that property rather than answering identically for
+   * known and unknown numbers, because a client built against the softer
+   * behaviour would ship a screen that never says the useful thing.
+   */
+  http.post(url("/join/:token/code"), async ({ request, params }) => {
+    if (String(params.token) !== JOIN_TOKEN) {
+      return envelope("not_found", "Not a link we recognise.", 404);
+    }
+    const body = (await request.json()) as { phone?: string };
+    const phone = (body.phone ?? "").trim();
+
+    const invite = team.find((m) => m.pending && m.phone === phone);
+    if (!invite) {
+      return envelope(
+        "not_found",
+        `No invitation for that number at ${BUSINESS_NAME}. Ask its owner or an admin to add it.`,
+        404,
+      );
+    }
+
+    /*
+      One fixture number already works elsewhere, so the "this takes you off
+      another business" path is reachable. Without it that panel — and the
+      `confirmLeaving` it gates — would never render in any test.
+    */
+    const leaving =
+      phone === LEAVING_PHONE ? "Havelock Water Sports" : undefined;
+
+    return HttpResponse.json(
+      {
+        sent: true,
+        businessName: BUSINESS_NAME,
+        role: invite.roles[0] ?? "STAFF",
+        name: invite.name,
+        ...(leaving
+          ? {
+              leavingBusiness: leaving,
+              note: `One number works with one business at a time. Joining ${BUSINESS_NAME} ends your access to ${leaving} straight away, including on any device already signed in.`,
+            }
+          : {}),
+        devCode: DEV_CODE,
+      },
+      { status: 202 },
+    );
+  }),
+
+  http.post(url("/join/:token/accept"), async ({ request, params }) => {
+    if (String(params.token) !== JOIN_TOKEN) {
+      return envelope("not_found", "Not a link we recognise.", 404);
+    }
+    const body = (await request.json()) as {
+      phone?: string;
+      code?: string;
+      confirmLeaving?: boolean;
+    };
+    const phone = (body.phone ?? "").trim();
+
+    const invite = team.find((m) => m.pending && m.phone === phone);
+    if (!invite) {
+      return envelope("not_found", "No invitation for that number.", 404);
+    }
+    if (body.code !== DEV_CODE) {
+      return envelope("unauthorized", "That code did not work.", 401);
+    }
+
+    /*
+      The 409 that is not a failure. Modelled rather than skipped: it is the
+      authoritative "ask them first", and a client that only handled the
+      advisory `leavingBusiness` from the code step would send an unconfirmed
+      accept and show an error for it.
+    */
+    if (phone === LEAVING_PHONE && !body.confirmLeaving) {
+      return envelope(
+        "confirmation_required",
+        "This number works with another business. Confirm to leave it.",
+        409,
+      );
+    }
+
+    // The id changes, because it was the INVITATION's id and is now a user's.
+    invite.id = `usr_${Math.random().toString(36).slice(2, 10)}`;
+    invite.pending = false;
+    invite.state = "active";
+
+    return HttpResponse.json(
+      { joined: true, next: "sign_in" },
+      { status: 201 },
+    );
   }),
 
   /* ------------------------------------------------------------ media --- */

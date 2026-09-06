@@ -132,7 +132,12 @@ export function InviteForm() {
 
       {state.sent ? (
         <Panel tone="done" role="status" className="p-4">
-          <p className="text-base font-bold">Code sent to {state.sent.name}</p>
+          {/*
+            "Invited", not "code sent". Nothing is delivered — there is no
+            WhatsApp account yet (yuvoy-api#68) — so a screen that says a code
+            went out is a screen the owner will believe, and then wait on.
+          */}
+          <p className="text-base font-bold">{state.sent.name} is invited</p>
           {/*
             The whole number, echoed once, at the moment it matters most. The
             pending row now shows its last four digits (`phoneMasked`,
@@ -148,11 +153,32 @@ export function InviteForm() {
             invitation to the same person replaces the old code rather than
             adding a second.
           </p>
-          <p className="text-forest/70 mt-2 text-sm">
-            They accept at{" "}
-            <span className="font-bold">operators.yuvoy.in/join</span>, then
-            sign in as usual. Nothing is granted until they do.
-          </p>
+          {/*
+            The link, at the moment it is needed rather than only on the screen
+            behind this panel. `POST /team` returns it precisely so the inviter
+            can pass it on themselves, and this action used to drop it.
+
+            It is the same URL `GET /team` shows, so somebody who closes this
+            has not lost anything — which matters, because re-inviting to see
+            it again would replace the code the invitee is holding.
+          */}
+          {state.joinUrl ? (
+            <div className="mt-3">
+              <p className="text-forest/80 text-sm">
+                Send them this link. Nothing is granted until they open it and
+                enter their own number.
+              </p>
+              <p className="rounded-control border-cream-line bg-cream text-forest mt-2 border p-3 font-mono text-sm break-all select-all">
+                {state.joinUrl}
+              </p>
+            </div>
+          ) : (
+            <p className="text-forest/70 mt-2 text-sm">
+              They accept at{" "}
+              <span className="font-bold">operators.yuvoy.in/join</span>, then
+              sign in as usual. Nothing is granted until they do.
+            </p>
+          )}
           {state.devCode ? (
             <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
               Development build — their code is{" "}

@@ -39,6 +39,14 @@ export interface InviteState {
     phone: string;
     role: InvitableRole;
   };
+  /**
+   * The business's join link, to hand over directly.
+   *
+   * The same URL for everybody this business adds, and the same one `GET /team`
+   * shows. It grants nothing on its own — the number must already have been
+   * invited — which is what makes it safe to put on a screen and in a message.
+   */
+  joinUrl?: string;
   /** Development only, exactly as on sign-in and step-up. */
   devCode?: string;
 }
@@ -110,6 +118,20 @@ export async function inviteMember(
         phone: parsed.data.phone,
         role: parsed.data.role,
       },
+      /*
+        The link, carried back so the inviter can pass it on themselves.
+
+        This was dropped before, and dropping it was the whole of the dead end:
+        there is no WhatsApp delivery yet, so the queued message never arrives,
+        and the only other thing on the response was `devCode` — which is gated
+        on the mock flag and therefore absent in production. The owner was shown
+        nothing and the invited person was told nothing.
+
+        "On an island the person doing the inviting is usually standing next to
+        the person being invited, and a link they can paste beats waiting for
+        one to arrive."
+      */
+      joinUrl: data.joinUrl,
       devCode: MOCKING ? data.devCode : undefined,
     };
   } catch (err) {
