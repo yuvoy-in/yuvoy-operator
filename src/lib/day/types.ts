@@ -19,6 +19,32 @@ export type Manifest = components["schemas"]["Manifest"];
 export type Party = NonNullable<Manifest["parties"]>[number];
 
 /**
+ * A party as a CLIENT component may receive one — the screener stripped off.
+ *
+ * Every prop a client component takes is serialised into the RSC payload in
+ * the HTML, so "the row does not render `clear`" is not the same promise as
+ * "`clear` is not in the page". The manifest's contract asks for the second:
+ * it "never carries what anybody disclosed", on a screen "read on a jetty, out
+ * loud, in front of other customers".
+ *
+ * So the screener is reduced to one word on the server (`screeningSignal`) and
+ * the field itself never crosses the boundary. `Omit` rather than a hand-listed
+ * shape on purpose: a field added to `Party` by a future contract bump arrives
+ * here automatically, and only `screening` is deliberately held back.
+ *
+ * ## `screening?: never` is doing real work — `Omit` alone is not enough
+ *
+ * TypeScript only checks for excess properties on object LITERALS. A whole
+ * `Party` held in a variable is structurally assignable to `Omit<Party,
+ * "screening">` and passes silently, which is exactly how a party would reach
+ * a client component: through a variable, not a literal. `screening?: never`
+ * closes that, because a real screener is not assignable to `never` however it
+ * arrives. A test pins it with `@ts-expect-error`, so this line cannot be
+ * "simplified" back to a bare `Omit` without the build saying so.
+ */
+export type PartyForClient = Omit<Party, "screening"> & { screening?: never };
+
+/**
  * A party still mid-checkout.
  *
  * The contract keeps live holds ON the manifest deliberately: "a party

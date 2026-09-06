@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { readSessionToken, requireOperator } from "@/lib/auth/session";
 import { getManifest } from "@/lib/day/manifest";
 import { orderParties, isHolding } from "@/lib/day/types";
+import { screeningSignal, screeningSummary } from "@/lib/day/screening";
 import { OperatorApiError } from "@/lib/api/errors";
 import {
   hasDeparted,
@@ -100,9 +101,42 @@ export default async function ManifestPage({
   const timezone = manifest.timezone ?? "Asia/Kolkata";
   const startsAt = manifest.startsAt ?? "";
   const parties = orderParties(manifest.parties ?? []);
-  const confirmed = parties.filter((p) => !isHolding(p));
-  const holds = parties.filter(isHolding);
   const totals = manifest.totals ?? {};
+
+  /*
+    Computed over the whole manifest, not over `confirmed` — holds are rows on
+    this screen and one may walk up, so the denominator matches what is
+    actually listed below. See `screening.ts` for why that matters.
+
+    Note what is NOT done here: the parties are not re-sorted to bring flagged
+    rows to the top. `orderParties` puts confirmed first and then alphabetical
+    because "the operator is matching a person who just said their name", and
+    that is the primary use of this list a hundred times a morning. The summary
+    carries the count; the row carries the flag; the order stays findable.
+  */
+  const screening = screeningSummary(parties);
+
+  /*
+    The screener is stripped off every party before it reaches a client
+    component, and reduced to one word each.
+
+    Not tidiness. `PartyRow` is a client component, so whatever it is handed is
+    serialised into the RSC payload in this page's HTML — and the whole party
+    put `clear` (what somebody answered about their own health) and
+    `answeredVersion` into the page source of a manifest that "never carries
+    what anybody disclosed". Nothing was rendering either one; both were
+    shipping. An e2e assertion against the served HTML now fails if they come
+    back.
+  */
+  const rows = parties.map((full) => {
+    // The signal is read from the whole party; the party then loses the field.
+    const signal = screeningSignal(full, screening.asks);
+    const { screening: _withheld, ...party } = full;
+    void _withheld;
+    return { party, signal };
+  });
+  const confirmedRows = rows.filter((r) => !isHolding(r.party));
+  const holdRows = rows.filter((r) => isHolding(r.party));
 
   // Read once, in the async work, and passed down. A clock read during render
   // is impure and the React compiler refuses it — and a "has it departed yet"
@@ -173,11 +207,55 @@ export default async function ManifestPage({
         </section>
       ) : null}
 
+      {/*
+        The screener, summarised, directly above the list it is about.
+
+        Rendered only on a departure that asks one — a snorkel trip shows
+        nothing here at all, because "a false alarm on this signal teaches an
+        instructor to skip the column".
+
+        The zero case is said OUT LOUD rather than left as an absence, and that
+        is the entire reason this block exists. A list of unmarked rows looks
+        identical whether every guest answered or the question was never asked,
+        and only one of those is safe to board.
+
+        No number here is a claim about anybody's health, and none can become
+        one: `clear` is not read by this screen or any other in the portal.
+      */}
+      {screening.asks ? (
+        <section className="mt-8" aria-labelledby="screening">
+          <h2 id="screening" className="label text-forest/75">
+            Medical question
+          </h2>
+          <div className="mt-3">
+            {screening.outstanding > 0 ? (
+              <Problem
+                title={`${screening.outstanding} of ${screening.total} ${
+                  screening.outstanding === 1 ? "has" : "have"
+                } no answer recorded`}
+                body="Ask them before they board. They are marked in the list below."
+              />
+            ) : (
+              <Panel className="p-6">
+                <p className="text-base font-bold">
+                  Everybody on this list has answered
+                </p>
+                <p className="text-forest/70 mt-2 text-sm">
+                  {screening.flagged > 0
+                    ? "Some rows below still ask you to check with them before boarding."
+                    : "Nothing outstanding for this departure."}
+                </p>
+              </Panel>
+            )}
+          </div>
+        </section>
+      ) : null}
+
       <section className="mt-10" aria-labelledby="confirmed">
         <h2 id="confirmed" className="label text-forest/75">
           Coming
         </h2>
-        {confirmed.length === 0 ? (
+        {confirmedRows.length === 0 ? (
           <div className="mt-3">
             <Empty
               title="Nobody booked yet"
@@ -186,12 +264,13 @@ export default async function ManifestPage({
           </div>
         ) : (
           <ul className="mt-3 space-y-3">
-            {confirmed.map((party) => (
+            {confirmedRows.map(({ party, signal }) => (
               <PartyRow
                 key={party.bookingId}
                 party={party}
                 slotId={slotId}
                 departed={departed}
+                screening={signal}
               />
             ))}
           </ul>
@@ -203,7 +282,7 @@ export default async function ManifestPage({
         08:40 may walk up at 08:55, and a manifest that omits them sends the
         operator into an argument they cannot win."
       */}
-      {holds.length > 0 ? (
+      {holdRows.length > 0 ? (
         <section className="mt-10" aria-labelledby="holding">
           <h2 id="holding" className="label text-forest/75">
             Still paying
@@ -213,12 +292,13 @@ export default async function ManifestPage({
             may lapse.
           </p>
           <ul className="mt-3 space-y-3">
-            {holds.map((party, i) => (
+            {holdRows.map(({ party, signal }, i) => (
               <PartyRow
                 key={party.reference ?? i}
                 party={party}
                 slotId={slotId}
                 departed={departed}
+                screening={signal}
               />
             ))}
           </ul>

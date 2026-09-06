@@ -218,6 +218,82 @@ test("a live hold is shown, and shown differently", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("the manifest names who has no screening answer, and counts them", async ({
+  page,
+}) => {
+  await signIn(page);
+  // A try-dive: this departure asks a medical question.
+  await page.goto("/today/slot_dawn");
+
+  /*
+    Two of four, and the denominator is the rows on screen rather than
+    `totals.parties` — so this assertion fails if the summary ever starts
+    counting something the reader cannot count back.
+  */
+  await expect(
+    page.getByRole("heading", { name: "Medical question" }),
+  ).toBeVisible();
+  await expect(page.getByText("2 of 4 have no answer recorded")).toBeVisible();
+
+  // Priya was asked and has not answered. Marco is a hold carrying no
+  // screening at all on a departure where others have it — the ambiguous
+  // case, resolved loudly on purpose.
+  await expect(
+    page.getByText("No screening answer recorded", { exact: false }),
+  ).toHaveCount(2);
+
+  // Daniel is flagged by the API. Rendered, and never explained.
+  await expect(
+    page.getByText("Check with them before boarding."),
+  ).toBeVisible();
+});
+
+test("nothing about screening reaches a departure that never asks", async ({
+  page,
+}) => {
+  await signIn(page);
+  // A snorkel trip. No screener, so no party carries the field.
+  await page.goto("/today/slot_late_morning");
+
+  /*
+    The false alarm this feature must not cause: "a false alarm on this signal
+    teaches an instructor to skip the column", which is worse than having no
+    column. Nadia looks identical to Marco on the wire — an absent `screening`
+    — and only the rest of the manifest can tell them apart.
+  */
+  await expect(page.getByText("Nadia Farouk", { exact: true })).toBeVisible();
+  await expect(page.getByText("Medical question")).toHaveCount(0);
+  await expect(page.getByText(/screening answer/i)).toHaveCount(0);
+  await expect(page.getByText(/before boarding/i)).toHaveCount(0);
+});
+
+test("the manifest never says what anybody disclosed", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/today/slot_dawn");
+
+  /*
+    "A manifest is read on a jetty, out loud, in front of other customers. The
+    instructor needs to know a party was screened, not what they said."
+
+    Daniel's fixture carries `clear: true` and `answeredVersion: 3`. Neither
+    may reach the page: the first is a statement about a person's health and
+    the second is noise on a dock. This asserts against the served HTML rather
+    than the visible text, so a value hidden in an attribute or an RSC payload
+    fails too.
+  */
+  const html = (await page.content()).toLowerCase();
+  for (const forbidden of [
+    "declared",
+    "cleared",
+    "clear to dive",
+    "answeredversion",
+    "medically",
+    "condition",
+  ]) {
+    expect(html).not.toContain(forbidden);
+  }
+});
+
 test("marking somebody here sticks, and a second tap is not an error", async ({
   page,
 }, testInfo) => {

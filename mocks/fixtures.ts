@@ -64,6 +64,25 @@ export interface MockParty {
   state: string;
   arrived: boolean;
   arrivedAt?: string;
+  /**
+   * The medical screener's answer, per party.
+   *
+   * **Optional here exactly as it is in the contract**, and the option is
+   * load-bearing rather than convenience: `screening` is "present only on
+   * listings that ask a medical question", so a snorkel trip's parties carry
+   * nothing and the screen must say nothing. Making this required would delete
+   * the only fixture that can prove the false alarm does not happen.
+   *
+   * Never carries anything a screen may repeat about a person. `clear` is here
+   * because the contract sends it and for no other reason — nothing in `src/`
+   * reads it.
+   */
+  screening?: {
+    declared: boolean;
+    clear: boolean;
+    needsAttention: boolean;
+    answeredVersion?: number;
+  };
 }
 
 export interface MockSlot {
@@ -113,6 +132,21 @@ export const SLOTS: MockSlot[] = [
     status: "open",
     meetingPoint: "Beach 3 dive hut, 06:30",
     seatsSoldOffline: 2,
+    /*
+      A try-dive, so this departure ASKS the medical question — and every
+      answer the screen has to tell apart is on it exactly once:
+
+        Asha    answered, nothing flagged      → the screen says nothing
+        Daniel  answered, flagged by the API   → "check with them"
+        Priya   asked, has not answered        → "no answer recorded"
+        Marco   a hold carrying no screening   → the ambiguous one, also
+                                                 "no answer recorded"
+
+      Two of four outstanding, which is what the summary line above the list
+      must say. The snorkel departure below carries none of this, and that is
+      the fixture that proves a false alarm cannot reach a listing with no
+      screener.
+    */
     parties: [
       {
         bookingId: "bkg_1",
@@ -121,6 +155,7 @@ export const SLOTS: MockSlot[] = [
         guests: 2,
         state: "confirmed",
         arrived: false,
+        screening: { declared: true, clear: true, needsAttention: false },
       },
       {
         bookingId: "bkg_2",
@@ -130,6 +165,17 @@ export const SLOTS: MockSlot[] = [
         state: "confirmed",
         arrived: true,
         arrivedAt: todayAt("06:31"),
+        /*
+          Flagged by the server. `clear: true` beside it is deliberate: the
+          flag is NOT derivable from what he answered, so a client that tries
+          to compute one gets this row wrong.
+        */
+        screening: {
+          declared: true,
+          clear: true,
+          needsAttention: true,
+          answeredVersion: 3,
+        },
       },
       {
         bookingId: "bkg_3",
@@ -138,8 +184,10 @@ export const SLOTS: MockSlot[] = [
         guests: 2,
         state: "confirmed",
         arrived: false,
+        screening: { declared: false, clear: false, needsAttention: false },
       },
-      // A live hold: mid-checkout, no bookingId, may still walk up.
+      // A live hold: mid-checkout, no bookingId, may still walk up — and no
+      // screening object at all, on a departure where everybody else has one.
       {
         bookingId: "",
         reference: "YV-3H8L1V4D",

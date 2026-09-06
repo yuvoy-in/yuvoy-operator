@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { markAttendance, type AttendanceState } from "./actions";
-import { isHolding, type Party } from "@/lib/day/types";
+import { isHolding, type PartyForClient } from "@/lib/day/types";
+import type { ScreeningSignal } from "@/lib/day/screening";
 import { cn } from "@/lib/cn";
 import { RelayPanel } from "./relay-panel";
 import { Button } from "@/components/ui/button";
@@ -21,11 +22,29 @@ export function PartyRow({
   party,
   slotId,
   departed,
+  screening,
 }: {
-  party: Party;
+  /**
+   * The screener is NOT on this type. It is decided on the server and arrives
+   * as `screening` below — see `PartyForClient` for why the difference
+   * matters on a page whose source anybody can read.
+   */
+  party: PartyForClient;
   slotId: string;
   /** Terminal outcomes are refused before the departure time. */
   departed: boolean;
+  /**
+   * What this row should say about the medical question, in one word.
+   *
+   * Decided for the whole manifest at once rather than inferred here: a row
+   * carrying no screener looks identical on a snorkel trip (nobody was ever
+   * going to be asked) and on a dive (somebody slipped through), and only the
+   * other rows can tell them apart.
+   *
+   * `null` renders nothing whatsoever — not a reassurance and not a warning.
+   * "A false alarm on this signal teaches an instructor to skip the column."
+   */
+  screening: ScreeningSignal;
 }) {
   const [state, act, pending] = useActionState<AttendanceState, FormData>(
     markAttendance,
@@ -65,6 +84,28 @@ export function PartyRow({
       <p className="text-forest/70 mt-1 font-mono text-sm tracking-wider">
         {party.reference}
       </p>
+
+      {/*
+        The screener. Above the buttons, because it changes whether somebody
+        should be ticked off at all — and a warning under a control the
+        operator has already tapped is a warning that arrived too late.
+
+        Neither line says anything about what anybody disclosed, and there is
+        nowhere in this component that could: `clear` is not read here or
+        anywhere else in the portal. A manifest is read out loud on a jetty in
+        front of other customers, so the strong line is an INSTRUCTION with no
+        reason attached, and the weak one is a statement about our records
+        rather than about the person.
+      */}
+      {screening === "flagged" ? (
+        <p className="text-terra-deep mt-3 text-sm font-bold">
+          Check with them before boarding.
+        </p>
+      ) : screening === "outstanding" ? (
+        <p className="text-forest/80 mt-3 text-sm font-bold">
+          No screening answer recorded. Ask them before boarding.
+        </p>
+      ) : null}
 
       {holding ? (
         <p className="text-terra-deep mt-3 text-sm font-bold">
