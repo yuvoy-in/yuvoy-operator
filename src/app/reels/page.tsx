@@ -1,44 +1,83 @@
 import type { Metadata } from "next";
+import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
-import { Uploader } from "./uploader";
 import { Screen } from "@/components/chrome/screen";
+import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
+import { AttachForm, type ListingOption } from "./attach-form";
+import { Uploader } from "./uploader";
 
 export const metadata: Metadata = { title: "Reels" };
-
 export const dynamic = "force-dynamic";
 
-/**
- * O8 — the operator supplies the video the whole traveller feed is made of.
- *
- * ## What this screen is, and what it deliberately is not
- *
- * It is the upload: intent → resumable upload → confirm → attest. All four
- * steps exist in the contract and all four are here, and since yuvoy-api#66 §3
- * "resumable" means what it says: a dropped signal, a closed tab, a restarted
- * phone. Come back, choose the same clip, carry on.
- *
- * It is **not a library of your clips**, because there is no endpoint that
- * lists them. `GET /media` does not exist, so nothing can show what has been
- * uploaded, what is still processing, what a reviewer approved, or what is
- * live. Publishing and taking a clip down are both blocked on the same
- * absence: `POST /media/{id}/publish` needs a media id and an experience id,
- * and there is no way to enumerate either. Raised on yuvoy-api rather than
- * faked with a list held in a page's memory, which would be empty on every
- * refresh and would teach an operator that their clips had vanished.
- */
-export default async function ReelsPage() {
-  /*
-    No role gate, deliberately.
+type MediaItem = {
+  id?: string;
+  state?: string;
+  posterUrl?: string;
+  durationSeconds?: number;
+  createdAt?: string;
+  rejection?: { code?: string; note?: string };
+  listing?: { experienceId?: string; title?: string; state?: string };
+};
 
-    `POST /media/upload-intents` declares 401 and 409 and **no 403** — the
-    contract does not restrict uploading by role, and a first draft of this
-    page gated it on `canManage` anyway. That was inventing a permission the
-    server does not have, in the direction that matters most: telling a skipper
-    they may not do something they may. The person who filmed the dive is
-    exactly the person who should be able to send it.
-  */
-  await requireOperator();
+const stateCopy: Record<string, { label: string; body: string }> = {
+  uploaded: { label: "Uploaded", body: "The video host is processing it." },
+  processing: { label: "Processing", body: "The video host is preparing it." },
+  ready: { label: "Needs rights", body: "Confirm who owns this footage." },
+  attested: {
+    label: "Waiting for review",
+    body: "A person at Yuvoy will watch it.",
+  },
+  in_moderation: {
+    label: "In review",
+    body: "A person at Yuvoy is checking it.",
+  },
+  approved: { label: "Approved", body: "Choose the listing it belongs to." },
+  published: {
+    label: "Attached",
+    body: "This clip is available to travellers.",
+  },
+  rejected: {
+    label: "Needs a new clip",
+    body: "This one did not pass review.",
+  },
+  quarantined: {
+    label: "Held for safety review",
+    body: "Yuvoy will contact you.",
+  },
+  withdrawn: { label: "Taken down", body: "This clip is no longer on Yuvoy." },
+  failed: { label: "Upload failed", body: "Choose the clip again to retry." },
+};
+
+function mediaCopy(state?: string) {
+  return (
+    stateCopy[state ?? ""] ?? {
+      label: state ?? "Unknown",
+      body: "Check again shortly.",
+    }
+  );
+}
+
+function duration(seconds?: number) {
+  if (!seconds) return null;
+  return `${Math.round(seconds)} sec`;
+}
+
+export default async function ReelsPage() {
+  const { token } = await requireOperator();
+  const client = operatorApi(token);
+
+  const [mediaResult, experienceResult] = await Promise.all([
+    client.GET("/media", {}),
+    client.GET("/experiences", {}),
+  ]);
+  if (mediaResult.error) throw mediaResult.error;
+  if (experienceResult.error) throw experienceResult.error;
+
+  const items: MediaItem[] = mediaResult.data.items ?? [];
+  const listings: ListingOption[] = (experienceResult.data.experiences ?? [])
+    .filter((item) => item.id && item.title)
+    .map((item) => ({ id: item.id!, title: item.title!, status: item.status }));
 
   return (
     <Screen
@@ -47,42 +86,122 @@ export default async function ReelsPage() {
     >
       <p className="eyebrow text-terra-deep">Your footage</p>
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-        Add a reel
+        Reels
       </h1>
       <p className="text-forest/70 mt-3 text-base">
-        Travellers pick a boat by watching it. One upright clip of the real
-        thing does more than a page of description.
+        Upload the real experience, let Yuvoy review it, then attach the
+        approved clip to the right listing.
       </p>
 
-      <div className="mt-8">
-        <Uploader />
-      </div>
+      <Panel className="mt-8">
+        <h2 className="font-display text-2xl">Add a reel</h2>
+        <p className="text-forest/70 mt-2 text-sm">
+          Upright, up to 60 seconds. Losing signal pauses the upload instead of
+          starting it again.
+        </p>
+        <div className="mt-5">
+          <Uploader />
+        </div>
+      </Panel>
 
-      {/*
-        Stated, not hidden — the same call O11 makes about its per-booking
-        gap. An operator who uploads three clips and finds no list would
-        reasonably conclude they were lost.
-      */}
-      <section className="mt-12" aria-labelledby="not-here">
-        <h2 id="not-here" className="label text-forest/75">
-          What is not here yet
-        </h2>
-        <Panel className="mt-3">
-          <p className="text-sm">
-            We cannot yet show you the clips you have already sent, or which
-            ones a reviewer has approved. There is no endpoint that lists them.
-          </p>
-          <p className="text-forest/80 mt-3 text-sm">
-            That also means putting a clip on a particular listing is not on
-            this screen. You can take a clip down straight after sending it,
-            while this page is still open — after that, message us and a person
-            will do it.
-          </p>
-          <p className="text-forest/80 mt-3 text-sm">
-            Nothing you upload is lost by this — it is queued for review the
-            moment you confirm the rights.
-          </p>
-        </Panel>
+      <section className="mt-12" aria-labelledby="your-reels">
+        <div className="flex items-end justify-between gap-4">
+          <h2 id="your-reels" className="font-display text-3xl">
+            Your reels
+          </h2>
+          <span className="label text-forest/70">
+            {items.length} {items.length === 1 ? "clip" : "clips"}
+          </span>
+        </div>
+
+        {items.length === 0 ? (
+          <Panel className="mt-4">
+            <p className="text-sm">
+              No clips yet. The first upload will appear here.
+            </p>
+          </Panel>
+        ) : (
+          <ul className="mt-4 space-y-4">
+            {items.map((item) => {
+              const copy = mediaCopy(item.state);
+              return (
+                <li key={item.id}>
+                  <Panel>
+                    {item.state === "published" && item.posterUrl ? (
+                      <div
+                        className="bg-forest/10 rounded-control aspect-[9/16] max-h-80 w-full bg-cover bg-center"
+                        style={{
+                          backgroundImage: `url(${JSON.stringify(item.posterUrl).slice(1, -1)})`,
+                        }}
+                        role="img"
+                        aria-label="Reel poster"
+                      />
+                    ) : null}
+
+                    <div
+                      className={
+                        item.state === "published" && item.posterUrl
+                          ? "mt-4"
+                          : ""
+                      }
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Chip
+                          tone={
+                            item.state === "approved" ? "selected" : "neutral"
+                          }
+                        >
+                          {copy.label}
+                        </Chip>
+                        {duration(item.durationSeconds) ? (
+                          <span className="text-forest/70 text-xs">
+                            {duration(item.durationSeconds)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-3 text-sm font-bold">{copy.body}</p>
+
+                      {item.listing?.title ? (
+                        <p className="text-forest/70 mt-2 text-sm">
+                          Listing: {item.listing.title}
+                        </p>
+                      ) : null}
+
+                      {item.rejection?.code ? (
+                        <div className="border-terra-deep/30 mt-3 border-t pt-3">
+                          <p className="text-terra-deep text-sm font-bold">
+                            {item.rejection.code
+                              .replaceAll("_", " ")
+                              .toLowerCase()}
+                          </p>
+                          {item.rejection.note ? (
+                            <p className="text-forest/70 mt-1 text-sm">
+                              {item.rejection.note}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {item.state === "approved" && item.id ? (
+                        listings.length > 0 ? (
+                          <AttachForm
+                            mediaAssetId={item.id}
+                            listings={listings}
+                          />
+                        ) : (
+                          <p className="text-terra-deep mt-4 text-sm font-bold">
+                            Add a listing first, then come back to attach this
+                            clip.
+                          </p>
+                        )
+                      ) : null}
+                    </div>
+                  </Panel>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
     </Screen>
   );

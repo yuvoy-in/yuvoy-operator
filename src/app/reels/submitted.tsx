@@ -15,11 +15,8 @@ import { Panel } from "@/components/ui/panel";
  * call: somebody who thinks this published their clip goes looking for it in
  * the feed tomorrow and finds nothing.
  *
- * The takedown is here rather than on a list because there is no list.
- * `GET /media` does not exist, so this id is unrecoverable the moment the page
- * unmounts — but the case that actually happens is the wrong file, noticed
- * immediately, and that case is covered. The limitation is stated rather than
- * left to be discovered.
+ * The takedown stays here for the common case: the wrong file, noticed
+ * immediately. The reel library also keeps the clip visible after this page.
  */
 export function Submitted({
   mediaAssetId,
@@ -151,14 +148,8 @@ export function Submitted({
           >
             Wrong clip? Take it down
           </Button>
-          {/*
-            The limitation, said here because here is where it bites. Once this
-            page is gone the id is gone with it, and nothing in the portal can
-            find the clip again.
-          */}
           <p className="text-forest/70 mt-2 text-xs">
-            Only while this page is open. There is no list of your clips yet, so
-            after this you would have to message us.
+            It will also appear in your reel list after this receipt.
           </p>
         </>
       )}

@@ -128,11 +128,38 @@ let signups: MockTeamMember[] = [];
 /** Upload intents in flight, by operator. One at a time, as the API enforces. */
 let uploadIntents: Record<
   string,
-  { id: string; uploadId: string; confirmedAt?: number }
+  { id: string; uploadId: string; sizeBytes: number; confirmedAt?: number }
 > = {};
 /** Assets that finished processing, and what has been attested about them. */
-let mediaAssets: Record<string, { attested: boolean; withdrawn?: boolean }> =
-  {};
+type MockMediaAsset = {
+  attested: boolean;
+  state: string;
+  durationSeconds?: number;
+  listing?: { experienceId: string; title: string; state: string };
+  rejection?: { code: string; note?: string };
+};
+
+const mockExperiences = [
+  { id: "exp_dive", title: "Reef dive", status: "live" },
+  { id: "exp_boat", title: "Island boat day", status: "draft" },
+];
+
+function seedMediaAssets(): Record<string, MockMediaAsset> {
+  return {
+    med_approved_fixture: {
+      attested: true,
+      state: "approved",
+      durationSeconds: 24,
+    },
+    med_waiting_fixture: {
+      attested: true,
+      state: "attested",
+      durationSeconds: 18,
+    },
+  };
+}
+
+let mediaAssets: Record<string, MockMediaAsset> = seedMediaAssets();
 /**
  * Departures created in this session, by `POST /slots`.
  *
@@ -156,7 +183,7 @@ export function __resetOperatorMocks() {
   team = TEAM.map((m) => ({ ...m }));
   signups = [];
   uploadIntents = {};
-  mediaAssets = {};
+  mediaAssets = seedMediaAssets();
   createdSlots = [];
   resetMockUploads();
 }
@@ -177,13 +204,14 @@ function envelope(code: string, message: string, status: number) {
  * stored", so the server can always hand a working URL back without ever
  * having kept one.
  */
-function uploadIntent(id: string, uploadId: string) {
+function uploadIntent(id: string, uploadId: string, sizeBytes: number) {
   return HttpResponse.json(
     {
       intentId: id,
       uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/uploads/${uploadId}`,
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       maxBytes: 200 * 1024 * 1024,
+      sizeBytes,
       maxSeconds: 60,
       protocol: "tus",
       /*
@@ -628,6 +656,27 @@ export const handlers = [
 
   /* ------------------------------------------------------------ media --- */
 
+  http.get(url("/experiences"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json({ experiences: mockExperiences });
+  }),
+
+  http.get(url("/media"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json({
+      items: Object.entries(mediaAssets).map(([id, asset]) => ({
+        id,
+        state: asset.state,
+        durationSeconds: asset.durationSeconds,
+        listing: asset.listing,
+        rejection: asset.rejection,
+        createdAt: new Date().toISOString(),
+      })),
+    });
+  }),
+
   /**
    * An upload slot — or the one already in flight, handed back.
    *
@@ -670,8 +719,19 @@ export const handlers = [
       );
     }
 
+    const body = (await request.json()) as { sizeBytes?: number };
+    if (
+      !Number.isInteger(body.sizeBytes) ||
+      (body.sizeBytes ?? 0) <= 0 ||
+      (body.sizeBytes ?? 0) > 200 * 1024 * 1024
+    ) {
+      return envelope("invalid_input", "A valid file size is required.", 400);
+    }
+
     const open = uploadIntents[me.id];
-    if (open && !open.confirmedAt) return uploadIntent(open.id, open.uploadId);
+    if (open && !open.confirmedAt) {
+      return uploadIntent(open.id, open.uploadId, open.sizeBytes);
+    }
 
     const id = `upi_${Math.random().toString(36).slice(2, 10)}`;
     /*
@@ -682,9 +742,9 @@ export const handlers = [
     */
     const uploadId = `${id}${me.id === DROPPING_ID ? "-drop" : ""}`;
     createMockUpload(uploadId);
-    uploadIntents[me.id] = { id, uploadId };
+    uploadIntents[me.id] = { id, uploadId, sizeBytes: body.sizeBytes! };
 
-    return uploadIntent(id, uploadId);
+    return uploadIntent(id, uploadId, body.sizeBytes!);
   }),
 
   /**
@@ -724,7 +784,7 @@ export const handlers = [
       }
 
       const mediaAssetId = `med_${intent.id.slice(4)}`;
-      mediaAssets[mediaAssetId] = { attested: false };
+      mediaAssets[mediaAssetId] = { attested: false, state: "ready" };
       return HttpResponse.json({ ready: true, mediaAssetId });
     },
   ),
@@ -760,6 +820,7 @@ export const handlers = [
     }
 
     asset.attested = true;
+    asset.state = "attested";
     return HttpResponse.json(
       {
         attestationId: `att_${Math.random().toString(36).slice(2, 10)}`,
@@ -796,11 +857,38 @@ export const handlers = [
       second attempt would grow an error path the API does not have — and it
       would fire on the wet-hands double tap this portal is designed around.
     */
-    asset.withdrawn = true;
+    asset.state = "withdrawn";
     return HttpResponse.json({
       withdrawn: true,
       note: "It is off Yuvoy now. The original is deleted at the video provider shortly afterwards.",
     });
+  }),
+
+  http.post(url("/media/:id/publish"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const asset = mediaAssets[String(params.id)];
+    if (!asset || asset.state !== "approved") {
+      return envelope("not_found", "No approved clip.", 404);
+    }
+    const body = (await request.json()) as {
+      experienceId?: string;
+      role?: string;
+    };
+    const listing = mockExperiences.find(
+      (item) => item.id === body.experienceId,
+    );
+    if (!listing || !["hero", "gallery"].includes(body.role ?? "gallery")) {
+      return envelope("not_found", "No such listing.", 404);
+    }
+    asset.state = "published";
+    asset.listing = {
+      experienceId: listing.id,
+      title: listing.title,
+      state: "published",
+    };
+    return new HttpResponse(null, { status: 204 });
   }),
 
   http.delete(url("/team/:id"), async ({ request, params }) => {
