@@ -59,9 +59,21 @@ interface Upload {
 
 const uploads = new Map<string, Upload>();
 
-export function createMockUpload(id: string): void {
+/**
+ * @param length The size the slot was opened for, or `null` to defer it.
+ *
+ * `POST /media/upload-intents` takes `sizeBytes` and fixes the length at
+ * creation, so production passes a number and the client must NOT send
+ * `Upload-Length` on its first chunk. `null` keeps the older deferred
+ * behaviour reachable — the client reads `Upload-Defer-Length` off a `HEAD`
+ * rather than assuming either, and both paths are worth exercising.
+ */
+export function createMockUpload(
+  id: string,
+  length: number | null = null,
+): void {
   uploads.set(id, {
-    length: null,
+    length,
     offset: 0,
     dropOnce: id.endsWith("-drop"),
     dropped: false,
@@ -156,6 +168,20 @@ function handle(req: IncomingMessage, res: ServerResponse) {
       would surface as a corrupt video long after anybody could explain it.
     */
     res.statusCode = 409;
+    return res.end();
+  }
+
+  /*
+    A length declared against an upload whose length is already fixed is a tus
+    protocol error, and this refuses it rather than shrugging.
+
+    That is exactly the mistake this client shipped when the endpoint gained
+    `sizeBytes`: the header had always been sent unconditionally, correctly,
+    right up until the slot stopped being created with a deferred length. A
+    mock that tolerated it would let it ship again.
+  */
+  if (upload.length !== null && req.headers["upload-length"] !== undefined) {
+    res.statusCode = 400;
     return res.end();
   }
 

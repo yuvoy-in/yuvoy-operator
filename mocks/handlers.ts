@@ -741,7 +741,13 @@ export const handlers = [
       never run.
     */
     const uploadId = `${id}${me.id === DROPPING_ID ? "-drop" : ""}`;
-    createMockUpload(uploadId);
+    /*
+      Opened AT the size just asked for, as production does — "tus fixes the
+      upload length when the slot is created". That is what makes a `HEAD`
+      report no `Upload-Defer-Length`, which is what tells the client not to
+      declare a length it would be refused for.
+    */
+    createMockUpload(uploadId, body.sizeBytes!);
     uploadIntents[me.id] = { id, uploadId, sizeBytes: body.sizeBytes! };
 
     return uploadIntent(id, uploadId, body.sizeBytes!);

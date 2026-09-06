@@ -101,13 +101,18 @@ describe("an upload that goes to plan", () => {
     expect(server.offsetNow()).toBe(total);
   });
 
-  it("declares the file length with the first chunk, and only the first", async () => {
+  it("declares the file length only while the server is still deferring it", async () => {
     /*
-      The slot is created by `POST /media/upload-intents`, which takes no
-      request body — the API cannot know how big the clip is, so the upload is
-      created with `Upload-Defer-Length` and the client is the only party that
-      knows. Omit it and the provider never learns when the file is finished;
-      repeat it on later chunks and a strict server answers 400.
+      Two servers, one client, and they differ by a 400 on the first chunk.
+
+      The slot used to be created with no size — `POST /media/upload-intents`
+      took no request body — so the upload was `Upload-Defer-Length` and the
+      client was the only party that knew. The endpoint now takes `sizeBytes`
+      and fixes the length at creation, and tus permits `Upload-Length` only
+      while the length is deferred.
+
+      So it is read off the opening HEAD rather than assumed either way. This
+      case is the deferred one; the next is production's.
     */
     const lengths: (string | undefined)[] = [];
     const fetchImpl = (async (_url: string, init: RequestInit = {}) => {
@@ -115,7 +120,7 @@ describe("an upload that goes to plan", () => {
       if (init.method === "HEAD") {
         return new Response(null, {
           status: 200,
-          headers: { "Upload-Offset": "0" },
+          headers: { "Upload-Offset": "0", "Upload-Defer-Length": "1" },
         });
       }
       lengths.push(headers["Upload-Length"]);
@@ -136,6 +141,47 @@ describe("an upload that goes to plan", () => {
     });
 
     expect(lengths).toEqual(["10", undefined, undefined]);
+  });
+
+  it("never declares a length the server has already fixed", async () => {
+    /*
+      Production, since `POST /media/upload-intents` began taking `sizeBytes`.
+      The length is known before the first byte moves, so `Upload-Length` on a
+      PATCH is a protocol error — the mock tus server answers 400 to one, for
+      exactly this reason.
+
+      This is the case the client got wrong: the header was sent
+      unconditionally, on a comment that had been true and quietly stopped
+      being so when the endpoint gained a request body.
+    */
+    const lengths: (string | undefined)[] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit = {}) => {
+      const headers = (init.headers ?? {}) as Record<string, string>;
+      if (init.method === "HEAD") {
+        return new Response(null, {
+          status: 200,
+          // Fixed at creation: a length, and no defer flag.
+          headers: { "Upload-Offset": "0", "Upload-Length": "10" },
+        });
+      }
+      lengths.push(headers["Upload-Length"]);
+      const offset =
+        Number(headers["Upload-Offset"]) + (init.body as Blob).size;
+      return new Response(null, {
+        status: 204,
+        headers: { "Upload-Offset": String(offset) },
+      });
+    }) as unknown as typeof fetch;
+
+    await uploadResumable({
+      url: "/u",
+      file: blob(10),
+      chunkBytes: 4,
+      fetchImpl,
+      sleep: noSleep,
+    });
+
+    expect(lengths).toEqual([undefined, undefined, undefined]);
   });
 
   it("reports progress the operator can watch", async () => {
@@ -313,7 +359,26 @@ describe("reading the declared length", () => {
       "/u",
       head({ "Upload-Offset": "1024", "Upload-Length": "4096" }),
     );
-    expect(state).toEqual({ offset: 1024, declaredLength: 4096 });
+    expect(state).toEqual({
+      offset: 1024,
+      declaredLength: 4096,
+      // A length and no defer flag: the server is not waiting to be told.
+      deferLength: false,
+    });
+  });
+
+  it("reads the defer flag, which decides the first chunk's headers", async () => {
+    // "absent" and "1" are the only two values, and the wrong default is a 400
+    // on every first chunk — in one direction or the other.
+    const deferred = await readUploadState(
+      "/u",
+      head({ "Upload-Offset": "0", "Upload-Defer-Length": "1" }),
+    );
+    expect(deferred.deferLength).toBe(true);
+    expect(deferred.declaredLength).toBeNull();
+
+    const fixed = await readUploadState("/u", head({ "Upload-Offset": "0" }));
+    expect(fixed.deferLength).toBe(false);
   });
 
   it("is null while the upload is still deferred-length", async () => {
