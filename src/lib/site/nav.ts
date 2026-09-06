@@ -72,6 +72,7 @@ export const NAV: readonly NavItem[] = [
       p.startsWith("/account") ||
       p.startsWith("/earnings") ||
       p.startsWith("/payouts") ||
+      p.startsWith("/profile") ||
       p.startsWith("/team"),
   },
 ] as const;
@@ -94,6 +95,7 @@ export const FOCUSED_ROUTE_PREFIXES = [
   "/today/",
   "/earnings",
   "/payouts",
+  "/profile",
   "/team",
 ] as const;
 

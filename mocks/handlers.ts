@@ -349,6 +349,49 @@ function seedMediaAssets(): Record<string, MockMediaAsset> {
   };
 }
 
+/**
+ * The business behind the account — `GET`/`PUT /profile`.
+ *
+ * Seeded HALF-FILLED on purpose. A complete profile makes the `missing` array
+ * empty, and `missing` is the whole reason the contract names field names
+ * rather than sending a boolean: "so a form can mark the specific rows." A
+ * fixture with nothing outstanding cannot exercise that at all.
+ */
+type MockProfile = {
+  displayName: string;
+  legalName?: string;
+  entityType?: string;
+  gstin?: string;
+  address: {
+    line1?: string;
+    line2?: string;
+    locality?: string;
+    region?: string;
+    postalCode?: string;
+    country?: string;
+  };
+  editable: boolean;
+  submittedAt?: string;
+};
+
+function seedProfile(): MockProfile {
+  return {
+    displayName: BUSINESS_NAME,
+    legalName: "Nemo Reef Watersports",
+    entityType: "sole_proprietor",
+    address: { line1: "Beach 3", locality: "Havelock", country: "IN" },
+    // Editable, because the fixture account is still onboarding. The LIVE
+    // lock is exercised by `PROFILE_LOCKED_ID` below.
+    editable: true,
+  };
+}
+
+let profile: MockProfile = seedProfile();
+
+/** Credentials filed this session, by type. See `POST /credentials`. */
+let filedCredentials: Record<string, { state: string; expiresOn?: string }> =
+  {};
+
 let mediaAssets: Record<string, MockMediaAsset> = seedMediaAssets();
 /**
  * Departures created in this session, by `POST /slots`.
@@ -374,9 +417,29 @@ export function __resetOperatorMocks() {
   signups = [];
   uploadIntents = {};
   mediaAssets = seedMediaAssets();
+  profile = seedProfile();
+  filedCredentials = {};
   mockExperiences = seedExperiences();
   createdSlots = [];
   resetMockUploads();
+}
+
+/**
+ * The profile as the API returns it, with `missing` derived on every read.
+ *
+ * Derived rather than stored for the reason the contract gives about account
+ * standing: "a stored status is a second copy of the truth that goes stale."
+ * The names are the PUT's field names, so a form can mark the exact rows.
+ */
+function profileResponse() {
+  const missing: string[] = [];
+  if (!profile.legalName) missing.push("legalName");
+  if (!profile.entityType) missing.push("entityType");
+  if (!profile.address.line1) missing.push("addressLine1");
+  if (!profile.address.locality) missing.push("locality");
+  if (!profile.address.region) missing.push("region");
+  if (!profile.address.postalCode) missing.push("postalCode");
+  return { ...profile, missing };
 }
 
 function envelope(code: string, message: string, status: number) {
@@ -1099,6 +1162,136 @@ export const handlers = [
   }),
 
   /* ------------------------------------------------------------ media --- */
+
+  /* -------------------------------------------------- profile & documents - */
+
+  /**
+   * The business behind the account.
+   *
+   * `missing` is DERIVED here rather than stored, the same way the API derives
+   * it: a stored list is a second copy of the truth that goes stale the moment
+   * somebody fills a field in. The names match the PUT's own field names, so a
+   * form can mark the row it is about to ask for.
+   */
+  http.get(url("/profile"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json(profileResponse());
+  }),
+
+  /**
+   * Save the whole document.
+   *
+   * Modelled as a REPLACE, not a merge — "a whole document, not a patch of
+   * single fields … partial writes would leave it half-saved in ways the
+   * completeness check then has to reason about." A mock that merged would let
+   * a client ship a form that omits a field and never notice it was cleared.
+   */
+  http.put(url("/profile"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    /*
+      The LIVE lock. "After that the verified documents were checked against
+      the legal name on file, so changing it without anybody looking would make
+      the verification meaningless."
+    */
+    if (!profile.editable) {
+      return envelope(
+        "details_locked",
+        "The account is live; these change by asking us.",
+        409,
+      );
+    }
+
+    const body = (await request.json()) as Record<string, string | undefined>;
+    const required = [
+      "legalName",
+      "entityType",
+      "addressLine1",
+      "locality",
+      "region",
+      "postalCode",
+    ];
+    for (const field of required) {
+      if (!String(body[field] ?? "").trim()) {
+        return envelope("invalid_input", `${field} is required.`, 400);
+      }
+    }
+    const ENTITIES = [
+      "sole_proprietor",
+      "partnership",
+      "llp",
+      "private_limited",
+      "society",
+      "trust",
+    ];
+    if (!ENTITIES.includes(String(body.entityType))) {
+      return envelope("invalid_input", "Not an entity type we know.", 400);
+    }
+    // 15 characters, or absent. The checksum is the server's business.
+    if (body.gstin !== undefined && String(body.gstin).trim().length !== 15) {
+      return envelope("invalid_input", "A GSTIN is 15 characters.", 400);
+    }
+
+    profile = {
+      ...profile,
+      legalName: body.legalName,
+      entityType: body.entityType,
+      gstin: body.gstin,
+      address: {
+        line1: body.addressLine1,
+        line2: body.addressLine2,
+        locality: body.locality,
+        region: body.region,
+        postalCode: body.postalCode,
+        country: body.country ?? "IN",
+      },
+      submittedAt: new Date().toISOString(),
+    };
+
+    return HttpResponse.json(profileResponse());
+  }),
+
+  /**
+   * File a document.
+   *
+   * **Always lands `pending`**, whatever the request says. "The state is fixed
+   * server-side … a self-service path to `verified` would make the credential
+   * gate decorative." A mock that honoured a client-supplied state would let
+   * exactly that ship.
+   *
+   * Sending the same kind twice replaces rather than stacks, which the screen
+   * warns about before the tap.
+   */
+  http.post(url("/credentials"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const body = (await request.json()) as Record<string, string | undefined>;
+    const type = String(body.type ?? "");
+    const KINDS = [
+      "directorate_registration",
+      "instructor_cert",
+      "oxygen",
+      "equipment",
+      "boat",
+      "insurance",
+      "bank",
+      "gst",
+    ];
+    if (!KINDS.includes(type)) {
+      return envelope("invalid_input", "Not a document kind we know.", 400);
+    }
+
+    // Replaces, never stacks.
+    filedCredentials[type] = { state: "pending", expiresOn: body.expiresOn };
+
+    return HttpResponse.json(
+      { type, state: "pending", next: "we_check_it" },
+      { status: 201 },
+    );
+  }),
 
   http.get(url("/experiences"), async ({ request }) => {
     const failed = requireSession(request);

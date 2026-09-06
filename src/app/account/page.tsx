@@ -21,6 +21,7 @@ import { Screen } from "@/components/chrome/screen";
 import { ButtonLink } from "@/components/ui/button";
 import {
   BankIcon,
+  BriefcaseIcon,
   ChevronRightIcon,
   CoinsIcon,
   FilmIcon,
@@ -166,6 +167,22 @@ export default async function AccountPage() {
               Your business
             </h2>
             <ul className="mt-3 space-y-3">
+              {/*
+                Ungated, unlike the three below it.
+
+                `PUT /profile` and `POST /credentials` declare a generic
+                `Forbidden` and name no role, and this is the screen that acts
+                on the blockers this very page lists. Hiding it from a manager
+                would tell them they may not send us an insurance certificate
+                the server would have accepted — and it is their account that
+                cannot sell until somebody does.
+              */}
+              <Door
+                href="/profile"
+                icon={BriefcaseIcon}
+                title="Business details"
+                body="The registered name and address, and how to send us a document we asked for."
+              />
               {canManage ? (
                 <>
                   <Door
