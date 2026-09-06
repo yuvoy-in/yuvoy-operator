@@ -324,6 +324,28 @@ function seedMediaAssets(): Record<string, MockMediaAsset> {
       state: "approved",
       durationSeconds: 31,
     },
+    /*
+      A clip that is live on a listing, for the takedown walkthrough.
+
+      Deliberately attached to `exp_night`, which is `changes_rejected` and
+      therefore not selling — so it does not change which listings the
+      Activities screen reports as "on sale with no video", and the two checks
+      cannot take each other down.
+
+      Its state is `published` rather than `approved`, which is also the more
+      interesting half of the copy: taking down an attached clip empties the
+      card a traveller is looking at, and the form has to say so.
+    */
+    med_published_fixture: {
+      attested: true,
+      state: "published",
+      durationSeconds: 27,
+      listing: {
+        experienceId: "exp_night",
+        title: "Night fishing",
+        state: "draft",
+      },
+    },
   };
 }
 

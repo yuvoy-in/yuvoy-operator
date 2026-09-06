@@ -7,6 +7,7 @@ import { Panel } from "@/components/ui/panel";
 import { AttachForm, type ListingOption } from "./attach-form";
 import { Uploader } from "./uploader";
 import { SectionSwitch } from "../section-switch";
+import { WithdrawForm } from "./withdraw-form";
 
 export const metadata: Metadata = { title: "Reels" };
 export const dynamic = "force-dynamic";
@@ -46,7 +47,24 @@ const stateCopy: Record<string, { label: string; body: string }> = {
     label: "Held for safety review",
     body: "Yuvoy will contact you.",
   },
-  withdrawn: { label: "Taken down", body: "This clip is no longer on Yuvoy." },
+  /*
+    The row carries the whole truth, because the panel that used to cannot
+    survive the write.
+
+    Withdrawing revalidates — the list has to stop showing a clip as live the
+    moment it is not — and that re-render unmounts the form's own success
+    panel. So the sentence the operator needs lives here instead, permanently
+    and on the row it is about, rather than in something that vanishes.
+
+    Both halves, and only what has happened: "it comes off Yuvoy immediately,
+    and the original is deleted at the video provider shortly afterwards by a
+    job." The second is a promise about a job, not a fact, and is worded as
+    one.
+  */
+  withdrawn: {
+    label: "Taken down",
+    body: "It is off Yuvoy. The original is deleted at the video provider shortly afterwards.",
+  },
   failed: { label: "Upload failed", body: "Choose the clip again to retry." },
 };
 
@@ -231,9 +249,43 @@ export default async function ReelsPage() {
                         ) : (
                           <p className="text-terra-deep mt-4 text-sm font-bold">
                             Add a listing first, then come back to attach this
-                            clip.
+                            clip.{" "}
+                            <a
+                              href="/services/activities"
+                              className="underline underline-offset-2"
+                            >
+                              Your activities
+                            </a>
                           </p>
                         )
+                      ) : null}
+
+                      {/*
+                        Taking it down, from the library.
+
+                        `POST /media/{id}/withdraw` has existed since O8 and
+                        could only be reached for the clip just uploaded, while
+                        its submission panel was on screen — the wrong file
+                        noticed immediately. That is the case that actually
+                        happens, but it is not the endpoint yuvoy-operator#9
+                        describes, and `GET /media` is what makes the rest of
+                        it reachable.
+
+                        Offered only where there is something to take down. A
+                        clip mid-upload, one already withdrawn and one a
+                        reviewer refused are all things the operator cannot
+                        act on, and a button that 404s teaches them to distrust
+                        the screen.
+                      */}
+                      {item.id &&
+                      (item.state === "approved" ||
+                        item.state === "published" ||
+                        item.state === "attested" ||
+                        item.state === "in_moderation") ? (
+                        <WithdrawForm
+                          mediaAssetId={item.id}
+                          attachedTo={item.listing?.title}
+                        />
                       ) : null}
                     </div>
                   </Panel>

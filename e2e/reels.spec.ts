@@ -571,13 +571,25 @@ test("the wrong clip can be taken down, while the page is still open", async ({
   await expect(page.getByText(/also appear in your reel list/)).toBeVisible();
   await page.getByRole("button", { name: "Wrong clip? Take it down" }).click();
 
+  /*
+    Scoped to the receipt's own form.
+
+    Every clip in the library below now offers a takedown of its own
+    (yuvoy-operator#9), so a page-wide "Take it down" resolves to six buttons.
+    This test is about the receipt — the wrong file noticed before leaving the
+    screen — and it says which one it means.
+  */
+  const receipt = page.locator("form").filter({
+    has: page.getByRole("radio", { name: /Somebody in it objected/ }),
+  });
+
   // A closed set, because the counts matter — a consent takedown arriving
   // repeatedly is a signal about how somebody films.
   await expect(
-    page.getByRole("radio", { name: /Somebody in it objected/ }),
+    receipt.getByRole("radio", { name: /Somebody in it objected/ }),
   ).toBeVisible();
-  await page.getByRole("radio", { name: /We just want it down/ }).check();
-  await page.getByRole("button", { name: "Take it down" }).click();
+  await receipt.getByRole("radio", { name: /We just want it down/ }).check();
+  await receipt.getByRole("button", { name: "Take it down" }).click();
 
   /*
     Says what is true now. "Only the first is transactional: it comes off Yuvoy
@@ -589,8 +601,14 @@ test("the wrong clip can be taken down, while the page is still open", async ({
   await expect(
     page.getByRole("paragraph").filter({ hasText: "Taken down" }),
   ).toBeVisible();
+  /*
+    Said twice now, deliberately: once on the receipt, where the eye is, and
+    once on the row in the library below, which is still there tomorrow.
+    `.first()` rather than a count — a second withdrawn clip would make the
+    count wrong without making anything worse.
+  */
   await expect(
-    page.getByText(/deleted at the video provider shortly/),
+    page.getByText(/deleted at the video provider shortly/).first(),
   ).toBeVisible();
 });
 

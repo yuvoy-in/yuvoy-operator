@@ -281,3 +281,74 @@ test("/services/activities has no accessibility violations", async ({
 
   expect(results.violations).toEqual([]);
 });
+
+test("a clip can be taken down from the library, with a reason", async ({
+  page,
+}, testInfo) => {
+  /*
+    `POST /media/{id}/withdraw` has existed since O8 and could only be reached
+    for the clip just uploaded, while its submission panel was on screen. That
+    is the case that actually happens — the wrong file, noticed immediately —
+    but it is not the endpoint yuvoy-operator#9 describes, and `GET /media` is
+    what makes the rest reachable.
+
+    Single-tenant: withdrawal moves state the two projects share, and there is
+    one clip in the fixtures whose whole job is to stay attached to nothing.
+  */
+  test.skip(
+    testInfo.project.name !== "mobile",
+    "withdrawal consumes a clip — single-tenant by design, so it runs on the primary project only",
+  );
+
+  await signIn(page);
+  await page.goto("/services/reels");
+
+  /*
+    The clip that is live on a listing — its own fixture, attached to a listing
+    nothing else asserts on. Taking down an ATTACHED clip is the half of this
+    that matters: it empties the card a traveller is looking at, and the form
+    has to name the listing before asking why.
+  */
+  const clip = page.locator("li").filter({ hasText: "Listing: Night fishing" });
+  await clip.getByRole("button", { name: "Take it down" }).click();
+  await expect(
+    clip.getByText("It is on Night fishing. That listing loses this video."),
+  ).toBeVisible();
+
+  // A reason, and the set is closed on purpose: two of the four are not about
+  // the video at all, and those are the ones Yuvoy has to act on.
+  await clip.getByRole("radio", { name: /Somebody in it objected/ }).check();
+  await clip.getByRole("button", { name: "Take it down" }).click();
+
+  /*
+    The row itself, not a panel. Withdrawing revalidates — the list must stop
+    showing a clip as live the moment it is not — and that re-render unmounts
+    the form's own success state, so the sentence lives on the row instead.
+
+    The half that has happened, and not the half that has not: "it comes off
+    Yuvoy immediately, and the original is deleted at the video provider
+    shortly afterwards by a job."
+  */
+  const gone = page.locator("li").filter({ hasText: "Taken down" });
+  await expect(gone.getByText(/off Yuvoy/i).first()).toBeVisible();
+  await expect(
+    gone.getByText(/deleted at the video provider shortly/).first(),
+  ).toBeVisible();
+});
+
+test("a clip nobody can act on is offered no way down", async ({ page }) => {
+  // A button that answers 404 teaches an operator to distrust the screen.
+  await signIn(page);
+  await page.goto("/services/reels");
+  const waiting = page
+    .locator("li")
+    .filter({ hasText: "A person at Yuvoy will watch it." })
+    .first();
+  await expect(waiting).toBeVisible();
+  // Attested and waiting IS actionable — it is on Yuvoy. A failed upload is
+  // not, and carries nothing to take down.
+  const failed = page.locator("li").filter({ hasText: "Upload failed" });
+  await expect(
+    failed.getByRole("button", { name: "Take it down" }),
+  ).toHaveCount(0);
+});

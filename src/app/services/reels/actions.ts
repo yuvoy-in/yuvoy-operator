@@ -265,7 +265,7 @@ export async function attestRights(
     );
     if (error) throw error;
 
-    revalidatePath("/reels");
+    revalidatePath("/services/reels");
     return { done: { note: data.note } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
@@ -334,7 +334,7 @@ export async function withdrawMedia(
       },
     );
     if (error) throw error;
-    revalidatePath("/reels");
+    revalidatePath("/services/reels");
     return { withdrawn: { note: data.note } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
@@ -391,7 +391,7 @@ export async function attachMedia(
       },
     });
     if (error) throw error;
-    revalidatePath("/reels");
+    revalidatePath("/services/reels");
     return { done: true };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
