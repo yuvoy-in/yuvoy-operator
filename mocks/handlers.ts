@@ -3,6 +3,8 @@ import { apiBaseUrl } from "../src/lib/api/server-client";
 import { marketDate } from "../src/lib/format/market-time";
 import {
   MOCK_TUS_PORT,
+  mockPhotoArrived,
+  resetMockPhotos,
   createMockUpload,
   mockUploadDone,
   resetMockUploads,
@@ -393,6 +395,8 @@ let filedCredentials: Record<string, { state: string; expiresOn?: string }> =
   {};
 
 let mediaAssets: Record<string, MockMediaAsset> = seedMediaAssets();
+/** Photograph slots minted this session, by image id → owning operator. */
+let photoIntents: Record<string, { operatorId: string }> = {};
 /**
  * Departures created in this session, by `POST /slots`.
  *
@@ -422,6 +426,8 @@ export function __resetOperatorMocks() {
   mockExperiences = seedExperiences();
   createdSlots = [];
   resetMockUploads();
+  resetMockPhotos();
+  photoIntents = {};
 }
 
 /**
@@ -1291,6 +1297,134 @@ export const handlers = [
       { type, state: "pending", next: "we_check_it" },
       { status: 201 },
     );
+  }),
+
+  /* ------------------------------------------------------ photographs --- */
+
+  /**
+   * A slot to upload a photograph into.
+   *
+   * **No single-slot quota**, unlike the clip intent: the contract declares no
+   * `409` here, so an operator adding a row of photographs is not fighting
+   * their own uploads. A mock that borrowed the clip's slot rule would make
+   * the screen build a queue nobody asked for.
+   *
+   * `maxBytes` is 5 MB where the host allows 10 — ours, deliberately, because
+   * "a 10 MB photograph on a listing costs the traveller the download on
+   * island 4G". The client reads it off this response rather than hardcoding.
+   */
+  http.post(url("/media/photo-intents"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    /*
+      Keyed by the BUSINESS, not the user. The 404 this protects is about one
+      operator finishing another's upload, and every fixture user here belongs
+      to the same business — so the check is modelled against the one operator
+      id the mock has rather than invented per user.
+    */
+    const imageId = `img_${Math.random().toString(36).slice(2, 10)}`;
+    photoIntents[imageId] = { operatorId: OPERATOR.operatorId };
+
+    return HttpResponse.json(
+      {
+        imageId,
+        // A DIFFERENT ORIGIN. Bytes never pass through this API.
+        uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/photos/${imageId}`,
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        maxBytes: 5 * 1024 * 1024,
+        next: "upload_then_complete",
+      },
+      { status: 201 },
+    );
+  }),
+
+  /**
+   * Confirm the photograph arrived — by asking the HOST, not the client.
+   *
+   * "The host is asked whether the file arrived and who it belongs to; the
+   * client is not believed about either." Both halves are modelled:
+   *
+   *   - the file must actually be at the mock image host (`mockPhotoArrived`),
+   *     or this answers `400` — a browser that says it finished cannot mint a
+   *     media asset out of a failed upload;
+   *   - an id minted for another operator answers `404`, the SAME as one that
+   *     does not exist, because "telling somebody that image exists but is not
+   *     yours confirms it exists."
+   */
+  http.post(url("/media/photo-intents/complete"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const body = (await request.json()) as { imageId?: string };
+    const imageId = String(body.imageId ?? "");
+
+    const slot = photoIntents[imageId];
+    const mine = slot && slot.operatorId === OPERATOR.operatorId;
+    if (!slot || !mine) {
+      return envelope("not_found", "No such upload.", 404);
+    }
+
+    if (!mockPhotoArrived(imageId)) {
+      return envelope(
+        "invalid_input",
+        "The upload has not arrived at the host yet.",
+        400,
+      );
+    }
+
+    /*
+      From here it is an ordinary media asset — it "appears in `GET /media`
+      like any other". `ready` rather than `attested`: the rights attestation
+      is the operator's next act, exactly as it is for a clip, and a mock that
+      skipped it would let a screen ship that skips it too.
+    */
+    const mediaAssetId = `med_${Math.random().toString(36).slice(2, 10)}`;
+    mediaAssets[mediaAssetId] = { attested: false, state: "ready" };
+    delete photoIntents[imageId];
+
+    return HttpResponse.json({ mediaAssetId, next: "attest_rights" });
+  }),
+
+  /* ------------------------------------------------------- vocabulary ---- */
+
+  /**
+   * What may go in a listing's category and destination — yuvoy-api#113.
+   *
+   * Scoped to the operator's own market with no market parameter, exactly as
+   * the contract describes: "destinations from another market are refused on
+   * create, so offering them would be offering a choice that cannot work."
+   *
+   * Every key here is one `POST /experiences` accepts, and the destinations
+   * match the prefix that endpoint validates — a mock offering a value its own
+   * create would reject is worse than no mock at all.
+   */
+  http.get(url("/catalog/vocabulary"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    return HttpResponse.json({
+      market: { key: "andaman", name: "Andaman Islands" },
+      categories: [
+        { key: "adventure", label: "Adventure" },
+        { key: "nature_wildlife", label: "Nature & wildlife" },
+        { key: "food_drink", label: "Food & drink" },
+        { key: "arts_creativity", label: "Arts & creativity" },
+        { key: "learning", label: "Learning" },
+        { key: "culture_heritage", label: "Culture & heritage" },
+        { key: "wellness", label: "Wellness" },
+        { key: "entertainment", label: "Entertainment" },
+        { key: "community", label: "Community" },
+        { key: "sports", label: "Sports" },
+        { key: "local_life", label: "Local life" },
+        { key: "events", label: "Events" },
+      ],
+      destinations: [
+        { key: "andaman/havelock", label: "Havelock (Swaraj Dweep)" },
+        { key: "andaman/neil", label: "Neil (Shaheed Dweep)" },
+        { key: "andaman/port_blair", label: "Port Blair" },
+      ],
+    });
   }),
 
   http.get(url("/experiences"), async ({ request }) => {

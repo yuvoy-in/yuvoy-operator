@@ -123,6 +123,28 @@ paths:
                   description: E.164. This is what they sign in with.
                   examples: ["+919000000000"]
                 email: { type: string }
+                source:
+                  type: string
+                  description: >-
+                    Where they came from — `web` for the button on
+                    `yuvoy.in/operators`, absent when they arrived at the portal
+                    directly. Lands in the operator's `source_tag` as
+                    `self_signup:<source>`, so the mechanism stays readable and
+                    the suffix says the route.
+
+
+                    1–32 characters of `a-z 0-9 _ . -`, starting with a letter
+                    or digit. Surrounding space is trimmed and case is
+                    normalised down, so `Web` and `web` are one source rather
+                    than two rows saying the same thing.
+
+
+                    **Anything else is dropped, never refused** — this endpoint
+                    is public and unauthenticated, and turning away a real
+                    business because a marketing parameter was malformed would
+                    be a bad trade.
+                  pattern: "^[a-z0-9][a-z0-9_.-]{0,31}$"
+                  examples: ["web"]
       responses:
         "202":
           description: >-
@@ -1889,6 +1911,52 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /catalog/vocabulary:
+    get:
+      tags: [listings]
+      summary: What may go in a listing's category and destination
+      description: >
+        The two fields on the create form nobody can guess. Both are enforced
+        server-side — the category by a database constraint, the destination by
+        a foreign key into your own market — so a list maintained in the client
+        would disagree with us the day either changes, and the operator would
+        find out as a 400 on the form they had just filled in.
+
+
+        Scoped to the operator's own market, taken from the session. There is no
+        market parameter: destinations from another market are refused on create,
+        so offering them would be offering a choice that cannot work.
+
+
+        Safe to cache for the session. This changes when a destination opens,
+        which is rare, and never per operator beyond which market they are in.
+      operationId: getCatalogVocabulary
+      responses:
+        "200":
+          description: The allowed values, each with the word a person uses for it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  market:
+                    type: object
+                    properties:
+                      key: { type: string, examples: ["andaman"] }
+                      name: { type: string, examples: ["Andaman Islands"] }
+                  categories:
+                    type: array
+                    items: { $ref: "#/components/schemas/VocabularyTerm" }
+                  destinations:
+                    type: array
+                    description: >-
+                      Active destinations in this market, in the order a picker
+                      should show them. Empty means we have not opened one yet,
+                      which is a state worth rendering rather than a failure.
+                    items: { $ref: "#/components/schemas/VocabularyTerm" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /experiences:
     get:
       tags: [listings]
@@ -1936,12 +2004,23 @@ paths:
                 slug: { type: string, description: "Optional. Proposed from the title if omitted." }
                 summary: { type: string }
                 description: { type: string }
-                category: { type: string }
+                category:
+                  type: string
+                  description: >-
+                    The taxonomy is closed and enforced by a database
+                    constraint, so a value outside this set is a 400.
+                    `GET /catalog/vocabulary` carries the same set with a
+                    human label for each.
+                  enum: [adventure, nature_wildlife, food_drink, arts_creativity,
+                         learning, culture_heritage, wellness, entertainment,
+                         community, sports, local_life, events]
                 destination:
                   type: string
                   description: >-
                     A destination key in your own market. One belonging to
-                    another market is refused.
+                    another market is refused. The keys for your market are on
+                    `GET /catalog/vocabulary`; they are rows rather than a fixed
+                    set, so there is no enum here to go stale.
                 bookingMode: { type: string, enum: [allotment, request], default: request }
                 durationMinutes: { type: integer, default: 120 }
                 maxPartySize: { type: integer, default: 6 }
@@ -2102,6 +2181,98 @@ paths:
                             title: { type: string }
                             state: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /media/photo-intents:
+    post:
+      tags: [media]
+      summary: Get a one-time URL to upload a photograph to
+      description: >
+        The browser posts the file straight to the image host, as video does —
+        bytes never pass through this API.
+
+
+        A photograph then travels **the same road as a clip**: attest the rights,
+        a person reviews it, then attach it to a listing with
+        `POST /media/{id}/publish`. There is no shorter path, deliberately: the
+        risks are the same ones — footage nobody had the rights to, people who
+        did not consent, a picture that is not the experience being sold — and a
+        second pipeline with weaker gates would be the way around the first.
+      operationId: createPhotoUpload
+      responses:
+        "201":
+          description: A slot to upload into.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imageId: { type: string }
+                  uploadUrl: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  maxBytes: { type: integer, format: int64 }
+                  next: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502":
+          description: "`media_unavailable` — the image host could not mint a slot. Retry safely."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: "`media_unavailable` — image hosting is not configured on this service."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /media/photo-intents/complete:
+    post:
+      tags: [media]
+      summary: Confirm the photograph arrived
+      description: >
+        The host is asked whether the file arrived and who it belongs to; the
+        client is not believed about either.
+
+
+        An id minted for another operator answers **404**, the same as an id that
+        does not exist — telling somebody "that image exists but is not yours"
+        confirms it exists.
+
+
+        On success the photograph is a media asset awaiting review, and appears
+        in `GET /media` like any other.
+      operationId: confirmPhotoUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageId]
+              properties:
+                imageId: { type: string, description: From the upload intent. }
+      responses:
+        "200":
+          description: Recorded, and queued for review.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mediaAssetId: { type: string }
+                  next: { type: string }
+        "400":
+          description: The upload has not arrived at the host yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: "`media_unavailable` — image hosting is not configured on this service."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /media/upload-intents:
     post:
@@ -2389,7 +2560,17 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: This listing already shows as many clips as we display.
+          description: >-
+            This listing already shows as many of that kind as we display.
+            **Photographs and clips have separate ceilings — 20 each — so a full
+            gallery never blocks a reel and a full reel library never blocks a
+            photograph.** They do different jobs and rationing one against the
+            other helps nobody.
+
+
+            `details.kind` (`image` or `video`) and `details.limit` say which
+            ceiling was reached, so the screen can tell somebody which thing to
+            remove rather than leaving them to work it out.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2447,6 +2628,17 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    VocabularyTerm:
+      type: object
+      description: >-
+        One allowed value and the word a person uses for it. Both, always —
+        `andaman/havelock` is an identifier and "Havelock (Swaraj Dweep)" is
+        what an operator calls the place; a picker showing only the key asks
+        somebody to recognise one.
+      properties:
+        key: { type: string }
+        label: { type: string }
+
     BusinessDetails:
       type: object
       properties:
@@ -2553,7 +2745,6 @@ components:
                 - confirmation_required
                 - invalid_role
                 - already_current
-                - confirmation_required
                 # Emitted by handlers and previously undeclared. Found once
                 # the response validator began checking error envelopes rather
                 # than skipping any response whose body nothing described.
@@ -2573,6 +2764,8 @@ components:
                 - cannot_invite
                 # You cannot remove yourself, nor the last OWNER.
                 - cannot_remove
+                # You cannot change your own access, nor the last OWNER's.
+                - cannot_change_access
             message: { type: string, description: Human-readable; safe to show. }
             details:
               type: object
@@ -2864,6 +3057,7 @@ components:
             recognise, including `OTHER`.
           enum:
             - BUSINESS_DETAILS_INCOMPLETE
+            - LOGO_MISSING
             - CREDENTIAL_MISSING
             - CREDENTIAL_UNVERIFIED
             - CREDENTIAL_EXPIRED

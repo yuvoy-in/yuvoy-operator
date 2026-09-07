@@ -16,30 +16,30 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 6 Sep 2026, fourth bump. Forward from a12944e, diffed as a parsed schema
-# tree rather than as text — the last two defects on these documents were both
-# YAML that parsed cleanly into the wrong place (yuvoy-api#92, #103).
+# 7 Sep 2026, fifth bump. Diffed as a parsed schema tree, not as text — the
+# defects that made that necessary are on yuvoy-api#92 and #103. PURELY
+# ADDITIVE: three new paths, one new schema, nothing removed, no `required:`
+# list grown, no requestBody made required.
 #
-# Consumed in this change (yuvoy-operator#25): managing access from the Team
-# screen — `PUT /team/{id}/role`, `POST /team/{id}/hold`, `.../restore` — and
-# `DELETE /team/{id}` widening from OWNER-only to OWNER or ADMIN.
+# Consumed in this change:
+#   - `POST /media/photo-intents` + `.../complete` — a listing can hold
+#     photographs (yuvoy-operator#27). From `complete` onward a photograph
+#     travels the SAME road as a clip: the same rights attestation, the same
+#     moderation queue, the same publish gate. Deliberately not a second
+#     pipeline, so there is no weaker way round the first.
+#   - `GET /catalog/vocabulary` — the fix for yuvoy-api#113. The create form's
+#     category and destination were two text boxes seeded from the operator's
+#     own listings, which was a dead end for their FIRST listing. Both are now
+#     pickers with the labels a person uses.
 #
-# ONE BREAKING CHANGE, and it is the reason this bump is not bookkeeping:
-# `POST /team/accept` answered `200 {accepted, next}` and now answers
-# `201 {joined, next, token, user, operatorId}`. `accepted` is GONE. A client
-# reading it gets `undefined`, which is falsy, so a successful accept would
-# have read as a failure. Consumed here rather than tolerated: accepting now
-# writes the session cookie and lands them inside the portal, the same
-# `StartSession` sign-in makes.
+# Learned from the publish 409's description rather than asked: photographs and
+# clips have SEPARATE ceilings of 20 each, and `details.kind` / `details.limit`
+# say which one was reached. The attach form now names the right one.
 #
-# `POST /join/{token}/accept` gained the same three session fields, additively.
-#
-# Landed and NOT consumed, each on its own issue:
-#   - `/experiences` + `/experiences/{id}`  — yuvoy-operator#22, Activities half
-#   - `/profile`, `/credentials`, `/logo`   — yuvoy-operator#7 (O6)
-#
-# Fixed upstream since the last pin: `Manifest.screening` is now per party
-# (yuvoy-api#103 → #106), which unblocked and shipped yuvoy-operator#17.
-ref=d40ae3b1a97e62fa344905a53921d7c7f74e8c54
+# Known gap, raised rather than worked around: `GET /media` returns no `kind`,
+# so the operator's own library cannot tell a photograph from a clip. Inferring
+# it from an absent `durationSeconds` would mislabel a clip that is still
+# processing, so nothing here claims a kind at all.
+ref=87175540e3ec57261f85ed0852555cd65a5df6dd
 branch=master
-pinned_on=2026-09-06
+pinned_on=2026-09-07

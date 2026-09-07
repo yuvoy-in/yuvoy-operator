@@ -69,7 +69,7 @@ test("the old /reels URL still works", async ({ page }) => {
   await page.goto("/reels");
   await page.waitForURL("**/services/reels");
   await expect(
-    page.getByRole("heading", { level: 1, name: "Reels" }),
+    page.getByRole("heading", { level: 1, name: "Photos & reels" }),
   ).toBeVisible();
 });
 
@@ -152,8 +152,10 @@ test("an operator writes a listing, and it lands as a draft", async ({
 
   await page.getByRole("button", { name: "Add an activity" }).click();
   await page.getByLabel("What is it called").fill(title);
-  await page.getByLabel("What kind of thing it is").fill("nature_wildlife");
-  await page.getByLabel("Where it runs").fill("andaman/havelock");
+  await page
+    .getByLabel("What kind of thing it is")
+    .selectOption("nature_wildlife");
+  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
   await page.getByLabel("Price per person").fill("2200");
   await page.getByRole("button", { name: "Save as a draft" }).click();
 
@@ -165,30 +167,40 @@ test("an operator writes a listing, and it lands as a draft", async ({
   await expect(row.getByText("Draft", { exact: true })).toBeVisible();
 });
 
-test("a destination in somebody else's market is refused in the API's own words", async ({
+test("another market's destination cannot be chosen at all", async ({
   page,
 }) => {
   /*
-    The operator contract has no way to enumerate destination keys, so this
-    field is typed — which makes the refusal the only thing standing between an
-    operator and a listing nobody can find. The API's sentence names the
-    market; paraphrasing would drop the only specific thing anybody has to go
-    on.
+    This test used to type `goa/palolem` into a text box and assert the API's
+    own refusal came back. Both halves are gone, and the replacement is
+    stronger: since yuvoy-api#113 the field is a picker fed by
+    `GET /catalog/vocabulary`, which is "scoped to the operator's own market,
+    taken from the session … destinations from another market are refused on
+    create, so offering them would be offering a choice that cannot work."
+
+    So a wrong-market destination is now unreachable from the interface rather
+    than caught after the form was filled in. The action's 400 branch stays for
+    the race it still covers — a destination that closes between the render and
+    the submit — but nothing in the UI can reach it on purpose any more.
   */
   await signIn(page);
   await page.goto("/services/activities");
-
   await page.getByRole("button", { name: "Add an activity" }).click();
-  await page.getByLabel("What is it called").fill("Somewhere else entirely");
-  await page.getByLabel("What kind of thing it is").fill("adventure");
-  await page.getByLabel("Where it runs").fill("goa/palolem");
-  await page.getByRole("button", { name: "Save as a draft" }).click();
 
-  // Scoped to the form's own alert: Next renders a route announcer with the
-  // same role, which is empty and not ours.
-  const alert = page.locator("form").getByRole("alert");
-  await expect(alert).toContainText("not a place in your market");
-  await expect(alert).toContainText("andaman/");
+  const destination = page.getByLabel("Where it runs");
+  const values = await destination
+    .locator("option")
+    .evaluateAll((nodes) =>
+      nodes.map((n) => (n as HTMLOptionElement).value).filter(Boolean),
+    );
+
+  expect(values.length).toBeGreaterThan(0);
+  for (const value of values) {
+    expect(
+      value,
+      "every destination offered is in this operator's market",
+    ).toMatch(/^andaman\//);
+  }
 });
 
 test("sending a change on a live listing says it keeps selling", async ({
@@ -258,14 +270,15 @@ test("the switcher counts both halves, including at zero", async ({ page }) => {
   await expect(
     section.getByRole("link", { name: /Activities/ }),
   ).toHaveAttribute("aria-current", "page");
-  await expect(section.getByRole("link", { name: /Reels/ })).toBeVisible();
+  await expect(
+    section.getByRole("link", { name: /Photos & reels/ }),
+  ).toBeVisible();
 
-  await section.getByRole("link", { name: /Reels/ }).click();
+  await section.getByRole("link", { name: /Photos & reels/ }).click();
   await page.waitForURL("**/services/reels");
-  await expect(section.getByRole("link", { name: /Reels/ })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(
+    section.getByRole("link", { name: /Photos & reels/ }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("/services/activities has no accessibility violations", async ({

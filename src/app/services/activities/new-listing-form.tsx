@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { createListing, type CreateState } from "./actions";
+import type { Choice } from "@/lib/services/vocabulary";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -21,27 +22,34 @@ import { Panel } from "@/components/ui/panel";
  * *material* change — they belong in the edit-and-review path, which is where
  * they end up.
  *
- * ## Category and destination are text, and that is a contract gap
+ * ## Category and destination are pickers now — yuvoy-api#113 is closed
  *
- * The operator document has no way to enumerate either. `category` is a bare
- * string and `destination` is "a destination key in your own market" with
- * nothing that lists the market's keys — so a picker cannot be rendered
- * without this portal inventing a vocabulary the server owns, which is the one
- * thing it must not do.
+ * They were two text boxes seeded from the operator's own existing listings,
+ * because the operator document enumerated neither. That worked for a second
+ * listing and was a dead end for a FIRST one: a new operator got a box, an
+ * example key, and a `400` after filling the whole form in.
  *
- * What is done instead: the operator's OWN existing values are offered as
- * suggestions, which makes the second listing a single tap; the first is typed
- * against an example, and the API refuses a wrong one with a message this form
- * shows verbatim. Raised on yuvoy-api rather than papered over.
+ * `GET /catalog/vocabulary` supplies both, with the label a person uses —
+ * "`andaman/havelock` is an identifier and 'Havelock (Swaraj Dweep)' is what an
+ * operator calls the place; a picker showing only the key asks somebody to
+ * recognise one."
+ *
+ * Categories come from the request body's own enum and are labelled from the
+ * vocabulary, so a slow or failed read cannot empty a picker whose values are
+ * known at compile time. Destinations are rows and must come from the response,
+ * so an empty list is a state this form renders rather than a failure.
  */
 export function NewListingForm({
   categories,
   destinations,
+  market,
 }: {
-  /** Categories this operator already uses. Empty for their first listing. */
-  categories: string[];
-  /** Destination keys this operator already runs in. */
-  destinations: string[];
+  /** Every category the API accepts, labelled. Never empty. */
+  categories: Choice[];
+  /** The market's open destinations, in the server's own order. May be empty. */
+  destinations: Choice[];
+  /** The operator's market, named for the empty-destinations case. */
+  market: string | null;
 }) {
   const [state, act, pending] = useActionState<CreateState, FormData>(
     createListing,
@@ -108,57 +116,63 @@ export function NewListingForm({
           <label htmlFor="new-category" className="label text-forest/75">
             What kind of thing it is
           </label>
-          <input
+          <select
             id="new-category"
             name="category"
             required
-            list={categories.length ? "known-categories" : undefined}
+            defaultValue=""
             className={inputClass("mt-2")}
             aria-invalid={state.field === "category" || undefined}
-            aria-describedby="new-category-help"
-          />
-          {categories.length ? (
-            <datalist id="known-categories">
-              {categories.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
-          ) : null}
-          <p id="new-category-help" className="text-forest/70 mt-1.5 text-xs">
-            {categories.length
-              ? "Start typing — the kinds you already use will come up."
-              : "For example: adventure, nature_wildlife, local_life. If we do not recognise it we will tell you."}
-          </p>
+          >
+            <option value="">Choose one</option>
+            {categories.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
           <label htmlFor="new-destination" className="label text-forest/75">
             Where it runs
           </label>
-          <input
-            id="new-destination"
-            name="destination"
-            required
-            list={destinations.length ? "known-destinations" : undefined}
-            className={inputClass("mt-2")}
-            aria-invalid={state.field === "destination" || undefined}
-            aria-describedby="new-destination-help"
-          />
-          {destinations.length ? (
-            <datalist id="known-destinations">
+          {destinations.length > 0 ? (
+            <select
+              id="new-destination"
+              name="destination"
+              required
+              defaultValue={
+                destinations.length === 1 ? destinations[0].value : ""
+              }
+              className={inputClass("mt-2")}
+              aria-invalid={state.field === "destination" || undefined}
+              aria-describedby="new-destination-help"
+            >
+              {destinations.length === 1 ? null : (
+                <option value="">Choose one</option>
+              )}
               {destinations.map((d) => (
-                <option key={d} value={d} />
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
               ))}
-            </datalist>
-          ) : null}
-          <p
-            id="new-destination-help"
-            className="text-forest/70 mt-1.5 text-xs"
-          >
-            {destinations.length
-              ? "Start typing — the places you already run in will come up."
-              : "The place key, like andaman/havelock. It has to be somewhere in your own market."}
-          </p>
+            </select>
+          ) : (
+            /*
+              "Empty means we have not opened one yet, which is a state worth
+              rendering rather than a failure." Said plainly, with no input —
+              a disabled picker with nothing in it invites somebody to keep
+              tapping it.
+            */
+            <p
+              id="new-destination-help"
+              className="text-terra-deep mt-2 text-sm font-bold"
+            >
+              We have not opened a destination in {market ?? "your market"} yet.
+              Message us and we will.
+            </p>
+          )}
         </div>
 
         <div>

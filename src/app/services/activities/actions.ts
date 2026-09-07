@@ -5,6 +5,7 @@ import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
+import { CATEGORIES, type Category } from "@/lib/services/vocabulary";
 
 /**
  * O7 — an operator writes their own listing, and proposes changes to it.
@@ -59,7 +60,15 @@ const createSchema = z.object({
     .string()
     .trim()
     .min(3, "What is it called? A traveller will read this first."),
-  category: z.string().trim().min(1, "Choose what kind of thing this is."),
+  /*
+    The enum, not free text. `category` is "closed and enforced by a database
+    constraint, so a value outside this set is a 400" — and the generated type
+    now says so, which is how the re-pin caught the old text box the moment the
+    enum landed.
+  */
+  category: z.enum(CATEGORIES as unknown as [Category, ...Category[]], {
+    message: "Choose what kind of thing this is.",
+  }),
   destination: z.string().trim().min(1, "Where does it run?"),
   /*
     Optional, and the form says what leaving it out costs rather than refusing

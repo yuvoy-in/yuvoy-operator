@@ -853,6 +853,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalog/vocabulary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What may go in a listing's category and destination
+         * @description The two fields on the create form nobody can guess. Both are enforced server-side — the category by a database constraint, the destination by a foreign key into your own market — so a list maintained in the client would disagree with us the day either changes, and the operator would find out as a 400 on the form they had just filled in.
+         *
+         *     Scoped to the operator's own market, taken from the session. There is no market parameter: destinations from another market are refused on create, so offering them would be offering a choice that cannot work.
+         *
+         *     Safe to cache for the session. This changes when a destination opens, which is rare, and never per operator beyond which market they are in.
+         */
+        get: operations["getCatalogVocabulary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/experiences": {
         parameters: {
             query?: never;
@@ -938,6 +962,52 @@ export interface paths {
         get: operations["listOperatorMedia"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/photo-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get a one-time URL to upload a photograph to
+         * @description The browser posts the file straight to the image host, as video does — bytes never pass through this API.
+         *
+         *     A photograph then travels **the same road as a clip**: attest the rights, a person reviews it, then attach it to a listing with `POST /media/{id}/publish`. There is no shorter path, deliberately: the risks are the same ones — footage nobody had the rights to, people who did not consent, a picture that is not the experience being sold — and a second pipeline with weaker gates would be the way around the first.
+         */
+        post: operations["createPhotoUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/photo-intents/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the photograph arrived
+         * @description The host is asked whether the file arrived and who it belongs to; the client is not believed about either.
+         *
+         *     An id minted for another operator answers **404**, the same as an id that does not exist — telling somebody "that image exists but is not yours" confirms it exists.
+         *
+         *     On success the photograph is a media asset awaiting review, and appears in `GET /media` like any other.
+         */
+        post: operations["confirmPhotoUpload"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1072,6 +1142,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description One allowed value and the word a person uses for it. Both, always — `andaman/havelock` is an identifier and "Havelock (Swaraj Dweep)" is what an operator calls the place; a picker showing only the key asks somebody to recognise one. */
+        VocabularyTerm: {
+            key?: string;
+            label?: string;
+        };
         BusinessDetails: {
             /** @description What travellers see. Not editable here. */
             displayName?: string;
@@ -1134,7 +1209,7 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "internal_error" | "session_expired" | "account_not_active" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "confirmation_required" | "step_up_required" | "request_not_open" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove";
+                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "internal_error" | "session_expired" | "account_not_active" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access";
                 /** @description Human-readable; safe to show. */
                 message: string;
                 /** @description Field-level messages, keyed by field name. */
@@ -1324,7 +1399,7 @@ export interface components {
              * @description A closed set, so a client branches on the code and never on the message — the same rule the error enum follows. `OTHER` exists so a reason can be added operationally without a contract change and without breaking a client: render `label` for anything you do not recognise, including `OTHER`.
              * @enum {string}
              */
-            code: "BUSINESS_DETAILS_INCOMPLETE" | "CREDENTIAL_MISSING" | "CREDENTIAL_UNVERIFIED" | "CREDENTIAL_EXPIRED" | "CREDENTIAL_REJECTED" | "AWAITING_REVIEW" | "OTHER";
+            code: "BUSINESS_DETAILS_INCOMPLETE" | "LOGO_MISSING" | "CREDENTIAL_MISSING" | "CREDENTIAL_UNVERIFIED" | "CREDENTIAL_EXPIRED" | "CREDENTIAL_REJECTED" | "AWAITING_REVIEW" | "OTHER";
             /**
              * @description Human-readable and safe to show unmodified.
              * @example We still need your insurance certificate
@@ -1495,6 +1570,15 @@ export interface operations {
                      */
                     phone: string;
                     email?: string;
+                    /**
+                     * @description Where they came from — `web` for the button on `yuvoy.in/operators`, absent when they arrived at the portal directly. Lands in the operator's `source_tag` as `self_signup:<source>`, so the mechanism stays readable and the suffix says the route.
+                     *
+                     *     1–32 characters of `a-z 0-9 _ . -`, starting with a letter or digit. Surrounding space is trimmed and case is normalised down, so `Web` and `web` are one source rather than two rows saying the same thing.
+                     *
+                     *     **Anything else is dropped, never refused** — this endpoint is public and unauthenticated, and turning away a real business because a marketing parameter was malformed would be a bad trade.
+                     * @example web
+                     */
+                    source?: string;
                 };
             };
         };
@@ -3171,6 +3255,38 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    getCatalogVocabulary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The allowed values, each with the word a person uses for it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        market?: {
+                            /** @example andaman */
+                            key?: string;
+                            /** @example Andaman Islands */
+                            name?: string;
+                        };
+                        categories?: components["schemas"]["VocabularyTerm"][];
+                        /** @description Active destinations in this market, in the order a picker should show them. Empty means we have not opened one yet, which is a state worth rendering rather than a failure. */
+                        destinations?: components["schemas"]["VocabularyTerm"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listOperatorExperiences: {
         parameters: {
             query?: never;
@@ -3209,8 +3325,12 @@ export interface operations {
                     slug?: string;
                     summary?: string;
                     description?: string;
-                    category: string;
-                    /** @description A destination key in your own market. One belonging to another market is refused. */
+                    /**
+                     * @description The taxonomy is closed and enforced by a database constraint, so a value outside this set is a 400. `GET /catalog/vocabulary` carries the same set with a human label for each.
+                     * @enum {string}
+                     */
+                    category: "adventure" | "nature_wildlife" | "food_drink" | "arts_creativity" | "learning" | "culture_heritage" | "wellness" | "entertainment" | "community" | "sports" | "local_life" | "events";
+                    /** @description A destination key in your own market. One belonging to another market is refused. The keys for your market are on `GET /catalog/vocabulary`; they are rows rather than a fixed set, so there is no enum here to go stale. */
                     destination: string;
                     /**
                      * @default request
@@ -3369,6 +3489,105 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    createPhotoUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A slot to upload into. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        imageId?: string;
+                        uploadUrl?: string;
+                        /** Format: date-time */
+                        expiresAt?: string;
+                        /** Format: int64 */
+                        maxBytes?: number;
+                        next?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `media_unavailable` — the image host could not mint a slot. Retry safely. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `media_unavailable` — image hosting is not configured on this service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    confirmPhotoUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description From the upload intent. */
+                    imageId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Recorded, and queued for review. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mediaAssetId?: string;
+                        next?: string;
+                    };
+                };
+            };
+            /** @description The upload has not arrived at the host yet. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `media_unavailable` — image hosting is not configured on this service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     createUploadIntent: {
@@ -3590,7 +3809,11 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description This listing already shows as many clips as we display. */
+            /**
+             * @description This listing already shows as many of that kind as we display. **Photographs and clips have separate ceilings — 20 each — so a full gallery never blocks a reel and a full reel library never blocks a photograph.** They do different jobs and rationing one against the other helps nobody.
+             *
+             *     `details.kind` (`image` or `video`) and `details.limit` say which ceiling was reached, so the screen can tell somebody which thing to remove rather than leaving them to work it out.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;

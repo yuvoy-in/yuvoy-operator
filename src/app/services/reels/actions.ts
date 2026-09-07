@@ -401,10 +401,209 @@ export async function attachMedia(
       if (err.isNotFound) {
         return { message: "That clip is not approved for this listing." };
       }
-      if (err.status === 409 || err.status === 502) {
+      if (err.status === 409) {
+        /*
+          A ceiling, and there are TWO of them.
+
+          "Photographs and clips have separate ceilings — 20 each — so a full
+          gallery never blocks a reel and a full reel library never blocks a
+          photograph." `details.kind` and `details.limit` say which one was
+          reached "so the screen can tell somebody which thing to remove rather
+          than leaving them to work it out."
+
+          The API's own sentence is the fallback rather than a paraphrase: if
+          the details are absent or shaped differently, it still says something
+          true, and this portal has not invented a number.
+        */
+        const ceiling = fullCeiling(err.details);
+        return {
+          message: ceiling
+            ? `That listing already shows ${ceiling.limit} ${ceiling.noun}. Take one down before adding another — ${ceiling.other} are counted separately and are not affected.`
+            : err.message,
+        };
+      }
+      if (err.status === 502) {
         return { message: err.message };
       }
     }
     return { message: "The clip was not attached. Try again." };
+  }
+}
+
+/**
+ * Which of the two per-listing ceilings a `409` hit.
+ *
+ * Read defensively: `details` is `unknown` on the error, the kind is an open
+ * string on the wire, and a shape this build has not met must fall through to
+ * the API's own sentence rather than produce a confident wrong one.
+ */
+function fullCeiling(
+  details: unknown,
+): { limit: number; noun: string; other: string } | null {
+  if (!details || typeof details !== "object") return null;
+  const { kind, limit } = details as { kind?: unknown; limit?: unknown };
+  if (typeof limit !== "number" || !Number.isFinite(limit)) return null;
+  if (kind === "image") {
+    return { limit, noun: "photographs", other: "reels" };
+  }
+  if (kind === "video") {
+    return { limit, noun: "reels", other: "photographs" };
+  }
+  return null;
+}
+
+/* ---------------------------------------------------------- photographs -- */
+
+export interface PhotoIntent {
+  imageId: string;
+  uploadUrl: string;
+  maxBytes: number;
+  expiresAt?: string;
+}
+
+export interface PhotoIntentState {
+  intent?: PhotoIntent;
+  message?: string;
+  /** Image hosting is off on this deployment. Not retryable by the operator. */
+  unavailable?: boolean;
+}
+
+/**
+ * A slot to upload a photograph into — yuvoy-operator#27.
+ *
+ * ## Why this is a separate action from the clip's
+ *
+ * Different host, different limits, no tus, and — the one that matters — **no
+ * single-slot quota**. A clip intent is one per operator and answers `409`
+ * while another is open; the photograph endpoint declares no such refusal, so
+ * an operator adding a row of photographs is not fighting their own uploads.
+ * Sharing one action would have meant carrying the clip's slot machinery into
+ * a flow that does not have a slot.
+ *
+ * From `complete` onward the two converge completely: same attestation, same
+ * review queue, same publish. "There is no shorter path, deliberately."
+ */
+export async function createPhotoIntent(): Promise<PhotoIntentState> {
+  const { token } = await requireOperator();
+
+  try {
+    const { data, error } = await operatorApi(token).POST(
+      "/media/photo-intents",
+      {},
+    );
+    if (error) throw error;
+
+    if (!data.imageId || !data.uploadUrl) {
+      return { message: "We could not start the upload. Try again." };
+    }
+
+    return {
+      intent: {
+        imageId: data.imageId,
+        uploadUrl: data.uploadUrl,
+        /*
+          The server's ceiling, read rather than hardcoded. Ours is smaller
+          than the host's on purpose — "a 10 MB photograph on a listing costs
+          the traveller the download on island 4G" — and a change there must
+          not need a deploy here.
+        */
+        maxBytes: data.maxBytes ?? 5 * 1024 * 1024,
+        expiresAt: data.expiresAt,
+      },
+    };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return { message: "No signal. Nothing was started." };
+    }
+    if (err instanceof OperatorApiError) {
+      if (err.status === 403) {
+        return { message: "Your role cannot upload photographs." };
+      }
+      if (err.status === 503) {
+        /*
+          "Image hosting is not configured on this service." Not the
+          operator's problem and not something a retry fixes, so it is said as
+          a state rather than as a failure they should try again.
+        */
+        return {
+          unavailable: true,
+          message:
+            "Photographs are switched off for now — nothing to do with your picture. We will tell you when they open.",
+        };
+      }
+      if (err.status === 502) {
+        // "The image host could not mint a slot. Retry safely."
+        return { message: "The picture host did not answer. Try again." };
+      }
+    }
+    return { message: "We could not start the upload. Try again." };
+  }
+}
+
+export interface PhotoCompleteState {
+  mediaAssetId?: string;
+  message?: string;
+}
+
+/**
+ * Confirm the photograph arrived — and it is the HOST that is asked, not us.
+ *
+ * "The host is asked whether the file arrived and who it belongs to; the client
+ * is not believed about either." So a browser that says it finished cannot
+ * produce a media asset out of nothing, which is the same property `complete`
+ * has on the video side.
+ *
+ * The two failures worth telling apart are `400` and `404`, and they mean
+ * different things to the person looking at the screen: one is "try again",
+ * the other is "that upload is not yours to finish".
+ */
+export async function completePhotoUpload(
+  imageId: string,
+): Promise<PhotoCompleteState> {
+  const parsed = z.string().min(1).safeParse(imageId);
+  if (!parsed.success) {
+    return { message: "There is nothing to confirm." };
+  }
+  const { token } = await requireOperator();
+
+  try {
+    const { data, error } = await operatorApi(token).POST(
+      "/media/photo-intents/complete",
+      { body: { imageId: parsed.data } },
+    );
+    if (error) throw error;
+
+    if (!data.mediaAssetId) {
+      return { message: "That upload did not finish — try again." };
+    }
+
+    // It is now a media asset awaiting review, and appears in `GET /media`
+    // like any other. The library must show it.
+    revalidatePath("/services/reels");
+    return { mediaAssetId: data.mediaAssetId };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return { message: "No signal. We could not confirm it — try again." };
+    }
+    if (err instanceof OperatorApiError) {
+      if (err.status === 400) {
+        // "The upload has not arrived at the host yet." The honest reading is
+        // that the file never made it, whatever the browser reported.
+        return { message: "That upload did not finish — try again." };
+      }
+      if (err.isNotFound) {
+        /*
+          404 covers "no such image" and "minted for another operator"
+          identically, on purpose: "telling somebody that image exists but is
+          not yours confirms it exists." One message, and it does not
+          speculate about which.
+        */
+        return { message: "We could not find that upload. Try again." };
+      }
+      if (err.status === 503) {
+        return { message: "Photographs are switched off for now." };
+      }
+    }
+    return { message: "We could not confirm that upload. Try again." };
   }
 }

@@ -34,7 +34,7 @@ export function SectionSwitch({
 
   const items = [
     { href: "/services/activities", label: "Activities", count: activities },
-    { href: "/services/reels", label: "Reels", count: reels },
+    { href: "/services/reels", label: "Photos & reels", count: reels },
   ];
 
   return (

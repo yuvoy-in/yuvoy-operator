@@ -6,10 +6,11 @@ import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { AttachForm, type ListingOption } from "./attach-form";
 import { Uploader } from "./uploader";
+import { PhotoUploader } from "./photo-uploader";
 import { SectionSwitch } from "../section-switch";
 import { WithdrawForm } from "./withdraw-form";
 
-export const metadata: Metadata = { title: "Reels" };
+export const metadata: Metadata = { title: "Photos & reels" };
 export const dynamic = "force-dynamic";
 
 type MediaItem = {
@@ -119,11 +120,11 @@ export default async function ReelsPage() {
     <Screen stageLabel="Services">
       <p className="eyebrow text-terra-deep">Manage services</p>
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-        Reels
+        Photos &amp; reels
       </h1>
       <p className="text-forest/70 mt-3 text-base">
-        Upload the real experience, let Yuvoy review it, then attach the
-        approved clip to the right listing.
+        Upload the real experience, let Yuvoy review it, then attach it to the
+        right listing. A photograph travels the same road as a clip.
       </p>
 
       <SectionSwitch activities={listings.length} reels={items.length} />
@@ -162,20 +163,49 @@ export default async function ReelsPage() {
         </div>
       </Panel>
 
+      {/*
+        Photographs — yuvoy-operator#27.
+
+        A separate panel rather than a mode on the one above: the two share
+        nothing before `complete` (different host, different limits, no tus, no
+        single-slot quota) and everything after it. Folding them together would
+        have meant one component whose every branch asks which kind it is.
+
+        Their ceilings are separate too — 20 each — "so a full gallery never
+        blocks a reel and a full reel library never blocks a photograph."
+      */}
+      <Panel className="mt-6">
+        <h2 className="font-display text-2xl">Add a photograph</h2>
+        <p className="text-forest/70 mt-2 text-sm">
+          For a listing that has no footage yet, or to show what a clip cannot.
+          Reviewed by a person, exactly like a reel.
+        </p>
+        <div className="mt-5">
+          <PhotoUploader />
+        </div>
+      </Panel>
+
       <section className="mt-12" aria-labelledby="your-reels">
         <div className="flex items-end justify-between gap-4">
           <h2 id="your-reels" className="font-display text-3xl">
-            Your reels
+            Your media
           </h2>
+          {/*
+            "item", not "clip". `GET /media` returns no `kind`, so once
+            photographs exist this list genuinely cannot tell one from the
+            other — and inferring it from an absent `durationSeconds` would
+            mislabel a clip that is still processing. Raised on yuvoy-api;
+            until it lands, nothing here claims a kind it cannot know.
+          */}
           <span className="label text-forest/70">
-            {items.length} {items.length === 1 ? "clip" : "clips"}
+            {items.length} {items.length === 1 ? "item" : "items"}
           </span>
         </div>
 
         {items.length === 0 ? (
           <Panel className="mt-4">
             <p className="text-sm">
-              No clips yet. The first upload will appear here.
+              Nothing yet. The first photograph or reel will appear here.
             </p>
           </Panel>
         ) : (

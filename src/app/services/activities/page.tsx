@@ -9,6 +9,12 @@ import {
 import { Screen } from "@/components/chrome/screen";
 import { Empty } from "@/components/ui/states";
 import { Panel } from "@/components/ui/panel";
+import {
+  categoryChoices,
+  destinationChoices,
+  marketName,
+  type Vocabulary,
+} from "@/lib/services/vocabulary";
 import { SectionSwitch } from "../section-switch";
 import { ListingRow } from "./listing-row";
 import { NewListingForm } from "./new-listing-form";
@@ -54,9 +60,17 @@ export default async function ActivitiesPage() {
     subject and the footage note is an extra, so it degrades to silence rather
     than to an error boundary. Same call `/capacity` makes about its picker.
   */
-  const [listingResult, mediaResult] = await Promise.all([
+  const [listingResult, mediaResult, vocabularyResult] = await Promise.all([
     client.GET("/experiences", {}),
     client.GET("/media", {}).catch(() => null),
+    /*
+      The category and destination pickers (yuvoy-api#113). Cacheable and
+      rarely-changing — "this changes when a destination opens, which is rare"
+      — and, like the media read, never allowed to cost the whole screen: the
+      categories are known at compile time from the request body's enum, so a
+      failed read costs the LABELS and the destination list, not the form.
+    */
+    client.GET("/catalog/vocabulary", {}).catch(() => null),
   ]);
   if (listingResult.error) throw listingResult.error;
 
@@ -75,25 +89,17 @@ export default async function ActivitiesPage() {
   const blank = listingsWithoutFootage(listings, attached);
 
   /*
-    The operator's own vocabulary, offered back to them.
+    Real pickers, from the server's own vocabulary (yuvoy-api#113 — closed).
 
-    The operator contract has no way to enumerate categories or destination
-    keys — `category` is a bare string and `destination` is "a destination key
-    in your own market" with nothing that lists a market's keys. A picker built
-    from a hardcoded list would be this portal inventing a vocabulary the
-    server owns, which is the one thing it must not do.
-
-    So the suggestions come from what they already have. Their second listing
-    is a tap; their first is typed against an example and refused with the
-    API's own message if it is wrong. Raised on yuvoy-api rather than papered
-    over.
+    Categories are built from the request body's ENUM and merely labelled from
+    this response, so a failed read leaves a usable picker with prettified
+    names rather than an empty one. Destinations are rows and have to come from
+    the response; empty is a state the form renders.
   */
-  const categories = [
-    ...new Set(listings.map((l) => l.category).filter(Boolean)),
-  ] as string[];
-  const destinations = [
-    ...new Set(listings.map((l) => l.destination).filter(Boolean)),
-  ] as string[];
+  const vocabulary: Vocabulary | null =
+    vocabularyResult && !vocabularyResult.error ? vocabularyResult.data : null;
+  const categories = categoryChoices(vocabulary);
+  const destinations = destinationChoices(vocabulary);
 
   return (
     <Screen stageLabel="Services">
@@ -131,7 +137,11 @@ export default async function ActivitiesPage() {
       ) : null}
 
       <div className="mt-6">
-        <NewListingForm categories={categories} destinations={destinations} />
+        <NewListingForm
+          categories={categories}
+          destinations={destinations}
+          market={marketName(vocabulary)}
+        />
       </div>
 
       <section className="mt-10" aria-labelledby="your-activities">

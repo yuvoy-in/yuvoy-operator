@@ -616,7 +616,7 @@ test("approved footage can be attached to a listing", async ({ page }) => {
   await signIn(page);
   await page.goto("/services/reels");
 
-  await expect(page.getByRole("heading", { name: "Your reels" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your media" })).toBeVisible();
   /*
     `.first()`: there is more than one approved clip in the fixtures now — one
     of them exists precisely to stay attached to nothing, so the cross-link on

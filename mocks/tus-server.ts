@@ -103,7 +103,7 @@ const TUS_HEADERS = {
 
 function cors(res: ServerResponse, origin: string | undefined) {
   res.setHeader("Access-Control-Allow-Origin", origin ?? "*");
-  res.setHeader("Access-Control-Allow-Methods", "HEAD, PATCH, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "HEAD, PATCH, POST, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Tus-Resumable, Upload-Offset, Upload-Length, Upload-Defer-Length, Content-Type",
@@ -124,6 +124,87 @@ function idOf(url: string | undefined): string | null {
   return m ? m[1] : null;
 }
 
+/**
+ * Photographs that have actually arrived at this "host", by image id.
+ *
+ * The whole reason `POST /media/photo-intents/complete` exists is that "the
+ * host is asked whether the file arrived and who it belongs to; the client is
+ * not believed about either." A mock that let `complete` succeed for an id
+ * nothing was ever uploaded against would delete that property and let a
+ * browser mint a media asset out of a failed upload.
+ */
+const photos = new Map<string, { bytes: number }>();
+
+export function mockPhotoArrived(imageId: string): boolean {
+  return photos.has(imageId);
+}
+
+export function resetMockPhotos(): void {
+  photos.clear();
+}
+
+/** `/photos/<imageId>` → the id, or null. */
+function photoIdOf(url: string | undefined): string | null {
+  const m = (url ?? "").match(/^\/photos\/([^/?]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * The image host — one multipart POST, no tus.
+ *
+ * A DIFFERENT ORIGIN from the app, exactly as the video host is and exactly as
+ * production is: "bytes never pass through this API". Running it here keeps the
+ * client's `fetch` a genuine cross-origin upload rather than a same-origin call
+ * that would pass whatever CORS mistake we made.
+ */
+function handlePhoto(
+  req: IncomingMessage,
+  res: ServerResponse,
+  imageId: string,
+) {
+  if (req.method !== "POST") {
+    res.statusCode = 405;
+    return res.end();
+  }
+
+  const type = String(req.headers["content-type"] ?? "");
+  if (!type.startsWith("multipart/form-data")) {
+    /*
+      The contract says multipart with the field name `file`. Refused rather
+      than shrugged at, because a client that sent the raw blob would work
+      against a tolerant mock and fail against the host.
+    */
+    res.statusCode = 400;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.end("Expected multipart/form-data with a `file` field.");
+  }
+
+  let received = 0;
+  let sawFileField = false;
+  req.on("data", (chunk: Buffer) => {
+    received += chunk.length;
+    // Enough to tell a `file` part from something else without pulling in a
+    // multipart parser for a mock.
+    if (!sawFileField && chunk.toString("latin1").includes('name="file"')) {
+      sawFileField = true;
+    }
+  });
+  req.on("end", () => {
+    if (!sawFileField) {
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      return res.end("No `file` field in the upload.");
+    }
+    photos.set(imageId, { bytes: received });
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ id: imageId, uploaded: true }));
+  });
+  req.on("error", () => {
+    /* The socket went. Nothing is recorded, and `complete` will 400. */
+  });
+}
+
 function handle(req: IncomingMessage, res: ServerResponse) {
   cors(res, req.headers.origin);
   for (const [k, v] of Object.entries(TUS_HEADERS)) res.setHeader(k, v);
@@ -132,6 +213,9 @@ function handle(req: IncomingMessage, res: ServerResponse) {
     res.statusCode = 204;
     return res.end();
   }
+
+  const photoId = photoIdOf(req.url);
+  if (photoId) return handlePhoto(req, res, photoId);
 
   const id = idOf(req.url);
   const upload = id ? uploads.get(id) : undefined;
