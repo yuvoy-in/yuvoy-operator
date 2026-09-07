@@ -127,9 +127,30 @@ function DepartureRound({
                 departure at that time, so those were left alone.
               </p>
             ) : (
+              /*
+                NOT "they are on sale from now" — yuvoy-operator#30 §4.
+
+                That was untrue for a draft listing, an unpriced one, a
+                withdrawn one, and an operator who is not selling. Production
+                currently holds a draft listing with hundreds of departures no
+                traveller can book, every one of which this sentence claimed
+                was selling.
+
+                `GET /slots` gains `onSale` and `notOnSaleReason` in migration
+                0055, which is what will let this screen say WHICH of those it
+                is. Until then it says the part that is true of every case —
+                the departure exists — and does not claim the sale.
+              */
               <p className="text-forest/80 mt-2 text-sm">
-                They are on sale from now. You can change the seats on each one
-                below.
+                They exist now. Whether travellers can book them depends on the
+                activity being on sale — check it on{" "}
+                <a
+                  href="/services/activities"
+                  className="underline underline-offset-2"
+                >
+                  Activities
+                </a>
+                . You can change the seats on each one below.
               </p>
             )}
           </>
@@ -187,9 +208,23 @@ function DepartureRound({
           departures you already have, and there are none within four months
           either side of today.
         </p>
+        {/*
+          "Message us and we will add the first one for you" stopped being true
+          when the portal gained listing creation (yuvoy-operator#30 §4). An
+          operator with no departures now has a screen that can make one — and
+          telling them to message us instead is a day of waiting for something
+          they could do in a minute.
+        */}
         <p className="text-forest/80 mt-2 text-sm">
-          Message us and we will add the first one for you. After that you can
-          add the rest from this screen.
+          If you have an activity already, add a departure to it below. If you
+          have not written one yet, start on{" "}
+          <a
+            href="/services/activities"
+            className="underline underline-offset-2"
+          >
+            Activities
+          </a>
+          .
         </p>
       </Panel>
     );

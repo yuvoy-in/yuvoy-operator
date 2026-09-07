@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import {
   countLibrary,
   describeKind,
+  describeMissingPreview,
   canWithdraw,
   unattached,
   type MediaItem,
@@ -211,6 +212,11 @@ export default async function ReelsPage() {
             {items.map((item) => {
               const copy = mediaCopy(item.state);
               const kind = describeKind(item.kind);
+              // What the frame says when there is no picture — and there
+              // usually is not. See `describeMissingPreview`.
+              const missing = item.posterUrl
+                ? null
+                : describeMissingPreview(item);
               return (
                 <li key={item.id}>
                   <Panel>
@@ -245,7 +251,18 @@ export default async function ReelsPage() {
                         // frame: it wastes less of the screen when wrong.
                         kind?.frame ?? "aspect-[4/3]",
                         !item.posterUrl &&
-                          "border-cream-line flex items-center justify-center border border-dashed",
+                          "flex items-center justify-center border border-dashed",
+                        /*
+                          A refused or broken row is drawn differently from one
+                          that is simply on its way. yuvoy-operator#29: "a
+                          single grey box flattens them", and the difference an
+                          operator needs at a glance is whether anything is
+                          wrong at all.
+                        */
+                        !item.posterUrl &&
+                          (missing?.faulted
+                            ? "border-terra-deep/40"
+                            : "border-cream-line"),
                       )}
                       style={
                         item.posterUrl
@@ -270,19 +287,23 @@ export default async function ReelsPage() {
                         upload" to the person who just spent twenty minutes of
                         island uplink on it.
                       */}
-                      {!item.posterUrl ? (
-                        /*
-                          Full-strength forest, not the `/70` the rest of this
-                          panel uses. `text-forest/70` on the tinted frame
-                          measures 4.36:1 against `cream-deep` — under the 4.5
-                          AA floor for 12px text — and axe on /services/reels
-                          caught it, which looking at it would not have. The
-                          tint is what makes an empty frame read as a frame, so
-                          the text moves rather than the ground.
-                        */
+                      {/*
+                        Full-strength forest, not the `/70` the rest of this
+                        panel uses. `text-forest/70` on the tinted frame
+                        measures 4.36:1 against `cream-deep` — under the 4.5 AA
+                        floor for 12px text — and axe on /services/reels caught
+                        it, which looking at it would not have. The tint is what
+                        makes an empty frame read as a frame, so the text moves
+                        rather than the ground.
+
+                        An empty `line` is deliberate, not a bug: a refused row
+                        says nothing about the picture, because the reviewer's
+                        reason below is the thing that matters and "no preview
+                        yet" would read as a technical hiccup instead.
+                      */}
+                      {missing?.line ? (
                         <p className="text-forest px-6 text-center text-xs">
-                          No preview yet. The row below is the truth about this
-                          one.
+                          {missing.line}
                         </p>
                       ) : null}
                     </div>

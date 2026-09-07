@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   describeKind,
+  describeMissingPreview,
   countLibrary,
   canWithdraw,
   unattached,
@@ -162,5 +163,106 @@ describe("unattached", () => {
         item({ state: "approved", listing: { experienceId: "e", title: "T" } }),
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("what a tile says when there is no picture", () => {
+  /*
+    yuvoy-operator#29. 270 of 342 assets have no stored poster, so this is the
+    common row rather than the edge case — and one sentence for all of them
+    flattens four situations that mean different things to an operator.
+  */
+  const line = (over: Partial<MediaItem>) =>
+    describeMissingPreview(item(over)).line;
+
+  it("says nothing is wrong while a clip is still arriving", () => {
+    for (const state of ["uploaded", "processing"]) {
+      const p = describeMissingPreview(item({ kind: "video", state }));
+      expect(p.faulted, state).toBe(false);
+      expect(p.line, state).toMatch(/still arriving/i);
+    }
+  });
+
+  it("puts `ready` with the operator, not with us", () => {
+    /*
+      The one correction to the issue's grouping. It lists `ready` alongside
+      `attested` and `in_moderation` as "waiting on us — the most reassuring
+      thing this screen can say". It is not: `ready` means the rights have not
+      been attested, which is the operator's own next act, and this portal
+      already says so on the row. Calling it reassuring parks a clip forever.
+    */
+    expect(line({ kind: "video", state: "ready" })).toMatch(/below is yours/i);
+    expect(line({ kind: "video", state: "approved" })).toMatch(
+      /below is yours/i,
+    );
+  });
+
+  it("says a clip in review is with us", () => {
+    for (const state of ["attested", "in_moderation"]) {
+      expect(line({ kind: "video", state }), state).toMatch(/with us/i);
+    }
+  });
+
+  it("says nothing about a picture on a row a person refused", () => {
+    /*
+      `rejection.code` is a closed set and is rendered below the tile, which is
+      the thing that matters. "No preview yet" on a refused row reads as a
+      technical hiccup rather than a decision.
+    */
+    for (const state of ["rejected", "quarantined"]) {
+      const p = describeMissingPreview(item({ kind: "video", state }));
+      expect(p.line, state).toBe("");
+      expect(p.faulted, state).toBe(true);
+    }
+  });
+
+  it("marks a photograph with no picture as a fault, whatever its state", () => {
+    /*
+      For an image the picture IS the item and the API builds its URL at read
+      time, so there is no state in which a photograph legitimately has nothing
+      to show. Explaining a clip's publication rule to somebody looking at a
+      photo would be a confident wrong answer.
+    */
+    for (const state of ["ready", "in_moderation", "published"]) {
+      const p = describeMissingPreview(item({ kind: "image", state }));
+      expect(p.faulted, state).toBe(true);
+      expect(p.line, state).toMatch(/did not load/i);
+      expect(p.line, state).not.toMatch(/reel/i);
+    }
+  });
+
+  it("treats a published clip with no still as anomalous, not as normal", () => {
+    // A published clip is exactly the one that should have resolved a poster.
+    const p = describeMissingPreview(
+      item({ kind: "video", state: "published" }),
+    );
+    expect(p.faulted).toBe(true);
+  });
+
+  it("separates the four groups rather than repeating one sentence", () => {
+    // The whole point of the issue: a single grey box flattens them.
+    const lines = ["processing", "ready", "in_moderation", "failed"].map(
+      (state) => line({ kind: "video", state }),
+    );
+    expect(new Set(lines).size).toBe(lines.length);
+  });
+
+  it("says nothing on a row whose chip already says it", () => {
+    /*
+      `withdrawn` and the refused pair are deliberately silent. The chip below
+      already carries the word, and for `withdrawn` a second paragraph saying
+      "Taken down" also collided with the withdrawal receipt's own heading —
+      which made an assertion elsewhere resolve to one element or two depending
+      on render timing.
+    */
+    expect(line({ kind: "video", state: "withdrawn" })).toBe("");
+  });
+
+  it("claims nothing about a state it cannot name", () => {
+    const p = describeMissingPreview(
+      item({ kind: "video", state: "teleported" }),
+    );
+    expect(p.line).toBe("No preview yet.");
+    expect(p.faulted).toBe(false);
   });
 });

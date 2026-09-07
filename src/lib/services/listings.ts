@@ -290,3 +290,53 @@ export function listingsWithoutFootage(
       !attachedExperienceIds.has(l.id),
   );
 }
+
+/**
+ * How a price is stated — yuvoy-operator#30 §1.
+ *
+ * `experiences.pricing_unit` has always existed and checkout has always
+ * divided correctly for a group price. What was missing is anybody SAYING
+ * which one applies: the column defaulted to `per_person`, so a listing nobody
+ * was asked about was indistinguishable from a private charter deliberately
+ * priced for the group.
+ *
+ * That mattered less when nothing displayed it. It matters now that the
+ * traveller card and detail page render the basis next to the rupee figure
+ * (yuvoy-app#20): a ₹12,000 charter for six would read "₹12,000 per person"
+ * with our authority behind it. That is a consumer pricing misstatement, and
+ * it is the class of claim this project removed a whole site over.
+ *
+ * ## Why the picker ships before the migration
+ *
+ * `pricingUnit` is already on the create body in the pinned contract, as
+ * `enum: [per_person, per_group], default: per_person`. Migration 0056 removes
+ * that default and records an absent value as *unstated*. A form that always
+ * sends the operator's explicit choice is correct against BOTH versions —
+ * today it overrides a default, afterwards it satisfies a requirement — so
+ * nothing here has to change when the migration lands.
+ *
+ * **Neither option is preselected, and that is the whole point.** The API
+ * deliberately treats absent and chosen differently, so shipping a default
+ * would defeat the change it is built for. Same call the reel rights
+ * attestation makes about consent: an unanswered question is refused, never
+ * sent as a quiet assumption.
+ */
+export const PRICING_UNITS = [
+  {
+    value: "per_person",
+    label: "Per person",
+    hint: "Each traveller pays this.",
+  },
+  {
+    value: "per_group",
+    label: "For the group",
+    hint: "One price for the whole booking, however many come.",
+  },
+] as const;
+
+export type PricingUnit = (typeof PRICING_UNITS)[number]["value"];
+
+/** The phrase to show beside a price, or null for a basis nobody has stated. */
+export function describePricingUnit(unit: string | undefined): string | null {
+  return PRICING_UNITS.find((u) => u.value === unit)?.label ?? null;
+}

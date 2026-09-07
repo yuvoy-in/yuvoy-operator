@@ -156,7 +156,9 @@ test("an operator writes a listing, and it lands as a draft", async ({
     .getByLabel("What kind of thing it is")
     .selectOption("nature_wildlife");
   await page.getByLabel("Where it runs").selectOption("andaman/havelock");
-  await page.getByLabel("Price per person").fill("2200");
+  await page.getByLabel("Price", { exact: true }).fill("2200");
+  // A price has to state its basis now — yuvoy-operator#30 §1.
+  await page.getByRole("radio", { name: /For the group/ }).check();
   await page.getByRole("button", { name: "Save as a draft" }).click();
 
   // A draft, and the screen says what that is NOT.
@@ -366,4 +368,42 @@ test("a clip nobody can act on is offered no way down", async ({ page }) => {
   await expect(
     failed.getByRole("button", { name: "Take it down" }),
   ).toHaveCount(0);
+});
+
+test("an edit can change the fields that were only ever defaults", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#30 §5. The contract names these as material — "price, safety
+    notes, inclusions, requirements, duration or party size" — and every one of
+    them was on the wire and settable nowhere, so every listing this portal
+    created shipped as two hours and six people.
+
+    Asserted on the READ side: the form has to arrive carrying what the listing
+    already says, or an operator editing one field silently clears the rest.
+    The arrays are the interesting half — they are arrays on the wire and one
+    per line on the form, and that conversion is easy to get right in one
+    direction only.
+  */
+  await signIn(page);
+  await page.goto("/services/activities");
+
+  const row = page.locator("li").filter({ hasText: "Reef dive" });
+  await row.getByRole("button", { name: "Propose a change" }).click();
+
+  await expect(row.getByLabel("How long, in minutes")).toHaveValue("180");
+  await expect(row.getByLabel("Most people per booking")).toHaveValue("6");
+  await expect(row.getByLabel("What is included")).toHaveValue(
+    "Mask and fins\nOne guided dive\nDrinking water",
+  );
+  await expect(
+    row.getByLabel("What a traveller needs to bring or be able to do"),
+  ).toHaveValue("Able to swim 50m\nNo diving within 24h of flying");
+  await expect(row.getByLabel("Safety notes")).toHaveValue(
+    "Two guides in the water on every dive.",
+  );
+
+  // And the basis it already has is shown as chosen, unlike on the create form
+  // — showing it blank would read as "we lost your setting".
+  await expect(row.getByRole("radio", { name: /Per person/ })).toBeChecked();
 });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  describePricingUnit,
+  PRICING_UNITS,
   describeRejection,
   describeStatus,
   listingsWithoutFootage,
@@ -278,5 +280,47 @@ describe("which activities have no video", () => {
       new Set(),
     );
     expect(blank).toHaveLength(2);
+  });
+});
+
+describe("how a price is stated", () => {
+  /*
+    yuvoy-operator#30 §1. The column always existed and checkout always divided
+    correctly for a group price; what was missing is anybody SAYING which one
+    applies, so a listing nobody was asked about was indistinguishable from a
+    charter deliberately priced for the group.
+  */
+  it("offers exactly the two the contract declares", () => {
+    expect(PRICING_UNITS.map((u) => u.value)).toEqual([
+      "per_person",
+      "per_group",
+    ]);
+  });
+
+  it("names each one in words an operator uses", () => {
+    expect(describePricingUnit("per_person")).toBe("Per person");
+    expect(describePricingUnit("per_group")).toBe("For the group");
+  });
+
+  it("returns null for a basis nobody has stated", () => {
+    /*
+      The whole point of migration 0056: absent is UNSTATED, not per-person.
+      A helper that fell back to "Per person" here would put the misstatement
+      back one layer down, which is exactly what the API stopped doing.
+    */
+    expect(describePricingUnit(undefined)).toBeNull();
+    expect(describePricingUnit("")).toBeNull();
+  });
+
+  it("claims nothing about a basis it does not recognise", () => {
+    expect(describePricingUnit("per_boat")).toBeNull();
+  });
+
+  it("gives every option a hint, because the labels alone are ambiguous", () => {
+    // "For the group" without "one price for the whole booking" is the sort of
+    // phrase an operator reads two ways and picks the wrong one.
+    for (const unit of PRICING_UNITS) {
+      expect(unit.hint.length, unit.value).toBeGreaterThan(10);
+    }
   });
 });

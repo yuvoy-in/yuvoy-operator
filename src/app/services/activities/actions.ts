@@ -41,7 +41,14 @@ import { CATEGORIES, type Category } from "@/lib/services/vocabulary";
 
 export interface CreateState {
   message?: string;
-  field?: "title" | "category" | "destination" | "unitPrice";
+  field?:
+    | "title"
+    | "category"
+    | "destination"
+    | "unitPrice"
+    | "pricingUnit"
+    | "durationMinutes"
+    | "maxPartySize";
   /** Set when the draft exists, so the screen can say what it is NOT. */
   created?: { id: string; title: string };
 }
@@ -55,33 +62,77 @@ export interface CreateState {
  * first listing. The rest is edited afterwards, through review, which is where
  * those fields belong anyway: they are material changes.
  */
-const createSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(3, "What is it called? A traveller will read this first."),
-  /*
+const createSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(3, "What is it called? A traveller will read this first."),
+    /*
     The enum, not free text. `category` is "closed and enforced by a database
     constraint, so a value outside this set is a 400" — and the generated type
     now says so, which is how the re-pin caught the old text box the moment the
     enum landed.
   */
-  category: z.enum(CATEGORIES as unknown as [Category, ...Category[]], {
-    message: "Choose what kind of thing this is.",
-  }),
-  destination: z.string().trim().min(1, "Where does it run?"),
-  /*
+    category: z.enum(CATEGORIES as unknown as [Category, ...Category[]], {
+      message: "Choose what kind of thing this is.",
+    }),
+    destination: z.string().trim().min(1, "Where does it run?"),
+    /*
     Optional, and the form says what leaving it out costs rather than refusing
     it: "a listing without `unitPricePaise` can be saved but cannot be
     approved, which the response reports as `sellable: false`". An operator
     should learn that while writing rather than after waiting for a review.
   */
-  unitPrice: z
-    .string()
-    .trim()
-    .transform((v) => v.replace(/[,\s₹]/g, ""))
-    .pipe(z.string().regex(/^\d*$/, "A price in whole rupees, digits only.")),
-});
+    unitPrice: z
+      .string()
+      .trim()
+      .transform((v) => v.replace(/[,\s₹]/g, ""))
+      .pipe(z.string().regex(/^\d*$/, "A price in whole rupees, digits only.")),
+    /*
+    Optional here and REQUIRED the moment a price is given — see the refine
+    below. `pricingUnit` describes a price, so asking "per person or for the
+    group?" about a price that does not exist yet is a forced choice about
+    nothing.
+  */
+    pricingUnit: z
+      .enum(["per_person", "per_group"])
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    /*
+      Duration and party size — yuvoy-operator#30 §5.
+
+      Both DEFAULT server-side (120 minutes, 6 people) and were settable
+      nowhere, so "every listing ships as two hours and six people". That is
+      not a harmless default: duration is rendered on the traveller's card, so
+      a two-hour claim about a full-day charter is the same class of
+      misstatement as the pricing basis above.
+
+      Optional rather than required — an operator writing a first draft should
+      not be blocked on it — but sent whenever given, so the server's default
+      only survives when nobody has said otherwise.
+    */
+    durationMinutes: z
+      .string()
+      .trim()
+      .pipe(z.string().regex(/^\d*$/, "Minutes, digits only."))
+      .optional(),
+    maxPartySize: z
+      .string()
+      .trim()
+      .pipe(z.string().regex(/^\d*$/, "A number of people, digits only."))
+      .optional(),
+  })
+  .refine((v) => !v.unitPrice || v.pricingUnit !== undefined, {
+    path: ["pricingUnit"],
+    /*
+    Refused rather than defaulted. The API stopped defaulting `pricingUnit`
+    precisely so an unanswered listing is recorded as unstated (yuvoy-api
+    migration 0056), and a form that quietly sent `per_person` would defeat the
+    change it exists for — with a consumer pricing misstatement as the result.
+  */
+    message: "Say whether that price is per person or for the whole group.",
+  });
 
 export async function createListing(
   _prev: CreateState,
@@ -92,6 +143,9 @@ export async function createListing(
     category: String(form.get("category") ?? ""),
     destination: String(form.get("destination") ?? ""),
     unitPrice: String(form.get("unitPrice") ?? ""),
+    pricingUnit: String(form.get("pricingUnit") ?? ""),
+    durationMinutes: String(form.get("durationMinutes") ?? ""),
+    maxPartySize: String(form.get("maxPartySize") ?? ""),
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -113,6 +167,16 @@ export async function createListing(
         // Paise, because the contract counts in paise. Rupees on the form,
         // because nobody prices a dive in paise.
         ...(rupees ? { unitPricePaise: Number(rupees) * 100 } : {}),
+        // Sent only when the operator actually said. Never defaulted.
+        ...(parsed.data.pricingUnit
+          ? { pricingUnit: parsed.data.pricingUnit }
+          : {}),
+        ...(parsed.data.durationMinutes
+          ? { durationMinutes: Number(parsed.data.durationMinutes) }
+          : {}),
+        ...(parsed.data.maxPartySize
+          ? { maxPartySize: Number(parsed.data.maxPartySize) }
+          : {}),
       },
     });
     if (error) throw error;
@@ -188,7 +252,54 @@ const revisionSchema = z.object({
     .transform((v) => v.replace(/[,\s₹]/g, ""))
     .pipe(z.string().regex(/^\d*$/, "A price in whole rupees, digits only."))
     .optional(),
+  /*
+    The basis, on an edit too. Every listing written before yuvoy-operator#30
+    has whatever the column defaulted to, so the edit form is where the
+    unstated ones actually get answered — the create form only fixes the ones
+    written from now on.
+  */
+  pricingUnit: z.enum(["per_person", "per_group"]).optional(),
+  /*
+    The material changes the contract names — yuvoy-operator#30 §5.
+
+    "Changes to price, safety notes, inclusions, requirements, duration or
+    party size are *material* and need review before going live." Every one of
+    those was in the contract and settable nowhere in this portal, which is why
+    every listing carries the server's defaults.
+
+    The revision body is `additionalProperties: true` with no declared fields,
+    so the spelling comes from the CREATE body — the one place the names are
+    declared. `publishBlockers` uses the same spellings, which is the second
+    confirmation.
+  */
+  durationMinutes: z
+    .string()
+    .trim()
+    .pipe(z.string().regex(/^\d*$/, "Minutes, digits only."))
+    .optional(),
+  maxPartySize: z
+    .string()
+    .trim()
+    .pipe(z.string().regex(/^\d*$/, "A number of people, digits only."))
+    .optional(),
+  /*
+    Arrays on the wire, one per line on the form. An operator writes "Mask and
+    fins" on its own line, not as a comma-separated string they have to think
+    about escaping — and blank lines are dropped rather than sent as empty
+    inclusions nobody typed.
+  */
+  inclusions: z.string().optional(),
+  requirements: z.string().optional(),
 });
+
+/** One per line, trimmed, blanks dropped. */
+function lines(value: string | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
 
 export async function submitRevision(
   _prev: RevisionState,
@@ -210,6 +321,26 @@ export async function submitRevision(
     unitPrice: form.has("unitPrice")
       ? String(form.get("unitPrice"))
       : undefined,
+    /*
+      Absent when no radio is checked, which on this form means the listing had
+      no stored basis and the operator did not answer. Left out of the body
+      rather than defaulted, for the same reason the create form refuses one.
+    */
+    pricingUnit: form.get("pricingUnit")
+      ? String(form.get("pricingUnit"))
+      : undefined,
+    durationMinutes: form.has("durationMinutes")
+      ? String(form.get("durationMinutes"))
+      : undefined,
+    maxPartySize: form.has("maxPartySize")
+      ? String(form.get("maxPartySize"))
+      : undefined,
+    inclusions: form.has("inclusions")
+      ? String(form.get("inclusions"))
+      : undefined,
+    requirements: form.has("requirements")
+      ? String(form.get("requirements"))
+      : undefined,
   };
 
   const parsed = revisionSchema.safeParse(raw);
@@ -217,7 +348,15 @@ export async function submitRevision(
     return { message: parsed.error.issues[0].message };
   }
 
-  const { id, unitPrice, ...fields } = parsed.data;
+  const {
+    id,
+    unitPrice,
+    durationMinutes,
+    maxPartySize,
+    inclusions,
+    requirements,
+    ...fields
+  } = parsed.data;
 
   /*
     Only what changed. An empty string is a deliberate clearing and is sent;
@@ -230,6 +369,22 @@ export async function submitRevision(
   if (unitPrice !== undefined && unitPrice !== "") {
     body.unitPricePaise = Number(unitPrice) * 100;
   }
+  /*
+    Numbers only when non-empty. A cleared box is NOT a change to zero — a
+    zero-minute activity is not a thing an operator means, and the server's
+    value is better than a number nobody typed.
+  */
+  if (durationMinutes) body.durationMinutes = Number(durationMinutes);
+  if (maxPartySize) body.maxPartySize = Number(maxPartySize);
+  /*
+    Arrays, unlike the numbers above, ARE clearable: an empty box means "there
+    is nothing included", which is a real answer and different from silence.
+    The field is only in the body when it was on the form at all.
+  */
+  const included = lines(inclusions);
+  if (included !== undefined) body.inclusions = included;
+  const required = lines(requirements);
+  if (required !== undefined) body.requirements = required;
 
   if (Object.keys(body).length === 0) {
     return { message: "Nothing has changed, so there is nothing to send." };

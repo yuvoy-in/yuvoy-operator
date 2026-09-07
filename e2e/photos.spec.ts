@@ -237,7 +237,51 @@ test("a row with no preview says so, instead of being a grey rectangle", async (
   const processing = page
     .getByRole("listitem")
     .filter({ hasText: "The media host is preparing it." });
-  await expect(processing.getByText(/No preview yet/)).toBeVisible();
+  /*
+    And it says WHICH kind of nothing — yuvoy-operator#29. A clip still
+    arriving has no still at any price, and saying so is the difference between
+    "nothing is wrong" and an unexplained empty box to somebody who has just
+    spent twenty minutes of island uplink on the upload.
+  */
+  await expect(processing.getByText(/Still arriving/)).toBeVisible();
+});
+
+test("the four kinds of missing picture do not read the same", async ({
+  page,
+}) => {
+  /*
+    The actual ask of yuvoy-operator#29: "a single grey box flattens them."
+    270 of 342 assets have no stored poster, so this is the common row, and an
+    operator scanning the list needs to tell a clip on its way from one a
+    reviewer refused.
+  */
+  await signIn(page);
+  await page.goto("/services/reels");
+
+  /*
+    `.first()` on every row, deliberately. Other tests in this file upload into
+    the same shared Next server, so a state's row count grows during a full run
+    — and the assertion is about what a row of that state SAYS, not how many
+    exist. Without it this passes alone and fails on the second project.
+  */
+  const rowSaying = (body: string) =>
+    page.getByRole("listitem").filter({ hasText: body }).first();
+
+  // In flight — nothing is wrong, and that is the whole message.
+  await expect(
+    rowSaying("The media host is preparing it.").getByText(/Still arriving/),
+  ).toBeVisible();
+
+  // With us — the most reassuring thing the screen can say.
+  await expect(
+    rowSaying("A person at Yuvoy will watch it.").getByText(/With us/),
+  ).toBeVisible();
+
+  // Waiting on the operator, and `ready` belongs HERE rather than with the two
+  // above: it means the rights are unattested, which is their own next act.
+  await expect(
+    rowSaying("Choose the listing it belongs to.").getByText(/below is yours/),
+  ).toBeVisible();
 });
 
 test("a photograph shows its picture before it is published", async ({
@@ -325,7 +369,87 @@ test("a listing can be created straight from the pickers", async ({
   await page
     .getByLabel("Where it runs")
     .selectOption({ label: "Neil (Shaheed Dweep)" });
-  await page.getByLabel("Price per person").fill("1800");
+  await page.getByLabel("Price", { exact: true }).fill("1800");
+  // A price now has to say what it means — yuvoy-operator#30 §1.
+  await page.getByRole("radio", { name: /Per person/ }).check();
+  await page.getByRole("button", { name: "Save as a draft" }).click();
+
+  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
+});
+
+test("a price must say whether it is per person or for the group", async ({
+  page,
+}, testInfo) => {
+  /*
+    yuvoy-operator#30 §1, and the reason it is a refusal rather than a default.
+
+    `experiences.pricing_unit` always existed and checkout always divided
+    correctly for a group price; what was missing is anybody stating which
+    applies. The API stopped defaulting it so an unanswered listing is recorded
+    as UNSTATED — and a form that quietly sent `per_person` would put the
+    misstatement straight back, with our authority behind it on the traveller's
+    card: a ₹12,000 charter for six reading "₹12,000 per person".
+
+    So an unanswered price is refused here rather than guessed.
+  */
+  const suffix = testInfo.project.name === "mobile" ? "a" : "b";
+
+  await signIn(page);
+  await page.goto("/services/activities");
+  await page.getByRole("button", { name: "Add an activity" }).click();
+
+  await page.getByLabel("What is it called").fill(`Unstated basis ${suffix}`);
+  await page
+    .getByLabel("What kind of thing it is")
+    .selectOption({ label: "Nature & wildlife" });
+  await page
+    .getByLabel("Where it runs")
+    .selectOption({ label: "Neil (Shaheed Dweep)" });
+  await page.getByLabel("Price", { exact: true }).fill("12000");
+
+  // Neither option preselected — that is the whole point of the control.
+  await expect(
+    page.getByRole("radio", { name: /Per person/ }),
+  ).not.toBeChecked();
+  await expect(
+    page.getByRole("radio", { name: /For the group/ }),
+  ).not.toBeChecked();
+
+  await page.getByRole("button", { name: "Save as a draft" }).click();
+
+  await expect(
+    page.getByText(/per person or for the whole group/i),
+  ).toBeVisible();
+  // And nothing was created behind the refusal.
+  await expect(
+    page.getByText(`Unstated basis ${suffix} is a draft`),
+  ).toBeHidden();
+});
+
+test("a listing with no price is not asked for a basis", async ({
+  page,
+}, testInfo) => {
+  /*
+    `pricingUnit` describes a price. Asking "per person or for the group?"
+    about a price that does not exist yet is a forced choice about nothing —
+    and the price is deliberately optional, because a listing without one
+    "saves but cannot be approved" and an operator should be able to write the
+    rest first.
+  */
+  const suffix = testInfo.project.name === "mobile" ? "a" : "b";
+  const title = `No price yet ${suffix}`;
+
+  await signIn(page);
+  await page.goto("/services/activities");
+  await page.getByRole("button", { name: "Add an activity" }).click();
+
+  await page.getByLabel("What is it called").fill(title);
+  await page
+    .getByLabel("What kind of thing it is")
+    .selectOption({ label: "Nature & wildlife" });
+  await page
+    .getByLabel("Where it runs")
+    .selectOption({ label: "Neil (Shaheed Dweep)" });
   await page.getByRole("button", { name: "Save as a draft" }).click();
 
   await expect(page.getByText(`${title} is a draft`)).toBeVisible();

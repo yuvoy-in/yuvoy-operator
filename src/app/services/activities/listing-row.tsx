@@ -5,6 +5,7 @@ import { submitRevision, type RevisionState } from "./actions";
 import {
   describeRejection,
   describeStatus,
+  PRICING_UNITS,
   type OperatorExperience,
 } from "@/lib/services/listings";
 import { Button } from "@/components/ui/button";
@@ -223,7 +224,7 @@ export function ListingRow({
               htmlFor={`price-${listing.id}`}
               className="label text-forest/75"
             >
-              Price per person
+              Price
             </label>
             <input
               id={`price-${listing.id}`}
@@ -237,6 +238,159 @@ export function ListingRow({
               className={inputClass("mt-2")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">In rupees.</p>
+          </div>
+
+          {/*
+            The basis, on the edit form too — yuvoy-operator#30 §1.
+
+            An existing listing is where the unstated ones actually are: every
+            listing written before this shipped has whatever the column
+            defaulted to, and the create form only fixes the ones written from
+            now on.
+
+            **Preselected here, and only here.** On the create form neither is
+            chosen, because an absent answer must stay absent. Here there IS a
+            stored value and the field is a revision — showing it unselected
+            would read as "we lost your setting", and submitting the form would
+            then clear a basis the operator never touched.
+          */}
+          <fieldset className="mt-4">
+            <legend className="label text-forest/75">
+              Is that per person, or for the whole group?
+            </legend>
+            <div className="mt-3 space-y-2">
+              {PRICING_UNITS.map((unit) => (
+                <label
+                  key={unit.value}
+                  className="border-cream-line rounded-control flex min-h-14 cursor-pointer items-start gap-3 border p-3"
+                >
+                  <input
+                    type="radio"
+                    name="pricingUnit"
+                    value={unit.value}
+                    defaultChecked={listing.pricingUnit === unit.value}
+                    className="accent-forest mt-0.5 size-5 shrink-0"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold">
+                      {unit.label}
+                    </span>
+                    <span className="text-forest/70 block text-xs">
+                      {unit.hint}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          {/*
+            The material changes — yuvoy-operator#30 §5.
+
+            The contract names exactly these as needing review: "price, safety
+            notes, inclusions, requirements, duration or party size". All of
+            them existed on the wire and none could be set anywhere in this
+            portal, which is why every listing carries the server's defaults.
+
+            Inclusions and requirements are one per line rather than
+            comma-separated: an operator writing "Mask and fins" should not
+            have to think about escaping, and a line is how they already think
+            about a list.
+          */}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor={`duration-${listing.id}`}
+                className="label text-forest/75"
+              >
+                How long, in minutes
+              </label>
+              <input
+                id={`duration-${listing.id}`}
+                name="durationMinutes"
+                inputMode="numeric"
+                defaultValue={listing.durationMinutes ?? ""}
+                className={inputClass("mt-2")}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor={`party-${listing.id}`}
+                className="label text-forest/75"
+              >
+                Most people per booking
+              </label>
+              <input
+                id={`party-${listing.id}`}
+                name="maxPartySize"
+                inputMode="numeric"
+                defaultValue={listing.maxPartySize ?? ""}
+                className={inputClass("mt-2")}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <label
+              htmlFor={`inclusions-${listing.id}`}
+              className="label text-forest/75"
+            >
+              What is included
+            </label>
+            <textarea
+              id={`inclusions-${listing.id}`}
+              name="inclusions"
+              rows={3}
+              defaultValue={(listing.inclusions ?? []).join("\n")}
+              className={inputClass("mt-2")}
+            />
+            <p className="text-forest/70 mt-1.5 text-xs">
+              One per line. Leave it empty if nothing is included.
+            </p>
+          </div>
+
+          <div className="mt-4">
+            <label
+              htmlFor={`requirements-${listing.id}`}
+              className="label text-forest/75"
+            >
+              What a traveller needs to bring or be able to do
+            </label>
+            <textarea
+              id={`requirements-${listing.id}`}
+              name="requirements"
+              rows={3}
+              defaultValue={(listing.requirements ?? []).join("\n")}
+              className={inputClass("mt-2")}
+            />
+            <p className="text-forest/70 mt-1.5 text-xs">
+              One per line. This is the field a review comes back on most often.
+            </p>
+          </div>
+
+          <div className="mt-4">
+            <label
+              htmlFor={`safety-${listing.id}`}
+              className="label text-forest/75"
+            >
+              Safety notes
+            </label>
+            <textarea
+              id={`safety-${listing.id}`}
+              name="safetyNotes"
+              rows={3}
+              defaultValue={listing.safetyNotes ?? ""}
+              className={inputClass("mt-2")}
+            />
+            {/*
+              The one field where an operator can over-claim. Said here rather
+              than discovered in a rejection: `unsafe_claim` is a real
+              rejection code and this is the field it lands on.
+            */}
+            <p className="text-forest/70 mt-1.5 text-xs">
+              What you actually do to keep people safe. We come back on anything
+              that claims more than we can stand behind.
+            </p>
           </div>
 
           {/*

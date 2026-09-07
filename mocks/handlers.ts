@@ -200,6 +200,14 @@ type MockExperience = {
   unitPricePaise?: number | null;
   pricingUnit?: string;
   meetingPoint?: string;
+  /*
+    The material fields — yuvoy-operator#30 §5. On the wire since the contract
+    was written and settable nowhere in this portal until now, which is why
+    they were never in this fixture either.
+  */
+  inclusions?: string[];
+  requirements?: string[];
+  safetyNotes?: string;
   upcomingDepartures?: number;
   sellable?: boolean;
   review?: {
@@ -227,6 +235,15 @@ function seedExperiences(): MockExperience[] {
       unitPricePaise: 450000,
       pricingUnit: "per_person",
       meetingPoint: "Beach 3 dive hut",
+      /*
+        The only fixture carrying the material fields, so the edit form's
+        pre-fill is exercised rather than assumed. Arrays on the wire and one
+        per line on the form, which is the conversion most likely to be got
+        wrong in one direction only.
+      */
+      inclusions: ["Mask and fins", "One guided dive", "Drinking water"],
+      requirements: ["Able to swim 50m", "No diving within 24h of flying"],
+      safetyNotes: "Two guides in the water on every dive.",
       upcomingDepartures: 4,
       sellable: true,
       review: { state: "applied" },
@@ -1575,6 +1592,13 @@ export const handlers = [
       maxPartySize: Number(body.maxPartySize ?? 6),
       unitPricePaise,
       pricingUnit: String(body.pricingUnit ?? "per_person"),
+      inclusions: Array.isArray(body.inclusions)
+        ? (body.inclusions as string[])
+        : undefined,
+      requirements: Array.isArray(body.requirements)
+        ? (body.requirements as string[])
+        : undefined,
+      safetyNotes: body.safetyNotes ? String(body.safetyNotes) : undefined,
       upcomingDepartures: 0,
       // "A listing without `unitPricePaise` can be saved but cannot be
       // approved, which the response reports as `sellable: false`."

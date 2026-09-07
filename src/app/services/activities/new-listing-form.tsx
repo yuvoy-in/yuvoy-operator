@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { createListing, type CreateState } from "./actions";
 import type { Choice } from "@/lib/services/vocabulary";
+import { PRICING_UNITS } from "@/lib/services/listings";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -176,8 +177,13 @@ export function NewListingForm({
         </div>
 
         <div>
+          {/*
+            "Price", not "Price per person" — the label used to state the basis
+            it is now asking about, which is the same misstatement this change
+            exists to remove (yuvoy-operator#30 §1).
+          */}
           <label htmlFor="new-price" className="label text-forest/75">
-            Price per person
+            Price
           </label>
           <input
             id="new-price"
@@ -199,6 +205,98 @@ export function NewListingForm({
             there is one.
           </p>
         </div>
+
+        {/*
+          What that price MEANS — yuvoy-operator#30 §1.
+
+          Radios rather than a select, and **neither preselected**. The API
+          stopped defaulting `pricingUnit` so that a listing nobody was asked
+          about is recorded as unstated rather than as per-person; a control
+          that arrived with one already chosen would send a quiet assumption
+          and defeat the whole change. The refusal lives in the action, so a
+          price with no basis is refused rather than guessed.
+
+          A fieldset, not a bare group: three radios with a visible question
+          need the question in the accessibility tree too, or a screen reader
+          reads "Per person / For the group" with nothing saying what of.
+        */}
+        <fieldset>
+          <legend className="label text-forest/75">
+            Is that per person, or for the whole group?
+          </legend>
+          <p className="text-forest/70 mt-1.5 text-xs">
+            A private charter priced for six is not the same as a seat price,
+            and a traveller sees whichever you say here next to the figure.
+          </p>
+          <div className="mt-3 space-y-2">
+            {PRICING_UNITS.map((unit) => (
+              <label
+                key={unit.value}
+                className="border-cream-line rounded-control flex min-h-14 cursor-pointer items-start gap-3 border p-3"
+              >
+                <input
+                  type="radio"
+                  name="pricingUnit"
+                  value={unit.value}
+                  className="accent-forest mt-0.5 size-5 shrink-0"
+                  aria-invalid={state.field === "pricingUnit" || undefined}
+                />
+                <span>
+                  <span className="block text-sm font-bold">{unit.label}</span>
+                  <span className="text-forest/70 block text-xs">
+                    {unit.hint}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {/*
+          Duration and party size — yuvoy-operator#30 §5.
+
+          The server defaults these to 120 minutes and 6 people and nothing
+          could set them, so every listing this portal has ever created claims
+          two hours and six people. Duration reaches the traveller's card, so
+          that is a claim rather than a harmless default.
+
+          Side by side, and both optional: a first draft should not be blocked
+          on them, and the help text says what silence costs rather than
+          refusing.
+        */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="new-duration" className="label text-forest/75">
+              How long, in minutes
+            </label>
+            <input
+              id="new-duration"
+              name="durationMinutes"
+              inputMode="numeric"
+              placeholder="120"
+              className={inputClass("mt-2")}
+              aria-invalid={state.field === "durationMinutes" || undefined}
+              aria-describedby="new-duration-help"
+            />
+          </div>
+          <div>
+            <label htmlFor="new-party" className="label text-forest/75">
+              Most people per booking
+            </label>
+            <input
+              id="new-party"
+              name="maxPartySize"
+              inputMode="numeric"
+              placeholder="6"
+              className={inputClass("mt-2")}
+              aria-invalid={state.field === "maxPartySize" || undefined}
+            />
+          </div>
+        </div>
+        <p id="new-duration-help" className="text-forest/70 -mt-2 text-xs">
+          Leave either blank and we use two hours and six people. A traveller
+          sees the duration on the card, so it is worth saying.
+        </p>
 
         {state.message ? (
           <p role="alert" className="text-terra-deep text-sm font-bold">
