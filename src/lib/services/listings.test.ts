@@ -7,14 +7,22 @@ import {
   type OperatorExperience,
 } from "./listings";
 
+/*
+  `status` is widened to a plain string on purpose. `not_selling` is real on
+  the server and is not in the pinned contract yet (yuvoy-operator#28,
+  yuvoy-api migration 0053), so the generated union does not carry it — and a
+  fixture that could not express it could not test the copy an operator whose
+  listings have stopped earning will actually see.
+*/
 const listing = (
-  over: Partial<OperatorExperience> = {},
-): OperatorExperience => ({
-  id: "exp_1",
-  title: "Reef dive",
-  status: "live",
-  ...over,
-});
+  over: Partial<Omit<OperatorExperience, "status">> & { status?: string } = {},
+): OperatorExperience =>
+  ({
+    id: "exp_1",
+    title: "Reef dive",
+    status: "live",
+    ...over,
+  }) as OperatorExperience;
 
 describe("what a status says", () => {
   it("never says a listing is on sale when it is not", () => {
@@ -87,6 +95,85 @@ describe("why we came back", () => {
   });
 });
 
+describe("a listing that is published and not selling", () => {
+  /*
+    yuvoy-operator#28. The listing IS published and is still absent from every
+    feed, absent from search and refusing checkout — because the operator is
+    not selling, a kill switch is engaged, the price is gone, or a credential
+    lapsed.
+
+    Built ahead of the contract deliberately: `describeStatus` takes a string,
+    so this is inert while the API never sends the value and correct the moment
+    it does. What it replaces is the fallback — "this version of the portal
+    cannot describe this state" — which is the wrong thing to show somebody
+    whose listings have stopped earning.
+  */
+  it("does not call it on sale", () => {
+    expect(describeStatus("not_selling").selling).toBe(false);
+  });
+
+  it("gives it its own label rather than the honest shrug", () => {
+    const s = describeStatus("not_selling");
+    expect(s.label).toBe("Not selling");
+    expect(s.body).not.toContain("cannot describe this state");
+    // Published, which is what makes it different from every other non-selling
+    // state, and the word an operator needs to see.
+    expect(s.body).toContain("Published");
+  });
+
+  it("names no reason, because the reason is not on this object", () => {
+    /*
+      The four causes belong to the ACCOUNT — `GET /me` returns the blockers
+      that name them and the Business screen renders them. A row that guessed
+      "your insurance expired" would be a sentence an operator plans a season
+      around.
+    */
+    const body = describeStatus("not_selling").body.toLowerCase();
+    for (const guess of [
+      "licence",
+      "license",
+      "insurance",
+      "certificate",
+      "expired",
+    ]) {
+      expect(body, guess).not.toContain(guess);
+    }
+  });
+
+  it("sends them to Business, and says the operator has to act", () => {
+    const s = describeStatus("not_selling");
+    expect(s.accountGap).toBe(true);
+    expect(s.needsAnswer).toBe(true);
+  });
+
+  it("still lets them send an edit", () => {
+    // Nothing about this state is about the listing's text. Refusing the edit
+    // would be a second, invented refusal on top of the real one.
+    expect(describeStatus("not_selling").canSubmit).toBe(true);
+  });
+
+  it("claims nothing about a state it cannot name", () => {
+    // The fallback must not acquire either flag by accident: a build that
+    // cannot name a state cannot know whose move it is.
+    const s = describeStatus("archived_pending_appeal");
+    expect(s.accountGap).toBe(false);
+    expect(s.needsAnswer).toBe(false);
+  });
+
+  it("is the only state that sends anybody to Business", () => {
+    for (const status of [
+      "draft",
+      "in_review",
+      "live",
+      "live_changes_in_review",
+      "changes_rejected",
+      "withdrawn",
+    ]) {
+      expect(describeStatus(status).accountGap, status).toBe(false);
+    }
+  });
+});
+
 describe("the order they read in", () => {
   it("puts what we are waiting on them for first", () => {
     const ordered = orderListings([
@@ -96,6 +183,33 @@ describe("the order they read in", () => {
       listing({ id: "d", title: "Delta", status: "draft" }),
     ]);
     expect(ordered.map((l) => l.id)).toEqual(["c", "d", "b", "a"]);
+  });
+
+  it("puts a listing that has STOPPED earning above one that never started", () => {
+    /*
+      `not_selling` was published and is now earning nothing, so it has a meter
+      running; `changes_rejected` is a revision we came back on, which never
+      went live. Both are the operator's homework and only one is costing them
+      money while they read the screen.
+
+      Raised on yuvoy-operator#28 rather than decided silently, so a different
+      intended reading moves this rather than leaving it wrong.
+    */
+    const ordered = orderListings([
+      listing({ id: "a", title: "Alpha", status: "changes_rejected" }),
+      listing({ id: "b", title: "Bravo", status: "not_selling" }),
+      listing({ id: "c", title: "Charlie", status: "live" }),
+    ]);
+    expect(ordered.map((l) => l.id)).toEqual(["b", "a", "c"]);
+  });
+
+  it("still sorts withdrawn and unrecognised states last", () => {
+    const ordered = orderListings([
+      listing({ id: "a", title: "Alpha", status: "archived_pending_appeal" }),
+      listing({ id: "b", title: "Bravo", status: "withdrawn" }),
+      listing({ id: "c", title: "Charlie", status: "draft" }),
+    ]);
+    expect(ordered[0].id).toBe("c");
   });
 
   it("breaks a tie by title, so the list does not shuffle between loads", () => {

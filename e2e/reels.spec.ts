@@ -633,7 +633,7 @@ test("approved footage can be attached to a listing", async ({ page }) => {
 
   await expect(page.getByText("Listing: Reef dive")).toBeVisible();
   await expect(
-    page.getByText("This clip is available to travellers."),
+    page.getByText("This is available to travellers."),
   ).toBeVisible();
 });
 

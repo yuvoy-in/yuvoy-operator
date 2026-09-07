@@ -146,11 +146,7 @@ test("the screen says it cannot resume, because it cannot", async ({
 });
 
 test("the section is named for what it actually holds", async ({ page }) => {
-  /*
-    `GET /media` returns no `kind`, so the library genuinely cannot tell a
-    photograph from a clip — and calling the list "Your reels" once photographs
-    live in it would be a claim the data cannot support.
-  */
+  // The list holds both, so it is not called "Your reels".
   await signIn(page);
   await page.goto("/services/reels");
 
@@ -164,11 +160,121 @@ test("the section is named for what it actually holds", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Add a reel" })).toBeVisible();
 });
 
-test("the library counts items, not clips", async ({ page }) => {
-  // The same reason. It cannot know how many of them are clips.
+test("the library counts reels and photographs separately", async ({
+  page,
+}) => {
+  /*
+    yuvoy-api#119. This used to read "N items", because `GET /media` returned
+    no `kind` and the list genuinely could not tell one from the other. It says
+    which now, and an operator with a dozen of each can scan it.
+  */
   await signIn(page);
   await page.goto("/services/reels");
-  await expect(page.getByText(/\d+ items?$/)).toBeVisible();
+
+  await expect(page.getByText(/\d+ reels? · \d+ photographs?$/)).toBeVisible();
+  await expect(page.getByText(/^\d+ items?$/)).toBeHidden();
+});
+
+test("every row says which of the two it is", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/services/reels");
+
+  const library = page.getByRole("list").filter({ hasText: "Approved" });
+  await expect(
+    library.getByText("Reel", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    library.getByText("Photograph", { exact: true }).first(),
+  ).toBeVisible();
+});
+
+test("a clip still processing is not labelled a photograph", async ({
+  page,
+}) => {
+  /*
+    The defect the whole field exists to prevent, and the reason this portal
+    labelled nothing until `kind` was on the wire.
+
+    The one inference available was "no `durationSeconds` means a photograph" —
+    and a clip that is still `uploaded` or `processing` has no duration either.
+    So the very first thing an operator saw after posting a reel would have
+    been that reel labelled a photograph, in the list they open to check it
+    arrived.
+
+    `med_processing_fixture` is exactly that shape: a video, processing, with
+    no duration and no poster. Replace `kind` with the inference and this
+    fails.
+  */
+  await signIn(page);
+  await page.goto("/services/reels");
+
+  const processing = page
+    .getByRole("listitem")
+    .filter({ hasText: "The media host is preparing it." });
+  await expect(processing).toHaveCount(1);
+  await expect(processing.getByText("Reel", { exact: true })).toBeVisible();
+  await expect(processing.getByText("Photograph", { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+test("a row with no preview says so, instead of being a grey rectangle", async ({
+  page,
+}) => {
+  /*
+    `posterUrl` is "absent on most clips today" — a poster is only stored once
+    the provider has produced one, and an unpublished clip has no public URL:
+    270 of 342 clips had none when this was written (yuvoy-api#121, and not
+    ours to fix).
+
+    What IS ours is that such a row renders as something an operator can read.
+    "No preview yet" with a reason beats an unexplained empty box to somebody
+    who has just spent twenty minutes of island uplink on the upload.
+  */
+  await signIn(page);
+  await page.goto("/services/reels");
+
+  const processing = page
+    .getByRole("listitem")
+    .filter({ hasText: "The media host is preparing it." });
+  await expect(processing.getByText(/No preview yet/)).toBeVisible();
+});
+
+test("a photograph shows its picture before it is published", async ({
+  page,
+}) => {
+  /*
+    The poster used to be gated on `state === "published"`, which was right
+    when clips were the only thing here. For a photograph the picture IS the
+    item, and the API builds its URL at read time in every state — so an
+    operator waiting on review has to be able to see which photograph they are
+    waiting on.
+
+    `med_photo_fixture` is an image in `in_moderation`: published gate on, and
+    this is an empty frame.
+  */
+  await signIn(page);
+  await page.goto("/services/reels");
+
+  /*
+    Scoped to the ONE row that is a photograph in review.
+
+    Neither half identifies it alone, and both were tried: "In review" is a
+    chip label that resolves to several elements, and "has a photograph
+    preview" matches every photograph — including the one the upload test in
+    this file adds to the same shared Next server, so it passed alone and
+    failed in a full run. `in_moderation`'s body sentence belongs to
+    `med_photo_fixture` and to nothing else.
+  */
+  const photo = page
+    .getByRole("listitem")
+    .filter({ hasText: "A person at Yuvoy is checking it." });
+
+  await expect(photo).toHaveCount(1);
+  await expect(
+    photo.getByRole("img", { name: "Photograph preview" }),
+  ).toBeVisible();
+  await expect(photo.getByText(/No preview yet/)).toHaveCount(0);
 });
 
 test("the category and destination are pickers, not text boxes", async ({

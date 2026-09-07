@@ -20,6 +20,15 @@ import { DECLINE_REASONS, type DeclineReason } from "@/lib/day/request-types";
 export interface RequestActionState {
   /** Set only on failure. Success re-renders the queue. */
   message?: string;
+  /**
+   * Whether the way forward is the Business screen.
+   *
+   * A flag rather than the row matching on the sentence, because the rule this
+   * whole file follows is branch on `code`, never on `message` — copy gets
+   * edited and a link that disappeared when somebody improved a word would be
+   * a dead end nobody noticed.
+   */
+  seeBusiness?: boolean;
   requestId?: string;
   /** A granted hold's deadline, so the screen can say what the traveller now has. */
   holdExpiresAt?: string | null;
@@ -50,6 +59,13 @@ const declineSchema = z.object({
   ),
 });
 
+/** The refusal an operator fixes on the Business screen, not on this one. */
+function isAccountGap(err: unknown): boolean {
+  return (
+    err instanceof OperatorApiError && err.code === "operator_not_sellable"
+  );
+}
+
 /** Maps the contract's refusals onto something an operator can act on. */
 function explain(err: unknown, verb: string): string {
   if (err instanceof OperatorNetworkError) {
@@ -62,6 +78,26 @@ function explain(err: unknown, verb: string): string {
     }
     if (err.code === "grant_ceiling_exceeded") {
       return "That would put more people on the boat than it holds. Nothing was granted.";
+    }
+    /*
+      The business cannot sell right now — yuvoy-operator#28, from yuvoy-api's
+      migration 0053. Accepting a seat request IS a sale, so it is gated on the
+      same eligibility as every other sale: the operator is not selling, a kill
+      switch is engaged, the listing lost its price, or a required credential
+      lapsed while the request sat waiting.
+
+      Said plainly, unlike the traveller-facing refusal, because it is their
+      own business and they are entitled to know. The gap itself is not on this
+      error and is not guessed at here — it belongs to the account, and the
+      Business screen already renders the blockers that name it.
+
+      **The request is NOT auto-declined**, so the row stays in the queue and
+      an operator who fixes the gap inside the window can still say yes. That
+      is why this reads as a "not yet" rather than as a loss, and why nothing
+      here revalidates the queue.
+    */
+    if (err.code === "operator_not_sellable") {
+      return "We cannot take bookings for you right now. This request is still open — check Business for what is outstanding, then answer it.";
     }
     if (err.status === 403) {
       // The contract is specific: STAFF may not commit seats.
@@ -119,7 +155,11 @@ export async function acceptRequest(
     */
     return { granted: true, holdExpiresAt: data.holdExpiresAt ?? null };
   } catch (err) {
-    return { requestId, message: explain(err, "accept") };
+    return {
+      requestId,
+      message: explain(err, "accept"),
+      seeBusiness: isAccountGap(err),
+    };
   }
 }
 

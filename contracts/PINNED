@@ -6,40 +6,55 @@
 # parameter in any position.
 #
 # The intent is that both frontends pin one yuvoy-api commit, so they cannot be
-# reasoning about different versions of the same backend. They diverge while one
-# of them is mid-integration: this ref is ahead of yuvoy-app's while the reels
-# upload catches up with yuvoy-api#66 §3. The two documents are separate files,
-# so being ahead here says nothing about the traveller contract — and the
-# traveller one moved on the same day with a defect in it (yuvoy-api#92), which
-# is the reason yuvoy-app has not followed.
+# reasoning about different versions of the same backend. They agree today:
+# `yuvoy-app` is on this same ref. The two documents are separate files, so a
+# change to one says nothing about the other — this bump touches only the
+# operator document, and yuvoy-app's bump to the same ref touched only the
+# traveller one.
 #
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 7 Sep 2026, fifth bump. Diffed as a parsed schema tree, not as text — the
-# defects that made that necessary are on yuvoy-api#92 and #103. PURELY
-# ADDITIVE: three new paths, one new schema, nothing removed, no `required:`
-# list grown, no requestBody made required.
+# 7 Sep 2026, sixth bump. Forward from 87175540e3ec, pinned this morning.
+# Diffed as a parsed schema tree, not as text — the defects that made that
+# necessary are on yuvoy-api#92 and #103. PURELY ADDITIVE and narrow: ONE
+# endpoint changed, one field added, three descriptions written. Nothing
+# removed, no `required:` list grown, no requestBody made required.
 #
-# Consumed in this change:
-#   - `POST /media/photo-intents` + `.../complete` — a listing can hold
-#     photographs (yuvoy-operator#27). From `complete` onward a photograph
-#     travels the SAME road as a clip: the same rights attestation, the same
-#     moderation queue, the same publish gate. Deliberately not a second
-#     pipeline, so there is no weaker way round the first.
-#   - `GET /catalog/vocabulary` — the fix for yuvoy-api#113. The create form's
-#     category and destination were two text boxes seeded from the operator's
-#     own listings, which was a dead end for their FIRST listing. Both are now
-#     pickers with the labels a person uses.
+# Consumed in this change (yuvoy-api#119):
+#   - `GET /media` now returns `kind`, `video` or `image`, spelled as the
+#     traveller document spells it so nothing has to translate. This closes the
+#     gap the previous pin recorded: the operator's own library held both and
+#     had nothing on the wire to tell them apart.
 #
-# Learned from the publish 409's description rather than asked: photographs and
-# clips have SEPARATE ceilings of 20 each, and `details.kind` / `details.limit`
-# say which one was reached. The attach form now names the right one.
+# **`kind` is never inferred from `durationSeconds`**, and the contract now
+# says so itself. A clip that is still `uploaded` or `processing` has no
+# duration either, so the first thing an operator sees after posting a reel
+# would be that reel labelled a photograph. Guessing wrong there is worse than
+# not guessing, which is why the previous build labelled nothing at all.
 #
-# Known gap, raised rather than worked around: `GET /media` returns no `kind`,
-# so the operator's own library cannot tell a photograph from a clip. Inferring
-# it from an absent `durationSeconds` would mislabel a clip that is still
-# processing, so nothing here claims a kind at all.
-ref=87175540e3ec57261f85ed0852555cd65a5df6dd
+# Learned from the same change, and it is the reason the tile was rebuilt:
+#   - `posterUrl` is ABSENT ON MOST CLIPS — a poster is only stored once the
+#     provider has produced one, and an unpublished clip has no public URL.
+#     270 of 342 clips had none when this was written. A row with no poster
+#     still has a `kind` and a `state` and has to render as something, so the
+#     tile no longer assumes a picture exists.
+#   - For a photograph the picture IS the poster, and it is now built at read
+#     time from configuration, at every state rather than only when published.
+#     Fixed API-side in the same PR: the operator's own photographs previously
+#     came back with no `posterUrl` at all.
+#
+# The remaining half — a signed poster for an unreviewed clip — is deliberately
+# NOT in this change and is tracked as yuvoy-api#121. An unreviewed clip with a
+# public poster URL is what the signed-URL design exists to prevent.
+#
+# Known gap, verified rather than assumed: `not_selling` on
+# `OperatorExperience.status` and the 409 `operator_not_sellable` on
+# `POST /requests/{id}/accept` (yuvoy-operator#28) are NOT in this document.
+# The issue describes them as shipped in migration 0053; master carries
+# migrations to 0051 only and no branch has more. The string-keyed halves of
+# that issue are built anyway and are inert until the values arrive; the typed
+# half waits for the merge.
+ref=ab93328169fcb305d8a3e1b5f0bdde072ffd1d81
 branch=master
 pinned_on=2026-09-07

@@ -41,63 +41,81 @@ test("the business door leads to it, and it is not gated on a role", async ({
   ).toBeVisible();
 });
 
-test("it names the exact fields still outstanding, not a count", async ({
-  page,
-}, testInfo) => {
-  /*
-    Reads state the save test below then completes. The profile is ONE document
-    in the shared Next server, so both live on the primary project and run in
-    file order — the read before the write. Declared rather than hidden, the
-    same call the call-off and revision fixtures make.
-  */
-  test.skip(
-    testInfo.project.name !== "mobile",
-    "reads the incomplete profile the save test then completes — single-tenant by design",
-  );
-  /*
-    "Named rather than a bare boolean so a form can mark the specific rows." A
-    completeness bar reading "3 missing" without saying which three is a
-    puzzle, not a prompt.
+/*
+  The read and the write of ONE profile, made to run in the order this file has
+  always claimed they did.
 
-    The fixture profile is half-filled on purpose — a complete one makes
-    `missing` empty and cannot exercise this at all.
-  */
-  await signIn(page);
-  await page.goto("/profile");
+  The read below says "both live on the primary project and run in file order —
+  the read before the write". That was never enforced: `fullyParallel: true`
+  parallelises tests WITHIN a file across workers, so the two raced for a single
+  shared document and the read passed only when it happened to win. It lost
+  under a fuller suite.
 
-  await expect(page.getByText("still needed")).not.toHaveCount(0);
-  const region = page.locator("label", { hasText: "State or union territory" });
-  await expect(region.getByText("still needed")).toBeVisible();
-});
+  `serial` makes the claim true rather than lucky. Scoped to the pair rather
+  than the file, so the other seven still run in parallel.
+*/
+test.describe.serial("the profile, read then written", () => {
+  test("it names the exact fields still outstanding, not a count", async ({
+    page,
+  }, testInfo) => {
+    /*
+      Reads state the save test below then completes. The profile is ONE
+      document in the shared Next server, so the read has to happen before the
+      write — which the `serial` above is what actually enforces. Declared
+      rather than hidden, the same call the call-off and revision fixtures
+      make.
+    */
+    test.skip(
+      testInfo.project.name !== "mobile",
+      "reads the incomplete profile the save test then completes — single-tenant by design",
+    );
+    /*
+      "Named rather than a bare boolean so a form can mark the specific rows." A
+      completeness bar reading "3 missing" without saying which three is a
+      puzzle, not a prompt.
 
-test("filling the details in says saved, and never says live", async ({
-  page,
-}, testInfo) => {
-  /*
-    Single-tenant: the profile is one document in the shared Next server, and
-    the second project to run would find it already complete.
-  */
-  test.skip(
-    testInfo.project.name !== "mobile",
-    "the profile is one shared document — single-tenant by design, so it runs on the primary project only",
-  );
+      The fixture profile is half-filled on purpose — a complete one makes
+      `missing` empty and cannot exercise this at all.
+    */
+    await signIn(page);
+    await page.goto("/profile");
 
-  await signIn(page);
-  await page.goto("/profile");
+    await expect(page.getByText("still needed")).not.toHaveCount(0);
+    const region = page.locator("label", {
+      hasText: "State or union territory",
+    });
+    await expect(region.getByText("still needed")).toBeVisible();
+  });
 
-  await page.getByLabel("State or union territory").fill("Andaman & Nicobar");
-  await page.getByLabel("PIN code").fill("744211");
-  await page.getByRole("button", { name: "Save these details" }).click();
+  test("filling the details in says saved, and never says live", async ({
+    page,
+  }, testInfo) => {
+    /*
+      Single-tenant: the profile is one document in the shared Next server, and
+      the second project to run would find it already complete.
+    */
+    test.skip(
+      testInfo.project.name !== "mobile",
+      "the profile is one shared document — single-tenant by design, so it runs on the primary project only",
+    );
 
-  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
-  /*
-    Details are half the gate, never the whole of it. An operator who fills
-    these in and reads anything about going live will wait for a call that is
-    not coming.
-  */
-  const text = (await page.locator("body").innerText()).toLowerCase();
-  expect(text).not.toContain("you are live");
-  expect(text).not.toContain("your account is live");
+    await signIn(page);
+    await page.goto("/profile");
+
+    await page.getByLabel("State or union territory").fill("Andaman & Nicobar");
+    await page.getByLabel("PIN code").fill("744211");
+    await page.getByRole("button", { name: "Save these details" }).click();
+
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    /*
+      Details are half the gate, never the whole of it. An operator who fills
+      these in and reads anything about going live will wait for a call that is
+      not coming.
+    */
+    const text = (await page.locator("body").innerText()).toLowerCase();
+    expect(text).not.toContain("you are live");
+    expect(text).not.toContain("your account is live");
+  });
 });
 
 test("a GSTIN may be left blank, and is checked when it is not", async ({

@@ -25,6 +25,23 @@ export type OperatorExperience = components["schemas"]["OperatorExperience"];
  * ring us on the day nobody books. Every state below says who has it.
  */
 
+/**
+ * Every status this build can describe.
+ *
+ * **Not derived from the generated union, on purpose.** `not_selling` is real
+ * on the server and is not yet in `contracts/operator-openapi.yaml` — the
+ * change that adds it (yuvoy-api migration 0053) is announced on
+ * yuvoy-operator#28 but is not on master, so the pinned contract still
+ * declares six values. Deriving this list from the generated type would mean
+ * the copy for it could not exist until the merge, and until then an operator
+ * whose listings had stopped earning would be shown "this version of the
+ * portal cannot describe this state".
+ *
+ * Nothing here depends on the value's TYPE, only on the string, so this is
+ * safe in both directions: inert while the API never sends it, correct the
+ * moment it does. What genuinely needs the merge is the narrowing in
+ * `orderListings` — see the note there.
+ */
 export const LISTING_STATUSES = [
   "draft",
   "in_review",
@@ -32,6 +49,7 @@ export const LISTING_STATUSES = [
   "live_changes_in_review",
   "changes_rejected",
   "withdrawn",
+  "not_selling",
 ] as const;
 
 export type ListingStatus = (typeof LISTING_STATUSES)[number];
@@ -45,6 +63,25 @@ export interface StatusCopy {
   selling: boolean;
   /** Whether the operator can send it (or an edit) for review from here. */
   canSubmit: boolean;
+  /**
+   * Whether this state is waiting on the OPERATOR, rather than on us.
+   *
+   * Drives the accent chip. Asked here rather than by a screen comparing
+   * `status` to a literal, because one of the two states that qualify —
+   * `not_selling` — is not in the generated union yet, and a component
+   * comparing against it is a type error rather than dead code. This keeps the
+   * question where the answer already lives.
+   */
+  needsAnswer: boolean;
+  /**
+   * Whether the reason lives on the ACCOUNT, so Business is the way forward.
+   *
+   * True only for `not_selling`, whose four causes are deliberately not on the
+   * listing object: they belong to the account, `GET /me` returns the blockers
+   * that name them, and the Business screen already renders them. A screen
+   * asks this rather than guessing which of the four it is.
+   */
+  accountGap: boolean;
 }
 
 const STATUS: Record<ListingStatus, StatusCopy> = {
@@ -53,18 +90,24 @@ const STATUS: Record<ListingStatus, StatusCopy> = {
     body: "Written, and sent to nobody. Send it to us when it is ready.",
     selling: false,
     canSubmit: true,
+    needsAnswer: false,
+    accountGap: false,
   },
   in_review: {
     label: "With us",
     body: "We are reading it. Nothing is on sale until it is approved.",
     selling: false,
     canSubmit: false,
+    needsAnswer: false,
+    accountGap: false,
   },
   live: {
     label: "On sale",
     body: "Travellers can book this.",
     selling: true,
     canSubmit: true,
+    needsAnswer: false,
+    accountGap: false,
   },
   live_changes_in_review: {
     label: "On sale · edit with us",
@@ -77,18 +120,63 @@ const STATUS: Record<ListingStatus, StatusCopy> = {
     body: "Still on sale on the old terms while we read your change. Anybody who already booked keeps what they booked on.",
     selling: true,
     canSubmit: false,
+    needsAnswer: false,
+    accountGap: false,
   },
   changes_rejected: {
     label: "We came back to you",
     body: "Read what we said, change it, and send it again.",
     selling: false,
     canSubmit: true,
+    needsAnswer: true,
+    accountGap: false,
   },
   withdrawn: {
     label: "Off sale",
     body: "Taken off sale. Send a change to put it back in front of us.",
     selling: false,
     canSubmit: true,
+    needsAnswer: false,
+    accountGap: false,
+  },
+  /*
+    Published, and earning nothing — yuvoy-operator#28, from yuvoy-api's
+    migration 0053.
+
+    The one status a client cannot infer from `publicationState`. The listing
+    IS published and is still absent from every feed, absent from search and
+    refusing checkout, because one of four things is true: the operator is not
+    selling, a kill switch is engaged, the listing lost its price, or a
+    credential their market and activity category require is missing,
+    unverified or expired.
+
+    **The reason is deliberately not on this object**, and this copy does not
+    invent one. It belongs to the account, `GET /me` returns the blockers that
+    name it, and the Business screen already renders them — so the row points
+    there rather than guessing which of the four it is.
+
+    **Per listing, never a banner.** Credential requirements resolve per
+    activity category, so an operator can have one listing not selling because
+    an instructor certificate lapsed while another stays live. A banner at the
+    top of the screen would be wrong about both.
+
+    Before 0053 a published listing genuinely sold whatever the operator's
+    status said, so `live` was accurate. It no longer would be — and the
+    fallback below, "this version of the portal cannot describe this state", is
+    the wrong sentence to show somebody whose listings have stopped earning.
+  */
+  not_selling: {
+    label: "Not selling",
+    body: "Published, but not on sale. See what is outstanding on Business.",
+    selling: false,
+    /*
+      They CAN still send an edit. Nothing about this state is about the
+      listing's text — it is the account or the price — and refusing the edit
+      would be a second, invented refusal on top of the real one.
+    */
+    canSubmit: true,
+    needsAnswer: true,
+    accountGap: true,
   },
 };
 
@@ -107,6 +195,10 @@ export function describeStatus(status: string | undefined): StatusCopy {
     body: "This version of the portal cannot describe this state. Ask us before you rely on it.",
     selling: false,
     canSubmit: false,
+    // No claim in either direction. A build that cannot name the state cannot
+    // know whose move it is, and an accent chip would assert that it does.
+    needsAnswer: false,
+    accountGap: false,
   };
 }
 
@@ -137,25 +229,39 @@ export function describeRejection(code?: string): string | null {
   return REJECTION[code] ?? null;
 }
 
+/**
+ * How badly each status needs the operator. Lower comes first.
+ *
+ * A lookup rather than a `switch`, because `not_selling` is not in the
+ * generated union yet — see {@link LISTING_STATUSES} — and narrowing on a
+ * value the pinned contract does not declare is a type error rather than dead
+ * code. Keyed by string, it is inert until the API sends one and correct the
+ * moment it does.
+ */
+const URGENCY: Record<string, number> = {
+  /*
+    Published, and earning nothing. Above `changes_rejected` deliberately: a
+    listing that WAS selling and has stopped is costing the operator money
+    right now, while a rejected revision is a listing that never went live.
+    Both are their homework; only one has a meter running.
+
+    Raised with the API on yuvoy-operator#28 rather than decided silently, so
+    if the intended reading is different this moves rather than lingers.
+  */
+  not_selling: 0,
+  changes_rejected: 1, // We came back to them.
+  draft: 2, // They started and stopped.
+  live: 3,
+  live_changes_in_review: 3,
+  in_review: 4, // With us; nothing for them to do.
+};
+
 /** Sorted so the ones needing the operator come first, then by title. */
 export function orderListings(
   listings: readonly OperatorExperience[],
 ): OperatorExperience[] {
-  const urgency = (l: OperatorExperience) => {
-    switch (l.status) {
-      case "changes_rejected":
-        return 0; // We are waiting on them.
-      case "draft":
-        return 1; // They started and stopped.
-      case "live":
-      case "live_changes_in_review":
-        return 2;
-      case "in_review":
-        return 3; // With us; nothing for them to do.
-      default:
-        return 4; // Withdrawn, and anything unrecognised.
-    }
-  };
+  // Withdrawn, and anything this build does not recognise, sort last.
+  const urgency = (l: OperatorExperience) => URGENCY[l.status ?? ""] ?? 5;
   return [...listings].sort((a, b) => {
     const d = urgency(a) - urgency(b);
     return d !== 0 ? d : (a.title ?? "").localeCompare(b.title ?? "", "en");

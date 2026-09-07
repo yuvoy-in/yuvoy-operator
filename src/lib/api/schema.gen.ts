@@ -3463,9 +3463,22 @@ export interface operations {
                     "application/json": {
                         items?: {
                             id?: string;
-                            /** @description Where the clip is: `uploaded`, `processing`, `ready`, `attested`, `in_moderation`, `approved`, `published`, `rejected`, `quarantined`, `withdrawn` or `failed`. */
+                            /**
+                             * @description Spelled as the traveller document spells it, so nothing has to translate between the two.
+                             *
+                             *     **Do not infer this from `durationSeconds`.** A clip that is still `uploaded` or `processing` has no duration either, so the first thing an operator sees after posting a reel would be that reel labelled a photograph.
+                             * @enum {string}
+                             */
+                            kind?: "video" | "image";
+                            /** @description Where the item is: `uploaded`, `processing`, `ready`, `attested`, `in_moderation`, `approved`, `published`, `rejected`, `quarantined`, `withdrawn` or `failed`. */
                             state?: string;
+                            /**
+                             * @description The picture to show for this row. For a photograph it is the image itself; for a clip it is the still.
+                             *
+                             *     **Absent on most clips today**, because a poster is only stored once the provider has produced one and an unpublished clip has no public URL. A row with no `posterUrl` still has a `kind` and a `state`, and has to render as something.
+                             */
                             posterUrl?: string;
+                            /** @description Absent on a photograph, and on a clip that is still arriving. */
                             durationSeconds?: number;
                             /** Format: date-time */
                             createdAt?: string;

@@ -255,8 +255,10 @@ test("the two screens answer the same question from both ends", async ({
   */
   await page.goto("/services/activities");
   const blank = page.locator("li").filter({ hasText: "Sunset cruise" });
-  await expect(blank.getByText(/on sale with no video/i)).toBeVisible();
-  await expect(blank.getByRole("link", { name: "Your reels" })).toBeVisible();
+  await expect(blank.getByText(/on sale with nothing to show/i)).toBeVisible();
+  await expect(
+    blank.getByRole("link", { name: "Photos & reels" }),
+  ).toBeVisible();
 
   await page.goto("/services/reels");
   await expect(page.getByText(/not on any activity/i).first()).toBeVisible();

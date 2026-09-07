@@ -51,10 +51,14 @@ export default async function ActivitiesPage() {
 
   /*
     Both reads, together. The media list is not decoration here — it is the
-    only way to answer "this activity has no video", which is the thing an
-    operator most needs to be told and cannot see anywhere else. A listing on
-    sale with no clip attached is a black card in the traveller app, which is
-    what `yuvoy.in` showed for months.
+    only way to answer "this activity has nothing to show", which is the thing
+    an operator most needs to be told and cannot see anywhere else. A listing
+    on sale with nothing attached is a black card in the traveller app, which
+    is what `yuvoy.in` showed for months.
+
+    "Nothing to show", not "no video": a photograph counts, and since
+    yuvoy-api#119 this list can tell the two apart. What the notice is about is
+    a listing with NEITHER.
 
     A failing media read must not cost the whole screen: the listings are the
     subject and the footage note is an extra, so it degrades to silence rather
@@ -122,12 +126,21 @@ export default async function ActivitiesPage() {
       {blank.length > 0 ? (
         <Panel tone="alert" className="mt-6 p-4">
           <p className="text-terra-deep text-sm font-bold">
+            {/*
+              "no media", not "no video". A listing whose only attachment is a
+              photograph is NOT counted here — a traveller sees the photograph,
+              not a blank card — so saying "no video" about the ones that ARE
+              counted would send an operator looking for a missing clip on a
+              listing that has neither (yuvoy-api#119 made the two tellable
+              apart; this notice is about having nothing at all).
+            */}
             {blank.length === 1
-              ? "One activity is on sale with no video."
-              : `${blank.length} activities are on sale with no video.`}
+              ? "One activity is on sale with nothing to show."
+              : `${blank.length} activities are on sale with nothing to show.`}
           </p>
           <p className="text-forest/80 mt-1.5 text-sm">
-            Travellers see a blank card until a clip is attached. Upload one on{" "}
+            Travellers see a blank card until a photograph or a reel is
+            attached. Add one on{" "}
             <a href="/services/reels" className="underline underline-offset-2">
               Reels
             </a>

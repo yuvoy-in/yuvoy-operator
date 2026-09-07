@@ -58,7 +58,11 @@ export function ListingRow({
         <p className="text-lg font-bold">{listing.title}</p>
         <Chip
           tone={
-            listing.status === "changes_rejected"
+            // `accent` is the tone for something the operator has to answer.
+            // A published listing that has stopped earning qualifies as much
+            // as a rejected revision does — and `needsAnswer` says so without
+            // this component knowing either status by name.
+            status.needsAnswer
               ? "accent"
               : status.selling
                 ? "selected"
@@ -70,6 +74,29 @@ export function ListingRow({
       </div>
 
       <p className="text-forest/80 mt-2 text-sm">{status.body}</p>
+
+      {/*
+        The door out of `not_selling` — yuvoy-operator#28.
+
+        The four causes (the operator is not selling, a kill switch, no price,
+        a lapsed credential) are deliberately NOT on this object: they belong
+        to the account, and `GET /me` already returns the blockers that name
+        them, which the Business screen already renders. So the row says the
+        state and points at the one screen that can say why — it does not
+        guess which of the four it is.
+
+        Per row rather than as a banner, because credential requirements
+        resolve per activity category: one listing can be not selling because
+        an instructor certificate lapsed while another stays live.
+      */}
+      {status.accountGap ? (
+        <a
+          href="/account"
+          className="text-forest mt-2 inline-block text-sm underline underline-offset-2"
+        >
+          See what is outstanding
+        </a>
+      ) : null}
 
       {/*
         No price means it cannot be approved, whatever else is right about it.
@@ -108,10 +135,10 @@ export function ListingRow({
       */}
       {status.selling && !hasFootage ? (
         <p className="border-cream-line text-forest/80 mt-3 border-t pt-3 text-sm">
-          On sale with no video. Travellers see a blank card until a clip is
-          attached to it.{" "}
+          On sale with nothing to show. Travellers see a blank card until a
+          photograph or a reel is attached to it.{" "}
           <a href="/services/reels" className="underline underline-offset-2">
-            Your reels
+            Photos &amp; reels
           </a>
         </p>
       ) : null}

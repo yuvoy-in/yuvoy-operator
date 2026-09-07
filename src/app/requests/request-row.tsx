@@ -244,9 +244,30 @@ export function RequestRow({
       )}
 
       {state.message ? (
-        <p role="alert" className="text-terra-deep mt-3 text-sm font-bold">
-          {state.message}
-        </p>
+        <div role="alert" className="mt-3">
+          <p className="text-terra-deep text-sm font-bold">{state.message}</p>
+          {/*
+            The door out of it — yuvoy-operator#28.
+
+            `operator_not_sellable` is the one refusal here an operator can
+            actually clear, and the thing that clears it (a lapsed credential,
+            a kill switch, a missing price) is on another screen. Telling
+            somebody standing on a jetty to "check Business" without a way to
+            reach it is a message they read twice and then ring us about.
+
+            The request is deliberately NOT auto-declined and nothing here
+            revalidates, so the row is still on screen and still answerable
+            when they come back.
+          */}
+          {state.seeBusiness ? (
+            <a
+              href="/account"
+              className="text-forest mt-2 inline-block text-sm underline underline-offset-2"
+            >
+              Open Business
+            </a>
+          ) : null}
+        </div>
       ) : null}
     </li>
   );

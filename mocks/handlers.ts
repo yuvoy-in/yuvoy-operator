@@ -139,11 +139,41 @@ let uploadIntents: Record<
 /** Assets that finished processing, and what has been attested about them. */
 type MockMediaAsset = {
   attested: boolean;
+  /**
+   * `video` or `image` — yuvoy-api#119.
+   *
+   * Every asset carries one, because the API does. A fixture that left it off
+   * would exercise only the unnamed-kind fallback and never the labelling this
+   * screen exists for.
+   */
+  kind: "video" | "image";
   state: string;
   durationSeconds?: number;
+  /**
+   * The picture for this row, and it is ABSENT far more often than present.
+   *
+   * "Absent on most clips today" — a poster is only stored once the provider
+   * has produced one, and an unpublished clip has no public URL: 270 of 342
+   * clips had none when this was written (yuvoy-api#121). For a photograph the
+   * picture IS the poster and the API builds the URL at read time, so a
+   * photograph has one in every state.
+   *
+   * The fixture mirrors that distribution rather than giving everything a
+   * poster, because a row with no picture is the common case and has to render
+   * as something.
+   */
+  posterUrl?: string;
   listing?: { experienceId: string; title: string; state: string };
   rejection?: { code: string; note?: string };
 };
+
+/** A tiny inline picture, so a poster needs no network and no binary fixture. */
+const FIXTURE_POSTER =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="160">' +
+      '<rect width="120" height="160" fill="#2f4f43"/></svg>',
+  );
 
 /**
  * The operator's listings — one per status the screen has to tell apart.
@@ -302,11 +332,42 @@ function seedMediaAssets(): Record<string, MockMediaAsset> {
   return {
     med_approved_fixture: {
       attested: true,
+      kind: "video",
       state: "approved",
       durationSeconds: 24,
     },
+    /*
+      A clip still PROCESSING, with no duration and no poster.
+
+      The single most important row in this fixture. It is the exact shape that
+      would be mislabelled by the one inference available before yuvoy-api#119
+      — "no `durationSeconds` means a photograph" — so it is what stops that
+      inference being reintroduced: replace `kind` with the guess and this row
+      renders as a photograph, in the list an operator checks right after
+      posting a reel.
+    */
+    med_processing_fixture: {
+      attested: false,
+      kind: "video",
+      state: "processing",
+    },
+    /*
+      A photograph, and one that is NOT published.
+
+      For an image the picture is the item, so the API builds a URL at read
+      time in every state — which the old poster gate (`state === "published"`)
+      would have hidden. An operator waiting on review has to be able to see
+      which photograph they are waiting on.
+    */
+    med_photo_fixture: {
+      attested: true,
+      kind: "image",
+      state: "in_moderation",
+      posterUrl: FIXTURE_POSTER,
+    },
     med_waiting_fixture: {
       attested: true,
+      kind: "video",
       state: "attested",
       durationSeconds: 18,
     },
@@ -323,6 +384,7 @@ function seedMediaAssets(): Record<string, MockMediaAsset> {
     */
     med_unattached_fixture: {
       attested: true,
+      kind: "video",
       state: "approved",
       durationSeconds: 31,
     },
@@ -340,8 +402,11 @@ function seedMediaAssets(): Record<string, MockMediaAsset> {
     */
     med_published_fixture: {
       attested: true,
+      kind: "video",
       state: "published",
       durationSeconds: 27,
+      // Published, so the provider has produced a still and it is public.
+      posterUrl: FIXTURE_POSTER,
       listing: {
         experienceId: "exp_night",
         title: "Night fishing",
@@ -1380,7 +1445,15 @@ export const handlers = [
       skipped it would let a screen ship that skips it too.
     */
     const mediaAssetId = `med_${Math.random().toString(36).slice(2, 10)}`;
-    mediaAssets[mediaAssetId] = { attested: false, state: "ready" };
+    mediaAssets[mediaAssetId] = {
+      attested: false,
+      kind: "image",
+      state: "ready",
+      // A photograph HAS a picture from the moment it arrives: the API builds
+      // the URL from configuration at read time rather than storing one, so
+      // there is no state in which an image row is missing its own picture.
+      posterUrl: FIXTURE_POSTER,
+    };
     delete photoIntents[imageId];
 
     return HttpResponse.json({ mediaAssetId, next: "attest_rights" });
@@ -1577,7 +1650,10 @@ export const handlers = [
     return HttpResponse.json({
       items: Object.entries(mediaAssets).map(([id, asset]) => ({
         id,
+        kind: asset.kind,
         state: asset.state,
+        // Omitted, never null, when there is none — which is most clips.
+        ...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
         durationSeconds: asset.durationSeconds,
         listing: asset.listing,
         rejection: asset.rejection,
@@ -1699,7 +1775,17 @@ export const handlers = [
       }
 
       const mediaAssetId = `med_${intent.id.slice(4)}`;
-      mediaAssets[mediaAssetId] = { attested: false, state: "ready" };
+      /*
+        No `posterUrl`, deliberately. A clip has no still until the provider
+        has produced one and no public URL until it is published — so the row
+        an operator sees immediately after uploading is precisely the
+        no-preview case, and the screen has to render it as something.
+      */
+      mediaAssets[mediaAssetId] = {
+        attested: false,
+        kind: "video",
+        state: "ready",
+      };
       return HttpResponse.json({ ready: true, mediaAssetId });
     },
   ),
