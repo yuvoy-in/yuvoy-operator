@@ -259,6 +259,39 @@ function seedExperiences(): MockExperience[] {
       sellable: true,
       review: { state: "applied" },
     },
+    /*
+      A live listing that exists ONLY to be taken off sale.
+
+      The withdraw walkthrough mutates whatever it touches, and the mock server
+      is shared across the whole run — so pointing it at `exp_dive` left that
+      listing withdrawn for every test after it, and for every rerun against a
+      reused server. Same call `med_unattached_fixture` makes on the media side.
+
+      Carries footage so it does not change which listings the Activities
+      screen reports as "on sale with nothing to show".
+    */
+    {
+      id: "exp_offsale",
+      slug: "sunrise-paddle",
+      title: "Sunrise paddle",
+      summary: "A quiet hour on the water before the island wakes up.",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      bookingMode: "allotment",
+      durationMinutes: 60,
+      maxPartySize: 4,
+      unitPricePaise: 120000,
+      pricingUnit: "per_person",
+      activityType: "mangrove_kayak",
+      activityTypeLabel: "Mangrove kayaking",
+      publishBlockers: [],
+      meetingPoint: "Beach 1, by the boats",
+      upcomingDepartures: 2,
+      sellable: true,
+      review: { state: "applied" },
+    },
     {
       id: "exp_boat",
       slug: "island-boat-day",
@@ -1686,6 +1719,78 @@ export const handlers = [
    * `live_changes_in_review` and KEEPS SELLING — "bookings already made are
    * unaffected either way; their terms were snapshotted at checkout".
    */
+  /**
+   * Taking your own listing off sale — yuvoy-operator#30 §6.
+   *
+   * **Cancels nothing and refunds nothing**, and the response says what is
+   * still owed. The `note` is present only when there are bookings to honour,
+   * because that is the sentence a client must render verbatim: an operator
+   * who assumes withdrawing cancelled the bookings simply does not turn up.
+   */
+  http.post(url("/experiences/:id/withdraw"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const me = sessionUser(request)!;
+    if (!canManage(me)) {
+      return envelope("forbidden", "OWNER or MANAGER only.", 403);
+    }
+
+    const listing = mockExperiences.find((e) => e.id === String(params.id));
+    if (!listing) return envelope("not_found", "No such listing.", 404);
+
+    const body = (await request.json()) as {
+      reasonCode?: string;
+      confirmExperienceId?: string;
+    };
+    if (body.confirmExperienceId !== listing.id) {
+      return envelope(
+        "confirmation_required",
+        "The id did not match. Nothing changed.",
+        400,
+      );
+    }
+    if (!body.reasonCode) {
+      return envelope(
+        "invalid_reason_code",
+        "Why are you taking it off sale?",
+        400,
+      );
+    }
+    if (listing.status === "withdrawn") {
+      return envelope("already_off_sale", "Already off sale.", 409);
+    }
+    /*
+      A draft is already selling nothing, so withdrawing it is not a state
+      change — and calling a draft "withdrawn" would confuse the two.
+    */
+    if (listing.status === "draft") {
+      return envelope("cannot_withdraw", "A draft is not on sale.", 409);
+    }
+
+    listing.status = "withdrawn";
+    listing.publicationState = "withdrawn";
+
+    /*
+      Bookings that still stand. `exp_offsale` is the withdraw walkthrough's own
+      listing and carries some, because the sentence about what withdrawing did
+      NOT do is the whole point of the response.
+    */
+    const bookingsToHonour =
+      listing.id === "exp_offsale" || listing.id === "exp_dive" ? 3 : 0;
+    return HttpResponse.json({
+      state: "withdrawn",
+      upcomingDepartures: listing.upcomingDepartures ?? 0,
+      bookingsToHonour,
+      guestsToHonour: bookingsToHonour * 2,
+      ...(bookingsToHonour > 0
+        ? {
+            note: "Three bookings are already made and still stand — you owe those travellers the trip. Nothing was cancelled or refunded.",
+          }
+        : {}),
+      next: "send_a_revision_to_put_it_back",
+    });
+  }),
+
   http.post(url("/experiences/:id/revisions"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;

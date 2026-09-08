@@ -3,6 +3,7 @@ import { requireOperator } from "@/lib/auth/session";
 import { getChangeRequests } from "@/lib/money/fetch";
 import { isOpen, type ChangeState } from "@/lib/account/bank";
 import { ChangePanel } from "./change-panel";
+import { canManageAccess } from "@/lib/team/access";
 import { BankForm } from "./bank-form";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
@@ -35,7 +36,17 @@ export default async function PayoutsPage() {
   const inFlight = bank.filter((r) => isOpen((r.state ?? "") as ChangeState));
   const history = bank.filter((r) => !isOpen((r.state ?? "") as ChangeState));
 
-  const isOwner = me.roles.includes("OWNER");
+  /*
+    TWO permissions, not one — and they are deliberately different sets.
+
+    Raising a bank change is OWNER only. Stopping one is OWNER **or ADMIN**,
+    because stopping is the safety action and an admin exists for an owner who
+    is off the island. One flag used to serve both, which denied an admin
+    something the server allows; `pnpm qa` reads both rules out of the contract
+    and now says so.
+  */
+  const canRaise = me.roles.includes("OWNER");
+  const canStop = canManageAccess(me.roles);
 
   return (
     <Screen
@@ -67,6 +78,7 @@ export default async function PayoutsPage() {
                 objectionUntil={r.objectionUntil}
                 coolingUntil={r.coolingUntil}
                 requestedAt={r.requestedAt}
+                canStop={canStop}
               />
             ))}
           </div>
@@ -93,7 +105,7 @@ export default async function PayoutsPage() {
           </p>
         ) : (
           <div className="mt-4">
-            <BankForm canRaise={isOwner} />
+            <BankForm canRaise={canRaise} />
           </div>
         )}
       </section>

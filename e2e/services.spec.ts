@@ -475,3 +475,55 @@ test("the activity picker narrows to the chosen category", async ({ page }) => {
     activity.locator("option", { hasText: "Birdwatching" }),
   ).toHaveCount(0);
 });
+
+test("a listing can be taken off sale, and it says what that did NOT do", async ({
+  page,
+}, testInfo) => {
+  /*
+    yuvoy-operator#30 §6 — the thing an operator could not do. Only an admin
+    could, "so an operator whose boat was out of the water for a month had to
+    ask somebody at Yuvoy — a queue with a portal in front of it."
+
+    The assertion that matters is the second one. **Withdrawing cancels nothing
+    and refunds nothing**: confirmed bookings stand and the operator still owes
+    those travellers the trip. Somebody who assumes otherwise does not turn up,
+    and eleven people are on a jetty — so the API's own sentence is rendered
+    verbatim rather than paraphrased.
+
+    Single-tenant: it mutates the shared listing, so it runs on one project.
+  */
+  test.skip(
+    testInfo.project.name !== "mobile",
+    "takes a shared listing off sale — single-tenant by design",
+  );
+
+  await signIn(page);
+  await page.goto("/services/activities");
+
+  const row = page.locator("li").filter({ hasText: "Sunrise paddle" });
+  await row.getByRole("button", { name: "Take it off sale" }).click();
+
+  // Warned BEFORE the decision, too.
+  await expect(
+    row.getByText(/does not cancel the ones you have/i),
+  ).toBeVisible();
+
+  await row.getByRole("radio", { name: /Not running this/ }).check();
+
+  // A wrong id is refused, and nothing changes.
+  await row.getByLabel(/Type this listing/).fill("exp_wrong");
+  await row.getByRole("button", { name: "Take it off sale" }).click();
+  await expect(row.getByText(/does not match this listing/)).toBeVisible();
+
+  await row.getByLabel(/Type this listing/).fill("exp_offsale");
+  await row.getByRole("button", { name: "Take it off sale" }).click();
+
+  await expect(row.getByText("Off sale")).toBeVisible();
+  // The API's sentence, verbatim — the one that stops somebody not turning up.
+  await expect(row.getByText(/still stand/)).toBeVisible();
+  await expect(
+    row.getByText(/upcoming departures have stopped being offered/),
+  ).toBeVisible();
+  // And how to undo it, which is not a button.
+  await expect(row.getByText(/goes through review/)).toBeVisible();
+});

@@ -838,16 +838,39 @@ for (const page of pages) {
     segmentSource,
   );
 
+  /*
+    Whitespace-tolerant, and that is not cosmetic.
+
+    This used to be `source.includes(\`${method}("${path}"\`)`, which requires
+    the method and the path to sit on ONE line — and prettier wraps exactly
+    those calls once the path is long enough:
+
+        await operatorApi(token).POST(
+          "/experiences/{id}/withdraw",
+
+    A wrapped call was therefore invisible to this check, in both directions.
+    The harmless direction is what surfaced it (a correctly gated route accused
+    of inventing a permission); the dangerous one is silent, because a route
+    reaching a gated endpoint on a wrapped line would pass the check below
+    WITHOUT gating at all, and a staff login would meet a 403 it cannot act on.
+
+    Found on 8 Sep 2026 building yuvoy-operator#30 §6.
+  */
+  const reaches = (method, path) =>
+    new RegExp(
+      `${method}\\(\\s*["'\`]${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'\`]`,
+    ).test(source);
+
   const ownerCalls = OWNER_ONLY.filter(({ method, path }) =>
-    source.includes(`${method}("${path}"`),
+    reaches(method, path),
   ).map(({ method, path }) => `${method} ${path}`);
 
   const manageCalls = NEEDS_MANAGE.filter(({ method, path }) =>
-    source.includes(`${method}("${path}"`),
+    reaches(method, path),
   ).map(({ method, path }) => `${method} ${path}`);
 
   const adminCalls = OWNER_OR_ADMIN.filter(({ method, path }) =>
-    source.includes(`${method}("${path}"`),
+    reaches(method, path),
   ).map(({ method, path }) => `${method} ${path}`);
 
   if (ownerCalls.length) {
@@ -905,12 +928,35 @@ for (const page of pages) {
     links to a route that does — `/today` gates the earnings and payout links
     on `canManage` and calls nothing gated of its own, which is correct.
   */
+  /*
+    ACCUMULATED across every page in the segment, not overwritten by the last
+    one — and the asymmetry is the reason.
+
+    The gate is detected segment-wide (`segmentSource`, every file under the
+    segment) while the calls are detected per page (`source`, that page's
+    import graph). A segment with two pages where only one reaches a gated
+    endpoint therefore looked ungated-but-gating the moment the other page was
+    processed last: `/services` has `activities` calling a gated endpoint and
+    `reels` calling none, and whichever ran second decided the answer.
+
+    So `own` and `links` are unioned. Found on 8 Sep 2026, when adding the
+    listing withdraw (yuvoy-operator#30 §6) made `/services` reach its first
+    gated endpoint and the check blamed the sibling page.
+  */
+  const prior = gateJustification.get(segment);
   gateJustification.set(segment, {
-    gates: gatesOnManage || gatesOnOwner || gatesOnAdmin,
-    own: manageCalls.length + ownerCalls.length + adminCalls.length > 0,
-    links: [...code(page).matchAll(/href=\{?["'`](\/[^"'`}\s]*)["'`]/g)].map(
-      (m) => m[1].split("?")[0].split("#")[0],
-    ),
+    gates:
+      gatesOnManage || gatesOnOwner || gatesOnAdmin || prior?.gates || false,
+    own:
+      manageCalls.length + ownerCalls.length + adminCalls.length > 0 ||
+      prior?.own ||
+      false,
+    links: [
+      ...(prior?.links ?? []),
+      ...[...code(page).matchAll(/href=\{?["'`](\/[^"'`}\s]*)["'`]/g)].map(
+        (m) => m[1].split("?")[0].split("#")[0],
+      ),
+    ],
   });
 
   if (manageCalls.length && !gatesOnManage && !gatesOnOwner) {

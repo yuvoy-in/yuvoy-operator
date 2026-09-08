@@ -6,6 +6,7 @@ import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { CATEGORIES, type Category } from "@/lib/services/vocabulary";
+import { WITHDRAW_REASONS, type WithdrawReason } from "@/lib/services/listings";
 
 /**
  * O7 — an operator writes their own listing, and proposes changes to it.
@@ -463,4 +464,149 @@ export async function submitRevision(
   // becomes `live_changes_in_review` — so the list says more than a message.
   revalidatePath("/services/activities");
   return { submitted: true };
+}
+
+export interface WithdrawState {
+  message?: string;
+  /**
+   * What was typed, handed back so a refusal does not empty the form. See the
+   * note in `withdrawListing`.
+   */
+  typed?: { reasonCode?: string; confirmExperienceId?: string };
+  /** Bumped per attempt, so the form remounts and re-reads its defaults. */
+  attempt?: number;
+  /** Set on success, so the row can say exactly what did and did not happen. */
+  done?: {
+    upcomingDepartures: number;
+    bookingsToHonour: number;
+    guestsToHonour: number;
+    /** The API's own sentence, rendered VERBATIM. See below. */
+    note?: string;
+  };
+}
+
+const withdrawSchema = z.object({
+  id: z.string().min(1),
+  reasonCode: z.enum(
+    WITHDRAW_REASONS.map((r) => r.code) as [
+      WithdrawReason,
+      ...WithdrawReason[],
+    ],
+  ),
+  note: z.string().trim().optional(),
+  confirmExperienceId: z.string().trim().min(1),
+});
+
+/**
+ * Taking your own listing off sale — yuvoy-operator#30 §6.
+ *
+ * ## It cancels nothing, and the screen says so twice
+ *
+ * "This cancels nothing and refunds nothing. Future departures keep their rows
+ * and simply stop being offered; confirmed bookings are untouched and you still
+ * owe those travellers the trip." An operator who assumes otherwise **will not
+ * turn up**, which is the single worst outcome this action can produce — so the
+ * form says it before, and the API's own `note` says it after, verbatim.
+ *
+ * ## Confirmed by typing the id, not by a checkbox
+ *
+ * The contract's reason, and it is the same call the departure call-off makes:
+ * "a checkbox is one mis-tap on a wet phone away from taking a live listing off
+ * sale". The comparison happens here as well as at the API, because a Server
+ * Action is a public POST endpoint whatever the form does.
+ */
+export async function withdrawListing(
+  _prev: WithdrawState,
+  form: FormData,
+): Promise<WithdrawState> {
+  const parsed = withdrawSchema.safeParse({
+    id: String(form.get("id") ?? ""),
+    reasonCode: String(form.get("reasonCode") ?? ""),
+    note: String(form.get("note") ?? ""),
+    confirmExperienceId: String(form.get("confirmExperienceId") ?? ""),
+  });
+  /*
+    A refusal must not empty the form.
+
+    React resets a form when its action completes and these inputs are
+    uncontrolled, so a mistyped id used to clear the chosen REASON as well —
+    and the next attempt then failed validation for a different reason than the
+    one on screen. Found by an e2e walkthrough that typed a wrong id first,
+    which is exactly what a person does. The same defect shipped on `/sign-in`
+    and `/signup` and is fixed there the same way.
+  */
+  const typed = {
+    reasonCode: String(form.get("reasonCode") ?? "") || undefined,
+    confirmExperienceId:
+      String(form.get("confirmExperienceId") ?? "") || undefined,
+  };
+  const again = (message: string): WithdrawState => ({
+    message,
+    typed,
+    attempt: (_prev.attempt ?? 0) + 1,
+  });
+
+  if (!parsed.success) {
+    return again("Pick a reason, and type the listing's id to confirm.");
+  }
+
+  const { id, reasonCode, note, confirmExperienceId } = parsed.data;
+  if (confirmExperienceId !== id) {
+    // Said here rather than forwarded, because the API's 400 for this is not a
+    // sentence an operator can act on and the mismatch is knowable on screen.
+    return again("That id does not match this listing. Nothing changed.");
+  }
+
+  const { token, me } = await requireOperator();
+  if (!me.canManage) {
+    return again(
+      "Your role cannot take a listing off sale. An owner or manager has to.",
+    );
+  }
+
+  try {
+    const { data, error } = await operatorApi(token).POST(
+      "/experiences/{id}/withdraw",
+      {
+        params: { path: { id } },
+        body: { reasonCode, confirmExperienceId, ...(note ? { note } : {}) },
+      },
+    );
+    if (error) throw error;
+
+    /*
+      Revalidate AND hand back the numbers. The list has to stop showing it as
+      on sale immediately — but the row going quiet is not enough on its own,
+      because what an operator most needs to know is what they still owe.
+    */
+    revalidatePath("/services/activities");
+    return {
+      done: {
+        upcomingDepartures: data.upcomingDepartures,
+        bookingsToHonour: data.bookingsToHonour,
+        guestsToHonour: data.guestsToHonour,
+        note: data.note,
+      },
+    };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return again("No signal. Nothing was sent — it is still on sale.");
+    }
+    if (err instanceof OperatorApiError) {
+      if (err.code === "already_off_sale") {
+        return again("This one is already off sale.");
+      }
+      if (err.code === "cannot_withdraw") {
+        return again(
+          "This listing cannot be taken off sale from here. Message us and a person will do it.",
+        );
+      }
+      if (err.status === 403) {
+        return again(
+          "Your role cannot take a listing off sale. An owner or manager has to.",
+        );
+      }
+    }
+    return again("Could not take it off sale. Nothing changed.");
+  }
 }

@@ -25,6 +25,7 @@ export function ChangePanel({
   objectionUntil,
   coolingUntil,
   requestedAt,
+  canStop,
 }: {
   id: string;
   state: ChangeState;
@@ -32,6 +33,21 @@ export function ChangePanel({
   objectionUntil?: string | null;
   coolingUntil?: string | null;
   requestedAt?: string;
+  /**
+   * Whether this person may stop the change — **OWNER or ADMIN**, which is a
+   * WIDER set than the one that may raise it.
+   *
+   * The two are deliberately different in the contract and were the same one
+   * flag here: raising a bank change is OWNER only ("a stolen login plus one
+   * convincing phone call is otherwise enough to redirect a season's
+   * takings"), while stopping one is OWNER or ADMIN — because stopping is the
+   * SAFETY action, and an admin exists precisely for an owner who is off the
+   * island. Denying it is the wrong direction to be wrong in.
+   *
+   * Before this the control was ungated entirely, so a STAFF login saw a
+   * button that could only ever answer 403.
+   */
+  canStop: boolean;
 }) {
   const [result, act, pending] = useActionState<CancelState, FormData>(
     cancelChange,
@@ -81,7 +97,21 @@ export function ChangePanel({
         />
       </dl>
 
-      {stoppable ? (
+      {stoppable && !canStop ? (
+        /*
+          Said, rather than shown as a button that will 403.
+
+          The refusal is knowable from what is already on screen, so it is said
+          here — the rule every role gate in this portal follows. A staff phone
+          on a jetty should not discover this after tapping.
+        */
+        <p className="text-forest/80 mt-5 text-sm">
+          If this was not asked for, an owner or an admin can stop it. Your role
+          cannot — tell them now rather than waiting.
+        </p>
+      ) : null}
+
+      {stoppable && canStop ? (
         <form action={act} className="mt-5">
           <input type="hidden" name="id" value={id} />
           <p className="text-terra-deep text-sm font-bold">

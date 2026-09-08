@@ -381,3 +381,22 @@ export function describeBlockers(
 ): string[] {
   return (blockers ?? []).map((key) => BLOCKER_LABELS[key] ?? key);
 }
+
+/**
+ * Why an operator is taking their own listing off sale — yuvoy-operator#30 §6.
+ *
+ * The thing they could not do: only an admin could take a listing off sale, so
+ * an operator whose boat was out of the water for a month had to ask somebody
+ * at Yuvoy — a queue with a portal in front of it.
+ *
+ * A closed set in the contract, so it is rendered rather than paraphrased.
+ */
+export const WITHDRAW_REASONS = [
+  { code: "seasonal_close", label: "Closed for the season" },
+  { code: "not_running", label: "Not running this at the moment" },
+  { code: "price_wrong", label: "The price is wrong" },
+  { code: "details_wrong", label: "Something in the details is wrong" },
+  { code: "other", label: "Something else" },
+] as const;
+
+export type WithdrawReason = (typeof WITHDRAW_REASONS)[number]["code"];

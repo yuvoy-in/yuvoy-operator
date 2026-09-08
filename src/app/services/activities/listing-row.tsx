@@ -11,6 +11,7 @@ import {
 } from "@/lib/services/listings";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
+import { WithdrawListingForm } from "./withdraw-listing-form";
 import { inputClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 
@@ -465,6 +466,26 @@ export function ListingRow({
             ? "Finish and send it"
             : "Propose a change"}
         </Button>
+      ) : null}
+
+      {/*
+        Taking it off sale — yuvoy-operator#30 §6.
+
+        Offered only on a listing that is actually selling. A draft is already
+        selling nothing, so withdrawing it is not a state change, and calling a
+        draft "withdrawn" would confuse the two — which is why the API declines
+        it too.
+
+        Below the edit control rather than beside it: this is the one action on
+        the row that is hard to undo (putting it back goes through review), and
+        it should not sit a thumb's width from "Propose a change".
+      */}
+      {listing.id ? (
+        <WithdrawListingForm
+          experienceId={listing.id}
+          title={listing.title ?? "this listing"}
+          selling={status.selling}
+        />
       ) : null}
     </li>
   );
