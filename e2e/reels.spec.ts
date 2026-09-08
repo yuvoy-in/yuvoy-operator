@@ -648,3 +648,46 @@ test("/services/reels has no accessibility violations", async ({ page }) => {
 
   expect(results.violations).toEqual([]);
 });
+
+test("attaching to a listing nobody can book says so", async ({ page }) => {
+  /*
+    yuvoy-operator#31 §1 names this as the cost of attaching after approval:
+    "after a generic approval the clip could then be attached to any listing at
+    all, including a draft nobody can book."
+
+    That half is the portal's and needs no migration. A warning rather than a
+    refusal, because adding footage to a draft before sending it for review is
+    the normal order — what an operator must not do is walk away believing
+    travellers can see it.
+  */
+  await signIn(page);
+  await page.goto("/services/reels");
+
+  const row = page
+    .getByRole("listitem")
+    .filter({ hasText: "Choose the listing it belongs to." })
+    .first();
+
+  const select = row.getByLabel("Listing");
+
+  /*
+    Asserted as a PROPERTY, not a count. Other tests in this file and in
+    services.spec create drafts against the same shared server, so the number
+    of "· Draft" options grows during a full run — the claim here is that the
+    status reads as words at all, never as a database key with its underscores
+    stripped.
+  */
+  await expect(
+    select.locator("option", { hasText: "· Draft" }).first(),
+  ).toBeAttached();
+  await expect(
+    select.locator("option", { hasText: "live changes in review" }),
+  ).toHaveCount(0);
+
+  await select.selectOption({ label: "Island boat day · Draft" });
+  await expect(row.getByText(/nobody will see this yet/)).toBeVisible();
+
+  // A live listing draws no warning.
+  await select.selectOption({ label: "Reef dive · On sale" });
+  await expect(row.getByText(/nobody will see this yet/)).toBeHidden();
+});
