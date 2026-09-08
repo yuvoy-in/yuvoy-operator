@@ -151,6 +151,7 @@ export default async function ActivitiesPage() {
 
       <div className="mt-6">
         <NewListingForm
+          vocabulary={vocabulary}
           categories={categories}
           destinations={destinations}
           market={marketName(vocabulary)}

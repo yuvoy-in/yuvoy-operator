@@ -944,6 +944,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/experiences/{id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take your own listing off sale
+         * @description The thing an operator could not do. Only an admin could take a listing off sale, so an operator whose boat was out of the water for a month had to ask somebody at Yuvoy — a queue with a portal in front of it.
+         *
+         *     **This cancels nothing and refunds nothing.** Future departures keep their rows and simply stop being offered; confirmed bookings are untouched and you still owe those travellers the trip. If you want a departure cancelled and its travellers refunded, that is `POST /slots/{id}/call-off`, one per departure, each with its own confirmation. There is deliberately no "withdraw and cancel everything" flag.
+         *
+         *     Not a state machine. The admin endpoint carries four publication states; the only transition an operator owns is "off". **Putting it back goes through review** — send a revision — for the same reason approving a copy edit does not republish a withdrawn listing: putting something back in front of travellers is a deliberate decision, not a side effect.
+         *
+         *     OWNER or MANAGER only.
+         */
+        post: operations["withdrawOperatorExperience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/media": {
         parameters: {
             query?: never;
@@ -1147,6 +1173,24 @@ export interface components {
             key?: string;
             label?: string;
         };
+        /**
+         * @description Why a departure is not on sale, told to the operator whose departure it is. Present only when `onSale` is false.
+         *
+         *     A closed set, so a client can branch on one — the same reason `review.rejectionCode` is closed. **If you meet a value you do not recognise, render `notOnSaleDetail` verbatim**; the set grows as the eligibility rules do.
+         *
+         *     A different calculus from the traveller's `bookable`, which is deliberately reason-free: this is their own business. With one exception. `sales_paused` covers all five kill-switch scopes at once and is the only place the operator is told less than the whole truth — a kill switch is an emergency stop we pulled, and whether it is global, a market, an island or aimed at them personally is a supply judgment we do not publish on a self-serve screen.
+         * @enum {string}
+         */
+        NotOnSaleReason: "sales_paused" | "listing_draft" | "listing_in_review" | "listing_withdrawn" | "listing_unpriced" | "operator_not_selling" | "credential_missing" | "credential_expired" | "departure_closed" | "departure_past_cutoff" | "departure_seats_unconfirmed" | "departure_full";
+        /** @description One activity, the word a person uses for it, and the category it belongs to. A third field, so it is not `VocabularyTerm`: the parent matters, because a picker that offers "scuba" under "food and drink" is offering a 400 the database will hand back. */
+        ActivityTypeTerm: {
+            /** @example scuba */
+            key: string;
+            /** @example Scuba diving */
+            label: string;
+            /** @enum {string} */
+            category: "adventure" | "nature_wildlife" | "food_drink" | "arts_creativity" | "learning" | "culture_heritage" | "wellness" | "entertainment" | "community" | "sports" | "local_life" | "events";
+        };
         BusinessDetails: {
             /** @description What travellers see. Not editable here. */
             displayName?: string;
@@ -1175,12 +1219,23 @@ export interface components {
             summary?: string;
             description?: string;
             category?: string;
+            /**
+             * @description What this listing actually is. Empty on the listings that predate the vocabulary — the column is nullable so they keep selling — and mandatory before it can be published again.
+             * @example scuba
+             */
+            activityType?: string;
+            /**
+             * @description The word for it, from the same table the traveller card reads, so a picker and a card cannot word the same noun differently. Empty when `activityType` is.
+             * @example Scuba diving
+             */
+            activityTypeLabel?: string;
             destination?: string;
             /**
              * @description The one word to show. Derived from the publication state and the latest revision together, because neither answers "where is this" alone — a published listing with a submitted edit is live AND in review, and a draft whose revision was rejected is "we came back to you" rather than "draft".
+             *     `not_selling` is new in 0053 and is the one value a client cannot infer from `publicationState`: the listing IS published, and it is still absent from every feed, absent from search, and refusing checkout — because the operator is not selling, a kill switch is engaged, the listing has no price, or a credential their market and category require is missing, unverified or expired. Before 0053 a published listing genuinely sold whatever the operator's status said, so `live` was accurate; it no longer would be. The reason is not on this object deliberately — it belongs to the account, and `GET /operator/v1/me` carries the blockers that name it. Because requirements resolve per category, one listing can be `not_selling` while another of the same operator is `live`.
              * @enum {string}
              */
-            status?: "draft" | "in_review" | "live" | "live_changes_in_review" | "changes_rejected" | "withdrawn";
+            status?: "draft" | "in_review" | "live" | "live_changes_in_review" | "changes_rejected" | "not_selling" | "withdrawn";
             /** @enum {string} */
             publicationState?: "draft" | "in_review" | "published" | "withdrawn";
             bookingMode?: string;
@@ -1194,7 +1249,17 @@ export interface components {
             requirements?: string[];
             safetyNotes?: string;
             upcomingDepartures?: number;
-            /** @description False when there is no price. Such a listing saves but cannot be approved, and an operator should learn that while writing it rather than after waiting for a review. */
+            /**
+             * @description The mandatory fields still empty on this listing, named in the same spelling the revision body uses. Empty means nothing is outstanding.
+             *
+             *     D-031 C2 fixes the set: title, category, activity type, destination, summary, price and its unit, duration, party size, meeting point. Six of those cannot be empty in the schema, so in practice this carries `summary`, `activityType`, `unitPricePaise`, `meetingPoint` and `pricingUnit`.
+             *
+             *     `pricingUnit` appears here for a listing whose basis nobody ever stated. The column is NOT NULL, so the value alone cannot tell the two apart; the database records separately whether a caller named it, and an unstated basis blocks publication rather than printing a guessed phrase beside the price.
+             *
+             *     Sending a revision that leaves one of these empty is a 400, and approving one is a 409, so mark the specific rows on the form rather than letting somebody find out on send. `activityType` is the one the submit gate does not yet enforce — it is still required before the listing can be published.
+             */
+            publishBlockers?: string[];
+            /** @description False when there is no price. Such a listing saves but cannot be approved, and an operator should learn that while writing it rather than after waiting for a review. `publishBlockers` is the fuller answer and names every outstanding field, price included. */
             sellable?: boolean;
             /** @description Where the latest submission got to. Absent if nothing was ever sent. */
             review?: {
@@ -1209,7 +1274,7 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "internal_error" | "session_expired" | "account_not_active" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access";
+                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "sale_in_progress" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked";
                 /** @description Human-readable; safe to show. */
                 message: string;
                 /** @description Field-level messages, keyed by field name. */
@@ -2822,7 +2887,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description `request_not_open` — already answered, or out of time. `grant_ceiling_exceeded` — that would put more people on the departure than it physically holds. */
+            /** @description `request_not_open` — already answered, or out of time. `grant_ceiling_exceeded` — that would put more people on the departure than it physically holds. `operator_not_sellable` — new in 0053. Accepting is a sale, so it is gated on the same eligibility as every other sale: the business is not selling, a kill switch is engaged, the listing lost its price, or a required credential lapsed while the request sat waiting. The request is deliberately NOT auto-declined, so an operator who fixes the gap within the window can still say yes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3077,6 +3142,17 @@ export interface operations {
                              */
                             bookingMode?: "allotment" | "request";
                             status?: string;
+                            /**
+                             * @description Whether a traveller can actually buy this departure.
+                             *
+                             *     Read straight from the same view the traveller surfaces read, by a left join — never recomputed — so this screen and what is on sale cannot disagree.
+                             *
+                             *     **Per row, not per listing.** A certificate lapsing on Tuesday takes Wednesday's departure off sale and leaves Monday's selling, and one badge on the listing cannot say that.
+                             */
+                            onSale?: boolean;
+                            notOnSaleReason?: components["schemas"]["NotOnSaleReason"];
+                            /** @description A sentence to render verbatim. Present only when `onSale` is false. Render this when you meet a `notOnSaleReason` you do not recognise. */
+                            notOnSaleDetail?: string;
                         }[];
                     };
                 };
@@ -3127,8 +3203,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        created?: number;
+                        created: number;
                         note?: string;
+                        /**
+                         * @description Whether these departures are actually for sale — the LISTING's answer, since there is nothing per-row to say yet.
+                         *
+                         *     Departures on a draft listing stay creatable, deliberately (D-031 C9): a calendar you cannot fill in before the listing is approved is not a calendar. What was wrong was the silence. Render `notOnSaleDetail` when this is false; **do not** print "they are on sale from now" unconditionally.
+                         */
+                        onSale: boolean;
+                        notOnSaleReason?: components["schemas"]["NotOnSaleReason"];
+                        /** @description A sentence to render verbatim. Present only when `onSale` is false. */
+                        notOnSaleDetail?: string;
                     };
                 };
             };
@@ -3278,6 +3363,14 @@ export interface operations {
                             name?: string;
                         };
                         categories?: components["schemas"]["VocabularyTerm"][];
+                        /**
+                         * @description What a listing actually is, narrowed to this market.
+                         *
+                         *     Alongside `categories`, never replacing them: the category is what a traveller browses by and the activity type is what the thing IS. A picker must filter this list by the chosen category — the pair is enforced by a composite foreign key, so `scuba` under `food_drink` is a 400.
+                         *
+                         *     Not an enum anywhere in this contract: the set grows by INSERT and an enum would go stale, exactly as for destinations.
+                         */
+                        activityTypes?: components["schemas"]["ActivityTypeTerm"][];
                         /** @description Active destinations in this market, in the order a picker should show them. Empty means we have not opened one yet, which is a state worth rendering rather than a failure. */
                         destinations?: components["schemas"]["VocabularyTerm"][];
                     };
@@ -3330,10 +3423,24 @@ export interface operations {
                      * @enum {string}
                      */
                     category: "adventure" | "nature_wildlife" | "food_drink" | "arts_creativity" | "learning" | "culture_heritage" | "wellness" | "entertainment" | "community" | "sports" | "local_life" | "events";
+                    /**
+                     * @description What this listing actually is — `scuba`, not `adventure`.
+                     *
+                     *     The category is market-agnostic and is what a traveller browses by; it cannot describe the business, because in the launch market every water sport is `adventure`. It is also the grain at which we decide which credentials a listing needs, so it has to be able to tell a dive from a beach walk.
+                     *
+                     *     Deliberately not an enum: the set grows by INSERT and an enum would go stale, exactly as for `destination`. The pairs are on `GET /catalog/vocabulary` under `activityTypes`, each with its parent category, and the pair is enforced by a composite foreign key — `scuba` under `food_drink` is a 400.
+                     *
+                     *     Optional here so a half-finished draft still saves, and **mandatory before the listing can be published**.
+                     * @example scuba
+                     */
+                    activityType?: string;
                     /** @description A destination key in your own market. One belonging to another market is refused. The keys for your market are on `GET /catalog/vocabulary`; they are rows rather than a fixed set, so there is no enum here to go stale. */
                     destination: string;
                     /**
-                     * @default request
+                     * @description **The default changed from `request` to `allotment` (D-031 P5).** The product thesis is paid and confirmed in under sixty seconds, and `request` means the traveller waits for a human — so defaulting to it made every listing an operator wrote fight the thesis. Send `request` explicitly for a listing you want to answer yourself.
+                     *
+                     *     Existing listings are unchanged, and every existing departure keeps its own copy of the mode, so nothing anybody is holding can be re-moded by this.
+                     * @default allotment
                      * @enum {string}
                      */
                     bookingMode?: "allotment" | "request";
@@ -3344,7 +3451,9 @@ export interface operations {
                     /** Format: int64 */
                     unitPricePaise?: number;
                     /**
-                     * @default per_person
+                     * @description How `unitPricePaise` is charged. **There is no default any more.** Omitting it is recorded as unstated rather than silently answered `per_person`: the phrase is printed beside a rupee figure on the traveller's screen, so a substituted one is us inventing a consumer-facing claim on the operator's behalf.
+                     *
+                     *     The listing still saves as a draft, and `publishBlockers` then carries `pricingUnit` until somebody states it. Send it explicitly whenever you know it.
                      * @enum {string}
                      */
                     pricingUnit?: "per_person" | "per_group";
@@ -3420,7 +3529,57 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    [key: string]: unknown;
+                    /** @description *mandatory* */
+                    title?: string;
+                    /** @description *mandatory* */
+                    summary?: string;
+                    description?: string;
+                    /**
+                     * @description *material*, *mandatory*. The closed twelve-value taxonomy.
+                     * @enum {string}
+                     */
+                    category?: "adventure" | "nature_wildlife" | "food_drink" | "arts_creativity" | "learning" | "culture_heritage" | "wellness" | "entertainment" | "community" | "sports" | "local_life" | "events";
+                    /**
+                     * @description *material*, *mandatory to publish*. What the listing actually is. Not an enum — the set grows by INSERT; the pairs are on `GET /catalog/vocabulary`, and the (activity, category) pair is enforced by a composite foreign key.
+                     *
+                     *     It is the one mandatory field the **submit** gate does not yet demand, because the portal has no picker for it and demanding it would answer every operator edit with a 400 they could not act on. Approval demands it.
+                     * @example scuba
+                     */
+                    activityType?: string;
+                    /** @description *material*, *mandatory*. A destination key in your own market. */
+                    destination?: string;
+                    /**
+                     * @description *material*, *mandatory*. Where the day actually starts.
+                     *
+                     *     **This is the canonical name.** `meetingPointText` is accepted for one release and maps to the same field; sending both with different values is a 400. Approval used to apply `meetingPointText` while create and read both said `meetingPoint`, so a revision that changed only the meeting point was approved and changed nothing.
+                     */
+                    meetingPoint?: string;
+                    /**
+                     * @deprecated
+                     * @description Deprecated spelling of `meetingPoint`. Send `meetingPoint`.
+                     */
+                    meetingPointText?: string;
+                    meetingLandmark?: string;
+                    /** @description *material*. Documented as material since the endpoint existed, and not actually applied until now. */
+                    inclusions?: string[];
+                    /** @description *material*. As for `inclusions`. */
+                    requirements?: string[];
+                    /** @description *material* */
+                    safetyNotes?: string;
+                    /** @description *material*, *mandatory* */
+                    durationMinutes?: number;
+                    /** @description *material*, *mandatory* */
+                    maxPartySize?: number;
+                    /**
+                     * Format: int64
+                     * @description *material*, *mandatory*
+                     */
+                    unitPricePaise?: number;
+                    /**
+                     * @description *material*, *mandatory*. How `unitPricePaise` is charged. Travellers now see this beside the price, so changing it changes what a card claims.
+                     * @enum {string}
+                     */
+                    pricingUnit?: "per_person" | "per_group";
                 };
             };
         };
@@ -3439,10 +3598,86 @@ export interface operations {
                     };
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /**
+             * @description `invalid_input`, in one of two shapes.
+             *
+             *     A key we do not know how to change: `details.unknownFields` lists every one, and `details.allowed` lists the whole editable set.
+             *
+             *     A revision that would leave the listing unpublishable: `details.missing` names the mandatory fields still empty after this edit is applied. Refused here, while the form is still open, rather than two days later through a rejection.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    withdrawOperatorExperience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    reasonCode: "seasonal_close" | "not_running" | "price_wrong" | "details_wrong" | "other";
+                    note?: string;
+                    /** @description Must equal the id in the path. Not a boolean: a checkbox is one mis-tap on a wet phone away from taking a live listing off sale, the same reason calling off a departure asks for the departure's id. */
+                    confirmExperienceId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Off sale. Nothing was cancelled and nothing was refunded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        state: "withdrawn";
+                        upcomingDepartures: number;
+                        bookingsToHonour: number;
+                        guestsToHonour: number;
+                        /** @description Present when `bookingsToHonour` is above zero, and **clients must render it verbatim**. An operator who assumes withdrawing cancelled the bookings will simply not turn up, which is the failure this sentence exists to prevent. */
+                        note?: string;
+                        next: string;
+                    };
+                };
+            };
+            /** @description `invalid_reason_code` — why are you taking it off sale? — or `confirmation_required` — echo the listing id to go ahead. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `already_off_sale` — it is still a draft, so it is not on sale to anybody yet — or `sale_in_progress` — somebody is mid-checkout on this listing. Holds last ten minutes; withdrawing is never urgent, and the alternatives are stranding a payer or killing a sale in flight. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listOperatorMedia: {

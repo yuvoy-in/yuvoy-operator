@@ -303,7 +303,24 @@ export async function recordOfflineSale(
 export interface DepartureState {
   message?: string;
   field?: string;
-  result?: { created: number; asked: number; note?: string };
+  result?: {
+    created: number;
+    asked: number;
+    note?: string;
+    /**
+     * Whether those departures are actually for sale — yuvoy-operator#30 §4.
+     *
+     * Departures on a draft listing stay creatable, deliberately: "a calendar
+     * you cannot fill in before the listing is approved is not a calendar."
+     * What was wrong was the SILENCE — the screen said "they are on sale from
+     * now" unconditionally, which is untrue for a draft, an unpriced listing,
+     * a withdrawn one, or an operator not selling. Production held a draft
+     * listing with hundreds of departures no traveller could book.
+     */
+    onSale?: boolean;
+    /** A sentence to render VERBATIM. Present only when `onSale` is false. */
+    notOnSaleDetail?: string;
+  };
 }
 
 const departureSchema = z.object({
@@ -425,7 +442,15 @@ export async function addDepartures(
 
     revalidatePath("/capacity");
     revalidatePath("/today");
-    return { result: { created: data.created ?? 0, asked, note: data.note } };
+    return {
+      result: {
+        created: data.created ?? 0,
+        asked,
+        note: data.note,
+        onSale: data.onSale,
+        notOnSaleDetail: data.notOnSaleDetail,
+      },
+    };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was added." };

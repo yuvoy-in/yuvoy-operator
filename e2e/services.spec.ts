@@ -111,12 +111,19 @@ test("a listing with no price says so while it is being written", async ({
     "A listing without `unitPricePaise` can be saved but cannot be approved …
     an operator should learn that while writing it rather than after waiting
     for a review."
+
+    The sentence changed with yuvoy-operator#30 §3 and the CLAIM did not: the
+    price used to be the only thing this row could name, derived from
+    `sellable`. `publishBlockers` names it alongside everything else that is
+    outstanding, so the row still says the price is missing — it just no longer
+    pretends that is the whole list.
   */
   await signIn(page);
   await page.goto("/services/activities");
   const draft = page.locator("li").filter({ hasText: "Island boat day" });
+  await expect(draft.getByText("a price")).toBeVisible();
   await expect(
-    draft.getByText(/No price yet, so we cannot approve it/),
+    draft.getByText(/missing before we can approve it/),
   ).toBeVisible();
 });
 
@@ -406,4 +413,65 @@ test("an edit can change the fields that were only ever defaults", async ({
   // And the basis it already has is shown as chosen, unlike on the create form
   // — showing it blank would read as "we lost your setting".
   await expect(row.getByRole("radio", { name: /Per person/ })).toBeChecked();
+});
+
+test("a draft names everything still missing, not just the price", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#30 §3. The row could only say "No price yet", derived from
+    `sellable` — true and incomplete, so an operator sent the listing for
+    review and found out the rest from a rejection.
+
+    `exp_boat` is the fixture with four blockers, including the subtle one:
+    `pricingUnit` is NOT NULL, so its value cannot say whether anybody chose
+    it, and an unstated basis blocks publication rather than printing a guessed
+    phrase beside the price.
+  */
+  await signIn(page);
+  await page.goto("/services/activities");
+
+  const row = page.locator("li").filter({ hasText: "Island boat day" });
+  await expect(row.getByText(/things are missing/)).toBeVisible();
+  await expect(row.getByText("a price")).toBeVisible();
+  await expect(row.getByText("a short summary")).toBeVisible();
+  await expect(
+    row.getByText("whether that price is per person or for the group"),
+  ).toBeVisible();
+  // The wire spelling never reaches the operator.
+  await expect(row.getByText("unitPricePaise")).toBeHidden();
+});
+
+test("the activity picker narrows to the chosen category", async ({ page }) => {
+  /*
+    yuvoy-operator#30 §2. The pair is enforced by a composite foreign key —
+    `scuba` under `food_drink` is a 400 — so offering the wrong activities only
+    moves the refusal to after the form is filled in.
+  */
+  await signIn(page);
+  await page.goto("/services/activities");
+  await page.getByRole("button", { name: "Add an activity" }).click();
+
+  // Nothing before a category is chosen: an unfiltered list would let somebody
+  // pick a pair the API refuses.
+  await expect(page.getByLabel("What kind of activity")).toBeHidden();
+
+  await page
+    .getByLabel("What kind of thing it is")
+    .selectOption("nature_wildlife");
+  const activity = page.getByLabel("What kind of activity");
+  await expect(activity).toBeVisible();
+  await expect(
+    activity.locator("option", { hasText: "Birdwatching" }),
+  ).toHaveCount(1);
+  await expect(activity.locator("option", { hasText: "Scuba" })).toHaveCount(0);
+
+  // Switching category re-narrows rather than keeping a now-invalid pair.
+  await page.getByLabel("What kind of thing it is").selectOption("adventure");
+  await expect(
+    activity.locator("option", { hasText: "Scuba diving" }),
+  ).toHaveCount(1);
+  await expect(
+    activity.locator("option", { hasText: "Birdwatching" }),
+  ).toHaveCount(0);
 });

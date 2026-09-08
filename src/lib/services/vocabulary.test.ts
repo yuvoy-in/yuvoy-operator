@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  activityChoices,
   CATEGORIES,
   categoryChoices,
   destinationChoices,
@@ -152,5 +153,52 @@ describe("the category guard", () => {
     expect(isCategory("local_life")).toBe(true);
     expect(isCategory("hot_air_ballooning")).toBe(false);
     expect(isCategory("")).toBe(false);
+  });
+});
+
+describe("what a listing actually is", () => {
+  /*
+    yuvoy-operator#30 §2. The twelve categories are market-agnostic, so in the
+    Andamans every water sport is `adventure` — and that stopped being merely
+    imprecise when credential requirements moved to resolve per activity type.
+  */
+  const vocab = {
+    activityTypes: [
+      { key: "scuba", label: "Scuba diving", category: "adventure" },
+      {
+        key: "birdwatching",
+        label: "Birdwatching",
+        category: "nature_wildlife",
+      },
+    ],
+  } as unknown as Parameters<typeof activityChoices>[0];
+
+  it("narrows to the chosen category", () => {
+    /*
+      The pair is enforced by a composite foreign key — `scuba` under
+      `food_drink` is a 400 — so offering the wrong ones only moves the refusal
+      to after the form is filled in.
+    */
+    expect(activityChoices(vocab, "adventure").map((c) => c.value)).toEqual([
+      "scuba",
+    ]);
+    expect(
+      activityChoices(vocab, "nature_wildlife").map((c) => c.value),
+    ).toEqual(["birdwatching"]);
+  });
+
+  it("offers nothing before a category is chosen", () => {
+    // An unfiltered list would let somebody pick a pair the API refuses.
+    expect(activityChoices(vocab, null)).toEqual([]);
+  });
+
+  it("offers nothing for a category with no activities", () => {
+    expect(activityChoices(vocab, "food_drink")).toEqual([]);
+  });
+
+  it("survives a vocabulary read that failed", () => {
+    // The create form degrades to what it can still do rather than showing an
+    // empty control.
+    expect(activityChoices(null, "adventure")).toEqual([]);
   });
 });

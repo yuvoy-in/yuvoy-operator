@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeBlockers,
   describePricingUnit,
   PRICING_UNITS,
   describeRejection,
@@ -322,5 +323,44 @@ describe("how a price is stated", () => {
     for (const unit of PRICING_UNITS) {
       expect(unit.hint.length, unit.value).toBeGreaterThan(10);
     }
+  });
+});
+
+describe("what is still missing before publication", () => {
+  /*
+    yuvoy-operator#30 §3. The row used to say only "No price yet", derived from
+    `sellable` — true and incomplete, so an operator sent it for review and
+    found out the rest.
+  */
+  it("says each blocker in words an operator uses", () => {
+    expect(describeBlockers(["unitPricePaise", "summary"])).toEqual([
+      "a price",
+      "a short summary",
+    ]);
+  });
+
+  it("explains the pricing basis rather than naming the field", () => {
+    /*
+      The subtle one. The column is NOT NULL, so the value alone cannot say
+      whether anybody chose it — an unstated basis blocks publication rather
+      than printing a guessed phrase beside the price, which is the same defect
+      yuvoy-app#20 fixed on the traveller's card.
+    */
+    expect(describeBlockers(["pricingUnit"])).toEqual([
+      "whether that price is per person or for the group",
+    ]);
+  });
+
+  it("keeps a blocker it cannot name rather than dropping it", () => {
+    /*
+      Dropping one would make the row claim the listing is ready while the API
+      refuses it — the row would be lying on the API's behalf.
+    */
+    expect(describeBlockers(["someNewField"])).toEqual(["someNewField"]);
+  });
+
+  it("is empty when nothing is outstanding", () => {
+    expect(describeBlockers([])).toEqual([]);
+    expect(describeBlockers(undefined)).toEqual([]);
   });
 });

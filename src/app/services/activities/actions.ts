@@ -48,7 +48,8 @@ export interface CreateState {
     | "unitPrice"
     | "pricingUnit"
     | "durationMinutes"
-    | "maxPartySize";
+    | "maxPartySize"
+    | "activityType";
   /** Set when the draft exists, so the screen can say what it is NOT. */
   created?: { id: string; title: string };
 }
@@ -78,6 +79,18 @@ const createSchema = z
       message: "Choose what kind of thing this is.",
     }),
     destination: z.string().trim().min(1, "Where does it run?"),
+    /*
+      Optional on create and mandatory to PUBLISH — it appears in
+      `publishBlockers` until set, so refusing it here would block a first
+      draft over something the operator can finish later. Not an enum: the set
+      grows by INSERT and is narrowed per market, so the server is the only
+      authority on which values pair with which category.
+    */
+    activityType: z
+      .string()
+      .trim()
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
     /*
     Optional, and the form says what leaving it out costs rather than refusing
     it: "a listing without `unitPricePaise` can be saved but cannot be
@@ -144,6 +157,7 @@ export async function createListing(
     destination: String(form.get("destination") ?? ""),
     unitPrice: String(form.get("unitPrice") ?? ""),
     pricingUnit: String(form.get("pricingUnit") ?? ""),
+    activityType: String(form.get("activityType") ?? ""),
     durationMinutes: String(form.get("durationMinutes") ?? ""),
     maxPartySize: String(form.get("maxPartySize") ?? ""),
   });
@@ -171,6 +185,9 @@ export async function createListing(
         ...(parsed.data.pricingUnit
           ? { pricingUnit: parsed.data.pricingUnit }
           : {}),
+        ...(parsed.data.activityType
+          ? { activityType: parsed.data.activityType }
+          : {}),
         ...(parsed.data.durationMinutes
           ? { durationMinutes: Number(parsed.data.durationMinutes) }
           : {}),
@@ -193,6 +210,21 @@ export async function createListing(
       return { message: "No signal. Nothing was saved — try again." };
     }
     if (err instanceof OperatorApiError) {
+      /*
+        413, from the API's 64K body limit — yuvoy-operator#30 §7.
+
+        Genuinely reachable on this form now that inclusions, requirements and
+        safety notes are free text: an operator pasting a whole safety briefing
+        gets here. The refusal must NOT offer a retry — an identical body fails
+        identically, so "try again" is a loop that costs island signal and
+        reaches nothing.
+      */
+      if (err.code === "payload_too_large") {
+        return {
+          message:
+            "That is more text than we can accept in one go. Shorten the longest box — the lists and the safety notes are the usual culprits — and send it again.",
+        };
+      }
       if (err.status === 409) {
         return {
           message:
@@ -401,6 +433,13 @@ export async function submitRevision(
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was sent — try again." };
+    }
+    if (err instanceof OperatorApiError && err.code === "payload_too_large") {
+      // See the create action above. No retry: the same body fails the same.
+      return {
+        message:
+          "That is more text than we can accept in one go. Shorten the longest box — the lists and the safety notes are the usual culprits — and send it again.",
+      };
     }
     if (err instanceof OperatorApiError) {
       if (err.status === 409) {

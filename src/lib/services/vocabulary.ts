@@ -116,3 +116,33 @@ export function destinationChoices(vocabulary: Vocabulary | null): Choice[] {
 export function marketName(vocabulary: Vocabulary | null): string | null {
   return vocabulary?.market?.name ?? null;
 }
+
+/**
+ * What a listing actually IS, narrowed to the chosen category —
+ * yuvoy-operator#30 §2.
+ *
+ * Alongside categories, never replacing them: the category is what a traveller
+ * browses by, the activity type is what the thing is. The twelve categories
+ * are market-agnostic by design, which in the Andamans makes every water sport
+ * `adventure` — and that stopped being merely imprecise when credential
+ * requirements moved to resolve per activity type. "Adventure requires an
+ * instructor certificate" is wrong for a beach walk and useless for scuba;
+ * keyed to the activity, a lapsed certificate stops the scuba listing while
+ * the operator's other listings keep selling.
+ *
+ * **Filtered by category, because the pair is enforced by a composite foreign
+ * key** — `scuba` under `food_drink` is a 400. Offering the wrong ones only
+ * moves the refusal to after the form is filled in.
+ *
+ * Not an enum anywhere in the contract: the set grows by INSERT, so a hardcoded
+ * list would go stale exactly as the destination list would.
+ */
+export function activityChoices(
+  vocabulary: Vocabulary | null,
+  category: string | null,
+): Choice[] {
+  if (!category) return [];
+  return (vocabulary?.activityTypes ?? [])
+    .filter((t) => Boolean(t.key) && t.category === category)
+    .map((t) => ({ value: t.key!, label: t.label || prettify(t.key!) }));
+}

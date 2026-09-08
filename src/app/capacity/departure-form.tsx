@@ -108,7 +108,7 @@ function DepartureRound({
   const problem = departureProblem(plan, today);
 
   if (state.result) {
-    const { created, asked, note } = state.result;
+    const { created, asked, note, onSale, notOnSaleDetail } = state.result;
     return (
       <Panel tone={created > 0 ? "done" : "raised"}>
         {created > 0 ? (
@@ -128,29 +128,27 @@ function DepartureRound({
               </p>
             ) : (
               /*
-                NOT "they are on sale from now" — yuvoy-operator#30 §4.
+                The server's own sentence when they are NOT on sale, and only
+                the plain claim when they are — yuvoy-operator#30 §4.
 
-                That was untrue for a draft listing, an unpriced one, a
-                withdrawn one, and an operator who is not selling. Production
-                currently holds a draft listing with hundreds of departures no
-                traveller can book, every one of which this sentence claimed
-                was selling.
+                This said "they are on sale from now" unconditionally, which
+                was untrue for a draft listing, an unpriced one, a withdrawn
+                one, and an operator not selling. Production held a draft
+                listing with hundreds of departures no traveller could book,
+                every one of which this sentence claimed was selling.
 
-                `GET /slots` gains `onSale` and `notOnSaleReason` in migration
-                0055, which is what will let this screen say WHICH of those it
-                is. Until then it says the part that is true of every case —
-                the departure exists — and does not claim the sale.
+                `notOnSaleDetail` is rendered VERBATIM rather than mapped from
+                `notOnSaleReason` — the contract asks for that explicitly, and
+                the reason set is open enough that a client mapping it would
+                have an unhandled arm the first time one is added. The reason
+                code is deliberately not read here at all.
               */
               <p className="text-forest/80 mt-2 text-sm">
-                They exist now. Whether travellers can book them depends on the
-                activity being on sale — check it on{" "}
-                <a
-                  href="/services/activities"
-                  className="underline underline-offset-2"
-                >
-                  Activities
-                </a>
-                . You can change the seats on each one below.
+                {onSale === false
+                  ? (notOnSaleDetail ??
+                    "They are not on sale yet. Check the activity on Activities.")
+                  : "They are on sale from now."}{" "}
+                You can change the seats on each one below.
               </p>
             )}
           </>

@@ -208,6 +208,14 @@ type MockExperience = {
   inclusions?: string[];
   requirements?: string[];
   safetyNotes?: string;
+  activityType?: string;
+  activityTypeLabel?: string;
+  /*
+    The mandatory fields still empty — yuvoy-operator#30 §3. Computed rather
+    than stored, so a fixture cannot claim a listing is ready while missing
+    something the API would refuse.
+  */
+  publishBlockers?: string[];
   upcomingDepartures?: number;
   sellable?: boolean;
   review?: {
@@ -241,6 +249,9 @@ function seedExperiences(): MockExperience[] {
         per line on the form, which is the conversion most likely to be got
         wrong in one direction only.
       */
+      activityType: "scuba",
+      activityTypeLabel: "Scuba diving",
+      publishBlockers: [],
       inclusions: ["Mask and fins", "One guided dive", "Drinking water"],
       requirements: ["Able to swim 50m", "No diving within 24h of flying"],
       safetyNotes: "Two guides in the water on every dive.",
@@ -259,6 +270,23 @@ function seedExperiences(): MockExperience[] {
       // No price — "saves but cannot be approved". The one fixture that proves
       // the form says so while they are writing rather than after a review.
       unitPricePaise: null,
+      /*
+        The listing that actually shows the blockers list — yuvoy-operator#30
+        §3. No price, no summary, no activity type, and a basis nobody stated.
+        Before this the row could only say "No price yet", which was true and
+        incomplete: the operator sent it for review and found out the rest.
+
+        `pricingUnit` is the interesting one — the column is NOT NULL, so the
+        value alone cannot say whether anybody chose it, and an unstated basis
+        blocks publication rather than printing a guessed phrase beside the
+        price.
+      */
+      publishBlockers: [
+        "summary",
+        "activityType",
+        "unitPricePaise",
+        "pricingUnit",
+      ],
       sellable: false,
       upcomingDepartures: 0,
     },
@@ -1509,6 +1537,31 @@ export const handlers = [
         { key: "local_life", label: "Local life" },
         { key: "events", label: "Events" },
       ],
+      /*
+        What a listing IS, narrowed per market — yuvoy-operator#30 §2. Each
+        carries its parent category, and the pair is enforced by a composite
+        foreign key upstream, so a picker MUST filter by the chosen category:
+        `scuba` under `food_drink` is a 400.
+      */
+      activityTypes: [
+        { key: "scuba", label: "Scuba diving", category: "adventure" },
+        { key: "snorkelling", label: "Snorkelling", category: "adventure" },
+        {
+          key: "private_charter",
+          label: "Private charter",
+          category: "adventure",
+        },
+        {
+          key: "birdwatching",
+          label: "Birdwatching",
+          category: "nature_wildlife",
+        },
+        {
+          key: "mangrove_kayak",
+          label: "Mangrove kayaking",
+          category: "nature_wildlife",
+        },
+      ],
       destinations: [
         { key: "andaman/havelock", label: "Havelock (Swaraj Dweep)" },
         { key: "andaman/neil", label: "Neil (Shaheed Dweep)" },
@@ -2156,9 +2209,32 @@ export const handlers = [
       }
     }
 
+    /*
+      Whether those departures actually sell — yuvoy-operator#30 §4.
+
+      Departures on a draft listing stay creatable, deliberately ("a calendar
+      you cannot fill in before the listing is approved is not a calendar").
+      What was wrong was the silence: the screen said "they are on sale from
+      now" unconditionally. The mock answers from the listing's real status, so
+      the false claim is reachable in a test rather than only in production.
+    */
+    const owner = mockExperiences.find((e) => e.id === body.experienceId);
+    const onSale = owner ? owner.status === "live" : true;
+
     return HttpResponse.json(
       {
         created,
+        onSale,
+        ...(onSale
+          ? {}
+          : {
+              notOnSaleReason:
+                owner?.status === "draft"
+                  ? "listing_draft"
+                  : "listing_unpriced",
+              notOnSaleDetail:
+                "These are on your calendar, but the activity is still a draft — nobody can book them until it is approved.",
+            }),
         note:
           created === 0
             ? "Every one of those already had a departure at that time."

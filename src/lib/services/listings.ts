@@ -340,3 +340,44 @@ export type PricingUnit = (typeof PRICING_UNITS)[number]["value"];
 export function describePricingUnit(unit: string | undefined): string | null {
   return PRICING_UNITS.find((u) => u.value === unit)?.label ?? null;
 }
+
+/**
+ * What is still missing before a listing can be published — yuvoy-operator#30 §3.
+ *
+ * `publishBlockers` names the mandatory fields still empty, "in the same
+ * spelling the revision body uses", so a row can say WHICH rather than a
+ * generic "cannot publish". Empty means nothing is outstanding.
+ *
+ * Named here rather than rendered raw for one reason: `unitPricePaise` and
+ * `activityType` are wire spellings, and an operator reading "unitPricePaise"
+ * on their own listing learns nothing. An unrecognised blocker falls back to
+ * the key itself rather than being dropped — a blocker this build cannot name
+ * is still a blocker, and hiding it would make the row claim the listing is
+ * ready when the API will refuse it.
+ */
+const BLOCKER_LABELS: Record<string, string> = {
+  summary: "a short summary",
+  description: "a description",
+  activityType: "what kind of activity it is",
+  destination: "where it runs",
+  unitPricePaise: "a price",
+  /*
+    The one that is not simply "empty". The column is NOT NULL, so the value
+    alone cannot say whether anybody chose it — the database records that
+    separately, and an unstated basis blocks publication rather than printing a
+    guessed phrase beside the price. Which is the same defect, one layer down,
+    that yuvoy-app#20 §1 fixed on the traveller's card.
+  */
+  pricingUnit: "whether that price is per person or for the group",
+  meetingPoint: "where to meet",
+  durationMinutes: "how long it takes",
+  maxPartySize: "the most people per booking",
+  title: "a title",
+  category: "a category",
+};
+
+export function describeBlockers(
+  blockers: readonly string[] | undefined,
+): string[] {
+  return (blockers ?? []).map((key) => BLOCKER_LABELS[key] ?? key);
+}

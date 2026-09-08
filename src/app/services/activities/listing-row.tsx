@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { submitRevision, type RevisionState } from "./actions";
 import {
   describeRejection,
+  describeBlockers,
   describeStatus,
   PRICING_UNITS,
   type OperatorExperience,
@@ -52,6 +53,7 @@ export function ListingRow({
 
   const status = describeStatus(listing.status);
   const rejection = describeRejection(listing.review?.rejectionCode);
+  const blockers = describeBlockers(listing.publishBlockers);
 
   return (
     <li id={`listing-${listing.id}`} className={panelClass()}>
@@ -100,10 +102,31 @@ export function ListingRow({
       ) : null}
 
       {/*
-        No price means it cannot be approved, whatever else is right about it.
-        Said on the row rather than only in the review that will refuse it.
+        Exactly what is still missing — yuvoy-operator#30 §3.
+
+        This used to say only "No price yet", derived from `sellable`, which
+        was true and incomplete: a listing can also be blocked on its summary,
+        its meeting point, its activity type, or a pricing basis nobody stated.
+        `publishBlockers` names all of them, so the row says which rather than
+        letting an operator send it for review and find out.
+
+        Falls back to `sellable` when the array is absent, so a response from
+        an older deployment still says the one thing it can.
       */}
-      {listing.sellable === false ? (
+      {blockers.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-terra-deep text-sm font-bold">
+            {blockers.length === 1
+              ? "One thing is missing before we can approve it:"
+              : `${blockers.length} things are missing before we can approve it:`}
+          </p>
+          <ul className="text-forest/80 mt-1.5 list-disc space-y-0.5 pl-5 text-sm">
+            {blockers.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </div>
+      ) : listing.sellable === false ? (
         <p className="text-terra-deep mt-3 text-sm font-bold">
           No price yet, so we cannot approve it. Add one below.
         </p>

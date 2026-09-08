@@ -2,7 +2,11 @@
 
 import { useActionState, useState } from "react";
 import { createListing, type CreateState } from "./actions";
-import type { Choice } from "@/lib/services/vocabulary";
+import {
+  activityChoices,
+  type Choice,
+  type Vocabulary,
+} from "@/lib/services/vocabulary";
 import { PRICING_UNITS } from "@/lib/services/listings";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
@@ -42,11 +46,19 @@ import { Panel } from "@/components/ui/panel";
  */
 export function NewListingForm({
   categories,
+  vocabulary,
   destinations,
   market,
 }: {
   /** Every category the API accepts, labelled. Never empty. */
   categories: Choice[];
+  /**
+   * The whole vocabulary, so the activity picker can narrow to the chosen
+   * category — yuvoy-operator#30 §2. The pair is enforced by a composite
+   * foreign key, so offering activities from another category only moves the
+   * 400 to after the form is filled in.
+   */
+  vocabulary: Vocabulary | null;
   /** The market's open destinations, in the server's own order. May be empty. */
   destinations: Choice[];
   /** The operator's market, named for the empty-destinations case. */
@@ -57,6 +69,9 @@ export function NewListingForm({
     {},
   );
   const [open, setOpen] = useState(false);
+  // Drives the activity picker below, which narrows to the chosen category.
+  const [category, setCategory] = useState<string | null>(null);
+  const activities = activityChoices(vocabulary, category);
 
   if (state.created) {
     return (
@@ -124,6 +139,7 @@ export function NewListingForm({
             defaultValue=""
             className={inputClass("mt-2")}
             aria-invalid={state.field === "category" || undefined}
+            onChange={(e) => setCategory(e.target.value || null)}
           >
             <option value="">Choose one</option>
             {categories.map((c) => (
@@ -133,6 +149,47 @@ export function NewListingForm({
             ))}
           </select>
         </div>
+
+        {/*
+          What it actually IS — yuvoy-operator#30 §2.
+
+          The twelve categories are market-agnostic, so in the Andamans every
+          water sport is `adventure`. That stopped being merely imprecise when
+          credential requirements moved to resolve per activity type: keyed to
+          the activity, a lapsed instructor certificate stops the scuba listing
+          while the operator's other listings keep selling.
+
+          Rendered only once a category is chosen, and narrowed to it. Hidden
+          rather than disabled when the vocabulary read failed — the create form
+          degrades to what it can still do rather than showing a control with
+          nothing in it.
+        */}
+        {activities.length > 0 ? (
+          <div>
+            <label htmlFor="new-activity" className="label text-forest/75">
+              What kind of activity
+            </label>
+            <select
+              id="new-activity"
+              name="activityType"
+              defaultValue=""
+              className={inputClass("mt-2")}
+              aria-invalid={state.field === "activityType" || undefined}
+              aria-describedby="new-activity-help"
+            >
+              <option value="">Choose one</option>
+              {activities.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+            <p id="new-activity-help" className="text-forest/70 mt-1.5 text-xs">
+              This decides which documents we need from you, so a lapsed
+              certificate stops only the listings it applies to.
+            </p>
+          </div>
+        ) : null}
 
         <div>
           <label htmlFor="new-destination" className="label text-forest/75">

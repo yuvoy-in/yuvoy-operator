@@ -15,46 +15,40 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 7 Sep 2026, sixth bump. Forward from 87175540e3ec, pinned this morning.
-# Diffed as a parsed schema tree, not as text — the defects that made that
-# necessary are on yuvoy-api#92 and #103. PURELY ADDITIVE and narrow: ONE
-# endpoint changed, one field added, three descriptions written. Nothing
-# removed, no `required:` list grown, no requestBody made required.
+# 8 Sep 2026, seventh bump. Forward from ab93328169fc, which was pinned five
+# minutes before yuvoy-api merged 394358a982ee — the commit this pin is really
+# about. 510 lines added, 7 removed, and every removal is a field being widened
+# in place rather than taken away.
 #
-# Consumed in this change (yuvoy-api#119):
-#   - `GET /media` now returns `kind`, `video` or `image`, spelled as the
-#     traveller document spells it so nothing has to translate. This closes the
-#     gap the previous pin recorded: the operator's own library held both and
-#     had nothing on the wire to tell them apart.
+# Consumed in this change:
+#   - `OperatorExperience.status` gains `not_selling` (yuvoy-operator#28 §1).
+#     The copy and the Business link shipped on 7 Sep through the string path;
+#     this pin is what lets `orderListings` narrow on the value properly.
+#   - `POST /requests/{id}/accept` gains 409 `operator_not_sellable` (#28 §2),
+#     already handled by code and now declared.
+#   - `publishBlockers` on the listing (#30 §3) — the mandatory fields still
+#     empty, in the same spelling the revision body uses. This is what the row
+#     should render instead of a generic "cannot publish".
+#   - `activityType` + `GET /catalog/vocabulary`'s `activityTypes` (#30 §2).
+#     Credential requirements resolve per activity type now, not per category,
+#     so a lapsed instructor certificate stops the scuba listing while the
+#     operator's other listings keep selling.
+#   - `GET /slots` gains `onSale`, `notOnSaleReason`, `notOnSaleDetail` (#30 §4)
+#     — `notOnSaleDetail` is rendered VERBATIM, never mapped from the code, and
+#     an unrecognised reason still needs a fallback.
+#   - `POST /experiences/{id}/withdraw` (#30 §6).
+#   - The widened operator `ErrorCode`, including `payload_too_large` (#30 §7).
 #
-# **`kind` is never inferred from `durationSeconds`**, and the contract now
-# says so itself. A clip that is still `uploaded` or `processing` has no
-# duration either, so the first thing an operator sees after posting a reel
-# would be that reel labelled a photograph. Guessing wrong there is worse than
-# not guessing, which is why the previous build labelled nothing at all.
+# **`pricingUnit` lost its default**, which is the one change to read carefully:
+# omitting it is now recorded as UNSTATED rather than as per_person, and
+# `publishBlockers` carries it until somebody says which. The picker shipped on
+# 7 Sep already sends an explicit choice and refuses a price without one, so it
+# needs no change — it was built for exactly this.
 #
-# Learned from the same change, and it is the reason the tile was rebuilt:
-#   - `posterUrl` is ABSENT ON MOST CLIPS — a poster is only stored once the
-#     provider has produced one, and an unpublished clip has no public URL.
-#     270 of 342 clips had none when this was written. A row with no poster
-#     still has a `kind` and a `state` and has to render as something, so the
-#     tile no longer assumes a picture exists.
-#   - For a photograph the picture IS the poster, and it is now built at read
-#     time from configuration, at every state rather than only when published.
-#     Fixed API-side in the same PR: the operator's own photographs previously
-#     came back with no `posterUrl` at all.
-#
-# The remaining half — a signed poster for an unreviewed clip — is deliberately
-# NOT in this change and is tracked as yuvoy-api#121. An unreviewed clip with a
-# public poster URL is what the signed-URL design exists to prevent.
-#
-# Known gap, verified rather than assumed: `not_selling` on
-# `OperatorExperience.status` and the 409 `operator_not_sellable` on
-# `POST /requests/{id}/accept` (yuvoy-operator#28) are NOT in this document.
-# The issue describes them as shipped in migration 0053; master carries
-# migrations to 0051 only and no branch has more. The string-keyed halves of
-# that issue are built anyway and are inert until the values arrive; the typed
-# half waits for the merge.
-ref=ab93328169fcb305d8a3e1b5f0bdde072ffd1d81
+# A note on how this pin was nearly missed: `gh api .../commits/master` served
+# a SHA five minutes stale, twice, and an issue was raised against yuvoy-api on
+# that reading and retracted. `git ls-remote` answers correctly and instantly,
+# and is the check to run before claiming a ref is missing.
+ref=1cbffaa0723027d3f7dc72c49fd67aa00548de53
 branch=master
-pinned_on=2026-09-07
+pinned_on=2026-09-08
