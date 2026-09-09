@@ -15,40 +15,40 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 8 Sep 2026, seventh bump. Forward from ab93328169fc, which was pinned five
-# minutes before yuvoy-api merged 394358a982ee — the commit this pin is really
-# about. 510 lines added, 7 removed, and every removal is a field being widened
-# in place rather than taken away.
+# 9 Sep 2026, eighth bump. Forward from 1cbffaa07230. 287 lines added, 23
+# removed, and every removal is a description being rewritten in place — no
+# field and no response was taken away. This is the commit range that carries
+# migration 0058, which yuvoy-operator#31 was reassigned to Hima for and which
+# had not landed when that issue was written.
 #
 # Consumed in this change:
-#   - `OperatorExperience.status` gains `not_selling` (yuvoy-operator#28 §1).
-#     The copy and the Business link shipped on 7 Sep through the string path;
-#     this pin is what lets `orderListings` narrow on the value properly.
-#   - `POST /requests/{id}/accept` gains 409 `operator_not_sellable` (#28 §2),
-#     already handled by code and now declared.
-#   - `publishBlockers` on the listing (#30 §3) — the mandatory fields still
-#     empty, in the same spelling the revision body uses. This is what the row
-#     should render instead of a generic "cannot publish".
-#   - `activityType` + `GET /catalog/vocabulary`'s `activityTypes` (#30 §2).
-#     Credential requirements resolve per activity type now, not per category,
-#     so a lapsed instructor certificate stops the scuba listing while the
-#     operator's other listings keep selling.
-#   - `GET /slots` gains `onSale`, `notOnSaleReason`, `notOnSaleDetail` (#30 §4)
-#     — `notOnSaleDetail` is rendered VERBATIM, never mapped from the code, and
-#     an unrecognised reason still needs a fallback.
-#   - `POST /experiences/{id}/withdraw` (#30 §6).
-#   - The widened operator `ErrorCode`, including `payload_too_large` (#30 §7).
+#   - `experienceId` + `role` on `POST /media/upload-intents` (op#31 §1). The
+#     listing is named when the upload STARTS rather than after approval, so a
+#     moderator judging NOT_THIS_EXPERIENCE has something to judge against.
+#     Optional on the wire and it will become required; sending it is what
+#     unblocks that.
+#   - `experienceId` (REQUIRED) + `role` on `POST /media/photo-intents`, and
+#     `intentId` through `/photo-intents/complete` (op#35). Required from the
+#     start because nothing called the endpoint, so there was no deployed
+#     client to break.
+#   - `situation` on `GET /media` (op#35) — one server-computed word for what
+#     an operator is looking at. `state` and `listing.state` are both still
+#     true and deriving the answer from two enumerations client-side gets it
+#     wrong in ways nobody notices for a month.
+#   - `listing.listingState` on `GET /media` — the LISTING's state, which is a
+#     different question from the PUBLICATION's `state`.
+#   - `hero_taken` on the operator `ErrorCode`, and 409 on both intent routes
+#     for a full gallery — refused before the upload rather than after twenty
+#     minutes on a 0.5 Mbps uplink.
+#   - 503 `media_unavailable` on `POST /media/{id}/publish`, which a photograph
+#     can never produce and a draft listing never reaches.
 #
-# **`pricingUnit` lost its default**, which is the one change to read carefully:
-# omitting it is now recorded as UNSTATED rather than as per_person, and
-# `publishBlockers` carries it until somebody says which. The picker shipped on
-# 7 Sep already sends an explicit choice and refuses a price without one, so it
-# needs no change — it was built for exactly this.
+# NOT consumed here, and each needs its own change:
+#   - nothing outstanding.
 #
-# A note on how this pin was nearly missed: `gh api .../commits/master` served
-# a SHA five minutes stale, twice, and an issue was raised against yuvoy-api on
-# that reading and retracted. `git ls-remote` answers correctly and instantly,
-# and is the check to run before claiming a ref is missing.
-ref=1cbffaa0723027d3f7dc72c49fd67aa00548de53
+# `git ls-remote` was the check for this ref, not `gh api .../commits/master`,
+# which served a five-minute-stale SHA twice on 8 Sep and cost a retracted
+# issue.
+ref=e94901c1a543b3d63f0113d116f9e8c9ae94a960
 branch=master
-pinned_on=2026-09-08
+pinned_on=2026-09-09

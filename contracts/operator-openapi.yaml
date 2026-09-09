@@ -2484,6 +2484,59 @@ paths:
                         durationSeconds:
                           type: number
                           description: Absent on a photograph, and on a clip that is still arriving.
+                        situation:
+                          type: string
+                          enum:
+                            - processing
+                            - needs_rights
+                            - in_review
+                            - changes_needed
+                            - live
+                            - waiting_on_listing
+                            - listing_withdrawn
+                            - not_attached
+                            - withdrawn
+                            - failed
+                          description: >-
+                            **The whole answer in one word — render this.**
+
+
+                            `state` and `listing.state` are both still here and
+                            both still true, and since media can be approved,
+                            attached to a listing, and invisible all at once,
+                            deriving the situation from two enumerations client
+                            side gets it wrong in ways nobody notices for a
+                            month. This is computed server-side so there is one
+                            opinion about what the operator is looking at.
+
+
+                            - `processing` — the host is still working on it.
+
+                            - `needs_rights` — it arrived and nobody has
+                            attested to it. Nothing happens until they do; this
+                            is the step operators do not expect.
+
+                            - `in_review` — with us, waiting on a person.
+
+                            - `changes_needed` — a reviewer refused it, see
+                            `rejection`.
+
+                            - `live` — a traveller can see it right now.
+
+                            - `waiting_on_listing` — approved and attached, and
+                            the listing is not published yet. Nothing is wrong.
+
+                            - `listing_withdrawn` — it was live and the listing
+                            came down. It returns when the listing does.
+
+                            - `not_attached` — approved and on no listing at
+                            all. Only media uploaded before the listing was
+                            chosen at upload time can be in this state; attach
+                            it with `POST /media/{id}/publish`.
+
+                            - `withdrawn` — the operator took it down.
+
+                            - `failed` — it never became usable.
                         createdAt: { type: string, format: date-time }
                         rejection:
                           type: object
@@ -2504,13 +2557,30 @@ paths:
                         listing:
                           type: object
                           description: >-
-                            The listing this clip is published against. Absent
-                            means uploaded and attached to nothing, which is
-                            where a reel sits between finishing and publication.
+                            The listing this media belongs to — chosen at upload
+                            since D-031 C5, so it is present from the moment the
+                            upload completes rather than only after publication.
+                            Absent only for media that predates that, or that
+                            arrived through the concierge path.
                           properties:
                             experienceId: { type: string }
                             title: { type: string }
-                            state: { type: string }
+                            state:
+                              type: string
+                              enum: [draft, published, withdrawn]
+                              description: >-
+                                The PUBLICATION's state — whether this media is
+                                live on that listing. Unchanged in meaning and
+                                unchanged in name, deliberately: renaming it
+                                would break the published client.
+                            listingState:
+                              type: string
+                              enum: [draft, in_review, published, withdrawn]
+                              description: >-
+                                The LISTING's own state, which is a different
+                                question. "Approved, and waiting for a draft
+                                listing to go live" cannot be told from
+                                "approved and forgotten about" without it.
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /media/photo-intents:
@@ -2522,13 +2592,51 @@ paths:
         bytes never pass through this API.
 
 
+        **Name the listing first.** `experienceId` is required, and a draft
+        listing is a valid answer — that is the ordinary case, because an
+        operator adds pictures while writing a listing. The listing is what a
+        moderator is shown beside the photograph, and without it
+        `NOT_THIS_EXPERIENCE` is a rejection code about something nobody
+        recorded.
+
+
         A photograph then travels **the same road as a clip**: attest the rights,
-        a person reviews it, then attach it to a listing with
-        `POST /media/{id}/publish`. There is no shorter path, deliberately: the
-        risks are the same ones — footage nobody had the rights to, people who
-        did not consent, a picture that is not the experience being sold — and a
-        second pipeline with weaker gates would be the way around the first.
+        a person reviews it, and it goes live when the listing it belongs to is
+        published. There is no shorter path, deliberately: the risks are the same
+        ones — footage nobody had the rights to, people who did not consent, a
+        picture that is not the experience being sold — and a second pipeline
+        with weaker gates would be the way around the first.
+
+
+        `POST /media/{id}/publish` remains available and is how a photograph is
+        attached to a SECOND listing, or attached at all if it predates this.
       operationId: createPhotoUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [experienceId]
+              properties:
+                experienceId:
+                  type: string
+                  format: uuid
+                  description: >-
+                    Which listing this photograph is for. A listing that is not
+                    yours answers **404**, indistinguishable from one that does
+                    not exist.
+                role:
+                  type: string
+                  enum: [hero, gallery]
+                  default: gallery
+                  description: >-
+                    Defaults to `gallery`. A listing shows one hero, and the
+                    role is a property of the pairing rather than of the
+                    picture — the same photograph can be a hero on one listing
+                    and a gallery item on another. Changeable later through
+                    `POST /media/{id}/publish`.
       responses:
         "201":
           description: A slot to upload into.
@@ -2537,13 +2645,35 @@ paths:
               schema:
                 type: object
                 properties:
+                  intentId:
+                    type: string
+                    description: >-
+                      The row recording which listing this upload is for. Send
+                      it back to `/media/photo-intents/complete`.
                   imageId: { type: string }
                   uploadUrl: { type: string }
                   expiresAt: { type: string, format: date-time }
                   maxBytes: { type: integer, format: int64 }
                   next: { type: string }
+        "400":
+          description: No `experienceId`, or a role that is not `hero` or `gallery`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            `conflict` — this listing already shows as many photographs as we
+            allow. `details.kind` and `details.limit` say which ceiling, the same
+            shape `/media/{id}/publish` uses, so one screen renders both.
+            Refused here rather than after the upload: telling somebody the
+            gallery is full after twenty minutes on a 0.5 Mbps uplink is telling
+            them too late.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "502":
           description: "`media_unavailable` — the image host could not mint a slot. Retry safely."
           content:
@@ -2569,8 +2699,14 @@ paths:
         confirms it exists.
 
 
-        On success the photograph is a media asset awaiting review, and appears
+        On success the photograph is a media asset in state `ready`, and appears
         in `GET /media` like any other.
+
+
+        **`ready` is not "done".** Nothing reaches a reviewer until the rights
+        are attested at `POST /media/{id}/rights` — the same statement a reel
+        uses, unchanged, because every clause of it is medium-neutral and the
+        consent clause matters more for a still than for a moving frame.
       operationId: confirmPhotoUpload
       requestBody:
         required: true
@@ -2578,18 +2714,39 @@ paths:
           application/json:
             schema:
               type: object
-              required: [imageId]
+              additionalProperties: false
+              description: >-
+                One of the two. `intentId` is the form to use: it names the row
+                carrying which listing this photograph is for.
               properties:
-                imageId: { type: string, description: From the upload intent. }
+                intentId:
+                  type: string
+                  format: uuid
+                  description: From the upload intent. Preferred.
+                imageId:
+                  type: string
+                  description: >-
+                    The compatibility form, kept permanently. It is what the
+                    currently published client sends, and a photograph minted
+                    before the listing was chosen at upload has no intent row to
+                    name — ownership is proved by the host's own metadata either
+                    way.
       responses:
         "200":
-          description: Recorded, and queued for review.
+          description: Recorded, and awaiting a rights attestation.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   mediaAssetId: { type: string }
+                  state:
+                    type: string
+                    enum: [ready]
+                    description: >-
+                      Said back because nothing else led an operator from here
+                      to the rights form. `ready` means the file arrived; it does
+                      not mean anybody will look at it.
                   next: { type: string }
         "400":
           description: The upload has not arrived at the host yet.
@@ -2666,6 +2823,47 @@ paths:
               additionalProperties: false
               required: [sizeBytes]
               properties:
+                experienceId:
+                  type: string
+                  format: uuid
+                  description: >-
+                    **Which listing this reel is for, chosen before the file.**
+
+
+                    A draft listing is a valid answer — the ordinary flow is an
+                    operator writing a listing and adding footage to it. Before
+                    this the pairing was created at PUBLISH, i.e. after approval,
+                    so a moderator was asked to judge `NOT_THIS_EXPERIENCE`
+                    against a listing nothing had recorded, and after a generic
+                    approval the clip could be attached to any listing at all.
+
+
+                    **Optional for now, and it will become required.** D-031 C5
+                    asks for it at upload, but the shipped portal uploads a clip
+                    with no target and attaches it after approval, so requiring
+                    it today would stop every reel upload in production the
+                    moment this deployed. Send it and it is honoured in full;
+                    omit it and the clip behaves as it does today, with the
+                    moderation queue saying plainly that no listing was chosen.
+                    `POST /media/photo-intents` requires it from the start,
+                    because nothing calls that endpoint yet and there is no
+                    deployed client to break. Raised as `yuvoy-operator#31`.
+
+
+                    A listing that is not yours answers **404**, the same as one
+                    that does not exist.
+
+
+                    A listing that is not yours answers **404**, the same as one
+                    that does not exist.
+                role:
+                  type: string
+                  enum: [hero, gallery]
+                  default: gallery
+                  description: >-
+                    Defaults to `gallery`. One hero per listing; the role
+                    belongs to the pairing rather than to the clip and can be
+                    changed at `POST /media/{id}/publish`.
                 sizeBytes:
                   type: integer
                   format: int64
@@ -2712,15 +2910,27 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "400":
           description: >-
-            No `sizeBytes`, or a file larger than we accept. Refused before an
-            upload URL exists rather than after bytes have moved, and no intent
-            is created — a refusal that burned the operator's one concurrent
-            slot would lock them out of retrying.
+            No `sizeBytes`, no `experienceId`, or a file larger than we accept.
+            Refused before an upload URL exists rather than after bytes have
+            moved, and no intent is created — a refusal that burned the
+            operator's one concurrent slot would lock them out of retrying.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: >-
+            No such listing. Indistinguishable from one belonging to another
+            operator, deliberately.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
-          description: An upload is already in progress for this operator.
+          description: >-
+            `upload_in_progress` — an upload is already in flight for this
+            operator — or `conflict`, this listing already shows as many reels as
+            we allow, with `details.kind` and `details.limit` naming the ceiling. The second is checked here as well as at publish
+            because telling somebody the gallery is full after a twenty-minute
+            upload is telling them too late.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2867,11 +3077,33 @@ paths:
   /media/{id}/publish:
     post:
       tags: [media]
-      summary: Put an approved clip on a listing
+      summary: Put approved media on a listing
       description: >
-        Both the clip and the listing must belong to this operator; otherwise
-        `404`. A clip that has not been approved also answers `404` — it is not
+        Both the media and the listing must belong to this operator; otherwise
+        `404`. Media that has not been approved also answers `404` — it is not
         yet a thing that can be published.
+
+
+        **This is no longer the primary route.** Media names its listing at
+        upload and is attached when a moderator approves it, so this endpoint is
+        for the two cases that remain: putting the same clip or photograph on a
+        SECOND listing, and attaching media that predates the choice being made
+        at upload. Its `role` field is also how the role of an existing pairing
+        is changed.
+
+
+        **Being attached is not being public.** Media on a listing that is a
+        draft or has been withdrawn stays invisible to travellers and stays
+        private at the video host; it becomes public when the listing is
+        published, and goes private again when the listing comes down. That is
+        D-031 C5, and it means an operator can attach with confidence before a
+        listing is finished.
+
+
+        A photograph never touches the video host on this path, which is what
+        used to make publishing one impossible: the call was made
+        unconditionally and a Cloudflare Images id posted to Stream's endpoint
+        answered `502`.
       operationId: publishMedia
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -2892,7 +3124,13 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: >-
-            This listing already shows as many of that kind as we display.
+            `hero_taken` — this listing already has a hero, and a listing shows
+            one. Move the existing one to the gallery first, or attach this as a
+            gallery item; `details.role` is `hero`.
+
+
+            Otherwise: this listing already shows as many of that kind as we
+            display.
             **Photographs and clips have separate ceilings — 20 each — so a full
             gallery never blocks a reel and a full reel library never blocks a
             photograph.** They do different jobs and rationing one against the
@@ -2906,7 +3144,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "502":
-          description: The approved clip could not be made public at the video provider. Retry safely.
+          description: >-
+            The approved CLIP could not be made public at the video provider.
+            Retry safely. A photograph cannot produce this: nothing is asked of
+            the video host for one.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: >-
+            `media_unavailable` — attaching a CLIP to a PUBLISHED listing needs
+            the video host, and it is not configured on this service. A
+            photograph never produces this, and neither does attaching to a
+            draft listing: both go through without the video host existing,
+            because neither asks anything of it.
+
+
+            Not a retry-in-a-moment answer. It is a deployment that is missing
+            configuration, and it stays 503 until somebody sets it.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3254,6 +3509,15 @@ components:
                 # kill a legitimate sale, so the answer is to wait — holds are
                 # ten minutes, and withdrawing is never urgent.
                 - sale_in_progress
+                # POST /media/{id}/publish. A listing shows one hero and 0058
+                # made the database say so; before that a second hero was
+                # accepted and which picture headlined the listing was decided
+                # by a tie-break nobody set. Distinguished from plain `conflict`
+                # because it is a CHOICE — move the existing hero to the gallery
+                # or attach this one there — and because the shipped operator
+                # screen defaults its role radio to hero, so this is the answer
+                # the second attach on any listing gets.
+                - hero_taken
                 # Emitted by operator handlers and, until now, declared by
                 # none of them. The closed-world response checker never caught
                 # these because its corpus drives no operator error path, so a
