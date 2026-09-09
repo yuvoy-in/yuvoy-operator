@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { MOCK_TUS_PORT } from "./mocks/tus-port";
 
 /**
  * End-to-end configuration.
@@ -41,6 +42,19 @@ export default defineConfig({
         url: "http://127.0.0.1:3200/sign-in",
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,
-        env: { NEXT_PUBLIC_API_MOCKING: "enabled" },
+        /*
+          `MOCK_TUS_ORIGIN` is read by `next.config.ts` into the CSP's
+          `connect-src`. Without it the enforced policy blocks the browser's
+          POST to the mock media host and both upload walkthroughs fail —
+          which is exactly what happened on the first enforced run, and is the
+          gate doing its job rather than a reason to loosen the policy.
+
+          Kept in step with `MOCK_TUS_PORT` by importing it rather than
+          retyping the number.
+        */
+        env: {
+          NEXT_PUBLIC_API_MOCKING: "enabled",
+          MOCK_TUS_ORIGIN: `http://127.0.0.1:${MOCK_TUS_PORT}`,
+        },
       },
 });

@@ -43,10 +43,28 @@
  * does not stop a script running, it stops one sending anything anywhere.
  * `'unsafe-inline'` in `script-src` weakens nothing else in this policy.
  *
- * ## Rollout
+ * ## Rollout — now enforced
  *
- * Report-only first, then enforce. "A CSP that breaks the portal is worse than
- * none, because somebody disables it in a hurry and it never comes back."
+ * Shipped report-only on 9 Sep 2026 and enforced the same day, on the owner's
+ * call, against evidence rather than a waiting period.
+ *
+ * The evidence is `pnpm verify` run with this policy ENFORCED: 342 end-to-end
+ * tests drive the real production build in a real browser, across every screen
+ * in the portal including both media uploaders, the manifest, the bank-change
+ * flow and every role gate. A directive that blocks anything they touch fails
+ * the suite rather than an operator on a boat.
+ *
+ * **What it does not cover, and it is the same gap the issue warned about.**
+ * The suite runs against MSW plus a local tus server on loopback, so no upload
+ * ever reaches Cloudflare. `MEDIA_HOSTS` is written from the contract and from
+ * every call site rather than from watching one succeed, which is why each
+ * entry is a subdomain wildcard rather than an exact URL — the upload endpoint
+ * is minted per intent and its subdomain is not ours to predict.
+ *
+ * The report-only header therefore stays alongside the enforced one, carrying
+ * the SAME policy. An enforced-only header blocks silently; report-only is
+ * what puts a line in the console naming the directive that did it. First
+ * real upload after this deploys is the thing to watch.
  */
 
 /** An origin, or nothing when the URL is unusable. Never a path. */
@@ -78,12 +96,26 @@ const MEDIA_HOSTS = [
 export interface CspEnv {
   /** Development runs the mock upload host on loopback, and HMR on a socket. */
   dev?: boolean;
-  /** Only set in development, where the mock media host is on loopback. */
+  /**
+   * The mock media host, when one is running. Loopback, and set only by
+   * `pnpm dev` and by the e2e web server.
+   *
+   * Honoured **regardless of `dev`**, which is the difference between a gate
+   * that covers uploads and one that cannot. The e2e suite builds and serves
+   * a PRODUCTION build — that is the whole point of it — so `dev` is false
+   * there, and without this the enforced `connect-src` blocks the browser's
+   * POST to the mock host and both upload walkthroughs fail. They did, on the
+   * first enforced run, which is the gate working: the same directive would
+   * block a real upload if `MEDIA_HOSTS` were wrong.
+   *
+   * It cannot widen production. The variable is set by no deployment, and an
+   * unparseable value is dropped rather than emitted.
+   */
   mockUploadOrigin?: string;
 }
 
 export function cspDirectives(env: CspEnv): string[] {
-  const mock = env.dev ? originOf(env.mockUploadOrigin) : null;
+  const mock = originOf(env.mockUploadOrigin);
 
   const connect = [
     "'self'",
@@ -125,20 +157,16 @@ export function cspDirectives(env: CspEnv): string[] {
 }
 
 /**
- * The subset enforced today.
+ * The whole policy is enforced.
  *
- * Nothing in the portal uses any of these capabilities — no `<object>`, no
- * `<base>`, and nothing frames it — so each can go on without a report. The
- * rest waits for a real report-only run against `operators.yuvoy.in`, because
- * the media hostnames above are the one thing that cannot be known from
- * reading the code.
+ * It was a three-directive subset for one day. Kept as its own function rather
+ * than collapsed into `reportOnlyCsp` so that narrowing it again is a one-line
+ * change with somewhere to put the reason — which is what it existed for, and
+ * what it would be needed for if a report ever shows a directive too tight to
+ * hold.
  */
-const ENFORCED = new Set(["object-src", "base-uri", "frame-ancestors"]);
-
 export function enforcedCsp(env: CspEnv): string {
-  return cspDirectives(env)
-    .filter((d) => ENFORCED.has(d.split(" ")[0]))
-    .join("; ");
+  return cspDirectives(env).join("; ");
 }
 
 export function reportOnlyCsp(env: CspEnv): string {

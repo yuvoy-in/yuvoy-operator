@@ -200,9 +200,18 @@ test.describe("security headers", () => {
   test("every response carries the enforced policy", async ({ request }) => {
     const headers = (await request.get("/sign-in")).headers();
 
-    expect(headers["content-security-policy"]).toBe(
-      "object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
-    );
+    /*
+      The WHOLE policy is enforced as of 9 Sep 2026 — yuvoy-operator#37. It
+      shipped report-only in the morning and was enforced the same day against
+      this suite rather than a waiting period: 342 tests drive the real
+      production build in a real browser, across every screen including both
+      media uploaders and every role gate.
+    */
+    const enforced = headers["content-security-policy"] ?? "";
+    expect(enforced).toContain("default-src 'none'");
+    expect(enforced).toContain("connect-src");
+    expect(enforced).toContain("form-action 'self'");
+    expect(enforced).not.toContain("'unsafe-eval'");
     expect(headers["x-frame-options"]).toBe("DENY");
     expect(headers["referrer-policy"]).toBe("no-referrer");
     expect(headers["strict-transport-security"]).toContain("preload");
@@ -229,15 +238,18 @@ test.describe("security headers", () => {
     expect(policy).not.toContain("api.yuvoy.in");
   });
 
-  test("the enforced policy is a strict subset of the reported one", async ({
+  test("the enforced and reported policies are the same", async ({
     request,
   }) => {
+    /*
+      Both headers carry one directive list. Report-only is kept alongside the
+      enforced copy because an enforced-only header blocks SILENTLY, and the
+      first upload after this deploys is the thing to watch — a console line
+      naming the directive is what makes that watchable.
+    */
     const headers = (await request.get("/sign-in")).headers();
-    const reported = new Set(
-      (headers["content-security-policy-report-only"] ?? "").split("; "),
+    expect(headers["content-security-policy-report-only"]).toBe(
+      headers["content-security-policy"],
     );
-    for (const d of (headers["content-security-policy"] ?? "").split("; ")) {
-      expect(reported, `enforced "${d}" is not in report-only`).toContain(d);
-    }
   });
 });

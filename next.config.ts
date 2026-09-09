@@ -60,6 +60,12 @@ const nextConfig: NextConfig = {
     */
     const csp = cspHeaders({
       dev: process.env.NODE_ENV !== "production",
+      /*
+        Set by `pnpm dev` and by the e2e web server, and by no deployment.
+        Honoured regardless of NODE_ENV because the e2e suite serves a
+        PRODUCTION build — see `CspEnv.mockUploadOrigin` for why that is what
+        makes the upload paths testable under an enforced policy at all.
+      */
       mockUploadOrigin: process.env.MOCK_TUS_ORIGIN,
     });
     return [{ source: "/(.*)", headers: [...securityHeaders, ...csp] }];

@@ -349,7 +349,9 @@ function handle(req: IncomingMessage, res: ServerResponse) {
 
 let server: ReturnType<typeof createServer> | null = null;
 
-export const MOCK_TUS_PORT = Number(process.env.MOCK_TUS_PORT ?? 3201);
+import { MOCK_TUS_PORT } from "./tus-port";
+
+export { MOCK_TUS_PORT };
 
 /**
  * Idempotent, and never fatal.
