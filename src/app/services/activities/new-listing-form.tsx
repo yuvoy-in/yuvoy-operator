@@ -101,7 +101,7 @@ export function NewListingForm({
   if (!open) {
     return (
       <Button onClick={() => setOpen(true)} variant="primary">
-        Add an activity
+        Add a listing
       </Button>
     );
   }

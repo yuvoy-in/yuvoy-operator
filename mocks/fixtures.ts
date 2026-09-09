@@ -699,13 +699,16 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
   },
   {
     /*
-      The wide read fails while the narrow one works.
+      The listings read fails while the departures read works.
 
-      `/capacity` asks `GET /slots` twice: a fortnight for the screen, and
-      ±120 days to find the operator's listings — the widest range this portal
-      requests anywhere. This identity refuses the wide one, which is the
-      failure that would otherwise take a working seat-editing screen down to
-      an error page over a form nobody had opened.
+      `/calendar` asks two endpoints: `GET /slots` for the fortnight it edits,
+      and `GET /experiences` for the departure picker. This identity refuses
+      the second, which is the failure that would otherwise take a working
+      seat-editing screen down to an error page over a form nobody had opened.
+
+      Before yuvoy-operator#32 the listings came off a ±120-day `GET /slots`
+      read and this identity refused THAT. The endpoint changed; what is being
+      modelled did not.
     */
     id: "usr_wide_read_fails",
     name: "Wide Read",

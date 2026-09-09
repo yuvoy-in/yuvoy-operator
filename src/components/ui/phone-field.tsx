@@ -127,7 +127,7 @@ export function PhoneField({
           /*
             NOT `pattern` or `required`. Native constraint validation blocks
             the submit behind a browser tooltip, and this form's own hint says
-            more than the tooltip would — the same call `/capacity` makes about
+            more than the tooltip would — the same call `/calendar` makes about
             `min` and `/signup` makes about `type="email"`.
           */
           /*

@@ -19,7 +19,7 @@ import { SectionSwitch } from "../section-switch";
 import { ListingRow } from "./listing-row";
 import { NewListingForm } from "./new-listing-form";
 
-export const metadata: Metadata = { title: "Activities" };
+export const metadata: Metadata = { title: "Listings" };
 export const dynamic = "force-dynamic";
 
 /**
@@ -51,7 +51,7 @@ export default async function ActivitiesPage() {
 
   /*
     Both reads, together. The media list is not decoration here — it is the
-    only way to answer "this activity has nothing to show", which is the thing
+    only way to answer "this listing has nothing to show", which is the thing
     an operator most needs to be told and cannot see anywhere else. A listing
     on sale with nothing attached is a black card in the traveller app, which
     is what `yuvoy.in` showed for months.
@@ -62,7 +62,7 @@ export default async function ActivitiesPage() {
 
     A failing media read must not cost the whole screen: the listings are the
     subject and the footage note is an extra, so it degrades to silence rather
-    than to an error boundary. Same call `/capacity` makes about its picker.
+    than to an error boundary. Same call `/calendar` makes about its picker.
   */
   const [listingResult, mediaResult, vocabularyResult] = await Promise.all([
     client.GET("/experiences", {}),
@@ -107,16 +107,21 @@ export default async function ActivitiesPage() {
 
   return (
     <Screen stageLabel="Services">
-      <p className="eyebrow text-terra-deep">Manage services</p>
+      <p className="eyebrow text-terra-deep">Services</p>
+      {/* "Listing" everywhere an operator edits — D-031 C10,
+          yuvoy-operator#36. The nav said "Manage services" and the screen
+          under it said "Activities", while the API calls them experiences
+          and the admin console calls them listings. An operator read three
+          of ours in a week. */}
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-        Activities
+        Listings
       </h1>
       <p className="text-forest/70 mt-3 text-base">
         What you sell. Write it, send it to us, and it goes on sale when we have
         read it.
       </p>
 
-      <SectionSwitch activities={listings.length} reels={mediaCount} />
+      <SectionSwitch listings={listings.length} media={mediaCount} />
 
       {/*
         The cross-link, summarised before the list rather than only per row.

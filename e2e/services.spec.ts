@@ -6,7 +6,7 @@ import AxeBuilder from "@axe-core/playwright";
  *
  * yuvoy-operator#22. Before this an operator could sign in, read what was
  * outstanding on their account, and then do nothing about either: Reels lived
- * behind the Business door and Activities did not exist at all.
+ * behind the Business door and the listings screen did not exist at all.
  *
  * The visible consequence was on the traveller side — `yuvoy.in` rendered two
  * real listings as BLACK CARDS, not because anything was broken there but
@@ -157,7 +157,7 @@ test("an operator writes a listing, and it lands as a draft", async ({
   await signIn(page);
   await page.goto("/services/activities");
 
-  await page.getByRole("button", { name: "Add an activity" }).click();
+  await page.getByRole("button", { name: "Add a listing" }).click();
   await page.getByLabel("What is it called").fill(title);
   await page
     .getByLabel("What kind of thing it is")
@@ -194,7 +194,7 @@ test("another market's destination cannot be chosen at all", async ({
   */
   await signIn(page);
   await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add an activity" }).click();
+  await page.getByRole("button", { name: "Add a listing" }).click();
 
   const destination = page.getByLabel("Where it runs");
   const values = await destination
@@ -249,7 +249,7 @@ test("the two screens answer the same question from both ends", async ({
   page,
 }) => {
   /*
-    "This activity has no video" and "this clip is attached to nothing" — both
+    "This listing has no video" and "this clip is attached to nothing" — both
     from ONE field, `listing` on a media item. The fixture has live listings
     with no clip attached and an approved clip on nothing, so both halves are
     real rather than asserted against an empty set.
@@ -270,17 +270,18 @@ test("the two screens answer the same question from both ends", async ({
   ).toBeVisible();
 
   await page.goto("/services/reels");
-  await expect(page.getByText(/not on any activity/i).first()).toBeVisible();
+  await expect(page.getByText(/not on any listing/i).first()).toBeVisible();
 });
 
 test("the switcher counts both halves, including at zero", async ({ page }) => {
   await signIn(page);
   await page.goto("/services/activities");
 
-  const section = page.getByRole("navigation", { name: "Manage services" });
-  await expect(
-    section.getByRole("link", { name: /Activities/ }),
-  ).toHaveAttribute("aria-current", "page");
+  const section = page.getByRole("navigation", { name: "Services" });
+  await expect(section.getByRole("link", { name: /Listings/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await expect(
     section.getByRole("link", { name: /Photos & reels/ }),
   ).toBeVisible();
@@ -450,7 +451,7 @@ test("the activity picker narrows to the chosen category", async ({ page }) => {
   */
   await signIn(page);
   await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add an activity" }).click();
+  await page.getByRole("button", { name: "Add a listing" }).click();
 
   // Nothing before a category is chosen: an unfiltered list would let somebody
   // pick a pair the API refuses.
