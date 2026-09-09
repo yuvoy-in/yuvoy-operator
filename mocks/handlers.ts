@@ -228,6 +228,84 @@ type MockExperience = {
 
 function seedExperiences(): MockExperience[] {
   return [
+    /*
+      THE LISTINGS THE DEPARTURE FIXTURES BELONG TO — yuvoy-operator#32.
+
+      `SLOTS` reference `exp_try_dive`, `exp_snorkel` and `exp_charter`, and
+      until this issue none of the three existed here: departures and listings
+      were two disjoint fixture sets, because the two screens read from two
+      different endpoints and nothing made them agree.
+
+      That mirrored the defect rather than catching it. Capacity built its
+      picker from departures and Services listed from `/experiences`, so a
+      listing existed on one tab and not the other — and a mock in which the
+      same is true cannot fail when a screen gets it wrong. In the real API
+      these are one table, and now they are one fixture set.
+
+      Live and sellable, because they carry the departures every capacity and
+      manifest test edits.
+    */
+    {
+      id: "exp_try_dive",
+      slug: "try-dive-nemo-reef",
+      title: "Try-dive at Nemo Reef",
+      summary: "Your first breath underwater, on a shallow reef.",
+      category: "adventure",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      bookingMode: "allotment",
+      durationMinutes: 180,
+      maxPartySize: 6,
+      unitPricePaise: 450000,
+      pricingUnit: "per_person",
+      meetingPoint: "Beach 3 dive hut",
+      activityType: "scuba",
+      activityTypeLabel: "Scuba diving",
+      publishBlockers: [],
+      sellable: true,
+      upcomingDepartures: 6,
+    },
+    {
+      id: "exp_snorkel",
+      slug: "snorkel-elephant-beach",
+      title: "Snorkel trip to Elephant Beach",
+      summary: "A boat out to the reef and back before lunch.",
+      category: "adventure",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      bookingMode: "allotment",
+      durationMinutes: 240,
+      maxPartySize: 8,
+      unitPricePaise: 320000,
+      pricingUnit: "per_person",
+      meetingPoint: "Havelock jetty 2",
+      activityType: "snorkelling",
+      activityTypeLabel: "Snorkelling",
+      publishBlockers: [],
+      sellable: true,
+      upcomingDepartures: 5,
+    },
+    {
+      id: "exp_charter",
+      slug: "private-boat-charter",
+      title: "Private boat charter, whole day",
+      summary: "The boat, the crew and the day are yours.",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      durationMinutes: 480,
+      maxPartySize: 10,
+      unitPricePaise: 1200000,
+      // Group pricing, so a per-person phrase here would misstate it.
+      pricingUnit: "per_group",
+      meetingPoint: "Havelock jetty 1",
+      publishBlockers: [],
+      sellable: true,
+      upcomingDepartures: 2,
+    },
     {
       id: "exp_dive",
       slug: "reef-dive",
@@ -540,6 +618,8 @@ let filedCredentials: Record<string, { state: string; expiresOn?: string }> =
 let mediaAssets: Record<string, MockMediaAsset> = seedMediaAssets();
 /** Photograph slots minted this session, by image id → owning operator. */
 let photoIntents: Record<string, { operatorId: string }> = {};
+/** Intent id → the image it minted. The listing travels on the intent. */
+let photoIntentsById: Record<string, { imageId: string }> = {};
 /**
  * Departures created in this session, by `POST /slots`.
  *
@@ -571,6 +651,7 @@ export function __resetOperatorMocks() {
   resetMockUploads();
   resetMockPhotos();
   photoIntents = {};
+  photoIntentsById = {};
 }
 
 /**
@@ -1461,16 +1542,45 @@ export const handlers = [
     if (failed) return failed;
 
     /*
+      `experienceId` is REQUIRED here, unlike the clip route — migration 0058.
+      Modelled rather than waved through: a mock that accepts a body the API
+      refuses lets a client ship without ever sending the field, and the first
+      anybody would learn of it is a 400 in production.
+
+      A listing that is not this operator's answers 404, indistinguishable
+      from one that does not exist.
+    */
+    const body = (await request.json().catch(() => ({}))) as {
+      experienceId?: string;
+      role?: string;
+    };
+    const experienceId = String(body.experienceId ?? "");
+    if (!experienceId) {
+      return envelope("invalid_input", "Name the listing first.", 400);
+    }
+    if (!mockExperiences.some((e) => e.id === experienceId)) {
+      return envelope("not_found", "No such listing.", 404);
+    }
+    if (body.role && body.role !== "hero" && body.role !== "gallery") {
+      return envelope("invalid_input", "role is hero or gallery.", 400);
+    }
+
+    /*
       Keyed by the BUSINESS, not the user. The 404 this protects is about one
       operator finishing another's upload, and every fixture user here belongs
       to the same business — so the check is modelled against the one operator
       id the mock has rather than invented per user.
     */
     const imageId = `img_${Math.random().toString(36).slice(2, 10)}`;
+    const intentId = `pin_${Math.random().toString(36).slice(2, 10)}`;
     photoIntents[imageId] = { operatorId: OPERATOR.operatorId };
+    photoIntentsById[intentId] = { imageId };
 
     return HttpResponse.json(
       {
+        // The row recording WHICH LISTING this upload is for. It is what
+        // carries the listing across the upload; `imageId` names none.
+        intentId,
         imageId,
         // A DIFFERENT ORIGIN. Bytes never pass through this API.
         uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/photos/${imageId}`,
@@ -1499,8 +1609,21 @@ export const handlers = [
     const failed = requireSession(request);
     if (failed) return failed;
 
-    const body = (await request.json()) as { imageId?: string };
-    const imageId = String(body.imageId ?? "");
+    /*
+      "One of the two. `intentId` is the form to use: it names the row carrying
+      which listing this photograph is for." `imageId` is the compatibility
+      form the contract keeps permanently, for a photograph minted before the
+      listing was chosen at upload.
+    */
+    const completeBody = (await request.json()) as {
+      imageId?: string;
+      intentId?: string;
+    };
+    const imageId = String(
+      completeBody.intentId
+        ? (photoIntentsById[completeBody.intentId]?.imageId ?? "")
+        : (completeBody.imageId ?? ""),
+    );
 
     const slot = photoIntents[imageId];
     const mine = slot && slot.operatorId === OPERATOR.operatorId;
@@ -1606,6 +1729,23 @@ export const handlers = [
   http.get(url("/experiences"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+
+    /*
+      ONE IDENTITY MAKES THIS CALL FAIL — yuvoy-operator#32.
+
+      `/calendar` reads two endpoints: `GET /slots` for the fortnight it edits,
+      and this one for the departure picker's listings. The interesting failure
+      is not "the API is down", which takes both with it: it is ONE call
+      failing while the other works, which is the case that decides whether the
+      screen degrades or disappears.
+
+      The refusal used to sit on a ±120-day `GET /slots` read, because that is
+      where the listings came from before this issue. The endpoint moved and
+      the fixture moved with it; what is being modelled is unchanged.
+    */
+    if (sessionUser(request)?.id === WIDE_READ_FAILS_ID) {
+      return envelope("internal_error", "Something went wrong.", 500);
+    }
     return HttpResponse.json({ experiences: mockExperiences });
   }),
 
@@ -2357,26 +2497,6 @@ export const handlers = [
     const from = u.searchParams.get("from");
     const to = u.searchParams.get("to");
 
-    /*
-      One identity refuses a wide range and answers a narrow one.
-
-      `/capacity` reads this endpoint twice — a fortnight for the screen, ±120
-      days to find the listings — and the second is the widest request this
-      portal makes anywhere. Modelled because the interesting failure is not
-      "the API is down", which takes both calls with it: it is one call failing
-      while the other works, which is the case that decides whether the screen
-      degrades or disappears.
-    */
-    const me = sessionUser(request)!;
-    if (me.id === WIDE_READ_FAILS_ID && from && to) {
-      const days =
-        (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
-        86_400_000;
-      if (days > 60) {
-        return envelope("internal_error", "Something went wrong.", 500);
-      }
-    }
-
     // Created departures are read back like any other. A mock whose reads
     // ignore its writes proves the message rendered and nothing about the row.
     const inRange = [...SLOTS, ...createdSlots].filter((s) => {
@@ -2526,6 +2646,61 @@ export const handlers = [
     }));
 
     return HttpResponse.json({ items: [...captured, ...awaiting] });
+  }),
+
+  /**
+   * One booking — yuvoy-operator#34.
+   *
+   * Built from the same two sources the list is, so the detail screen cannot
+   * show something the row it was opened from did not.
+   *
+   * A booking that is not this operator's answers **404, never 403**: the API
+   * says why in as many words — "a 403 confirms the booking exists, which is
+   * exactly what somebody probing ids wants to learn" — and a mock that
+   * answered 403 would let a client ship a branch the real API never takes.
+   */
+  http.get(url("/bookings/:id"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+
+    for (const slot of SLOTS) {
+      const party = slot.parties.find((p) => p.bookingId === id);
+      if (party) {
+        return HttpResponse.json({
+          id: party.bookingId,
+          reference: party.reference,
+          state: attendance[party.bookingId]?.outcome ?? party.state,
+          guests: party.guests,
+          experience: slot.title,
+          slot: { startsAt: slot.startsAt, timezone: slot.timezone },
+          contact: { name: party.name },
+          createdAt: new Date(
+            new Date(slot.startsAt).getTime() - 3 * 86_400_000,
+          ).toISOString(),
+          money: bookingMoney(party),
+        });
+      }
+    }
+
+    const req = REQUESTS.find((r) => r.id === id);
+    if (req) {
+      return HttpResponse.json({
+        id: req.id,
+        state: "pending_request",
+        guests: req.guests,
+        experience: req.experience,
+        slot: { startsAt: req.startsAt, timezone: req.timezone },
+        contact: { name: req.contactName },
+        createdAt: req.requestedAt,
+      });
+    }
+
+    return HttpResponse.json(
+      { error: { code: "not_found", message: "no such booking" } },
+      { status: 404 },
+    );
   }),
 
   /* ------------------------------------------------------------ requests - */

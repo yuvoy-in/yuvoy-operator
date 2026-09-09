@@ -107,8 +107,8 @@ test("being bounced off a page comes back to that page, not to Today", async ({
     },
   ]);
 
-  await page.goto("/capacity");
-  await expect(page).toHaveURL(/\/sign-in\?next=%2Fcapacity$/);
+  await page.goto("/calendar");
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fcalendar$/);
 
   await page.getByLabel("Your phone number").fill("9000000101");
   await page.getByRole("button", { name: "Send me a code" }).click();
@@ -116,8 +116,8 @@ test("being bounced off a page comes back to that page, not to Today", async ({
   await page.getByRole("button", { name: "Sign in" }).click();
 
   // Back where they were headed, rather than on the day.
-  await page.waitForURL("**/capacity");
-  await expect(page.getByRole("heading", { name: "Capacity" })).toBeVisible();
+  await page.waitForURL("**/calendar");
+  await expect(page.getByRole("heading", { name: "Calendar" })).toBeVisible();
 });
 
 test("a return path cannot be pointed off the site", async ({ page }) => {
@@ -436,7 +436,7 @@ test("requests arrive soonest-to-expire, and that order is not ours to change", 
   page,
 }) => {
   await signIn(page);
-  await page.goto("/requests");
+  await page.goto("/bookings");
 
   // The endpoint orders by how soon each expires, "because the queue's job is
   // to stop requests dying". Re-sorting by anything undoes what it is for.
@@ -461,7 +461,7 @@ test("a request that cannot be granted does not offer an accept", async ({
   page,
 }) => {
   await signIn(page);
-  await page.goto("/requests");
+  await page.goto("/bookings");
 
   // 5 guests against 3 grantable seats. Accepting answers 409
   // grant_ceiling_exceeded, so the button is disabled rather than offered.
@@ -478,7 +478,7 @@ test("accepting says what the traveller actually has now", async ({
   page,
 }, testInfo) => {
   await signIn(page);
-  await page.goto("/requests");
+  await page.goto("/bookings");
 
   const who = mine(testInfo).accept;
   const row = page.locator("li").filter({ hasText: who });
@@ -517,7 +517,7 @@ test("declining takes a second tap and asks why", async ({
   page,
 }, testInfo) => {
   await signIn(page);
-  await page.goto("/requests");
+  await page.goto("/bookings");
 
   const who = mine(testInfo).decline;
   const row = page.locator("li").filter({ hasText: who });
@@ -534,9 +534,9 @@ test("declining takes a second tap and asks why", async ({
   await expect(page.getByText(who)).toHaveCount(0);
 });
 
-test("/requests has no accessibility violations", async ({ page }) => {
+test("/bookings has no accessibility violations", async ({ page }) => {
   await signIn(page);
-  await page.goto("/requests");
+  await page.goto("/bookings");
   await page.waitForLoadState("networkidle");
 
   const results = await new AxeBuilder({ page })
@@ -660,4 +660,90 @@ test("a call-off shows back exactly what it did", async ({
   await expect(page.getByText("Holds released")).toBeVisible();
   // Money is paise; the screen must render rupees.
   await expect(page.getByText(/₹[\d,]+/)).toBeVisible();
+});
+
+/*
+  The bookings half of the tab — yuvoy-operator#34.
+
+  An operator could not see who had booked them. There was a Requests tab
+  holding only request-mode bookings awaiting an answer, a manifest per
+  departure reached by opening a day, and money lines inside Earnings.
+  `GET /bookings` and `GET /bookings/{id}` both existed and were called by
+  nothing — and migration 0054 made `allotment` the default, so an operator on
+  it has an empty queue and, before this, no bookings screen at all.
+*/
+test("bookings lists who is coming, in the operator's words", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/bookings");
+
+  const booked = page.getByRole("region", { name: "Booked" });
+  await expect(booked).toBeVisible();
+
+  /*
+    Not a single raw state anywhere on the screen. These are
+    `fulfilment_state` column values served verbatim by the endpoint, so an
+    unmapped one is not hypothetical — `paid_pending_ops` is what a traveller
+    who has just paid looks like.
+  */
+  const body = (await page.locator("body").innerText()).toLowerCase();
+  for (const token of [
+    "paid_pending_ops",
+    "pending_request",
+    "no_show",
+    "fulfilment",
+  ]) {
+    expect(body, `"${token}" is a column value, not a word`).not.toContain(
+      token,
+    );
+  }
+});
+
+test("a booking is never listed twice on one screen", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/bookings");
+
+  /*
+    An unanswered request is in BOTH responses — `GET /bookings` includes
+    `pending_request` rows and `GET /requests` returns the same ones. Only the
+    queue's copy may render: it is the one carrying the clock and the buttons.
+  */
+  const waiting = page.getByRole("region", { name: "Waiting on you" });
+  const booked = page.getByRole("region", { name: "Booked" });
+  await expect(waiting).toContainText(NEVER_ANSWERED.urgent);
+  await expect(booked).not.toContainText(NEVER_ANSWERED.urgent);
+});
+
+test("a booking opens, and shows no phone number", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/bookings");
+
+  const booked = page.getByRole("region", { name: "Booked" });
+  await booked.getByRole("link").first().click();
+  await page.waitForURL(/\/bookings\/.+/);
+
+  // A focused screen: the bar goes, a way back arrives.
+  await expect(
+    page.getByRole("link", { name: /Back to bookings/i }),
+  ).toBeVisible();
+
+  /*
+    `contact` carries the name and only the name — `whatsapp` was removed in
+    M13 per D-018. "A traveller gives us a number so we can tell them about
+    their booking, not so it can be added to an operator's contacts." No
+    contact column is added here because the endpoint returns something that
+    looks like one.
+  */
+  const body = await page.locator("body").innerText();
+  expect(body).not.toMatch(/\+91[\s\d]{8,}/);
+  expect(body).toMatch(/do not show traveller phone numbers/i);
+});
+
+test("a booking that is not yours is a 404, never a 403", async ({ page }) => {
+  await signIn(page);
+  // "A 403 confirms the booking exists, which is exactly what somebody probing
+  // ids wants to learn." One answer for both, and the client must not branch.
+  const res = await page.goto("/bookings/bk_not_yours");
+  expect(res?.status()).toBe(404);
 });
