@@ -65,81 +65,53 @@ export async function listSlots(
 }
 
 /**
- * How far either side of today to look for the operator's listings.
+ * The operator's listings, for the departure picker.
  *
- * Wider than the fortnight `/capacity` edits, and asymmetric on purpose. The
- * operator who most needs to add a departure is the one with none in the next
- * two weeks — the start of a season, or a schedule that has run out — and
- * their listings are visible only in departures that have already sailed. A
- * picker built from the editing window alone would be empty exactly when it
- * matters.
- */
-const LISTING_LOOKBACK_DAYS = 120;
-const LISTING_LOOKAHEAD_DAYS = 120;
-
-function shiftDate(day: string, days: number): string {
-  const t = Date.parse(`${day}T00:00:00Z`);
-  return new Date(t + days * 86_400_000).toISOString().slice(0, 10);
-}
-
-/**
- * The operator's listings, as far as they can be known.
+ * `GET /operator/v1/experiences` — one call, every listing, no date window.
  *
- * See `OperatorListing`: there is no endpoint that enumerates them, so this
- * reads them off the departures they appear on. An empty result means "we
- * cannot see any", never "you have none" — and the screen says the former,
- * because they are different sentences and only one of them is ours to say.
+ * ## What this replaces, and why it mattered
  *
- * Deduplicated by id, with the most recently seen title winning: a listing
- * renamed since its older departures should show under the name it has now.
+ * This used to scan `GET /slots` across ±120 days and take listing ids off
+ * whatever departures came back. That made the picker a function of the
+ * departures a listing already had, which is circular: **a listing with none
+ * could never be given any** (yuvoy-operator#32). The asymmetric window was
+ * an attempt to soften it — the operator who most needs to add a departure is
+ * the one whose schedule has run out — and it could not fix the case that
+ * actually happens, which is a listing created an hour ago.
+ *
+ * It also meant Services and Capacity disagreed about what a listing is: one
+ * read `/experiences`, the other read departures, and a listing existed on
+ * one tab and not the other.
+ *
+ * ## Why it still returns `null` rather than throwing
+ *
+ * Unchanged, and for the unchanged reason: this is a picker for a form, not
+ * the screen's subject. If the listings cannot be read the fortnight of
+ * departures is still editable, and taking a working seat-editing screen down
+ * to an error page over a form nobody opened is the wrong trade. The form
+ * says "we could not load your listings", which is a different sentence from
+ * "you appear to have none" — two different facts, and only one of them is a
+ * reason to message us.
  */
 export async function listListings(
   token: string,
-  today: string,
 ): Promise<OperatorListing[] | null> {
   let data;
   try {
-    const res = await operatorApi(token).GET("/slots", {
-      params: {
-        query: {
-          from: shiftDate(today, -LISTING_LOOKBACK_DAYS),
-          to: shiftDate(today, LISTING_LOOKAHEAD_DAYS),
-        },
-      },
-    });
+    const res = await operatorApi(token).GET("/experiences", {});
     if (res.error) throw res.error;
     data = res.data;
   } catch {
-    /*
-      `null`, not a throw, and this is the only fetch in the portal that
-      swallows one.
-
-      Every other read on `/capacity` is the screen's subject: if the fortnight
-      cannot be loaded there is nothing to render and the error boundary is
-      right. This one is a picker for a form, over a window nine times wider
-      than the screen edits — the widest range this portal asks of `GET /slots`
-      anywhere. If the API rejects or times out on that range while answering
-      the fortnight fine, letting it throw would take a working seat-editing
-      screen down to an error page over a form nobody had opened.
-
-      So it degrades to "we could not load your trips", which the form says in
-      different words from "you appear to have none" — the two are different
-      facts and only one of them is a reason to message us.
-    */
     return null;
   }
 
-  const byId = new Map<string, OperatorListing>();
-  for (const s of [...(data.items ?? [])].sort((a, b) =>
-    (a.startsAt ?? "").localeCompare(b.startsAt ?? ""),
-  )) {
-    if (!s.experienceId) continue;
-    byId.set(s.experienceId, {
-      id: s.experienceId,
-      title: s.title ?? "Your trip",
-    });
-  }
-  return [...byId.values()].sort((a, b) =>
-    a.title.localeCompare(b.title, "en"),
-  );
+  return (data.experiences ?? [])
+    .filter((e) => Boolean(e.id))
+    .map((e) => ({
+      id: e.id as string,
+      title: e.title ?? "Untitled listing",
+      ...(e.status ? { status: e.status } : {}),
+      ...(typeof e.sellable === "boolean" ? { sellable: e.sellable } : {}),
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title, "en"));
 }

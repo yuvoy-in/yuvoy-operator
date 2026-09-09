@@ -33,16 +33,21 @@ export default async function CapacityPage() {
   const end = new Date(`${today}T00:00:00+05:30`);
   end.setDate(end.getDate() + DAYS_AHEAD);
   /*
-    Two calls, in parallel, over different windows on purpose.
+    Two calls, in parallel, answering two different questions.
 
-    The fortnight is what this screen edits. The listings are read off a much
-    wider one because there is no `GET /experiences` — the only place a trip's
-    id and name appear is on its departures — and the operator who most needs
-    to add one is the operator with none in the next fortnight.
+    The fortnight is what this screen EDITS. The listings are every listing
+    this operator has, from `GET /experiences` — the same source the Services
+    tab reads, so a listing cannot exist on one tab and not the other
+    (yuvoy-operator#32).
+
+    They used to come off the departures, which made the picker a function of
+    the departures a listing already had. A listing created an hour ago was
+    absent from the one screen that could give it dates, and nothing on the
+    page said why.
   */
   const [slots, listings] = await Promise.all([
     listSlots(token, today, end.toISOString().slice(0, 10)),
-    listListings(token, today),
+    listListings(token),
   ]);
 
   return (

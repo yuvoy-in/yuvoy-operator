@@ -107,21 +107,36 @@ export interface OperatorSlot {
 }
 
 /**
- * One of the operator's listings, as far as this portal can know them.
+ * One of the operator's listings, for a departure picker.
  *
- * **Derived from departures, because there is no way to enumerate listings.**
- * The operator contract has no `GET /experiences` — `POST /experiences/{id}/revisions`
- * takes an id nothing hands out — so the only place a listing's id and title
- * appear is on the departures it already has.
+ * **Read from `GET /operator/v1/experiences`** — every listing this operator
+ * has, with its status, whatever is blocking publication, and whether it is
+ * sellable.
  *
- * That is a real limitation with a real edge: an operator whose listing has no
- * departure anywhere in the window cannot add one to it, and an operator with
- * no departures at all cannot add their first. The capacity screen says so
- * rather than rendering an empty picker, and it is raised on yuvoy-api rather
- * than papered over — a text field for a listing id would be worse, because
- * the id is not something anybody has.
+ * It used to be DERIVED FROM DEPARTURES, and that is the defect
+ * yuvoy-operator#32 is about rather than a footnote. There was no endpoint to
+ * enumerate listings when this was written, so the picker was built by
+ * scanning `GET /slots` across ±120 days and taking the listing ids off the
+ * departures it found. The consequence is circular and total: **a listing
+ * with no departures can never be given any**, because it cannot appear in
+ * the picker that adds them. An operator who created a listing on Tuesday and
+ * came back on Wednesday to add next month's dates found it missing, with
+ * nothing on the screen explaining why — and Capacity's empty state told them
+ * to message us, which is exactly the concierge path the self-serve portal
+ * exists to remove.
+ *
+ * Services and Capacity also disagreed about what a listing IS, because they
+ * read from two different places. They now read from the same one.
  */
 export interface OperatorListing {
   id: string;
   title: string;
+  /** `draft`, `in_review`, `published`, `not_selling`, `withdrawn`, … */
+  status?: string;
+  /**
+   * Whether a traveller can buy this today. A departure on a listing that is
+   * not selling is still worth adding — it goes on sale with the listing —
+   * but the operator should be told, not left to find out.
+   */
+  sellable?: boolean;
 }

@@ -177,11 +177,18 @@ function DepartureRound({
     a retry is the answer. Saying "you appear to have none" here would send
     somebody to message us about a problem that was ours and momentary.
 
-    `[]` — the fetch worked and found nothing. There is no `GET /experiences`,
-    so listings are read off the departures they appear on, and a schedule that
-    ran out more than four months ago is invisible. That IS worth a message to
-    us, and it is raised on yuvoy-api#63. A free-text listing id would be worse
-    than either: the id is not something anybody has.
+    `[]` — the fetch worked and this operator HAS NO LISTINGS. That is now a
+    fact rather than a guess: since yuvoy-operator#32 the picker reads
+    `GET /experiences`, so an empty answer means an empty catalogue and not "we
+    could not see them from here".
+
+    It used to mean something much weaker and much more confusing. Listings
+    were read off the departures they appeared on across ±120 days, so `[]`
+    could mean "no listings" OR "a schedule that ran out five months ago" OR
+    "a listing created an hour ago" — three different situations, one empty
+    picker, and the last of them was unescapable: the listing could never be
+    given the departures it needed to become visible to the screen that adds
+    departures.
   */
   if (listings === null) {
     return (
@@ -202,9 +209,9 @@ function DepartureRound({
       <Panel>
         <p className="text-base font-bold">Adding a departure</p>
         <p className="text-forest/80 mt-2 text-sm">
-          We cannot show your trips here yet — the only place they appear is on
-          departures you already have, and there are none within four months
-          either side of today.
+          A departure belongs to a listing, and you have not written one yet.
+          Start there and the dates come next — a draft is fine, and you can
+          fill in its calendar before we approve it.
         </p>
         {/*
           "Message us and we will add the first one for you" stopped being true
@@ -213,14 +220,20 @@ function DepartureRound({
           telling them to message us instead is a day of waiting for something
           they could do in a minute.
         */}
+        {/*
+          "Message us and we will add the first one for you" stopped being
+          true when the portal gained listing creation (yuvoy-operator#30 §4,
+          #32). An operator with no listings now has a screen that makes one,
+          and telling them to message us instead is a day of waiting for
+          something they could do in a minute.
+        */}
         <p className="text-forest/80 mt-2 text-sm">
-          If you have an activity already, add a departure to it below. If you
-          have not written one yet, start on{" "}
+          Write your first one on{" "}
           <a
             href="/services/activities"
             className="underline underline-offset-2"
           >
-            Activities
+            Listings
           </a>
           .
         </p>
