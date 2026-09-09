@@ -54,9 +54,17 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
   await page.waitForURL("**/today");
   await page.goto("/account");
 
+  /*
+    The heading is the BUSINESS — yuvoy-operator#33 §3 — and the status is
+    said once, in the line beneath it. "Your account is live" as an `h1` with
+    a LIVE chip beside it was the same thing twice, and worse, that heading
+    was derived from `bookable` while an operator can be LIVE and not sellable
+    since migration 0053.
+  */
   await expect(
-    page.getByRole("heading", { name: "Your account is live" }),
+    page.getByRole("heading", { name: "Nemo Reef Watersports" }),
   ).toBeVisible();
+  await expect(page.getByText("Your account is live")).toBeVisible();
   await expect(page.getByRole("link", { name: "Go to today" })).toBeVisible();
 
   /*
@@ -104,12 +112,13 @@ test("a signed-up account that cannot sell is never told it is live", async ({
   await page.waitForURL("**/today");
   await page.goto("/account");
 
-  await expect(
-    page.getByRole("heading", { name: "You cannot be booked yet" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Your account is live" }),
-  ).toHaveCount(0);
+  /*
+    The heading is the BUSINESS, not the state — yuvoy-operator#33 §3. The
+    status is still said, once, in the line under it, so these assert the
+    sentence rather than the heading it used to be.
+  */
+  await expect(page.getByText("You cannot be booked yet")).toBeVisible();
+  await expect(page.getByText("Your account is live")).toHaveCount(0);
 
   // `state` is displayed, never branched on: it is a bare string in the
   // contract and PROSPECT is not even among the schema's own examples.
@@ -131,10 +140,20 @@ test("a signed-up account that cannot sell is never told it is live", async ({
   ).toBeVisible();
   await expect(page.getByText("2 things are waiting on you")).toBeVisible();
 
-  // No upload exists yet (O6), so the channel that does is named instead of
-  // offering a control that would not work.
+  /*
+    EVERY BLOCKER HAS A WAY OUT — yuvoy-operator#33.
+
+    This asserted "There is no upload on this screen yet", which was true when
+    written and had stopped being: `/profile` sends business details and
+    documents, and `/logo` sends the logo. So the check is inverted — the
+    blockers now carry the screen that resolves them, and the sentence that
+    said they did not must not come back.
+  */
   await expect(
     page.getByText(/There is no upload on this screen yet/),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Send us the document" }).first(),
   ).toBeVisible();
 });
 
@@ -151,9 +170,7 @@ test("an account waiting on Yuvoy is told not to chase it", async ({
   await page.waitForURL("**/today");
   await page.goto("/account");
 
-  await expect(
-    page.getByRole("heading", { name: "You cannot be booked yet" }),
-  ).toBeVisible();
+  await expect(page.getByText("You cannot be booked yet")).toBeVisible();
   await expect(page.getByRole("heading", { name: "With Yuvoy" })).toBeVisible();
   await expect(
     page.getByText("Everything is in. A person at Yuvoy is checking it."),
@@ -189,12 +206,15 @@ test("an account block the API did not send is unknown, not approval", async ({
   await page.waitForURL("**/today");
   await page.goto("/account");
 
+  /*
+    The heading is the BUSINESS, not the state — yuvoy-operator#33 §3. The
+    status is still said, once, in the line under it, so these assert the
+    sentence rather than the heading it used to be.
+  */
   await expect(
-    page.getByRole("heading", { name: "We cannot tell you where you stand" }),
+    page.getByText("We cannot tell you where you stand"),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Your account is live" }),
-  ).toHaveCount(0);
+  await expect(page.getByText("Your account is live")).toHaveCount(0);
   await expect(
     page.getByText(/we should not tell you that nothing is/),
   ).toBeVisible();
@@ -267,7 +287,7 @@ test("every screen sends an account on hold to the same place", async ({
   await page.waitForURL("**/account");
 
   // Not a special case on one route: `requireOperator()` is where it is known.
-  for (const path of ["/today", "/team", "/earnings", "/capacity"]) {
+  for (const path of ["/today", "/team", "/earnings", "/calendar"]) {
     await page.goto(path);
     await page.waitForURL("**/account");
     await expect(

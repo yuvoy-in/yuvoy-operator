@@ -72,9 +72,11 @@ export async function createUploadIntent(
     not be refused for it. An invalid id is dropped rather than sent, because
     a marketing-shaped field must never cost somebody a twenty-minute upload.
   */
+  // Non-empty rather than a UUID shape — see `createPhotoIntent` for why a
+  // client stricter than the server is a client that breaks silently.
   const listing = z
     .string()
-    .uuid()
+    .min(1)
     .safeParse(experienceId ?? "");
 
   try {
@@ -551,7 +553,18 @@ export async function createPhotoIntent(
     Refused before a slot is asked for; a 400 from the API would say the same
     thing thirty seconds later and after a round trip.
   */
-  const parsed = z.string().uuid().safeParse(experienceId);
+  /*
+    Non-empty, NOT a UUID shape.
+
+    The contract types `experienceId` as `format: uuid`, and validating that
+    here was wrong in the one direction that matters: the id comes from OUR
+    OWN `GET /experiences` list, so refusing it client-side is refusing
+    something the server just handed us. The server is the authority on the
+    format and answers 404 for an id it does not know — a client stricter than
+    the server breaks the day ids change shape, and breaks silently, on the
+    screen an operator is trying to use.
+  */
+  const parsed = z.string().min(1).safeParse(experienceId);
   if (!parsed.success) {
     return { message: "Choose the listing this photograph belongs to." };
   }
@@ -674,7 +687,7 @@ export async function completePhotoUpload(
   */
   const intent = z
     .string()
-    .uuid()
+    .min(1)
     .safeParse(intentId ?? "");
 
   try {

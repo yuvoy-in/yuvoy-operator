@@ -109,6 +109,58 @@ export function blockerText(blocker: Blocker): string {
     : "Something is outstanding, and we have not said what.";
 }
 
+/**
+ * Where an operator goes to clear a blocker — yuvoy-operator#33.
+ *
+ * The Business screen listed everything stopping a business from selling and
+ * gave no way to fix any of it: every blocker was a sentence with no button,
+ * and the only route forward was to ring us and have somebody do it from the
+ * admin console. That is the concierge path the self-serve portal exists to
+ * remove.
+ *
+ * The codes are a closed set — `BUSINESS_DETAILS_INCOMPLETE`, `LOGO_MISSING`,
+ * `CREDENTIAL_MISSING`, `CREDENTIAL_UNVERIFIED`, `CREDENTIAL_EXPIRED`,
+ * `CREDENTIAL_REJECTED`, `AWAITING_REVIEW`, `OTHER` — but this returns `null`
+ * for anything it does not recognise rather than guessing a destination. A
+ * link to the wrong screen is worse than no link: it costs a tap, a page load
+ * and the operator's confidence that the portal knows what it is talking
+ * about, and `OTHER` exists precisely so a reason can be added operationally
+ * without a contract change.
+ *
+ * `AWAITING_REVIEW` deliberately has no destination either. It is waiting on
+ * us, and a button under it would invite somebody to send a second copy of
+ * what we already hold.
+ */
+export function blockerAction(
+  blocker: Blocker,
+): { href: string; label: string } | null {
+  switch (blocker.code) {
+    case "BUSINESS_DETAILS_INCOMPLETE":
+      return { href: "/profile", label: "Complete your details" };
+    case "LOGO_MISSING":
+      return { href: "/logo", label: "Add your logo" };
+    case "CREDENTIAL_MISSING":
+    case "CREDENTIAL_EXPIRED":
+      return { href: "/profile#documents", label: "Send us the document" };
+    case "CREDENTIAL_REJECTED":
+      /*
+        A rejected document needs a REPLACEMENT, and the wording says so —
+        "send another" rather than "send it", because the operator has already
+        sent one and being told to do the same thing again reads as the portal
+        not having noticed.
+
+        What this must NOT do is promise a reason. `operator_credentials`
+        records a free-text note from whoever reviewed it and **no endpoint
+        returns it**; the operator's own credential view carries type, state,
+        issuer and expiry and nothing else. So the screen hands over a phone
+        number rather than paraphrasing a note nobody can read.
+      */
+      return { href: "/profile#documents", label: "Send another" };
+    default:
+      return null;
+  }
+}
+
 /** Blockers this operator has to act on, and the ones sitting with Yuvoy. */
 export function splitByWaitingOn(blocking: readonly Blocker[]): {
   operator: Blocker[];

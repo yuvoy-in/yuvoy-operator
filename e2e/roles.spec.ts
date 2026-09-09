@@ -46,14 +46,30 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
   );
   await expect(page.getByRole("link", { name: /Team access/ })).toHaveCount(0);
 
-  // What they DO get: the day, the seats they may look at but not change,
-  // and the reel upload the contract puts no role on.
-  await expect(page.getByRole("link", { name: /Add a reel/ })).toBeVisible();
+  /*
+    What they DO get: the day, the seats they may look at but not change, and
+    the media upload the contract puts no role on.
+
+    The "Add a reel" door came off this screen with yuvoy-operator#33 §4 — it
+    opened Services, which is its own tab, and one screen should not live in
+    two places. The Services stop in the bar is the way there, and it is not
+    role-gated. What replaced it here is the LOGO, which is mandatory before an
+    operator can be booked and is also ungated: `PUT /logo` declares a generic
+    Forbidden and names no role.
+  */
+  await expect(page.getByRole("link", { name: /Add a reel/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Your logo/ })).toBeVisible();
   await expect(
     page
       .getByRole("navigation", { name: /Primary/i })
       .first()
-      .getByRole("link", { name: "Capacity" }),
+      .getByRole("link", { name: "Services" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: /Primary/i })
+      .first()
+      .getByRole("link", { name: "Calendar" }),
   ).toBeVisible();
 });
 
@@ -76,7 +92,7 @@ test("a staff login sees the queue and cannot answer it — including the button
   page,
 }) => {
   await signIn(page, STAFF);
-  await page.goto("/requests");
+  await page.goto("/bookings");
 
   /*
     The contract refuses the WRITE, not the read: `GET /requests` has no role
@@ -105,7 +121,7 @@ test("a staff phone that forces the button through is refused by the action itse
   page,
 }) => {
   await signIn(page, STAFF);
-  await page.goto("/requests");
+  await page.goto("/bookings");
 
   /*
     `disabled` is a courtesy. A Server Action is a public POST endpoint, and
@@ -131,7 +147,7 @@ test("a staff phone that forces the button through is refused by the action itse
 
 test("an owner can still answer the queue", async ({ page }) => {
   await signIn(page, OWNER);
-  await page.goto("/requests");
+  await page.goto("/bookings");
 
   // The control for the test above: the buttons are disabled by ROLE, not by
   // something that had quietly disabled them for everybody.
@@ -147,7 +163,7 @@ test("a staff login sees capacity and is told it cannot change it", async ({
   page,
 }) => {
   await signIn(page, STAFF);
-  await page.goto("/capacity");
+  await page.goto("/calendar");
 
   await expect(
     page.getByText("You can see these, but not change them"),

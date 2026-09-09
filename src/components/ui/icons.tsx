@@ -176,3 +176,14 @@ export function ZapIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** A picture: the logo screen, and anywhere a still stands for a business. */
+export function ImageIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="1" />
+      <path d="M3 16l5-5 4 4 3-3 6 6" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+    </Icon>
+  );
+}

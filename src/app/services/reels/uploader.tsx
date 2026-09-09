@@ -178,8 +178,9 @@ export function Uploader({
     bound: FileIdentity | null;
   } | null>(null);
 
-  const pick = useCallback(async (file: File) => {
-    /*
+  const pick = useCallback(
+    async (file: File) => {
+      /*
       The free checks first, before anything is spent.
 
       A photo, or an empty file, needs no server limits to refuse — and asking
@@ -188,32 +189,32 @@ export function Uploader({
       that, and every subsequent upload in the session met "an upload is
       already going".
     */
-    const local = localRefusals(file);
-    if (local.length) {
-      setPhase({ name: "rejected", problems: local });
-      return;
-    }
-
-    setPhase({ name: "checking" });
-
-    // The limits live on the intent, so the rest of the checks need one.
-    // Numbers this build guessed would be the wrong ones the day the ceiling
-    // moves.
-    let intent = slot.current?.intent;
-    if (!intent) {
-      const started = await createUploadIntent(file.size, experienceId, role);
-      if (!started.intent) {
-        setPhase({
-          name: "failed",
-          message: started.message ?? "We could not start the upload.",
-        });
+      const local = localRefusals(file);
+      if (local.length) {
+        setPhase({ name: "rejected", problems: local });
         return;
       }
-      intent = started.intent;
-      slot.current = { intent, bound: null };
-    }
 
-    /*
+      setPhase({ name: "checking" });
+
+      // The limits live on the intent, so the rest of the checks need one.
+      // Numbers this build guessed would be the wrong ones the day the ceiling
+      // moves.
+      let intent = slot.current?.intent;
+      if (!intent) {
+        const started = await createUploadIntent(file.size, experienceId, role);
+        if (!started.intent) {
+          setPhase({
+            name: "failed",
+            message: started.message ?? "We could not start the upload.",
+          });
+          return;
+        }
+        intent = started.intent;
+        slot.current = { intent, bound: null };
+      }
+
+      /*
       Whose bytes does the slot hold?
 
       Asked of the server EVERY time, not only when this page happens to
@@ -227,77 +228,79 @@ export function Uploader({
       A `HEAD` is one round trip and the upload opens with the same call
       anyway, so nothing is spent that was not already being spent.
     */
-    const known = slot.current?.bound ?? recallSlot(intent.intentId);
-    let server = null;
-    try {
-      server = await readUploadState(intent.uploadUrl, fetch);
-    } catch {
-      /* Left null. `decideSlot` refuses rather than guesses. */
-    }
+      const known = slot.current?.bound ?? recallSlot(intent.intentId);
+      let server = null;
+      try {
+        server = await readUploadState(intent.uploadUrl, fetch);
+      } catch {
+        /* Left null. `decideSlot` refuses rather than guesses. */
+      }
 
-    // tus fixes the length when the slot is created. On a resumed intent the
-    // API echoes the original length, so a different file must be refused even
-    // when the provider HEAD response omits its declared length. Ask for HEAD
-    // first so the operator can still see how many bytes are already safe.
-    if (intent.sizeBytes !== file.size) {
-      setPhase({
-        name: "held",
-        by: known,
-        uploaded: server?.offset ?? null,
-        intent,
-      });
-      return;
-    }
+      // tus fixes the length when the slot is created. On a resumed intent the
+      // API echoes the original length, so a different file must be refused even
+      // when the provider HEAD response omits its declared length. Ask for HEAD
+      // first so the operator can still see how many bytes are already safe.
+      if (intent.sizeBytes !== file.size) {
+        setPhase({
+          name: "held",
+          by: known,
+          uploaded: server?.offset ?? null,
+          intent,
+        });
+        return;
+      }
 
-    const decision = decideSlot(known, identityOf(file), server);
+      const decision = decideSlot(known, identityOf(file), server);
 
-    if (decision.kind === "unreachable") {
-      setPhase({
-        name: "failed",
-        message:
-          "We could not reach the upload server. Check your signal and try again — nothing has been sent.",
-      });
-      return;
-    }
-    if (decision.kind === "held") {
-      setPhase({
-        name: "held",
-        by: decision.by,
-        uploaded: decision.uploaded,
-        intent,
-      });
-      return;
-    }
+      if (decision.kind === "unreachable") {
+        setPhase({
+          name: "failed",
+          message:
+            "We could not reach the upload server. Check your signal and try again — nothing has been sent.",
+        });
+        return;
+      }
+      if (decision.kind === "held") {
+        setPhase({
+          name: "held",
+          by: decision.by,
+          uploaded: decision.uploaded,
+          intent,
+        });
+        return;
+      }
 
-    let resumeFrom = 0;
-    if (decision.kind === "resume") {
-      resumeFrom = decision.uploaded;
-      // Adopt what the browser remembered, so the rest of this page session
-      // reasons about a binding it did not personally watch happen.
-      slot.current = { intent, bound: known ?? identityOf(file) };
-    } else {
-      /*
+      let resumeFrom = 0;
+      if (decision.kind === "resume") {
+        resumeFrom = decision.uploaded;
+        // Adopt what the browser remembered, so the rest of this page session
+        // reasons about a binding it did not personally watch happen.
+        slot.current = { intent, bound: known ?? identityOf(file) };
+      } else {
+        /*
         A confirmed empty slot. Any binding either half remembers is about an
         upload that is over, and keeping it would refuse the next clip on the
         strength of a record the server has already contradicted.
       */
-      slot.current = { intent, bound: null };
-      forgetSlot();
-    }
+        slot.current = { intent, bound: null };
+        forgetSlot();
+      }
 
-    const facts = await readVideoFacts(file);
-    setPhase({
-      name: "ready",
-      file,
-      intent,
-      problems: preflight(file, intent, facts),
-      resumeFrom,
-    });
-    // `experienceId` and `role` are read when an intent is MINTED, which is
-    // inside this callback — so they belong in the deps. Without them a
-    // picker change after the first render would mint the intent against a
-    // stale listing, which is a silent wrong answer rather than an error.
-  }, [experienceId, role]);
+      const facts = await readVideoFacts(file);
+      setPhase({
+        name: "ready",
+        file,
+        intent,
+        problems: preflight(file, intent, facts),
+        resumeFrom,
+      });
+      // `experienceId` and `role` are read when an intent is MINTED, which is
+      // inside this callback — so they belong in the deps. Without them a
+      // picker change after the first render would mint the intent against a
+      // stale listing, which is a silent wrong answer rather than an error.
+    },
+    [experienceId, role],
+  );
 
   const send = useCallback(async (file: File, intent: UploadIntent) => {
     const controller = new AbortController();

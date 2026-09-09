@@ -39,14 +39,22 @@ function pngBytes(): Buffer {
   );
 }
 
+/**
+ * Pick the listing, then the file — yuvoy-operator#35, #31 §2.
+ *
+ * The order is the API's: `experienceId` is REQUIRED on
+ * `POST /media/photo-intents`, so the file input stays disabled until a
+ * listing is chosen. That is not a nicety — without it the first thing a
+ * photograph does after eighty seconds of upload is fail, and the moderator
+ * shown the picture has no listing to judge `NOT_THIS_EXPERIENCE` against.
+ */
 async function choosePhoto(
   page: Page,
   opts: { name?: string; mimeType?: string; buffer?: Buffer } = {},
 ) {
-  const panel = page
-    .locator("section, div")
-    .filter({ hasText: "Add a photograph" });
-  void panel;
+  await page
+    .getByLabel("Which listing this photograph is for")
+    .selectOption({ index: 1 });
   await page.getByLabel("Choose a photograph").setInputFiles({
     name: opts.name ?? "reef.png",
     mimeType: opts.mimeType ?? "image/png",
@@ -335,7 +343,7 @@ test("the category and destination are pickers, not text boxes", async ({
   */
   await signIn(page);
   await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add an activity" }).click();
+  await page.getByRole("button", { name: "Add a listing" }).click();
 
   const category = page.getByLabel("What kind of thing it is");
   await expect(category).toHaveJSProperty("tagName", "SELECT");
@@ -360,7 +368,7 @@ test("a listing can be created straight from the pickers", async ({
 
   await signIn(page);
   await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add an activity" }).click();
+  await page.getByRole("button", { name: "Add a listing" }).click();
 
   await page.getByLabel("What is it called").fill(title);
   await page
@@ -396,7 +404,7 @@ test("a price must say whether it is per person or for the group", async ({
 
   await signIn(page);
   await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add an activity" }).click();
+  await page.getByRole("button", { name: "Add a listing" }).click();
 
   await page.getByLabel("What is it called").fill(`Unstated basis ${suffix}`);
   await page
@@ -441,7 +449,7 @@ test("a listing with no price is not asked for a basis", async ({
 
   await signIn(page);
   await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add an activity" }).click();
+  await page.getByRole("button", { name: "Add a listing" }).click();
 
   await page.getByLabel("What is it called").fill(title);
   await page

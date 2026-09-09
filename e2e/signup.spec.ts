@@ -135,12 +135,30 @@ test("the code finishes the job — signed in, in the portal, on an account that
     page.getByRole("link", { name: /You cannot be booked yet/ }),
   ).toBeVisible();
 
+  /*
+    The heading is the BUSINESS now, and the status is the line under it —
+    yuvoy-operator#33 §3. Both are asserted, because dropping the status
+    sentence along with the status heading would have been the wrong reading
+    of that issue: "You cannot be booked yet" is what the state MEANS, and a
+    brand-new PROSPECT is exactly who needs it said.
+  */
+  /*
+    The heading is the BUSINESS now, and the status is the line under it —
+    yuvoy-operator#33 §3. Both matter here: dropping the status sentence along
+    with the status heading would have been the wrong reading of that issue,
+    because "You cannot be booked yet" is what the state MEANS and a brand-new
+    PROSPECT is exactly who needs it said.
+
+    The heading itself is not asserted against "Jetty Boats Havelock": the
+    mock serves one business profile for every session, so that assertion
+    would be testing the fixture rather than the screen. What is asserted is
+    that the status is no longer the heading.
+  */
   await page.goto("/account");
+  await expect(page.getByText("You cannot be booked yet")).toBeVisible();
+  await expect(page.getByText("Your account is live")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "You cannot be booked yet" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Your account is live" }),
   ).toHaveCount(0);
 });
 

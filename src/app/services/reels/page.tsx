@@ -106,12 +106,12 @@ export default async function ReelsPage() {
       A tab root, not a focused screen. Reels lived behind the Business door
       with a back disc out to it; since yuvoy-operator#22 it is one half of
       Manage services, and an operator moves between these two lists
-      constantly — "this activity has no video" and "this clip is attached to
+      constantly — "this listing has no video" and "this clip is attached to
       nothing" are the same question from both ends. A back control that left
       the section would be in the way every time.
     */
     <Screen stageLabel="Services">
-      <p className="eyebrow text-terra-deep">Manage services</p>
+      <p className="eyebrow text-terra-deep">Services</p>
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
         Photos &amp; reels
       </h1>
@@ -120,16 +120,20 @@ export default async function ReelsPage() {
         right listing. A photograph travels the same road as a clip.
       </p>
 
-      <SectionSwitch activities={listings.length} reels={items.length} />
+      <SectionSwitch listings={listings.length} media={items.length} />
 
       {/*
         The cross-link, asked from the footage's end.
 
-        `listing` on a media item is "absent means attached to nothing, which
-        is exactly where a reel sits between finishing upload and appearing
-        anywhere". That absence is the loudest thing this screen can say: an
-        approved clip attached to nothing is work already done that no
-        traveller can see.
+        `listing` on a media item is absent when it is attached to nothing.
+        That absence is the loudest thing this screen can say: approved work
+        already done that no traveller can see.
+
+        It should get RARER from now on rather than commoner — since
+        yuvoy-operator#31 §1 a clip and a photograph both name their listing
+        when the upload starts, so approval attaches them and there is no gap
+        to sit in. What is left here is the media that predates that, and
+        anything uploaded through the concierge path.
       */}
       {waiting.length > 0 ? (
         <Panel tone="alert" className="mt-6 p-4">
@@ -140,12 +144,13 @@ export default async function ReelsPage() {
               operator who reads "clip" goes looking for a video.
             */}
             {waiting.length === 1
-              ? `One approved ${describeKind(waiting[0].kind)?.one ?? "item"} is not on any activity.`
-              : `${countLibrary(waiting)} are approved and not on any activity.`}
+              ? `One approved ${describeKind(waiting[0].kind)?.one ?? "item"} is not on any listing.`
+              : `${countLibrary(waiting)} are approved and not on any listing.`}
           </p>
           <p className="text-forest/80 mt-1.5 text-sm">
             Nobody can see it until it is attached. Choose a listing on the row
-            below.
+            below. Anything you upload now names its listing before the file, so
+            this will not happen to it.
           </p>
         </Panel>
       ) : null}
@@ -153,8 +158,8 @@ export default async function ReelsPage() {
       <Panel className="mt-8">
         <h2 className="font-display text-2xl">Add a reel</h2>
         <p className="text-forest/70 mt-2 text-sm">
-          Upright, up to 60 seconds. Losing signal pauses the upload instead of
-          starting it again.
+          Upright, up to 60 seconds. Choose the listing first, then the file —
+          losing signal pauses the upload instead of starting it again.
         </p>
         <div className="mt-5">
           <Uploader listings={listings} />
@@ -368,7 +373,7 @@ export default async function ReelsPage() {
                               href="/services/activities"
                               className="underline underline-offset-2"
                             >
-                              Your activities
+                              Your listings
                             </a>
                           </p>
                         )

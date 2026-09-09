@@ -5,6 +5,7 @@ import type { ComponentType } from "react";
 import { operatorApi } from "@/lib/api/server-client";
 import { classifyMeFailure } from "@/lib/account/status";
 import {
+  blockerAction,
   blockerText,
   credentialName,
   credentialText,
@@ -24,7 +25,7 @@ import {
   BriefcaseIcon,
   ChevronRightIcon,
   CoinsIcon,
-  FilmIcon,
+  ImageIcon,
   UsersIcon,
 } from "@/components/ui/icons";
 import { Chip } from "@/components/ui/chip";
@@ -97,6 +98,21 @@ export default async function AccountPage() {
     if (status !== "not-active") throw err;
   }
 
+  /*
+    THE BUSINESS'S OWN NAME — yuvoy-operator#33 §3.
+
+    A soft read, and the only reason this page calls `/profile` at all. If it
+    fails the heading falls back to the sentence it used to carry: a page that
+    error-boundaries because it could not fetch a NAME would take away the
+    blocker list, which is the thing an operator came here for.
+  */
+  const businessName = active
+    ? await operatorApi(token)
+        .GET("/profile", {})
+        .then((r) => (r.error ? null : r.data?.legalName?.trim() || null))
+        .catch(() => null)
+    : null;
+
   // Read once, outside render: the expiry arithmetic must not shift between
   // two renders of the same request. Same rule the manifest follows.
   const at = await now();
@@ -107,12 +123,40 @@ export default async function AccountPage() {
 
       {active ? (
         <>
+          {/*
+            THE BUSINESS NAME — yuvoy-operator#33 §3.
+
+            This read "Your account is live" as an `h1`, with a `LIVE` chip
+            beside it saying the same thing twice — and worse, that heading was
+            derived from `bookable`, while since migration 0053 an operator can
+            be `LIVE` and still not sellable. One status component, and the
+            page named after the business.
+
+            `legalName` comes from `GET /profile`, which is a soft read here:
+            if it fails, the heading falls back to the sentence it used to
+            carry rather than to an empty line.
+          */}
           <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
+            {businessName ?? "Your business"}
+          </h1>
+
+          {/*
+            The status, ONCE, below the name.
+
+            Dropping this line with the old heading would have been the wrong
+            reading of the issue: "Your account is live" and a `LIVE` chip say
+            the same thing twice, but "You cannot be booked yet" and a
+            `Prospect` chip do NOT — one is a state name and the other is what
+            it means. So the chip and this sentence stay together as one
+            status block, and what went is a heading that named the state
+            instead of the business.
+          */}
+          <p className="mt-4 text-lg font-bold">
             {standing
               ? headline(standing).title
               : "We cannot tell you where you stand"}
-          </h1>
-          <p className="text-forest/70 mt-3 text-base">
+          </p>
+          <p className="text-forest/70 mt-2 text-base">
             {standing
               ? headline(standing).body
               : /*
@@ -206,20 +250,23 @@ export default async function AccountPage() {
                 </>
               ) : null}
               {/*
-                Reels moved out of this door and into Manage services
-                (yuvoy-operator#22) — what a business sells and the footage
-                that sells it are the work, not the back office.
-
-                The way in stays here because this is where it has been since
-                v2.7 and an operator's hand knows the path; it now points at
-                the section rather than owning it.
+                THE LOGO, which is mandatory before an operator can be booked
+                and had nowhere to be set (yuvoy-operator#35 §2). It is also
+                where `LOGO_MISSING` links to from the blocker list above.
               */}
               <Door
-                href="/services/reels"
-                icon={FilmIcon}
-                title="Add a reel"
-                body="One upright clip of the real thing does more than a page of description. Under Services."
+                href="/logo"
+                icon={ImageIcon}
+                title="Your logo"
+                body="The mark travellers see on a card with no clip. We need one before you can be booked."
               />
+              {/*
+                The "Add a reel" door was here and is gone — yuvoy-operator#33
+                §4. It opened Services, which is its own tab, and one screen
+                should not live in two places: a second door to the same screen
+                is a second thing to keep in step and a second answer to "where
+                do I do that".
+              */}
             </ul>
           </section>
 
@@ -316,26 +363,52 @@ function Outstanding({ standing }: { standing: Standing }) {
             Waiting on you
           </h2>
           <ul className="mt-3 space-y-3">
-            {operator.map((b, i) => (
-              <li key={`${b.code}-${i}`} className={panelClass("alert")}>
-                <p className="text-base font-bold">{blockerText(b)}</p>
-                {b.since ? (
-                  <p className="text-forest/70 mt-2 text-sm">
-                    Outstanding since {marketDateLabel(b.since.slice(0, 10))}.
-                  </p>
-                ) : null}
-              </li>
-            ))}
+            {operator.map((b, i) => {
+              /*
+                THE WAY OUT OF THE BLOCKER — yuvoy-operator#33.
+
+                This screen listed everything stopping a business from selling
+                and gave no way to fix any of it. Every line was a sentence
+                with no button, so the only route forward was to ring us and
+                have somebody do it from the admin console — the concierge
+                path the self-serve portal exists to remove.
+
+                `null` for a code we do not recognise, deliberately. A link to
+                the wrong screen is worse than no link, and `OTHER` exists so a
+                reason can be added operationally without a contract change.
+              */
+              const action = blockerAction(b);
+              return (
+                <li key={`${b.code}-${i}`} className={panelClass("alert")}>
+                  <p className="text-base font-bold">{blockerText(b)}</p>
+                  {b.since ? (
+                    <p className="text-forest/70 mt-2 text-sm">
+                      Outstanding since {marketDateLabel(b.since.slice(0, 10))}.
+                    </p>
+                  ) : null}
+                  {action ? (
+                    <ButtonLink
+                      href={action.href}
+                      variant="secondary"
+                      className="mt-4"
+                    >
+                      {action.label}
+                    </ButtonLink>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
           {/*
-            There is nowhere in this portal to send a document — O6 is not
-            built and the contract has no write path for one. Offering an
-            upload that does not exist would be worse than naming the channel
-            that does.
+            "There is no upload on this screen yet" was here, and it stopped
+            being true: `/profile` sends business details and documents, and
+            `/logo` sends the logo. What is left to say is the thing the links
+            above cannot — that a person reads each one.
           */}
           <p className="text-forest/70 mt-3 text-sm">
-            Send these to us and a person will check them. There is no upload on
-            this screen yet.
+            A person at Yuvoy checks each of these. If one was turned down and
+            you do not know why, ring us — we cannot show you the reason here
+            yet.
           </p>
         </section>
       ) : null}

@@ -80,8 +80,14 @@ export function ListingPicker({
   return (
     <div className="space-y-3">
       <div>
+        {/*
+          The label names WHICH upload it belongs to, not just "Which
+          listing". Both uploaders are on one screen, so two controls labelled
+          the same thing are two controls a screen reader cannot tell apart —
+          and neither can anybody scanning the page for the one they meant.
+        */}
         <label htmlFor={`${id}-listing`} className="label block">
-          Which listing
+          Which listing this {noun} is for
         </label>
         <select
           id={`${id}-listing`}
