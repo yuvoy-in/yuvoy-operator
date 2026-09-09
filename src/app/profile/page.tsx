@@ -137,7 +137,17 @@ export default async function ProfilePage() {
         )}
       </div>
 
-      <div className="mt-8">
+      {/*
+        `#documents` is a real anchor because a blocker links to it — a
+        `CREDENTIAL_MISSING` or `CREDENTIAL_EXPIRED` row on Business sends the
+        operator straight to the form that clears it (yuvoy-operator#33). A
+        link to a fragment that does not exist scrolls nowhere and reads as the
+        portal ignoring the tap.
+
+        `scroll-mt` so the heading is not pinned under the top of the viewport
+        when the browser jumps here.
+      */}
+      <div id="documents" className="mt-8 scroll-mt-6">
         <CredentialForm
           suggested={suggestedCredentialType(credentials)}
           pendingTypes={credentials
