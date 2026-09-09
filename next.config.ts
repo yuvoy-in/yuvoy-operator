@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { cspHeaders } from "./src/lib/site/csp";
 
 /**
  * The operator portal is a higher-value target than the traveller app.
@@ -42,7 +43,26 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   async headers() {
-    return [{ source: "/(.*)", headers: securityHeaders }];
+    /*
+      Two CSP headers, deliberately — yuvoy-operator#37. A small enforced
+      subset that cannot break a page that works today, and the full policy in
+      report-only until a real run against `operators.yuvoy.in` says the
+      enumeration is complete.
+
+      The media hostnames are the reason that order matters here more than
+      anywhere else: bytes go straight from the browser to the provider, the
+      upload endpoint is minted per intent, and its subdomain is not something
+      this repository can know. A guess that is wrong makes every upload fail
+      silently, on the screens an operator needs most.
+
+      See src/lib/site/csp.ts for the directive list and for why the API origin
+      is deliberately NOT in `connect-src`.
+    */
+    const csp = cspHeaders({
+      dev: process.env.NODE_ENV !== "production",
+      mockUploadOrigin: process.env.MOCK_TUS_ORIGIN,
+    });
+    return [{ source: "/(.*)", headers: [...securityHeaders, ...csp] }];
   },
   /**
    * Where Manage services used to be — yuvoy-operator#22.
@@ -65,6 +85,23 @@ const nextConfig: NextConfig = {
         destination: "/services/activities",
         permanent: false,
       },
+      /*
+        The two renamed tabs — yuvoy-operator#32.
+
+        `Requests` became a section of `Bookings` once migration 0054 made
+        `allotment` the default and the queue stopped being a destination;
+        `Capacity` became `Calendar` because a calendar is what an operator
+        thinks they are looking at and "capacity" is our word for the number
+        inside it (D-031 C10).
+
+        Both URLs are in operators' browser history and both have been sent in
+        messages from us, so they forward rather than 404. **307, like the two
+        above and for the same reason**: a permanent redirect is cached by the
+        browser forever, and a tab structure two days old is not settled enough
+        to bake into every phone that has ever visited. Promote after a season.
+      */
+      { source: "/requests", destination: "/bookings", permanent: false },
+      { source: "/capacity", destination: "/calendar", permanent: false },
     ];
   },
 };

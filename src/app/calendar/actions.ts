@@ -111,7 +111,7 @@ export async function setCapacity(
     return { slotId, message: "Seats were not changed. Try again." };
   }
 
-  revalidatePath("/capacity");
+  revalidatePath("/calendar");
   revalidatePath("/today");
   return { slotId, seats };
 }
@@ -177,7 +177,7 @@ export async function addBlackout(
     });
     if (error) throw error;
 
-    revalidatePath("/capacity");
+    revalidatePath("/calendar");
     revalidatePath("/today");
     return {
       result: { existingBookings: data.existingBookings ?? 0, note: data.note },
@@ -262,7 +262,7 @@ export async function recordOfflineSale(
     );
     if (error) throw error;
 
-    revalidatePath("/capacity");
+    revalidatePath("/calendar");
     revalidatePath(`/today/${slotId}`);
 
     const oversold = data.oversold;
@@ -395,7 +395,7 @@ export async function addDepartures(
       field,
       message:
         field === "experienceId"
-          ? "Pick which trip these departures are for."
+          ? "Pick which listing these departures are for."
           : field === "seats"
             ? `How many seats? From 1 to ${MAX_SEATS}.`
             : "Something in the form was not right. Check it and try again.",
@@ -440,7 +440,7 @@ export async function addDepartures(
     });
     if (error) throw error;
 
-    revalidatePath("/capacity");
+    revalidatePath("/calendar");
     revalidatePath("/today");
     return {
       result: {
@@ -472,7 +472,7 @@ export async function addDepartures(
         return {
           field: "experienceId",
           message:
-            "We could not find that trip. Reload the page and pick it again.",
+            "We could not find that listing. Reload the page and pick it again.",
         };
       }
       if (err.status === 400) return { message: err.message };

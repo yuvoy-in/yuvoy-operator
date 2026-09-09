@@ -116,7 +116,7 @@ export default async function TodayPage({
       {!requestsResult.ok ? (
         <Panel role="status" className="mt-6 px-4 py-3 text-sm">
           Requests could not be loaded just now.{" "}
-          <Link href="/requests" className="text-terra-deep underline">
+          <Link href="/bookings" className="text-terra-deep underline">
             Open the queue
           </Link>{" "}
           to check — one may be waiting.
@@ -125,7 +125,7 @@ export default async function TodayPage({
 
       {requests.length > 0 ? (
         <Link
-          href="/requests"
+          href="/bookings"
           className={panelClass(
             "alert",
             "ease-interaction hover:bg-cream mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",

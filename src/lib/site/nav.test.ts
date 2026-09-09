@@ -17,6 +17,8 @@ import {
 describe("focused and bare routes", () => {
   it.each([
     ["/today/slot_1", "focused"],
+    ["/profile", "focused"],
+    ["/logo", "focused"],
     ["/earnings", "focused"],
     ["/earnings?month=last", "focused"],
     ["/payouts", "focused"],
@@ -26,9 +28,23 @@ describe("focused and bare routes", () => {
     ["/join", "bare"],
     ["/today", "root"],
     ["/today?day=2026-09-03", "root"],
+    ["/bookings", "root"],
+    ["/calendar", "root"],
+    ["/account", "root"],
+    /*
+      ONE booking is focused; the list is not (yuvoy-operator#34). The
+      distinction is the slash, and it is worth pinning: `/bookings/` catching
+      `/bookings` would hide the tab bar on a tab root, and not catching
+      `/bookings/<id>` would leave a detail screen with no way back.
+    */
+    ["/bookings/bk_1", "focused"],
+    /*
+      The two old URLs still resolve — they are 308s, not deletions, because
+      they are in operators' history and in messages we have sent. They stay
+      roots so the redirect does not flash an unlit bar on its way through.
+    */
     ["/requests", "root"],
     ["/capacity", "root"],
-    ["/account", "root"],
     /*
       Both halves of Manage services are ROOTS, not focused screens
       (yuvoy-operator#22). Reels was focused while it lived behind the Business
@@ -49,6 +65,22 @@ describe("focused and bare routes", () => {
       expect(isFocusedRoute(item.href)).toBe(false);
       expect(isBareRoute(item.href)).toBe(false);
     }
+  });
+
+  it("lights Bookings and Calendar for their old URLs too", () => {
+    /*
+      A 308 renders for an instant before the browser follows it. Matching the
+      old path means that instant shows the right stop lit rather than a bar
+      with nothing active, which reads as the portal losing its place.
+    */
+    const bookings = NAV.find((n) => n.icon === "bookings")!;
+    const calendar = NAV.find((n) => n.icon === "calendar")!;
+    expect(bookings.match("/requests")).toBe(true);
+    expect(bookings.match("/bookings/bk_1")).toBe(true);
+    expect(calendar.match("/capacity")).toBe(true);
+    // And they must not both light at once.
+    expect(calendar.match("/requests")).toBe(false);
+    expect(bookings.match("/capacity")).toBe(false);
   });
 
   it("highlights Business for every screen behind its door", () => {

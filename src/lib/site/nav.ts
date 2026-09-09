@@ -3,11 +3,29 @@
  * in the portal. The floating tab bar and the desktop rail both derive from
  * it, and a route is added here in the same change that ships its page.
  *
- * Five destinations. The day is what an operator opens at 6am; requests have
- * a clock on them; capacity is "the single most important number in the
- * system"; **services** is what the business actually consists of — what they
- * sell and the footage that sells it; and everything else about the business —
- * money, people, whether the account can trade — sits behind one door.
+ * Five destinations. The day is what an operator opens at 6am; **bookings**
+ * is who is coming; **calendar** is where the seats are promised, "the single
+ * most important number in the system"; **services** is what the business
+ * actually consists of — what they sell and the footage that sells it; and
+ * everything else about the business — money, people, whether the account can
+ * trade — sits behind one door.
+ *
+ * ## Why Requests became Bookings (yuvoy-operator#32, #34)
+ *
+ * Requests only ever held request-mode bookings awaiting an answer. Migration
+ * 0054 changed the default booking mode from `request` to `allotment` (D-031
+ * P5), because the product thesis is paid and confirmed inside sixty seconds
+ * — so an operator on the new default has an EMPTY Requests tab, while the
+ * confirmed bookings they actually need to see had no home at all. The
+ * requests queue is still the first thing on the tab and still ordered by how
+ * soon each expires; it is a section now rather than a destination.
+ *
+ * ## Why Capacity became Calendar (yuvoy-operator#32, #36)
+ *
+ * A calendar is what an operator thinks they are looking at. "Capacity" is
+ * our word for it, and D-031 C10 settles one word per thing: **listing** where
+ * an operator edits, **experience** where a traveller reads, **departure** for
+ * a dated occurrence.
  *
  * ## Why services is a stop rather than another thing behind Business
  *
@@ -23,7 +41,7 @@
  */
 
 export type NavIcon =
-  "today" | "requests" | "capacity" | "services" | "business";
+  "today" | "bookings" | "calendar" | "services" | "business";
 
 export interface NavItem {
   href: string;
@@ -41,16 +59,19 @@ export const NAV: readonly NavItem[] = [
     match: (p) => p === "/today" || p.startsWith("/today/"),
   },
   {
-    href: "/requests",
-    label: "Requests",
-    icon: "requests",
-    match: (p) => p.startsWith("/requests"),
+    href: "/bookings",
+    label: "Bookings",
+    icon: "bookings",
+    // `/requests` still matches so the redirect that stands there lights the
+    // right stop for the moment it is on screen, and so an old bookmark does
+    // not flash an unlit bar on its way through.
+    match: (p) => p.startsWith("/bookings") || p.startsWith("/requests"),
   },
   {
-    href: "/capacity",
-    label: "Capacity",
-    icon: "capacity",
-    match: (p) => p.startsWith("/capacity"),
+    href: "/calendar",
+    label: "Calendar",
+    icon: "calendar",
+    match: (p) => p.startsWith("/calendar") || p.startsWith("/capacity"),
   },
   {
     href: "/services/activities",
@@ -93,9 +114,15 @@ export const NAV: readonly NavItem[] = [
  */
 export const FOCUSED_ROUTE_PREFIXES = [
   "/today/",
+  // One booking, opened from the list and closed back to it. The list itself
+  // is a tab root; `/bookings/` with the slash is a booking.
+  "/bookings/",
   "/earnings",
   "/payouts",
   "/profile",
+  // The logo, which is mandatory before an operator can be booked and is
+  // reached from the blocker that says so (yuvoy-operator#33, #35 §2).
+  "/logo",
   "/team",
 ] as const;
 

@@ -1,3 +1,5 @@
+import { FOCUSED_ROUTE_PREFIXES, NAV } from "@/lib/site/nav";
+
 /**
  * Where to send somebody after they sign in.
  *
@@ -46,20 +48,40 @@ export const HOME_PATH = "/today";
  * The paths a return may point at, by prefix.
  *
  * An allowlist rather than "any path", because the useful set is small and a
- * bounded one cannot be reasoned around. `/sign-in` and `/signup` are
- * deliberately absent: returning to them after signing in is a loop, and
- * `/join` is not a place to land with a session.
+ * bounded one cannot be reasoned around. `/sign-in`, `/signup` and `/join` are
+ * structurally absent: they are the BARE routes, returning to one after
+ * signing in is a loop, and `/join` is not a place to land with a session.
+ *
+ * ## Derived, because the hand-written version went stale twice
+ *
+ * This was a literal list and it drifted the moment a route moved — silently,
+ * and in the worst direction: a bounced operator lost the page they were on
+ * and landed on Today, which is the exact failure `?next=` exists to prevent.
+ * By the time yuvoy-operator#32 renamed two tabs, the list still said
+ * `/reels` (moved under `/services` in #22) and had never learned `/profile`
+ * or `/services` at all.
+ *
+ * So it is built from the navigation registry and the focused-route list, the
+ * same two sources the chrome reads. A destination that exists is returnable
+ * by construction, and renaming one cannot leave this behind.
  */
 const RETURNABLE = [
-  "/today",
+  ...NAV.map((item) => item.href),
+  ...FOCUSED_ROUTE_PREFIXES,
+  /*
+    The two renamed URLs, which are 308s rather than deletions
+    (yuvoy-operator#32). An operator bounced off an old bookmark should land
+    back on it and be forwarded, not lose their place because the link they
+    held was the old one.
+  */
   "/requests",
   "/capacity",
-  "/earnings",
-  "/payouts",
-  "/team",
-  "/account",
-  "/reels",
-];
+].map((path) =>
+  // `FOCUSED_ROUTE_PREFIXES` carries trailing slashes (`/today/`) so it cannot
+  // catch the tab root; the match below adds one back, so it is stripped here
+  // to keep a single form in this list.
+  path.endsWith("/") ? path.slice(0, -1) : path,
+);
 
 /**
  * A `?next=` value, if it is safe to send somebody to, or `null`.

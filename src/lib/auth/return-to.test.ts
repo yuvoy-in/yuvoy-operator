@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HOME_PATH, safeReturnPath, signInPathFor } from "./return-to";
+import { NAV } from "@/lib/site/nav";
 
 describe("safeReturnPath — what it allows", () => {
   it("takes a path in the portal", () => {
@@ -114,5 +115,48 @@ describe("signInPathFor", () => {
     // And round-trips back to exactly what went in.
     const returned = new URLSearchParams(built.split("?")[1]).get("next");
     expect(safeReturnPath(returned)).toBe("/today/slot_dawn?filter=held");
+  });
+});
+
+/**
+ * The allowlist is derived, not written down — yuvoy-operator#32.
+ *
+ * It was a literal list and it went stale twice, silently and in the worst
+ * direction: a bounced operator lost the page they were on and landed on
+ * Today, which is the exact failure `?next=` exists to prevent. When two tabs
+ * were renamed the list still said `/reels` and had never learned `/profile`.
+ */
+describe("every destination is returnable by construction", () => {
+  it("covers every stop in the navigation bar", () => {
+    for (const item of NAV) {
+      expect(safeReturnPath(item.href), `${item.href} is not returnable`).toBe(
+        item.href,
+      );
+    }
+  });
+
+  it("covers every focused screen behind a stop", () => {
+    for (const path of [
+      "/profile",
+      "/logo",
+      "/earnings",
+      "/payouts",
+      "/team",
+    ]) {
+      expect(safeReturnPath(path), `${path} is not returnable`).toBe(path);
+    }
+  });
+
+  it("still returns to the two renamed URLs", () => {
+    // 308s, not deletions. Somebody bounced off an old bookmark should land
+    // back on it and be forwarded, not lose their place.
+    expect(safeReturnPath("/requests")).toBe("/requests");
+    expect(safeReturnPath("/capacity")).toBe("/capacity");
+  });
+
+  it("still refuses the doors that would loop", () => {
+    for (const path of ["/sign-in", "/signup", "/join", "/join/abc"]) {
+      expect(safeReturnPath(path), `${path} must not be returnable`).toBeNull();
+    }
   });
 });

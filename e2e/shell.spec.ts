@@ -47,10 +47,10 @@ test("a tab root names exactly five destinations, and says where you are", async
 test("the bar reaches every destination", async ({ page }) => {
   await signIn(page);
   for (const [name, path, heading] of [
-    ["Requests", "/requests", "Requests"],
-    ["Capacity", "/capacity", "Capacity"],
-    ["Services", "/services/activities", "Activities"],
-    ["Business", "/account", "Your account is live"],
+    ["Bookings", "/bookings", "Bookings"],
+    ["Calendar", "/calendar", "Calendar"],
+    ["Services", "/services/activities", "Listings"],
+    ["Business", "/account", "Nemo Reef Watersports"],
   ] as const) {
     await page
       .getByRole("navigation", { name: /Primary/i })
@@ -59,9 +59,9 @@ test("the bar reaches every destination", async ({ page }) => {
       .click();
     await page.waitForURL(`**${path}`);
     /*
-      `exact`, because Activities carries a section heading counting them —
-      "4 activities" — and a substring match resolves to both. The page's own
-      h1 is what says you arrived.
+      `exact`, because Listings carries a section heading counting them and a
+      substring match resolves to both. The page's own h1 is what says you
+      arrived.
     */
     await expect(
       page.getByRole("heading", { name: heading, exact: true }),
@@ -91,8 +91,8 @@ test("a focused screen hides the bar and offers a way back", async ({
 
 for (const route of [
   "/today",
-  "/requests",
-  "/capacity",
+  "/bookings",
+  "/calendar",
   "/services/activities",
   "/services/reels",
   "/account",
@@ -164,4 +164,80 @@ test("the rail stays put while the page scrolls", async ({
   await expect(
     page.getByRole("navigation", { name: /Primary/i }).getByRole("link"),
   ).toHaveCount(5);
+});
+
+/*
+  The two renamed URLs still answer — yuvoy-operator#32.
+
+  `/requests` and `/capacity` are 308s to `/bookings` and `/calendar` rather
+  than deletions, because both are in operators' browser history and both have
+  been sent in messages from us. A 404 on a screen somebody used yesterday
+  reads as the portal being broken, and the operators most likely to hold an
+  old link are the ones we onboarded by hand.
+*/
+for (const [old, moved, heading] of [
+  ["/requests", "/bookings", "Bookings"],
+  ["/capacity", "/calendar", "Calendar"],
+] as const) {
+  test(`${old} still lands on ${moved}`, async ({ page }) => {
+    await signIn(page);
+    await page.goto(old);
+    await page.waitForURL(`**${moved}`);
+    await expect(
+      page.getByRole("heading", { name: heading, exact: true }),
+    ).toBeVisible();
+  });
+}
+
+/*
+  Security headers, asserted against the running portal — yuvoy-operator#37.
+
+  `next.config.ts` builds the policy from environment, so the only place the
+  real one exists is a deployed response. A green unit test on the builder says
+  the string is right; only this says the string arrived.
+*/
+test.describe("security headers", () => {
+  test("every response carries the enforced policy", async ({ request }) => {
+    const headers = (await request.get("/sign-in")).headers();
+
+    expect(headers["content-security-policy"]).toBe(
+      "object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    );
+    expect(headers["x-frame-options"]).toBe("DENY");
+    expect(headers["referrer-policy"]).toBe("no-referrer");
+    expect(headers["strict-transport-security"]).toContain("preload");
+    expect(headers["cache-control"]).toContain("no-store");
+  });
+
+  test("the reported policy never names the API origin", async ({
+    request,
+  }) => {
+    /*
+      Nothing here talks to the API from a browser — `/operator/v1` refuses
+      CORS, the client is `server-only`, and `OPERATOR_API_URL` is deliberately
+      not `NEXT_PUBLIC_`. Putting it in a header would publish on every
+      response the origin that variable is kept server-side to hide.
+    */
+    const policy =
+      (await request.get("/sign-in")).headers()[
+        "content-security-policy-report-only"
+      ] ?? "";
+
+    expect(policy).toContain("default-src 'none'");
+    expect(policy).toContain("form-action 'self'");
+    expect(policy).not.toContain("/operator/v1");
+    expect(policy).not.toContain("api.yuvoy.in");
+  });
+
+  test("the enforced policy is a strict subset of the reported one", async ({
+    request,
+  }) => {
+    const headers = (await request.get("/sign-in")).headers();
+    const reported = new Set(
+      (headers["content-security-policy-report-only"] ?? "").split("; "),
+    );
+    for (const d of (headers["content-security-policy"] ?? "").split("; ")) {
+      expect(reported, `enforced "${d}" is not in report-only`).toContain(d);
+    }
+  });
 });

@@ -146,7 +146,7 @@ function DepartureRound({
               <p className="text-forest/80 mt-2 text-sm">
                 {onSale === false
                   ? (notOnSaleDetail ??
-                    "They are not on sale yet. Check the activity on Activities.")
+                    "They are not on sale yet. Check it on Listings.")
                   : "They are on sale from now."}{" "}
                 You can change the seats on each one below.
               </p>
@@ -173,7 +173,7 @@ function DepartureRound({
   /*
     Two absences, two sentences, and they must not be collapsed into one.
 
-    `null` — the fetch failed. Nothing is known about this operator's trips and
+    `null` — the fetch failed. Nothing is known about this operator's listings and
     a retry is the answer. Saying "you appear to have none" here would send
     somebody to message us about a problem that was ours and momentary.
 
@@ -194,11 +194,11 @@ function DepartureRound({
     return (
       <Panel tone="alert">
         <p className="text-base font-bold">
-          We could not load your trips just now
+          We could not load your listings just now
         </p>
         <p className="text-forest/80 mt-2 text-sm">
-          Everything below still works — this is only the list of trips to add a
-          departure to. Reload the page to try again.
+          Everything below still works — this is only the list of listings to
+          add a departure to. Reload the page to try again.
         </p>
       </Panel>
     );
@@ -257,10 +257,10 @@ function DepartureRound({
         each one as soon as it exists.
       </p>
 
-      {/* ---------------------------------------------------- which trip -- */}
+      {/* ------------------------------------------------- which listing -- */}
       <div className="mt-4">
         <label htmlFor="experienceId" className="label text-forest/75">
-          Which trip
+          Which listing
         </label>
         {listings.length === 1 ? (
           <>
@@ -272,7 +272,7 @@ function DepartureRound({
             />
             {/*
               Stated rather than offered as a choice of one. An operator adding
-              departures to the wrong trip is the mistake with no undo on this
+              departures to the wrong listing is the mistake with no undo on this
               screen, so the name is on the page either way.
             */}
             <p className="mt-2 text-base font-bold">{listings[0].title}</p>
@@ -286,7 +286,7 @@ function DepartureRound({
             className={inputClass("mt-2 px-3")}
           >
             <option value="" disabled>
-              Choose a trip
+              Choose a listing
             </option>
             {listings.map((l) => (
               <option key={l.id} value={l.id}>

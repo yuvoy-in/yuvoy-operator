@@ -8,7 +8,7 @@ import { BlackoutForm } from "./blackout-form";
 import { DepartureForm } from "./departure-form";
 import { Screen } from "@/components/chrome/screen";
 
-export const metadata: Metadata = { title: "Capacity" };
+export const metadata: Metadata = { title: "Calendar" };
 
 /*
   Never prerendered, never cached: every number on this page is a live seat
@@ -21,6 +21,11 @@ const DAYS_AHEAD = 14;
 
 /**
  * O9 — where the operator promises seats.
+ *
+ * One word per thing (D-031 C10, yuvoy-operator#36): a dated occurrence is
+ * a DEPARTURE. "Slot" is our word — it is the database's and the API's —
+ * and "trip" is the traveller's word for their own booking. Both appeared
+ * on this screen, for the same object, within a scroll of each other.
  *
  * "The single most important number in the system." Two weeks ahead, because
  * that is what somebody with a few days on an island plans in, and because a
@@ -53,8 +58,11 @@ export default async function CapacityPage() {
   return (
     <Screen>
       <p className="eyebrow text-terra-deep">Next two weeks</p>
+      {/* "Calendar", not "Capacity" — yuvoy-operator#32, #36. A calendar is
+          what an operator thinks they are looking at; capacity is our word
+          for the number inside it. D-031 C10. */}
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-        Capacity
+        Calendar
       </h1>
       <p className="text-forest/70 mt-3 text-base">
         What each departure offers, and what you have sold at your own counter.

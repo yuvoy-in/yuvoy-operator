@@ -14,9 +14,16 @@ import {
 } from "@/components/ui/icons";
 
 const ICONS: Record<NavIcon, ComponentType<{ className?: string }>> = {
-  today: CalendarIcon,
-  requests: ClockIcon,
-  capacity: TicketIcon,
+  today: ClockIcon,
+  bookings: TicketIcon,
+  /*
+    The glyphs moved with the labels (yuvoy-operator#32). Today is the hours
+    of one day, so it takes the clock; Bookings is a list of tickets; Calendar
+    is a month, so it takes the calendar. The previous pairing had Today on a
+    calendar and Capacity on a ticket, which read backwards the moment the
+    tabs were named for what they are.
+  */
+  calendar: CalendarIcon,
   services: LayersIcon,
   business: BriefcaseIcon,
 };
