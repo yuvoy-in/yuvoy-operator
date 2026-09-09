@@ -17,6 +17,8 @@ import {
   readImageFacts,
 } from "@/lib/media/photo";
 import { RightsForm } from "./rights-form";
+import { ListingPicker } from "./listing-picker";
+import type { ListingOption } from "./attach-form";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 
@@ -51,8 +53,20 @@ import { Panel } from "@/components/ui/panel";
  * uploader follows the other way round.
  *
  * **No slot to lose.** A clip intent is one per operator and refuses a second
- * with `409`; the photograph endpoint declares no such refusal, so somebody
- * adding a row of pictures is not fighting their own uploads.
+ * with `409`; the photograph endpoint's `409` means something else — that
+ * listing's gallery is full — so somebody adding a row of pictures is not
+ * fighting their own uploads.
+ *
+ * ## The listing is chosen FIRST — yuvoy-operator#35, #31 §2
+ *
+ * `experienceId` is required on `POST /media/photo-intents`, so the picker is
+ * in front of the file rather than after the upload. That is the right order
+ * on its own merits: a moderator is shown the listing beside the photograph,
+ * and without one `NOT_THIS_EXPERIENCE` is a rejection code about something
+ * nobody recorded.
+ *
+ * Refusing before the slot rather than after also means a full gallery is a
+ * sentence on the screen instead of a failure eighty seconds into an upload.
  */
 
 type Phase =
@@ -69,12 +83,27 @@ type Phase =
   | { name: "attesting"; mediaAssetId: string }
   | { name: "failed"; message: string };
 
-export function PhotoUploader() {
+export function PhotoUploader({
+  listings,
+}: {
+  /** `null` means the listings could not be read. */
+  listings: ListingOption[] | null;
+}) {
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
+  const [experienceId, setExperienceId] = useState("");
+  const [role, setRole] = useState<"hero" | "gallery">("gallery");
   const inputRef = useRef<HTMLInputElement>(null);
+  const canChoose = experienceId.length > 0;
 
   async function choose(file: File | undefined) {
     if (!file) return;
+    if (!experienceId) {
+      setPhase({
+        name: "failed",
+        message: "Choose the listing this photograph belongs to first.",
+      });
+      return;
+    }
 
     /*
       The free refusals first, before any slot is asked for. A picture that is
@@ -89,7 +118,7 @@ export function PhotoUploader() {
 
     setPhase({ name: "checking" });
 
-    const result = await createPhotoIntent();
+    const result = await createPhotoIntent(experienceId, role);
     if (!result.intent) {
       setPhase({
         name: "failed",
@@ -152,7 +181,9 @@ export function PhotoUploader() {
       The host is asked, not us. A browser that says it finished is a browser
       saying anything it likes, which is exactly why `complete` exists.
     */
-    const done = await completePhotoUpload(intent.imageId);
+    // The intent, not just the image: it is what carries the listing across
+    // the upload. `imageId` alone names no listing.
+    const done = await completePhotoUpload(intent.imageId, intent.intentId);
     if (!done.mediaAssetId) {
       setPhase({
         name: "failed",
@@ -197,22 +228,36 @@ export function PhotoUploader() {
       {phase.name === "idle" ||
       phase.name === "rejected" ||
       phase.name === "failed" ? (
-        <div>
-          <label htmlFor="photo-file" className="label text-forest/75">
-            Choose a photograph
-          </label>
-          <input
-            ref={inputRef}
-            id="photo-file"
-            type="file"
-            accept="image/*"
-            className="mt-2 block w-full text-sm"
-            onChange={(e) => void choose(e.target.files?.[0])}
+        <div className="space-y-5">
+          <ListingPicker
+            id="photo"
+            listings={listings}
+            value={experienceId}
+            onChange={setExperienceId}
+            role={role}
+            onRoleChange={setRole}
+            noun="photograph"
           />
-          <p className="text-forest/70 mt-2 text-xs">
-            A JPEG or PNG of the real thing. It goes to a person here before any
-            traveller sees it.
-          </p>
+
+          <div>
+            <label htmlFor="photo-file" className="label text-forest/75">
+              Choose a photograph
+            </label>
+            <input
+              ref={inputRef}
+              id="photo-file"
+              type="file"
+              accept="image/*"
+              className="mt-2 block w-full text-sm disabled:opacity-50"
+              disabled={!canChoose}
+              onChange={(e) => void choose(e.target.files?.[0])}
+            />
+            <p className="text-forest/70 mt-2 text-xs">
+              {canChoose
+                ? "A JPEG or PNG of the real thing. It goes to a person here before any traveller sees it."
+                : "Choose the listing first — a photograph belongs to one."}
+            </p>
+          </div>
         </div>
       ) : null}
 

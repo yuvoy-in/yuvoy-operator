@@ -45,6 +45,8 @@ export interface IntentState {
 
 export async function createUploadIntent(
   sizeBytes: number,
+  experienceId?: string,
+  role: "hero" | "gallery" = "gallery",
 ): Promise<IntentState> {
   const parsedSize = z.number().int().positive().safeParse(sizeBytes);
   if (!parsedSize.success) {
@@ -52,10 +54,38 @@ export async function createUploadIntent(
   }
   const { token } = await requireOperator();
 
+  /*
+    THE LISTING, NAMED AT THE START — yuvoy-operator#31 §1.
+
+    `experienceId` is optional on this route and required on the photograph
+    one, and the asymmetry is the API's: making it mandatory here would have
+    stopped every reel upload in production the moment it deployed, because
+    the shipped uploader sent no listing. It becomes required once this
+    portal sends it, which is what this is.
+
+    Sending it removes the separate attach step from the ordinary flow —
+    approval attaches the clip — and it gives a moderator something to judge
+    `NOT_THIS_EXPERIENCE` against, which nothing recorded before.
+
+    Optional HERE too, and that is not hedging: if an upload is already in
+    flight, asking again resumes it, and a resume that named no listing must
+    not be refused for it. An invalid id is dropped rather than sent, because
+    a marketing-shaped field must never cost somebody a twenty-minute upload.
+  */
+  const listing = z
+    .string()
+    .uuid()
+    .safeParse(experienceId ?? "");
+
   try {
     const { data, error } = await operatorApi(token).POST(
       "/media/upload-intents",
-      { body: { sizeBytes: parsedSize.data } },
+      {
+        body: {
+          sizeBytes: parsedSize.data,
+          ...(listing.success ? { experienceId: listing.data, role } : {}),
+        },
+      },
     );
     if (error) throw error;
 
@@ -92,6 +122,27 @@ export async function createUploadIntent(
       return { message: "No signal. Nothing was started." };
     }
     if (err instanceof OperatorApiError) {
+      if (err.isNotFound) {
+        /*
+          A listing that is not yours answers 404, the same as one that does
+          not exist — deliberately indistinguishable, so this says one thing
+          and speculates about neither.
+        */
+        return { message: "We could not find that listing. Choose another." };
+      }
+      if (err.status === 409 && fullCeiling(err.details)) {
+        /*
+          The OTHER 409 on this route since migration 0058: that listing
+          already shows as many reels as we display. Checked before the upload
+          as well as at publish, because "telling somebody the gallery is full
+          after a twenty-minute upload is telling them too late". Told apart
+          from the slot conflict by whether the details name a ceiling.
+        */
+        const full = fullCeiling(err.details)!;
+        return {
+          message: `That listing already shows ${full.limit} ${full.noun}. Remove one first — your ${full.other} are not affected.`,
+        };
+      }
       if (err.status === 409) {
         /*
           Kept, and reworded, because it is still declared in the contract while
@@ -459,6 +510,12 @@ export interface PhotoIntent {
   uploadUrl: string;
   maxBytes: number;
   expiresAt?: string;
+  /**
+   * The row recording which listing this upload is for. Sent back to
+   * `/photo-intents/complete`, which is what carries the listing across the
+   * upload — `imageId` alone does not name one.
+   */
+  intentId?: string;
 }
 
 export interface PhotoIntentState {
@@ -483,13 +540,27 @@ export interface PhotoIntentState {
  * From `complete` onward the two converge completely: same attestation, same
  * review queue, same publish. "There is no shorter path, deliberately."
  */
-export async function createPhotoIntent(): Promise<PhotoIntentState> {
+export async function createPhotoIntent(
+  experienceId: string,
+  role: "hero" | "gallery" = "gallery",
+): Promise<PhotoIntentState> {
+  /*
+    `experienceId` is REQUIRED here, unlike the clip route — migration 0058,
+    and deliberate: nothing called this endpoint, so there was no deployed
+    client to break and a photograph starts life the way both should end it.
+    Refused before a slot is asked for; a 400 from the API would say the same
+    thing thirty seconds later and after a round trip.
+  */
+  const parsed = z.string().uuid().safeParse(experienceId);
+  if (!parsed.success) {
+    return { message: "Choose the listing this photograph belongs to." };
+  }
   const { token } = await requireOperator();
 
   try {
     const { data, error } = await operatorApi(token).POST(
       "/media/photo-intents",
-      {},
+      { body: { experienceId: parsed.data, role } },
     );
     if (error) throw error;
 
@@ -509,6 +580,7 @@ export async function createPhotoIntent(): Promise<PhotoIntentState> {
         */
         maxBytes: data.maxBytes ?? 5 * 1024 * 1024,
         expiresAt: data.expiresAt,
+        intentId: data.intentId,
       },
     };
   } catch (err) {
@@ -518,6 +590,31 @@ export async function createPhotoIntent(): Promise<PhotoIntentState> {
     if (err instanceof OperatorApiError) {
       if (err.status === 403) {
         return { message: "Your role cannot upload photographs." };
+      }
+      if (err.isNotFound) {
+        /*
+          "A listing that is not yours answers 404, indistinguishable from one
+          that does not exist." One message for both, because telling somebody
+          that listing exists but is not theirs confirms it exists.
+        */
+        return { message: "We could not find that listing. Choose another." };
+      }
+      if (err.status === 409) {
+        /*
+          The gallery is full. Refused HERE rather than after the upload —
+          "telling somebody the gallery is full after twenty minutes on a
+          0.5 Mbps uplink is telling them too late" — and the ceilings are
+          separate per kind, so a full photo gallery never blocks a reel.
+        */
+        const full = fullCeiling(err.details);
+        return {
+          message: full
+            ? `That listing already shows ${full.limit} ${full.noun}. Remove one first — your ${full.other} are not affected.`
+            : "That listing already shows as many photographs as we display.",
+        };
+      }
+      if (err.status === 400) {
+        return { message: "Choose the listing this photograph belongs to." };
       }
       if (err.status === 503) {
         /*
@@ -559,6 +656,7 @@ export interface PhotoCompleteState {
  */
 export async function completePhotoUpload(
   imageId: string,
+  intentId?: string,
 ): Promise<PhotoCompleteState> {
   const parsed = z.string().min(1).safeParse(imageId);
   if (!parsed.success) {
@@ -566,10 +664,27 @@ export async function completePhotoUpload(
   }
   const { token } = await requireOperator();
 
+  /*
+    `intentId` is the preferred form and the only one that carries the
+    listing: it names the row recording which listing this photograph is for.
+    `imageId` is kept as the compatibility form the contract keeps permanently
+    — a photograph minted before the listing was chosen at upload has no
+    intent row to name — so this sends the intent when it has one and falls
+    back rather than refusing.
+  */
+  const intent = z
+    .string()
+    .uuid()
+    .safeParse(intentId ?? "");
+
   try {
     const { data, error } = await operatorApi(token).POST(
       "/media/photo-intents/complete",
-      { body: { imageId: parsed.data } },
+      {
+        body: intent.success
+          ? { intentId: intent.data }
+          : { imageId: parsed.data },
+      },
     );
     if (error) throw error;
 

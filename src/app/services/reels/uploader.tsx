@@ -19,6 +19,8 @@ import { decideSlot, identityOf, type FileIdentity } from "@/lib/media/slot";
 import { forgetSlot, recallSlot, rememberSlot } from "@/lib/media/slot-store";
 import { marketTime } from "@/lib/format/market-time";
 import { RightsForm } from "./rights-form";
+import { ListingPicker } from "./listing-picker";
+import type { ListingOption } from "./attach-form";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 
@@ -116,8 +118,21 @@ function readVideoFacts(file: File): Promise<LocalVideoFacts> {
   });
 }
 
-export function Uploader() {
+export function Uploader({
+  listings,
+}: {
+  /** `null` means the listings could not be read. */
+  listings: ListingOption[] | null;
+}) {
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
+  /*
+    Which listing this clip is for — yuvoy-operator#31 §1. Optional on this
+    route while it is optional on the wire, so an operator with no listings
+    yet is not locked out of uploading; the picker says so in its own words
+    and the file input stays open.
+  */
+  const [experienceId, setExperienceId] = useState("");
+  const [role, setRole] = useState<"hero" | "gallery">("gallery");
   const abort = useRef<AbortController | null>(null);
 
   /*
@@ -186,7 +201,7 @@ export function Uploader() {
     // moves.
     let intent = slot.current?.intent;
     if (!intent) {
-      const started = await createUploadIntent(file.size);
+      const started = await createUploadIntent(file.size, experienceId, role);
       if (!started.intent) {
         setPhase({
           name: "failed",
@@ -278,7 +293,11 @@ export function Uploader() {
       problems: preflight(file, intent, facts),
       resumeFrom,
     });
-  }, []);
+    // `experienceId` and `role` are read when an intent is MINTED, which is
+    // inside this callback — so they belong in the deps. Without them a
+    // picker change after the first render would mint the intent against a
+    // stale listing, which is a silent wrong answer rather than an error.
+  }, [experienceId, role]);
 
   const send = useCallback(async (file: File, intent: UploadIntent) => {
     const controller = new AbortController();
@@ -454,6 +473,18 @@ export function Uploader() {
 
       {phase.name === "idle" || phase.name === "failed" ? (
         <>
+          <div className="mb-5">
+            <ListingPicker
+              id="reel"
+              listings={listings}
+              value={experienceId}
+              onChange={setExperienceId}
+              role={role}
+              onRoleChange={setRole}
+              noun="clip"
+            />
+          </div>
+
           <label htmlFor="reel" className="label text-forest/75 block">
             Choose a clip
           </label>

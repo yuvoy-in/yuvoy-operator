@@ -157,7 +157,7 @@ export default async function ReelsPage() {
           starting it again.
         </p>
         <div className="mt-5">
-          <Uploader />
+          <Uploader listings={listings} />
         </div>
       </Panel>
 
@@ -179,7 +179,7 @@ export default async function ReelsPage() {
           Reviewed by a person, exactly like a reel.
         </p>
         <div className="mt-5">
-          <PhotoUploader />
+          <PhotoUploader listings={listings} />
         </div>
       </Panel>
 
