@@ -1,6 +1,7 @@
 import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
 import type { ChangeRequest, Earnings, EarningsState } from "./earnings";
+import { toCommission, type Commission } from "./commission";
 import { byDeparture, toBookingLine, type BookingLine } from "./bookings";
 
 export async function getEarnings(
@@ -72,4 +73,18 @@ export async function listBookings(
   } catch {
     return null;
   }
+}
+
+/**
+ * What is owed on cash already taken — yuvoy-operator#40 §2.
+ *
+ * Hard-failing, unlike the two soft reads above. This IS the screen: there is
+ * nothing else on it to keep up, and a balance that quietly renders as zero
+ * because a request failed is the one wrong answer that must never appear —
+ * an operator who reads "nothing owed" stops expecting a bill.
+ */
+export async function getCommissionOwed(token: string): Promise<Commission> {
+  const { data, error } = await operatorApi(token).GET("/commission-owed", {});
+  if (error) throw error;
+  return toCommission(data);
 }

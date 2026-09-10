@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import type { ComponentType } from "react";
 import { operatorApi } from "@/lib/api/server-client";
 import { classifyMeFailure } from "@/lib/account/status";
+import { readShape } from "@/lib/account/read-shape";
 import {
   blockerAction,
   blockerText,
@@ -118,7 +119,9 @@ export default async function AccountPage() {
   const businessName = active
     ? await operatorApi(token)
         .GET("/profile", {})
-        .then((r) => (r.error ? null : r.data?.legalName?.trim() || null))
+        .then((r) =>
+          r.error ? null : readShape(r.data)?.legalName?.trim() || null,
+        )
         .catch(() => null)
     : null;
 
@@ -257,6 +260,21 @@ export default async function AccountPage() {
                     icon={CoinsIcon}
                     title="Earnings"
                     body="What you are owed, and why it is that number."
+                  />
+                  {/*
+                    CASH, AND WHAT IS OWED ON IT — yuvoy-operator#40 §2.
+
+                    Beside Earnings rather than inside it: earnings are what we
+                    owe them and this is what they owe us, and folding the two
+                    into one screen would net a balance against a payout that
+                    has nothing to do with it. Same OWNER/MANAGER gate — it is
+                    the money, and a staff phone on a boat needs the manifest.
+                  */}
+                  <Door
+                    href="/cash"
+                    icon={CoinsIcon}
+                    title="Cash you've collected"
+                    body="What travellers paid you directly, and Yuvoy's share of it."
                   />
                   <Door
                     href="/payouts"

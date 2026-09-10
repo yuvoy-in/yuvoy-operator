@@ -15,29 +15,36 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 10 Sep 2026, ninth bump. Forward from e94901c1a543. One field, and it is
-# required: `gates` on `Blocker`. Nothing else in the document moved.
+# 10 Sep 2026, tenth bump. Forward from 3a643cde69c0. Four new operations and
+# one new schema; nothing was removed and nothing this portal reads changed
+# shape.
 #
 # Consumed in this change:
-#   - `gates` (REQUIRED) on `Blocker` (op#38). Whether an outstanding item
-#     actually stops a sale. The API changed `bookable` to be false only when
-#     something gates — an operator LIVE with three listings selling was being
-#     told "you cannot be booked yet" over a missing logo — and this portal
-#     was gating the whole outstanding list on `!bookable`, so the change made
-#     the list vanish. The list is now gated on `blocking` being non-empty,
-#     which is what the field description asks for, and `gates` separates what
-#     stops a sale from what is merely owed.
+#   - `GET /commission-owed` (op#40 §2). What the operator owes us on cash we
+#     never handled. There is no payout to take it out of, so it is a balance —
+#     and the trips behind it are listed, which is the point of the screen.
 #
 # NOT consumed here, and each needs its own change:
-#   - nothing outstanding.
-#
-# The traveller document is byte-identical between this ref and the one
-# yuvoy-app pins, so both frontends are back on ONE commit — the intent stated
-# at the top of this file, which had drifted by two commits.
+#   - `POST /bookings/{id}/cash-collected` (op#40 §1). The endpoint is fine;
+#     the MANIFEST is what is missing. A party carries no fare, no way to tell
+#     a cash booking from a card one, and nowhere to read back a collection
+#     that was already recorded — so the button cannot be put on the right
+#     rows, cannot name an amount, and would forget itself on reload. Raised on
+#     yuvoy-operator#40 and reassigned; the screen lands the day the manifest
+#     says which parties owe cash.
+#   - `POST /experiences/{id}/relist` and `RevisionOutcome`. A listing withdrawn
+#     by its operator can be put back on sale; this portal has the withdraw
+#     half only. Its own issue.
+#   - `POST /slots/{id}/time`. Moving a departure's time. Nothing in the
+#     calendar offers it yet.
+#   - `202` on the logo upload, for an account already LIVE — a new mark is
+#     reviewed before it replaces the one on every reel. The logo screen
+#     treats every 2xx alike today and would tell an operator the change is
+#     live when it is pending. Its own issue.
 #
 # `git ls-remote` was the check for this ref, not `gh api .../commits/master`,
 # which served a five-minute-stale SHA twice on 8 Sep and cost a retracted
 # issue.
-ref=3a643cde69c0ced7d710279e68fa086111fea096
+ref=64d49ee5481e96ca1313c32941672df9f7e9f477
 branch=master
 pinned_on=2026-09-10

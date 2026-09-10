@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { readShape } from "@/lib/account/read-shape";
 import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
 import { Screen } from "@/components/chrome/screen";
@@ -31,7 +32,13 @@ export default async function LogoPage() {
   */
   const current = await operatorApi(token)
     .GET("/logo", {})
-    .then((r) => (r.error ? null : r.data))
+    /*
+      `readShape` because the contract declares a `202` on this GET whose body
+      is the "recorded for review" acknowledgement, not a logo — see
+      src/lib/account/read-shape.ts. A read cannot record anything for review,
+      so that shape is treated as "nothing to show" rather than rendered.
+    */
+    .then((r) => (r.error ? null : readShape(r.data)))
     .catch(() => null);
 
   /*

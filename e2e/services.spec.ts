@@ -477,6 +477,91 @@ test("the activity picker narrows to the chosen category", async ({ page }) => {
   ).toHaveCount(0);
 });
 
+test("a listing that predates the taxonomy can be given an activity type", async ({
+  page,
+}, testInfo) => {
+  /*
+    yuvoy-operator#39. The selector was on the create form and not the edit
+    form, so a listing written before `activityType` became mandatory could
+    never acquire one: the operator edits something ordinary, submit succeeds
+    because the API marks the field `SubmitDeferred` for exactly this reason,
+    and approval refuses days later naming a control that is not on their
+    screen. All three older production listings sat in that state.
+  */
+  /*
+    Its own listing, one per project. A revision moves `status` in the shared
+    Next server process, so submitting against a row another test asserts on
+    would take "On sale" away from whichever ran second — the same trap the
+    revision fixtures above exist for.
+  */
+  const who =
+    testInfo.project.name === "mobile"
+      ? "Mangrove drift (taxonomy fixture A)"
+      : "Mangrove drift (taxonomy fixture B)";
+
+  await signIn(page);
+  await page.goto("/services/activities");
+
+  const row = page.locator("li").filter({ hasText: who });
+
+  // The row names it as outstanding — that half already worked.
+  await expect(row.getByText("what kind of activity it is")).toBeVisible();
+
+  await row.getByRole("button", { name: "Propose a change" }).click();
+
+  /*
+    And now there is somewhere to answer it. Narrowed to the listing's OWN
+    category (`nature_wildlife`), which is fixed after creation — offering
+    `scuba` here would move the composite-key 400 to after the form is filled
+    in, exactly as it would on the create form.
+  */
+  const activity = row.getByLabel("What kind of activity");
+  await expect(activity).toBeVisible();
+  await expect(activity).toHaveValue("");
+  await expect(
+    activity.locator("option", { hasText: "Birdwatching" }),
+  ).toHaveCount(1);
+  await expect(activity.locator("option", { hasText: "Scuba" })).toHaveCount(0);
+
+  // It says why it is being asked for, since this listing cannot be approved
+  // without it — a demand with no reason is what the row used to be.
+  await expect(
+    row.getByText(/before this listing can be approved/i),
+  ).toBeVisible();
+
+  await activity.selectOption("birdwatching");
+  await row.getByRole("button", { name: /Send it to us/i }).click();
+
+  // No success toast, here as everywhere: the operator is told who has it now.
+  await expect(row.getByText(/with us/i).first()).toBeVisible();
+});
+
+test("a listing's own name can be corrected", async ({ page }) => {
+  /*
+    Found by the publish-blocker check added for yuvoy-operator#39, not asked
+    for by it: `submitRevision` has read `title` off this form since it was
+    written and no form ever sent one, so an operator with a typo in their
+    listing's name had to ring us and have somebody fix it from the admin
+    console — the concierge path this portal exists to remove.
+  */
+  await signIn(page);
+  await page.goto("/services/activities");
+
+  const row = page.locator("li").filter({ hasText: "Reef dive" });
+  await row.getByRole("button", { name: "Propose a change" }).click();
+
+  /*
+    Asserted on the READ side, and deliberately not submitted: the defect was
+    that no control existed at all, and a submit here would move `status` on a
+    row other tests assert is plainly on sale — the hazard documented on the
+    revision fixtures. The send path is the same `submitRevision` the revision
+    test already exercises.
+  */
+  const title = row.getByLabel("What it is called");
+  await expect(title).toHaveValue("Reef dive");
+  await expect(title).toBeEditable();
+});
+
 test("a listing can be taken off sale, and it says what that did NOT do", async ({
   page,
 }, testInfo) => {

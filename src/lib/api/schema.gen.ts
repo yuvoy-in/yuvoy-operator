@@ -250,7 +250,7 @@ export interface paths {
          *
          *     A whole document, not a patch of single fields: this is one form filled in during onboarding, and partial writes would leave it half-saved in ways the completeness check then has to reason about.
          *
-         *     **Self-serve only until the account is LIVE.** After that the verified documents were checked against the legal name on file, so changing it without anybody looking would make the verification meaningless — the response says so via `editable`, and a write answers `409`.
+         *     **Self-serve only until the account is LIVE.** After that the verified documents were checked against the legal name on file, so changing it without anybody looking would make the verification meaningless — the response says so via `editable`, and a write on a LIVE account answers `202` — recorded for review rather than applied, because the verified documents were checked against the name on file.
          */
         put: operations["saveBusinessDetails"];
         post?: never;
@@ -710,6 +710,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bookings/{id}/cash-collected": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that you took the cash
+         * @description For a booking the traveller chose to pay for at the counter. Recording it moves the booking from `paid_pending_ops` to `confirmed` — for a cash booking, you taking the notes IS the confirmation.
+         *
+         *     **This is a separate act from marking somebody arrived, deliberately.** Somebody can turn up and not pay. If the two were one button, nobody could say afterwards which of them actually happened.
+         *
+         *     **Idempotent.** A phone that loses signal mid-request and is tapped again gets the first tap's answer, with `alreadyRecorded: true`. The amount already on the booking is never overwritten: a collection reported once is a fact, and a retry must not become a way to restate it.
+         *
+         *     Omit `collectedPaise` for the whole fare, which is what happens almost every time. Send it only when you took less — a shortfall is recorded as you report it, and `shortfallPaise` comes back so a mis-key (300 for 3000) is visible now rather than in a statement next month.
+         *
+         *     Our commission is owed on the **fare**, not on what you chose to take. A discount you gave is yours to have given.
+         */
+        post: operations["recordCashCollected"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/commission-owed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What you owe us on cash you have already taken
+         * @description Commission on completed trips that were paid in cash. We never handled that money — the traveller paid you directly — so it cannot come out of a payout the way commission on card bookings does. It is a balance instead.
+         *
+         *     The trips behind the total are listed, and that is the point of the screen. A total on its own invites "that cannot be right" and gives nobody a way to check.
+         *
+         *     A trip appears here only once it is **completed** and you have **recorded taking the cash**. A no-show who never paid you owes nobody anything.
+         */
+        get: operations["getCommissionOwed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/slots/{id}/offline-sales": {
         parameters: {
             query?: never;
@@ -805,6 +857,38 @@ export interface paths {
          *     Requires OWNER, ADMIN or MANAGER.
          */
         patch: operations["setSlotCapacity"];
+        trace?: never;
+    };
+    "/slots/{id}/time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Move a departure to a different time
+         * @description Changes when a departure leaves, **within its own day**, and tells everybody booked on it.
+         *
+         *     Nothing could do this. `starts_at` had never been changed anywhere, so a turned tide meant calling the departure off — refunding everybody — and creating a new one. Every traveller then has to rebook, and most do not.
+         *
+         *     `ends_at` and the booking cutoff shift by the same amount, because both are relationships to the start rather than independent facts.
+         *
+         *     **Everyone booked is told, in the same transaction as the move**, using the `time_change` update they already receive. If the notice cannot be written the move does not happen: a departure that moved silently is worse than one that could not move.
+         *
+         *     **And each of them may leave for free.** A traveller who booked 09:00 and cannot make 14:00 did not choose this, so the usual 48h/24h cancellation tiers do not apply to them — the refund is full, under `OPERATOR_MOVED_IT`.
+         *
+         *     Same day only: a move across midnight is not a later departure, it is a different one, and it would silently empty one day's calendar and fill another's. Add a departure on the other day instead.
+         *
+         *     OWNER or MANAGER. Moving a departure spends money.
+         */
+        patch: operations["moveDeparture"];
         trace?: never;
     };
     "/blackouts": {
@@ -944,6 +1028,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/experiences/{id}/relist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask for a withdrawn listing to go back on sale
+         * @description The ask, not the act. Moves the listing from `withdrawn` to `in_review`, where it joins the queue an admin already works. **It does not put it in front of travellers** — only the admin publication endpoint does that, and that is deliberate.
+         *
+         *     Refused with `400` when something mandatory is missing, so an operator whose listing lost a field while it was off sale finds out while the form is open rather than after two days in a queue. `details.missing` names them.
+         *
+         *     Idempotent: asking twice is not an error. OWNER or MANAGER — the person who can take a listing off sale is the person who can ask for it back.
+         */
+        post: operations["relistExperience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/experiences/{id}/withdraw": {
         parameters: {
             query?: never;
@@ -959,7 +1067,11 @@ export interface paths {
          *
          *     **This cancels nothing and refunds nothing.** Future departures keep their rows and simply stop being offered; confirmed bookings are untouched and you still owe those travellers the trip. If you want a departure cancelled and its travellers refunded, that is `POST /slots/{id}/call-off`, one per departure, each with its own confirmation. There is deliberately no "withdraw and cancel everything" flag.
          *
-         *     Not a state machine. The admin endpoint carries four publication states; the only transition an operator owns is "off". **Putting it back goes through review** — send a revision — for the same reason approving a copy edit does not republish a withdrawn listing: putting something back in front of travellers is a deliberate decision, not a side effect.
+         *     Not a state machine. The admin endpoint carries four publication states; the transitions an operator owns are "off" and "please put it back".
+         *
+         *     **Putting it back goes through review** — `POST /operator/v1/experiences/{id}/relist` — for the same reason approving a copy edit does not republish a withdrawn listing: putting something back in front of travellers is a deliberate decision, not a side effect.
+         *
+         *     This used to say "send a revision", and that was **false**. Approval republishes `draft` and `in_review` and leaves `withdrawn` alone, so an operator following this sentence waited for something that was never going to happen. There is an endpoint for it now.
          *
          *     OWNER or MANAGER only.
          */
@@ -1203,6 +1315,31 @@ export interface components {
             /** @enum {string} */
             category: "adventure" | "nature_wildlife" | "food_drink" | "arts_creativity" | "learning" | "culture_heritage" | "wellness" | "entertainment" | "community" | "sports" | "local_life" | "events";
         };
+        /**
+         * @description What happened to each half of an edit.
+         *
+         *     Since D-032.3 a listing edit has two possible destinations. The operator owns the commercial reality — price, pricing basis, duration, party size, where to meet — and those apply the moment they save. Yuvoy owns what the listing PROMISES — the title, the summary, the description, what is included, what is required, the safety notes — and those are read by a person first.
+         *
+         *     Render both lists. "Submitted" alone is wrong for a mixed edit, and "saved" alone is wrong for anything carrying a claim.
+         */
+        RevisionOutcome: {
+            /** @description Field names that are LIVE NOW, in the order the form shows them. Travellers see these on the listing immediately. */
+            applied: string[];
+            /** @description Field names a person will read. The listing keeps selling on the old wording meanwhile — an edit under review never takes a live listing off sale. */
+            inReview: string[];
+            /** @description Absent when nothing needed reading. */
+            revisionId?: string;
+            /**
+             * @description `applied` when the whole edit is live; `submitted` when any part of it is with us. A mixed edit is `submitted`, which is why the two lists above matter more than this field.
+             * @enum {string}
+             */
+            state: "applied" | "submitted";
+            needsReview?: boolean;
+            /** @description One sentence saying which half is where. Render it. */
+            next: string;
+            /** @description That bookings already made are unaffected. Said out loud because the obvious assumption is that editing a listing changes it for everyone including people who already booked. */
+            note?: string;
+        };
         BusinessDetails: {
             /** @description What travellers see. Not editable here. */
             displayName?: string;
@@ -1250,7 +1387,11 @@ export interface components {
             status?: "draft" | "in_review" | "live" | "live_changes_in_review" | "changes_rejected" | "not_selling" | "withdrawn";
             /** @enum {string} */
             publicationState?: "draft" | "in_review" | "published" | "withdrawn";
-            bookingMode?: string;
+            /**
+             * @description How this listing sells. `allotment` means seats are contracted to Yuvoy: a traveller books instantly, pays, and the card can name how many are left. `request` means we hold no inventory — the operator answers first, the traveller pays only after they accept, no seat count is ever shown, and a request can only be created between 06:00 and 19:00 IST because it is work for a person.
+             * @enum {string}
+             */
+            bookingMode?: "allotment" | "request";
             durationMinutes?: number;
             maxPartySize?: number;
             /** Format: int64 */
@@ -1286,7 +1427,7 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked";
+                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "departure_started" | "different_day" | "time_taken" | "not_withdrawn" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked";
                 /** @description Human-readable; safe to show. */
                 message: string;
                 /** @description Field-level messages, keyed by field name. */
@@ -1859,6 +2000,24 @@ export interface operations {
                     };
                 };
             };
+            /**
+             * @description **Recorded for review, not applied.** Returned once the account is LIVE: a new mark is looked at before it appears on every reel and listing.
+             *
+             *     Deliberately carries NO `logoUrl`. The current logo is still the live one, and returning the new image's URL would have the portal render a logo that is not up yet. The old image is not purged for the same reason.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        state: "in_review";
+                        /** @description Say this out loud. */
+                        next: string;
+                    };
+                };
+            };
             401: components["responses"]["Unauthorized"];
         };
     };
@@ -2130,6 +2289,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BusinessDetails"];
+                };
+            };
+            /**
+             * @description **Recorded for review, not applied.** Returned once the account is LIVE.
+             *
+             *     The current details stay in place until an admin approves. A client that renders the submitted values as current is telling the operator something that is not yet true — branch on the status code, not on the body.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        state: "in_review";
+                        /** @description Say this out loud. */
+                        next: string;
+                    };
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -3040,6 +3217,92 @@ export interface operations {
             };
         };
     };
+    recordCashCollected: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Omit for the whole fare. `0` means they were waved on without paying, which is a different statement from not saying. */
+                    collectedPaise?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        collectedPaise: number;
+                        /** @description The fare less what you took. Zero almost always. */
+                        shortfallPaise: number;
+                        /** Format: date-time */
+                        collectedAt: string;
+                        /** @enum {string} */
+                        state: "confirmed";
+                        /** @description This was recorded before; nothing changed. */
+                        alreadyRecorded?: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description `not_on_this_departure` — the booking is cancelled, declined or already settled, or the amount is more than the fare, or it was paid online and there is nothing to collect. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCommissionOwed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The balance, and the trips it is made of. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bookings: number;
+                        /** @description What travellers paid you in cash across these trips. Context for the commission, so it reads as a share of something rather than a bill out of nowhere. */
+                        farePaise: number;
+                        commissionPaise: number;
+                        lines: {
+                            bookingReference: string;
+                            /** @description Market-local YYYY-MM-DD. */
+                            tripDate: string;
+                            guests: number;
+                            farePaise: number;
+                            collectedPaise?: number;
+                            commissionPaise: number;
+                        }[];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     recordOfflineSale: {
         parameters: {
             query?: never;
@@ -3271,6 +3534,59 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             /** @description Would strand travellers who have already paid. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    moveDeparture: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: date-time
+                     * @description The new start, as a full timestamp with offset. Must fall on the same market-local day as the departure it is moving.
+                     * @example 2026-10-17T14:00:00+05:30
+                     */
+                    startsAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Moved, and everybody booked has been told. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        startsAt: string;
+                        /** @description How many bookings were sent the new time. Zero is normal — an empty departure moves quietly. */
+                        bookingsTold: number;
+                        /** @description Say this out loud. It names how many people were told and that they may now cancel for a full refund, which is the cost of the move an operator should see before repeating it. */
+                        note: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `departure_started` — too close to its start to move; call it off instead. `different_day` — the new time is not on the same market-local day. `time_taken` — this listing already has a departure at that time. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3596,6 +3912,15 @@ export interface operations {
                      */
                     unitPricePaise?: number;
                     /**
+                     * @description *material*. How the listing sells, from the next departure onward.
+                     *
+                     *     **Departures that already exist keep the mode they were created with.** `experiences.bookingMode` seeds a NEW departure; every read that decides a booking — availability, checkout, confirmation, the feed — uses the departure's own mode. So a traveller mid-request is never moved onto a different contract than the one they asked under, and a switch to `allotment` shows up only as new departures are added.
+                     *
+                     *     A consequence worth planning for: switching to `allotment` while every future departure is `request` changes nothing a traveller sees until departures are created. Creating an allotment departure with no seats is refused outright, because `bookable_slots` requires remaining seats and the departure would silently never appear.
+                     * @enum {string}
+                     */
+                    bookingMode?: "allotment" | "request";
+                    /**
                      * @description *material*, *mandatory*. How `unitPricePaise` is charged. Travellers now see this beside the price, so changing it changes what a card claims.
                      * @enum {string}
                      */
@@ -3604,18 +3929,30 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Proposed. */
+            /**
+             * @description **Applied. Nothing needed reading.**
+             *
+             *     Every field in the edit was one the operator owns, so it is live now and no revision was created. `applied` names them; `inReview` is empty and `revisionId` is absent.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionOutcome"];
+                };
+            };
+            /**
+             * @description **Something is with us.** At least one field in the edit is one we read before a traveller sees it.
+             *
+             *     A MIXED edit lands here too, and the two lists are the point: `applied` is already live, `inReview` is not. An operator who changed their price and their description in one sitting does not have the price wait behind the description — so a client that says "submitted" about the whole edit is telling half a lie.
+             */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        revisionId?: string;
-                        state?: string;
-                        needsReview?: boolean;
-                        note?: string;
-                    };
+                    "application/json": components["schemas"]["RevisionOutcome"];
                 };
             };
             /**
@@ -3636,6 +3973,54 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    relistExperience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Asked. It is in the queue, not on sale. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        state: "in_review";
+                        /** @description Say this out loud. An operator who has asked needs to know it is not live yet, or they will assume it is and stop checking. */
+                        next: string;
+                    };
+                };
+            };
+            /** @description `invalid_input` — something mandatory is missing. `details.missing` names every one. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `not_withdrawn` — the listing is not off sale. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     withdrawOperatorExperience: {

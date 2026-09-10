@@ -293,6 +293,22 @@ const revisionSchema = z.object({
   */
   pricingUnit: z.enum(["per_person", "per_group"]).optional(),
   /*
+    WHAT THE THING ACTUALLY IS, ON AN EDIT TOO — yuvoy-operator#39.
+
+    `activityType` became mandatory with the taxonomy and was on the create
+    form only, so a listing written before it could never acquire one: the
+    operator edits a summary, the submit succeeds because the API marks the
+    field `SubmitDeferred` for exactly this reason, and approval refuses days
+    later naming a control that was not on their screen. All three older
+    production listings were in that state.
+
+    Not an enum: the set grows by INSERT, so the value is checked by the
+    server against the listing's own category — the pair is a composite
+    foreign key — and the picker is narrowed to that category rather than
+    validated here.
+  */
+  activityType: z.string().trim().optional(),
+  /*
     The material changes the contract names — yuvoy-operator#30 §5.
 
     "Changes to price, safety notes, inclusions, requirements, duration or
@@ -373,6 +389,15 @@ export async function submitRevision(
       : undefined,
     requirements: form.has("requirements")
       ? String(form.get("requirements"))
+      : undefined,
+    /*
+      Absent when the vocabulary read failed and the picker was not rendered,
+      which must not read as "clear it". Empty string is the operator leaving
+      "Choose one" selected on a listing that never had one — also not a
+      change, and dropped below rather than sent as a blank.
+    */
+    activityType: form.get("activityType")
+      ? String(form.get("activityType"))
       : undefined,
   };
 

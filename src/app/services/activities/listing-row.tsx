@@ -9,6 +9,7 @@ import {
   PRICING_UNITS,
   type OperatorExperience,
 } from "@/lib/services/listings";
+import { activityChoices, type Vocabulary } from "@/lib/services/vocabulary";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { WithdrawListingForm } from "./withdraw-listing-form";
@@ -34,6 +35,7 @@ import { panelClass } from "@/components/ui/panel";
 export function ListingRow({
   listing,
   hasFootage,
+  vocabulary,
 }: {
   listing: OperatorExperience;
   /**
@@ -45,12 +47,26 @@ export function ListingRow({
    * at the other half of this section.
    */
   hasFootage: boolean;
+  /**
+   * The catalogue, so the activity picker can offer this listing's own
+   * category — yuvoy-operator#39. `null` when the read failed, and the picker
+   * is then hidden rather than shown empty.
+   */
+  vocabulary: Vocabulary | null;
 }) {
   const [state, act, pending] = useActionState<RevisionState, FormData>(
     submitRevision,
     {},
   );
   const [editing, setEditing] = useState(false);
+
+  /*
+    Narrowed to the listing's OWN category, which is fixed after creation —
+    `category` is on neither form once a listing exists, and that is right:
+    changing what something fundamentally is deserves more than an inline
+    edit. So unlike the create form's picker this one needs no category state.
+  */
+  const activities = activityChoices(vocabulary, listing.category ?? null);
 
   const status = describeStatus(listing.status);
   const rejection = describeRejection(listing.review?.rejectionCode);
@@ -197,7 +213,38 @@ export function ListingRow({
         <form action={act} className="border-cream-line mt-4 border-t pt-4">
           <input type="hidden" name="id" value={listing.id ?? ""} />
 
+          {/*
+            THE NAME, WHICH COULD NOT BE CHANGED — found by the publish-blocker
+            check added for yuvoy-operator#39, not asked for by it.
+
+            `submitRevision` has read `title` off this form since it was
+            written and no form has ever sent one, so an operator with a typo
+            in their own listing's name had to ring us and have somebody fix it
+            from the admin console — the concierge path this portal exists to
+            remove. It is also a publish blocker, so an admin-created listing
+            with no title had no way to acquire one.
+
+            `min(3)` in the schema, and `required` here: an edit that blanks a
+            title is not a clearing an operator means.
+          */}
           <div>
+            <label
+              htmlFor={`title-${listing.id}`}
+              className="label text-forest/75"
+            >
+              What it is called
+            </label>
+            <input
+              id={`title-${listing.id}`}
+              name="title"
+              required
+              minLength={3}
+              defaultValue={listing.title ?? ""}
+              className={inputClass("mt-2")}
+            />
+          </div>
+
+          <div className="mt-4">
             <label
               htmlFor={`summary-${listing.id}`}
               className="label text-forest/75"
@@ -211,6 +258,52 @@ export function ListingRow({
               className={inputClass("mt-2")}
             />
           </div>
+
+          {/*
+            WHAT IT ACTUALLY IS — yuvoy-operator#39.
+
+            The same selector the create form has, which the edit form did not,
+            so a listing that predates the taxonomy could never acquire an
+            activity type. The refusal arrived at approval — after a wait, from
+            somebody else, naming a field that was not on the operator's
+            screen. That is a worse shape than being told at the door.
+
+            Hidden rather than disabled when the vocabulary read failed, like
+            the create form: a control with nothing in it is not an edit an
+            operator can make, and the rest of this form still works.
+          */}
+          {activities.length > 0 ? (
+            <div className="mt-4">
+              <label
+                htmlFor={`activity-${listing.id}`}
+                className="label text-forest/75"
+              >
+                What kind of activity
+              </label>
+              <select
+                id={`activity-${listing.id}`}
+                name="activityType"
+                defaultValue={listing.activityType ?? ""}
+                className={inputClass("mt-2")}
+                aria-describedby={`activity-help-${listing.id}`}
+              >
+                <option value="">Choose one</option>
+                {activities.map((a) => (
+                  <option key={a.value} value={a.value}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+              <p
+                id={`activity-help-${listing.id}`}
+                className="text-forest/70 mt-1.5 text-xs"
+              >
+                {listing.activityType
+                  ? "This decides which documents we need from you, so a lapsed certificate stops only the listings it applies to."
+                  : "We need this before this listing can be approved. It decides which documents we need from you, so a lapsed certificate stops only the listings it applies to."}
+              </p>
+            </div>
+          ) : null}
 
           <div className="mt-4">
             <label

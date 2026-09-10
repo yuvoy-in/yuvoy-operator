@@ -17,6 +17,7 @@ import {
   ACCOUNT_PROSPECT,
   AWAITING_ID,
   CHANGE_REQUESTS,
+  COMMISSION_OWED,
   DEV_CODE,
   CONTENDED_ID,
   DROPPING_ID,
@@ -304,7 +305,20 @@ function seedExperiences(): MockExperience[] {
       // Group pricing, so a per-person phrase here would misstate it.
       pricingUnit: "per_group",
       meetingPoint: "Havelock jetty 1",
-      publishBlockers: [],
+      /*
+        A LISTING THAT PREDATES THE TAXONOMY — yuvoy-operator#39.
+
+        No `activityType`, and the API names it as a publish blocker on a
+        listing that is nonetheless live and selling. That combination is not
+        contrived: `testactivity`, `test2activity` and `test3` are all in it in
+        production, because `activityType` became mandatory after they were
+        written. Blockers describe what would stop the NEXT approval, not
+        whether the listing is on sale today.
+
+        This is the fixture the edit form's activity picker exists for. Without
+        it the picker could be deleted and every test would still pass.
+      */
+      publishBlockers: ["activityType"],
       sellable: true,
       upcomingDepartures: 2,
     },
@@ -460,6 +474,52 @@ function seedExperiences(): MockExperience[] {
       pricingUnit: "per_person",
       meetingPoint: "Beach 3 dive hut",
       upcomingDepartures: 1,
+      sellable: true,
+      review: { state: "applied" },
+    },
+    /*
+      A LISTING THAT PREDATES THE TAXONOMY, one per project —
+      yuvoy-operator#39.
+
+      No `activityType`, and the API names it as a publish blocker on a listing
+      that is nonetheless live. `exp_charter` carries the same combination and
+      is what the READ side asserts against; these two exist because the
+      activity test SUBMITS, and a revision moves `status` in the shared Next
+      server process — submitting against a row another test asserts on takes
+      "On sale" away from whichever runs second, which is the trap already
+      documented on the revision fixtures above.
+    */
+    {
+      id: "exp_taxonomy_a",
+      slug: "pre-taxonomy-a",
+      title: "Mangrove drift (taxonomy fixture A)",
+      summary: "A slow paddle through the mangroves.",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      unitPricePaise: 180000,
+      pricingUnit: "per_person",
+      meetingPoint: "Havelock jetty 1",
+      upcomingDepartures: 1,
+      publishBlockers: ["activityType"],
+      sellable: true,
+      review: { state: "applied" },
+    },
+    {
+      id: "exp_taxonomy_b",
+      slug: "pre-taxonomy-b",
+      title: "Mangrove drift (taxonomy fixture B)",
+      summary: "A slow paddle through the mangroves.",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      unitPricePaise: 180000,
+      pricingUnit: "per_person",
+      meetingPoint: "Havelock jetty 1",
+      upcomingDepartures: 1,
+      publishBlockers: ["activityType"],
       sellable: true,
       review: { state: "applied" },
     },
@@ -2816,6 +2876,42 @@ export const handlers = [
       ...EARNINGS,
       state: isPast ? "settled" : EARNINGS.state,
     });
+  }),
+
+  /*
+    WHAT IS OWED ON CASH — yuvoy-operator#40 §2.
+
+    Three completed cash trips, because the screen's whole argument is that
+    every line is checkable — a single-line fixture would let the list be
+    rendered as a total and still pass. The third line carries a SHORTFALL:
+    the operator took less than the fare, and our share is owed on the fare
+    regardless ("a discount you gave is yours to have given"), which is the
+    one row on this screen whose arithmetic looks wrong until it is explained.
+
+    The MANAGER identity owes nothing, which is the zero case — real, common,
+    and a sentence rather than a table of ₹0.
+  */
+  http.get(url("/commission-owed"), async ({ request }) => {
+    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    if (failed) return failed;
+
+    /*
+      Dev Kapoor (MANAGER) owes nothing; the owner owes for three trips. Keyed
+      on identity because that is how every other branch in these mocks varies
+      — this repo has no scenario switch — and it buys the zero case a real
+      screen to be rendered on. `bookings: 0` is not an error and not a
+      spinner, and it is common: every cash trip settled, or none taken yet.
+    */
+    if (sessionUser(request)!.id === "usr_manager_dev") {
+      return HttpResponse.json({
+        bookings: 0,
+        farePaise: 0,
+        commissionPaise: 0,
+        lines: [],
+      });
+    }
+
+    return HttpResponse.json(COMMISSION_OWED);
   }),
 
   http.get(url("/change-requests"), async ({ request }) => {

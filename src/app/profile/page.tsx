@@ -15,6 +15,7 @@ import {
   suggestedCredentialType,
   waitingOnOperator,
 } from "@/lib/profile/credentials";
+import { readShape } from "@/lib/account/read-shape";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
 import { Problem } from "@/components/ui/states";
@@ -71,7 +72,9 @@ export default async function ProfilePage() {
     meResult && !meResult.error ? standingOf(meResult.data?.account) : null;
 
   const details: BusinessDetails | null =
-    detailsResult && !detailsResult.error ? detailsResult.data : null;
+    detailsResult && !detailsResult.error
+      ? readShape(detailsResult.data)
+      : null;
   const detailsUnavailable = !detailsResult || Boolean(detailsResult.error);
 
   const credentials: OperatorCredential[] = standing?.credentials ?? [];

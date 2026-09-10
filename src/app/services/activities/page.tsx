@@ -183,6 +183,7 @@ export default async function ActivitiesPage() {
               <ListingRow
                 key={listing.id}
                 listing={listing}
+                vocabulary={vocabulary}
                 hasFootage={
                   listing.id !== undefined && attached.has(listing.id)
                 }

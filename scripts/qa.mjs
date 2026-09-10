@@ -1334,6 +1334,65 @@ for (const f of files) {
   }
 }
 
+/**
+ * A PUBLISH BLOCKER MUST BE CLEARABLE ON THE EDIT FORM — yuvoy-operator#39.
+ *
+ * `activityType` became mandatory with the taxonomy and shipped on the CREATE
+ * form only. A listing written before it could therefore never acquire one:
+ * the operator edits something ordinary, submit succeeds (the API marks the
+ * field `SubmitDeferred` precisely because this portal had no picker), they
+ * wait, and approval refuses naming a field that is not on their screen. All
+ * three older production listings sat in that state.
+ *
+ * `BLOCKER_LABELS` is the list of fields that stop publication, in the wire
+ * spelling `publishBlockers` uses. Every one of them that the create form can
+ * set must be settable on the edit form too — otherwise the row can name a
+ * blocker it gives the operator no way to clear, which is the worst version
+ * of this screen: a demand with no control.
+ *
+ * `category` and `destination` are deliberately create-only. Changing what a
+ * listing fundamentally IS, or where it runs, deserves more than an inline
+ * edit, and the API treats both as identity rather than content.
+ */
+{
+  const listings = join(SRC, "lib/services/listings.ts");
+  const createForm = join(APP, "services/activities/new-listing-form.tsx");
+  const editForm = join(APP, "services/activities/listing-row.tsx");
+
+  /* Blocker keys that are deliberately not editable, and why. */
+  const CREATE_ONLY = new Set(["category", "destination"]);
+  /* Wire spelling → the form control's name, where they differ. */
+  const CONTROL_NAME = { unitPricePaise: "unitPrice" };
+
+  if ([listings, createForm, editForm].every((f) => existsSync(f))) {
+    const block = /BLOCKER_LABELS[^{]*\{([\s\S]*?)\n\};/.exec(code(listings));
+    const names = (f) =>
+      new Set([...code(f).matchAll(/name="([\w-]+)"/g)].map((m) => m[1]));
+    if (block) {
+      const onCreate = names(createForm);
+      const onEdit = names(editForm);
+      for (const m of block[1].matchAll(/^\s*(\w+):/gm)) {
+        const key = m[1];
+        if (CREATE_ONLY.has(key)) continue;
+        const control = CONTROL_NAME[key] ?? key;
+        if (onCreate.has(control) && !onEdit.has(control)) {
+          problems.push(
+            `src/app/services/activities/listing-row.tsx: \`${key}\` blocks ` +
+              `publication and is settable on the create form (as ` +
+              `\`${control}\`) but not on the edit form. A listing that ` +
+              `predates the field can then never clear it: the row names the ` +
+              `blocker, submit succeeds because the API defers it, and ` +
+              `approval refuses days later about a control the operator does ` +
+              `not have. Add it to the edit form, or to CREATE_ONLY in ` +
+              `scripts/qa.mjs with the reason it is identity rather than ` +
+              `content.`,
+          );
+        }
+      }
+    }
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);

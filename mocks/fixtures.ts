@@ -438,6 +438,51 @@ export const EARNINGS = {
   state: "provisional" as const,
 };
 
+/**
+ * What is owed on cash already taken — yuvoy-operator#40 §2.
+ *
+ * Three completed cash trips. The totals are the sum of the lines on purpose:
+ * the screen refuses to reconcile when they are not, and a fixture that never
+ * added up would leave that check firing on every load instead of never.
+ *
+ * The last line took LESS than the fare. Our share is owed on the fare —
+ * "a discount you gave is yours to have given" — so that row's share is not
+ * 15% of what was collected, which is exactly the line an operator would ring
+ * us about if the screen did not explain it.
+ */
+export const COMMISSION_OWED = {
+  bookings: 3,
+  farePaise: 3_000_000,
+  commissionPaise: 450_000,
+  lines: [
+    {
+      bookingReference: "YV-8F3K2A",
+      tripDate: marketDay(-2),
+      guests: 2,
+      farePaise: 1_000_000,
+      collectedPaise: 1_000_000,
+      commissionPaise: 150_000,
+    },
+    {
+      bookingReference: "YV-2M9QX1",
+      tripDate: marketDay(-4),
+      guests: 1,
+      farePaise: 500_000,
+      collectedPaise: 500_000,
+      commissionPaise: 75_000,
+    },
+    {
+      bookingReference: "YV-7T4WPZ",
+      tripDate: marketDay(-6),
+      guests: 3,
+      farePaise: 1_500_000,
+      // Took ₹3,000 less than the fare. The share below is still on the fare.
+      collectedPaise: 1_200_000,
+      commissionPaise: 225_000,
+    },
+  ],
+};
+
 export const CHANGE_REQUESTS = [
   {
     id: "chg_bank_1",
