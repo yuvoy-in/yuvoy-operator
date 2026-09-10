@@ -7,8 +7,10 @@ import { classifyMeFailure } from "@/lib/account/status";
 import {
   blockerAction,
   blockerText,
+  byGatingFirst,
   credentialName,
   credentialText,
+  gatesSale,
   headline,
   splitByWaitingOn,
   standingOf,
@@ -48,12 +50,19 @@ export const dynamic = "force-dynamic";
  * on `GET /me` (yuvoy-api#63 → PR #83, 5 Sep 2026) is that data, and this
  * screen is what it was for.
  *
- * |                              | What it says                          |
- * | ---------------------------- | ------------------------------------- |
- * | `403 account_not_active`     | On hold. Call us. Not signed out.     |
- * | `bookable: true`             | Live, and gets out of the way.        |
- * | `bookable: false`            | What is outstanding, and who moves.   |
- * | no `account` block at all    | We cannot tell — **never** "live".    |
+ * |                                     | What it says                        |
+ * | ----------------------------------- | ----------------------------------- |
+ * | `403 account_not_active`            | On hold. Call us. Not signed out.   |
+ * | `bookable: true`, nothing blocking  | Live, and gets out of the way.      |
+ * | `bookable: true`, something blocking| Live, AND what we are still owed.   |
+ * | `bookable: false`                   | What is outstanding, and who moves. |
+ * | no `account` block at all           | We cannot tell — **never** "live".  |
+ *
+ * The third row is new (yuvoy-operator#38). `bookable` used to go false for
+ * ANY outstanding item, so "live" and "has something outstanding" could not
+ * both be true; yuvoy-api#139 narrowed it to things that actually stop a
+ * sale, and the outstanding list is now gated on `blocking` rather than on
+ * `!bookable` — which for an hour hid the logo and address prompts entirely.
  *
  * The third row is the one that was wrong until today: this page said "your
  * account is live" to anybody whose `/me` returned 200, and after self-signup
@@ -194,7 +203,21 @@ export default async function AccountPage() {
             </ButtonLink>
           ) : null}
 
-          {standing && !standing.bookable ? (
+          {/*
+            GATED ON THE LIST HAVING SOMETHING IN IT — yuvoy-operator#38.
+
+            This read `standing && !standing.bookable`, which was correct
+            against the old API: `bookable` went false for ANY outstanding
+            item, so `!bookable` was a reliable proxy for "there is something
+            to show". yuvoy-api#139 made `bookable` false only when something
+            actually stops a sale — and this screen promptly stopped asking
+            operators for their logo and their registered address at all,
+            because a LIVE operator with those outstanding now has
+            `bookable: true`.
+
+            The proxy is gone for good. The list is gated on the list.
+          */}
+          {standing && standing.blocking.length > 0 ? (
             <Outstanding standing={standing} />
           ) : null}
 
@@ -353,7 +376,15 @@ export default async function AccountPage() {
  * choice but to ring somebody."
  */
 function Outstanding({ standing }: { standing: Standing }) {
-  const { operator, yuvoy } = splitByWaitingOn(standing.blocking);
+  /*
+    Sorted before it is split, so the thing that is costing money is the first
+    row an operator meets in each section — yuvoy-operator#38. `gates` is the
+    field that tells them apart, and a row that will not say which it is sits
+    between the two rather than being sorted as though it were harmless.
+  */
+  const { operator, yuvoy } = splitByWaitingOn(
+    byGatingFirst(standing.blocking),
+  );
 
   return (
     <div className="mt-8 space-y-6">
@@ -379,8 +410,38 @@ function Outstanding({ standing }: { standing: Standing }) {
               */
               const action = blockerAction(b);
               return (
-                <li key={`${b.code}-${i}`} className={panelClass("alert")}>
+                <li
+                  key={`${b.code}-${i}`}
+                  /*
+                    Alert tone is for what is costing money. A logo that stops
+                    no sale sitting in the same red panel as a lapsed licence
+                    is how a screen teaches an operator to ignore all of it —
+                    so an item that says it does not gate is drawn quietly.
+                    Unknown keeps the loud panel: it is the safer guess when
+                    the row will not say.
+                  */
+                  className={panelClass(
+                    gatesSale(b) === false ? undefined : "alert",
+                  )}
+                >
                   <p className="text-base font-bold">{blockerText(b)}</p>
+                  {/*
+                    WHETHER IT IS COSTING THEM ANYTHING — yuvoy-operator#38.
+
+                    A missing logo and an unfinished registered address are
+                    real asks that stop no sale; paperwork and operator status
+                    do. Saying which is the difference between an operator who
+                    clears this at the weekend and one who thinks their
+                    business is shut. Only `gates: false` earns a marker: the
+                    gating case is already the loudest thing on the screen,
+                    and a row that does not carry the field gets no claim in
+                    either direction.
+                  */}
+                  {gatesSale(b) === false ? (
+                    <p className="label text-forest/70 mt-1.5">
+                      Not stopping sales
+                    </p>
+                  ) : null}
                   {b.since ? (
                     <p className="text-forest/70 mt-2 text-sm">
                       Outstanding since {marketDateLabel(b.since.slice(0, 10))}.
@@ -423,7 +484,15 @@ function Outstanding({ standing }: { standing: Standing }) {
               <li key={`${b.code}-${i}`} className={panelClass()}>
                 <p className="text-base font-bold">{blockerText(b)}</p>
                 <p className="text-forest/70 mt-2 text-sm">
-                  Nothing for you to do. We will tell you when it moves.
+                  {/*
+                    Both halves are true and the second one changes what an
+                    operator does with their morning: something of ours that
+                    is holding a listing back is worth a phone call, and
+                    something that is not can simply be waited on.
+                  */}
+                  {gatesSale(b) === true
+                    ? "Nothing for you to do, but this is holding a listing back. We will tell you when it moves."
+                    : "Nothing for you to do. We will tell you when it moves."}
                 </p>
               </li>
             ))}

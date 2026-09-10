@@ -63,11 +63,13 @@ describe("who has to move next", () => {
       code: "CREDENTIAL_MISSING",
       label: "We need your insurance",
       waitingOn: "operator",
+      gates: true,
     },
     {
       code: "AWAITING_REVIEW",
       label: "A person is checking it",
       waitingOn: "yuvoy",
+      gates: true,
     },
   ];
 

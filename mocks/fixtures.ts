@@ -660,6 +660,26 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
   },
   {
     /*
+      LIVE and selling, with the logo and registered address outstanding —
+      yuvoy-operator#38. The state that could not exist before yuvoy-api#139
+      and is now the common one, and the state whose outstanding list this
+      portal hid the moment it became possible.
+    */
+    id: "usr_live_outstanding",
+    name: "Live Outstanding",
+    roles: ["OWNER"],
+    state: "active",
+    /*
+      115 because 101-114 are all spoken for. `sessionUser` resolves an
+      identity by PHONE with `.find()`, so a duplicate silently hands one
+      fixture identity's session to another — which is what a first draft of
+      this row did to Second Skipper, and it failed the upload-contention test
+      two files away rather than anything on this screen.
+    */
+    phone: "+919000000115",
+  },
+  {
+    /*
       Signs in fine; the business account is on hold. The contract's own
       distinction: "the person is fine, the business relationship is not."
     */
@@ -786,12 +806,15 @@ export const ACCOUNT_PROSPECT = {
       code: "CREDENTIAL_MISSING",
       label: "We still need your tourism department registration",
       waitingOn: "operator",
+      // Required since yuvoy-api#139: a missing credential does stop a sale.
+      gates: true,
       since: todayAt("09:00", -3),
     },
     {
       code: "CREDENTIAL_MISSING",
       label: "We still need your insurance certificate",
       waitingOn: "operator",
+      gates: true,
       since: todayAt("09:00", -3),
     },
   ],
@@ -813,6 +836,8 @@ export const ACCOUNT_AWAITING = {
       code: "AWAITING_REVIEW",
       label: "Everything is in. A person at Yuvoy is checking it.",
       waitingOn: "yuvoy",
+      // Nothing sells until the review finishes, so this one gates.
+      gates: true,
       since: todayAt("11:00", -1),
     },
   ],
@@ -827,9 +852,49 @@ export const ACCOUNT_AWAITING = {
   ],
 };
 
+/**
+ * LIVE, selling, and still owing us two things — yuvoy-operator#38.
+ *
+ * The fifth state, and the one that regressed. `bookable` used to go false
+ * for ANY outstanding item, so this combination could not occur and the
+ * portal gated the whole outstanding list on `!bookable`. yuvoy-api#139
+ * narrowed `bookable` to things that actually stop a sale — an operator with
+ * three listings selling in the feed was being told "you cannot be booked
+ * yet" over a missing logo — and the list promptly disappeared for everybody
+ * in this state, which is production's `HC Diving skl` and most live
+ * operators besides.
+ *
+ * Both rows are `gates: false`: real asks, stopping nothing. That is the
+ * distinction the whole API change exists to express, and a fixture without
+ * it would let the list vanish again with every test still green.
+ */
+export const ACCOUNT_LIVE_OUTSTANDING = {
+  state: "LIVE",
+  bookable: true,
+  blocking: [
+    {
+      code: "BUSINESS_DETAILS_INCOMPLETE",
+      label: "We still need your registered business name and address",
+      waitingOn: "operator",
+      gates: false,
+      since: todayAt("09:00", -9),
+    },
+    {
+      code: "LOGO_MISSING",
+      label: "We still need your logo",
+      waitingOn: "operator",
+      gates: false,
+      since: todayAt("09:00", -9),
+    },
+  ],
+  credentials: ACCOUNT_LIVE.credentials,
+};
+
 export const SUSPENDED_ID = "usr_suspended";
 export const PROSPECT_ID = "usr_prospect";
 export const AWAITING_ID = "usr_awaiting";
+/** Live and selling, with the logo and the registered address outstanding. */
+export const LIVE_OUTSTANDING_ID = "usr_live_outstanding";
 /** Their uploads drop once, mid-chunk. See `mocks/tus-server.ts`. */
 export const DROPPING_ID = "usr_upload_drops";
 /** A colleague holds the one upload slot, so they get the 409 that is left. */

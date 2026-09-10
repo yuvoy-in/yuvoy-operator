@@ -161,6 +161,41 @@ export function blockerAction(
   }
 }
 
+/**
+ * Whether this blocker actually stops a sale — or `null` when it will not say.
+ *
+ * `gates` is REQUIRED on the contract (yuvoy-api#139), and this still refuses
+ * to guess when it is not a boolean. An older deployment or a partial row
+ * must not be turned into a claim in either direction: "this is not stopping
+ * sales" is the sentence that makes an operator ignore something, and "this
+ * is stopping sales" is the sentence that made them stop promoting a business
+ * that was selling fine. Unknown is a third answer and the screen has one.
+ *
+ * Same rule as `bookable` on the account: absent means unknown, never fine.
+ */
+export function gatesSale(blocker: Blocker): boolean | null {
+  return typeof blocker.gates === "boolean" ? blocker.gates : null;
+}
+
+/**
+ * Outstanding items, with the ones costing money first — yuvoy-operator#38.
+ *
+ * `gates` separates "checkout would refuse this" from "we are still owed
+ * this". An operator scanning the list at 6am on a jetty should meet the
+ * paperwork that is stopping sales before the logo upload, and a row that
+ * will not say which it is sits between the two rather than being sorted as
+ * though it were harmless.
+ *
+ * Stable within each rank, so the API's own ordering survives.
+ */
+export function byGatingFirst(blocking: readonly Blocker[]): Blocker[] {
+  const rank = (b: Blocker) => {
+    const gates = gatesSale(b);
+    return gates === true ? 0 : gates === null ? 1 : 2;
+  };
+  return [...blocking].sort((a, b) => rank(a) - rank(b));
+}
+
 /** Blockers this operator has to act on, and the ones sitting with Yuvoy. */
 export function splitByWaitingOn(blocking: readonly Blocker[]): {
   operator: Blocker[];
@@ -256,12 +291,48 @@ export function credentialName(credential: OperatorCredential): string {
  * saying "nothing outstanding" to somebody who cannot trade reads as a fault
  * in us. The API avoids it by sending `AWAITING_REVIEW`; this covers the case
  * where it does not.
+ *
+ * ## The third state — yuvoy-operator#38
+ *
+ * `bookable` used to go false for ANY outstanding item, so "live" and "has
+ * something outstanding" could not both be true and two sentences covered
+ * every account. yuvoy-api#139 made `bookable` false only when something
+ * actually stops a sale, which is right — a LIVE operator with three listings
+ * selling was being told "you cannot be booked yet" over a missing logo, and
+ * an operator who believes they are shut stops promoting, stops adding dates
+ * and stops answering requests while travellers are already buying.
+ *
+ * That created a third state, and it is the common one: **live, and still
+ * owing us something.** An operator needs both halves — that they are open
+ * for business, and that we are still waiting on something — and a headline
+ * that says only the first hides the list below it.
  */
 export function headline(standing: Standing): { title: string; body: string } {
   if (standing.bookable) {
+    const outstanding = standing.blocking.length;
+    if (outstanding === 0) {
+      return {
+        title: "Your account is live",
+        body: "Travellers can book your departures.",
+      };
+    }
+
+    /*
+      "These are not blocking you" is only true if nothing in the list says
+      otherwise. `bookable: true` with a gating row is a response that
+      contradicts itself, and the reassuring half of that sentence is the one
+      that must not be said on a guess — so the claim is made from the rows,
+      not from `bookable`.
+    */
+    const anyGating = standing.blocking.some((b) => gatesSale(b) === true);
     return {
-      title: "Your account is live",
-      body: "Travellers can book your departures.",
+      title:
+        outstanding === 1
+          ? "Your account is live — one thing is still outstanding"
+          : `Your account is live — ${outstanding} things are still outstanding`,
+      body: anyGating
+        ? "Travellers can book your departures. Some of what is below may still be holding a listing back."
+        : "Travellers can book your departures. These are not blocking you, but we still need them.",
     };
   }
 

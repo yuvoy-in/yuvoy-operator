@@ -31,6 +31,13 @@ const PROSPECT = "+919000000105";
 /** Everything sent; it is in Yuvoy's queue. `waitingOn: yuvoy`. */
 const AWAITING = "+919000000106";
 /**
+ * LIVE and selling, with the logo and registered address outstanding.
+ *
+ * The state that could not exist before yuvoy-api#139 and is now the common
+ * one — `bookable: true` with a non-empty `blocking`.
+ */
+const LIVE_OUTSTANDING = "+919000000115";
+/**
  * `GET /me` answers 200 with no `account` block at all.
  *
  * The same identity `reels.spec.ts` uses for a dropped upload — deliberately.
@@ -186,6 +193,57 @@ test("an account waiting on Yuvoy is told not to chase it", async ({
   await expect(
     page.getByRole("heading", { name: "Waiting on you" }),
   ).toHaveCount(0);
+});
+
+test("a live account is still asked for what is outstanding", async ({
+  page,
+}) => {
+  /*
+    THE LIST THAT DISAPPEARED — yuvoy-operator#38.
+
+    This screen gated the whole outstanding list on `!bookable`, which was a
+    reliable proxy for "there is something to show" only while `bookable` went
+    false for ANY outstanding item. yuvoy-api#139 narrowed it to what actually
+    stops a sale — right, because an operator with three listings selling was
+    being told "you cannot be booked yet" over a missing logo — and this
+    portal promptly stopped asking anybody for their logo or their registered
+    address at all.
+
+    Both halves are asserted, because the fix is both halves: the operator
+    must be told they are open for business AND that we are still waiting.
+  */
+  await signIn(page, LIVE_OUTSTANDING);
+  await page.waitForURL("**/today");
+  await page.goto("/account");
+
+  // Open for business — the sentence yuvoy-api#139 exists to protect.
+  await expect(page.getByText(/Your account is live/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Go to today" })).toBeVisible();
+  await expect(page.getByText("You cannot be booked yet")).toHaveCount(0);
+
+  // AND still outstanding — the half that vanished.
+  await expect(page.getByText("2 things are still outstanding")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Waiting on you" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("We still need your registered business name and address"),
+  ).toBeVisible();
+  await expect(page.getByText("We still need your logo")).toBeVisible();
+
+  /*
+    `gates: false` on both rows, so the screen says so rather than letting a
+    logo sit in the same red panel as a lapsed licence. An operator who cannot
+    tell the difference learns to ignore all of it.
+  */
+  await expect(page.getByText("Not stopping sales")).toHaveCount(2);
+  await expect(page.getByText(/These are not blocking you/)).toBeVisible();
+
+  // And each one still carries the way out of it — yuvoy-operator#33.
+  await expect(
+    page.getByRole("link", { name: "Complete your details" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Add your logo" })).toBeVisible();
 });
 
 test("an account block the API did not send is unknown, not approval", async ({

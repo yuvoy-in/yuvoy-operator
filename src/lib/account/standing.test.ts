@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   blockerText,
+  byGatingFirst,
+  gatesSale,
   credentialName,
   credentialText,
   expiryWarning,
@@ -20,6 +22,8 @@ const blocker = (over: Partial<Blocker> = {}): Blocker => ({
   code: "CREDENTIAL_MISSING",
   label: "We still need your insurance certificate",
   waitingOn: "operator",
+  // Required since yuvoy-api#139. A missing credential does stop a sale.
+  gates: true,
   ...over,
 });
 
@@ -122,6 +126,109 @@ describe("what the screen says at the top", () => {
     const h = headline(standingOf(standing({ blocking: [] }))!);
     expect(h.body).toMatch(/with us/i);
     expect(h.body).not.toMatch(/nothing (is )?outstanding/i);
+  });
+});
+
+/*
+  THE THIRD STATE, AND THE LIST THAT VANISHED — yuvoy-operator#38.
+
+  `bookable` used to go false for ANY outstanding item, so "live" and "has
+  something outstanding" could not both be true and two sentences covered
+  every account. yuvoy-api#139 narrowed `bookable` to what actually stops a
+  sale — an operator with three listings selling was being told "you cannot be
+  booked yet" over a missing logo — and this portal, which gated the whole
+  outstanding list on `!bookable`, stopped asking anybody for their logo or
+  their registered address.
+*/
+describe("live, and still owing us something", () => {
+  const owed = (over: Partial<Blocker> = {}) =>
+    blocker({ gates: false, label: "We still need your logo", ...over });
+
+  it("says BOTH halves: open for business, and still outstanding", () => {
+    const h = headline(
+      standingOf(
+        standing({
+          bookable: true,
+          blocking: [owed(), owed({ label: "And your address" })],
+        }),
+      )!,
+    );
+    expect(h.title).toMatch(/live/i);
+    expect(h.title).toContain("2 things are still outstanding");
+    expect(h.body).toMatch(/can book your departures/i);
+    expect(h.body).toMatch(/not blocking you/i);
+  });
+
+  it("counts one thing as one thing, in words", () => {
+    const h = headline(
+      standingOf(standing({ bookable: true, blocking: [owed()] }))!,
+    );
+    expect(h.title).toContain("one thing is still outstanding");
+    expect(h.title).not.toMatch(/\b1 thing/);
+  });
+
+  it("still gets out of the way when nothing is outstanding", () => {
+    const h = headline(standingOf(standing({ bookable: true, blocking: [] }))!);
+    expect(h.title).toBe("Your account is live");
+    expect(h.body).toBe("Travellers can book your departures.");
+  });
+
+  it("will not promise 'not blocking you' when a row says it gates", () => {
+    /*
+      `bookable: true` beside a `gates: true` row is a response contradicting
+      itself. The reassuring half of that sentence is the one that must not be
+      said on a guess, so the claim is made from the rows rather than from
+      `bookable`.
+    */
+    const h = headline(
+      standingOf(standing({ bookable: true, blocking: [owed(), blocker()] }))!,
+    );
+    expect(h.title).toMatch(/live/i);
+    expect(h.body).not.toMatch(/not blocking you/i);
+    expect(h.body).toMatch(/holding a listing back/i);
+  });
+});
+
+describe("whether an outstanding item is costing anything", () => {
+  it("reads `gates` when it is a boolean", () => {
+    expect(gatesSale(blocker({ gates: true }))).toBe(true);
+    expect(gatesSale(blocker({ gates: false }))).toBe(false);
+  });
+
+  it("refuses to guess when the row will not say", () => {
+    /*
+      `gates` is REQUIRED on the contract, and an older deployment or a
+      partial row must still not be turned into a claim. "This is not stopping
+      sales" is the sentence that makes an operator ignore something real, and
+      "this is stopping sales" is the sentence that made them believe a
+      selling business was shut. Unknown is a third answer.
+    */
+    const partial = { ...blocker(), gates: undefined } as unknown as Blocker;
+    expect(gatesSale(partial)).toBeNull();
+  });
+
+  it("puts what is costing money first, then unknown, then the rest", () => {
+    const gating = blocker({ gates: true, label: "gating" });
+    const owed = blocker({ gates: false, label: "owed" });
+    const unknown = { ...blocker({ label: "unknown" }), gates: undefined };
+    const sorted = byGatingFirst([owed, unknown as unknown as Blocker, gating]);
+    expect(sorted.map((b) => b.label)).toEqual(["gating", "unknown", "owed"]);
+  });
+
+  it("keeps the API's own order within a rank", () => {
+    const first = blocker({ gates: false, label: "first" });
+    const second = blocker({ gates: false, label: "second" });
+    expect(byGatingFirst([first, second]).map((b) => b.label)).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
+  it("does not mutate what it was given", () => {
+    const rows = [blocker({ gates: false }), blocker({ gates: true })];
+    const before = [...rows];
+    byGatingFirst(rows);
+    expect(rows).toEqual(before);
   });
 });
 

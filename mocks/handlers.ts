@@ -13,6 +13,7 @@ import { validateRelay } from "../src/lib/day/relay-types";
 import {
   ACCOUNT_AWAITING,
   ACCOUNT_LIVE,
+  ACCOUNT_LIVE_OUTSTANDING,
   ACCOUNT_PROSPECT,
   AWAITING_ID,
   CHANGE_REQUESTS,
@@ -27,6 +28,7 @@ import {
   FAILING_ID,
   OPERATOR,
   OTHER_MEMBERS,
+  LIVE_OUTSTANDING_ID,
   PROSPECT_ID,
   SUSPENDED_ID,
   REQUESTS,
@@ -1097,9 +1099,18 @@ export const handlers = [
           ACCOUNT_PROSPECT
         : me.id === AWAITING_ID
           ? ACCOUNT_AWAITING
-          : OTHER_MEMBERS.some((o) => o.id === me.id)
-            ? undefined
-            : ACCOUNT_LIVE;
+          : me.id === LIVE_OUTSTANDING_ID
+            ? /*
+                Live, selling, and still owing us the logo and the registered
+                address — yuvoy-operator#38. Branched BEFORE the
+                `OTHER_MEMBERS` fallthrough, which hands back no account block
+                at all, because this identity exists to render a screen rather
+                than to hide one.
+              */
+              ACCOUNT_LIVE_OUTSTANDING
+            : OTHER_MEMBERS.some((o) => o.id === me.id)
+              ? undefined
+              : ACCOUNT_LIVE;
 
     return HttpResponse.json({
       id: me.id,

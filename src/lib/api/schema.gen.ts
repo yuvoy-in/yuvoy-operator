@@ -1473,6 +1473,14 @@ export interface components {
         };
         Blocker: {
             /**
+             * @description Whether this actually stops a sale, as opposed to being outstanding.
+             *
+             *     **Render the whole list either way.** A missing logo and an unfinished registered address are real asks and belong on the screen; neither appears in the sellability predicate, which tests published, priced, operator LIVE, kill switches and credentials and nothing else.
+             *
+             *     `bookable` above is now false only when something here has `gates: true`. It previously went false for ANY outstanding item, which told an operator with three listings selling in the feed that they could not be booked — so a client that hides this list on `bookable` will now hide it exactly when it is most useful. Gate the list on `blocking` being non-empty instead.
+             */
+            gates: boolean;
+            /**
              * @description A closed set, so a client branches on the code and never on the message — the same rule the error enum follows. `OTHER` exists so a reason can be added operationally without a contract change and without breaking a client: render `label` for anything you do not recognise, including `OTHER`.
              * @enum {string}
              */

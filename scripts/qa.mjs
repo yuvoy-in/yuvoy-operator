@@ -1235,6 +1235,105 @@ for (const f of [...files, join(ROOT, "scripts", "qa.mjs")]) {
   }
 }
 
+/**
+ * `bookable` IS NOT A PROXY FOR "THERE IS SOMETHING OUTSTANDING" — op#38.
+ *
+ * `/account` rendered the outstanding list behind `standing && !standing
+ * .bookable`. That was correct against the old API, where `bookable` went
+ * false for ANY outstanding item, so `!bookable` really did mean "there is
+ * something to show". yuvoy-api#139 narrowed `bookable` to things that
+ * actually stop a sale — an operator LIVE with three listings selling was
+ * being told "you cannot be booked yet" over a missing logo, which stops
+ * somebody promoting a business travellers are already buying from — and the
+ * proxy silently inverted. The portal stopped asking anybody for their logo
+ * or their registered address, with every test green.
+ *
+ * The contract now says it in the field description, and this enforces it:
+ * "a client that hides this list on `bookable` will now hide it exactly when
+ * it is most useful. **Gate the list on `blocking` being non-empty instead.**"
+ *
+ * Narrow on purpose. It fires only where a negated `bookable` decides whether
+ * a region mentioning `blocking` or `<Outstanding` renders at all — reading
+ * `bookable` for the headline, the chip and the "Go to today" link is right
+ * and stays untouched.
+ */
+for (const f of files) {
+  if (/\.test\.tsx?$/.test(f)) continue;
+  const s = code(f);
+  for (const m of s.matchAll(/\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\?/g)) {
+    const gate = m[1];
+    if (!/!\s*[\w$.?]*\bbookable\b/.test(gate)) continue;
+
+    // What the gate decides to render: from the `?` to the end of the
+    // brace-balanced expression container it sits in.
+    const open = s.lastIndexOf("{", m.index);
+    let depth = 0;
+    let end = s.length;
+    for (let i = open; i < s.length; i++) {
+      if (s[i] === "{") depth++;
+      else if (s[i] === "}" && --depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    /*
+      Only where the gate decides whether the ROWS THEMSELVES render. The day
+      screen reads `blocking` behind `!bookable` too, and is right to: that
+      banner is a "you cannot sell yet" warning, whose whole subject is
+      `bookable`, and an operator who CAN sell must never be shown a warning
+      about selling. Reading the list to count it is not rendering it.
+    */
+    const body = s.slice(m.index + m[0].length, end);
+    if (!/<Outstanding\b|\bblocking\b[\s\S]{0,60}\.map\(/.test(body)) continue;
+
+    problems.push(
+      `${rel(f)}: the outstanding list is gated on a negated \`bookable\`. ` +
+        `Since yuvoy-api#139 that field is false only when something STOPS A ` +
+        `SALE, so a live operator who still owes us a logo or a registered ` +
+        `address renders nothing — the list disappears exactly when it is ` +
+        `most useful. The contract says it: gate on \`blocking\` being ` +
+        `non-empty instead, and use \`gates\` to say which rows cost money.`,
+    );
+  }
+}
+
+/**
+ * TWO MOCK IDENTITIES MUST NOT SHARE A PHONE NUMBER.
+ *
+ * `sessionUser` resolves an identity by phone with `.find()`, so a duplicate
+ * does not collide loudly — it silently hands one fixture identity's session
+ * to whichever row is declared first. Adding an account-standing identity on
+ * a number Second Skipper already held broke the upload-CONTENTION test in a
+ * different spec file, with nothing wrong in either the test or the screen it
+ * was testing (yuvoy-operator#38).
+ *
+ * The fixtures are the one place in this repo where a copy-pasted constant
+ * reroutes a whole test identity, and the symptom always surfaces somewhere
+ * else. Cheap to check, and it costs an hour to find by hand.
+ */
+{
+  const fixtures = join(ROOT, "mocks", "fixtures.ts");
+  if (existsSync(fixtures)) {
+    const s = readFileSync(fixtures, "utf8");
+    const seen = new Map();
+    for (const m of s.matchAll(/phone:\s*"(\+\d{6,15})"/g)) {
+      const line = s.slice(0, m.index).split("\n").length;
+      const at = seen.get(m[1]);
+      if (at) {
+        problems.push(
+          `mocks/fixtures.ts: two identities share the phone ${m[1]} ` +
+            `(lines ${at} and ${line}). \`sessionUser\` resolves by phone ` +
+            `with \`.find()\`, so the second identity is unreachable and its ` +
+            `session silently becomes the first — the failure surfaces in ` +
+            `whatever spec used the shadowed one.`,
+        );
+      } else {
+        seen.set(m[1], line);
+      }
+    }
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);
