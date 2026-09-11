@@ -386,6 +386,36 @@ function seedExperiences(): MockExperience[] {
       sellable: true,
       review: { state: "applied" },
     },
+    /*
+      PAUSED, AND NOT READY TO COME BACK — yuvoy-operator#44.
+
+      Resuming is refused with `400` while a mandatory field is empty, "so you
+      find out while the form is open rather than after putting something back
+      that cannot sell". This one lost its meeting point while it was off sale,
+      which is the case the refusal exists for. Nothing can succeed against it,
+      so both Playwright projects may ask.
+    */
+    {
+      id: "exp_paused_incomplete",
+      slug: "dusk-paddle",
+      title: "Dusk paddle",
+      summary: "An hour on the water as the light goes.",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "withdrawn",
+      publicationState: "withdrawn",
+      bookingMode: "allotment",
+      durationMinutes: 60,
+      maxPartySize: 4,
+      unitPricePaise: 110000,
+      pricingUnit: "per_person",
+      activityType: "mangrove_kayak",
+      activityTypeLabel: "Mangrove kayaking",
+      publishBlockers: ["meetingPoint"],
+      sellable: true,
+      upcomingDepartures: 0,
+      review: { state: "applied" },
+    },
     {
       id: "exp_boat",
       slug: "island-boat-day",
@@ -690,6 +720,15 @@ let photoIntentsById: Record<string, { imageId: string }> = {};
  * next one through a module nothing resets.
  */
 let createdSlots: MockSlot[] = [];
+/**
+ * Cash recorded as taken this session, by booking id — yuvoy-operator#40 §1.
+ *
+ * The fixture's own `collected` rows stay read-only; this is what a tap adds.
+ * The FIRST report is kept and never replaced, exactly as the API keeps it: a
+ * collection reported once is a fact.
+ */
+let cashTaken: Record<string, { collectedPaise: number; collectedAt: string }> =
+  {};
 
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
@@ -710,6 +749,7 @@ export function __resetOperatorMocks() {
   filedCredentials = {};
   mockExperiences = seedExperiences();
   createdSlots = [];
+  cashTaken = {};
   resetMockUploads();
   resetMockPhotos();
   photoIntents = {};
@@ -959,6 +999,24 @@ function requireManager(request: Request, refusal: string) {
  * test, because a mock that lies about arithmetic teaches the wrong thing.
  */
 function bookingMoney(p: MockParty) {
+  /*
+    What the API really sends on a CASH booking — yuvoy-operator#40.
+
+    `captured_amount_paise` is 0 rather than null, so `money` is present, and
+    the commission on the fare was stored when the booking was made: gross ₹0,
+    commission the share, net negative — and it reconciles. Modelled as sent,
+    because a mock that left `money` off would let a screen render card
+    arithmetic on a cash booking and pass.
+  */
+  if (p.cash) {
+    const share = Math.round(p.cash.collectPaise * 0.15);
+    return {
+      grossPaise: 0,
+      commissionPaise: share,
+      refundsPaise: 0,
+      netPaise: -share,
+    };
+  }
   const gross = 450_000 * p.guests;
   const commission = Math.round(gross * 0.15);
   const refunds = p.bookingId === "bkg_3" ? 450_000 : 0;
@@ -978,6 +1036,36 @@ function partyOf(
     if (party) return { slotId: slot.id, party };
   }
   return null;
+}
+
+/**
+ * A booking's `fulfilment_state`, as the API would read it now.
+ *
+ * Arriving changes nothing — `MarkArrived` sets `arrived_at` and leaves the
+ * state alone — so only a terminal outcome replaces it. Taking the cash moves a
+ * cash booking to `confirmed`, in the same write that records the notes.
+ *
+ * Lists used to hand back `arrived` as a state after a tap on Here, which the
+ * API never does, and which would have let a screen branch on it.
+ */
+function bookingStateOf(p: MockParty): string {
+  const outcome = attendance[p.bookingId]?.outcome;
+  if (outcome && outcome !== "arrived") return outcome;
+  return cashTaken[p.bookingId] ? "confirmed" : p.state;
+}
+
+/** A booking's `cash` — present only on a cash booking, as the API sends it. */
+function bookingCashOf(p: MockParty) {
+  if (!p.cash) return undefined;
+  const taken = cashTaken[p.bookingId];
+  return taken
+    ? {
+        collectPaise: p.cash.collectPaise,
+        collected: true,
+        collectedAt: taken.collectedAt,
+        collectedPaise: taken.collectedPaise,
+      }
+    : { ...p.cash };
 }
 
 /**
@@ -1024,6 +1112,148 @@ const relay = async (request: Request, recipientsOf: () => number | null) => {
     recipients,
   });
 };
+
+/**
+ * Pausing a listing — `withdraw` and `pause`, one handler under two names, as
+ * the API registers them (yuvoy-operator#44, yuvoy-api#157).
+ *
+ * **Cancels nothing and refunds nothing**, and the response says what is
+ * still owed. The `note` is present only when there are bookings to honour,
+ * because that is the sentence a client must render verbatim: an operator who
+ * assumes pausing cancelled the bookings simply does not turn up.
+ *
+ * `next` is production's sentence word for word — including that it is STALE:
+ * it still says putting a listing back goes through us, which D-032.4 ended.
+ * Kept exactly so the screen is tested against what the API actually sends,
+ * and the screen does not render it.
+ */
+const pauseHandler = (path: string) =>
+  http.post(url(path), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner or manager can take a listing off sale",
+        403,
+      );
+    }
+
+    const listing = mockExperiences.find((e) => e.id === String(params.id));
+    if (!listing) return envelope("not_found", "no such listing", 404);
+
+    const body = (await request.json()) as {
+      reasonCode?: string;
+      confirmExperienceId?: string;
+    };
+    if (!body.reasonCode) {
+      return envelope(
+        "invalid_reason_code",
+        "why are you taking this off sale?",
+        400,
+      );
+    }
+    if (body.confirmExperienceId !== listing.id) {
+      return envelope(
+        "confirmation_required",
+        "taking a listing off sale stops every new booking on it. Send confirmExperienceId to go ahead.",
+        400,
+      );
+    }
+    /*
+      A draft is already selling nothing — the API's own answer, which is
+      `already_off_sale` rather than a separate refusal.
+    */
+    if (listing.publicationState === "draft" || listing.status === "draft") {
+      return envelope(
+        "already_off_sale",
+        "this listing is still a draft, so it is not on sale to anybody yet",
+        409,
+      );
+    }
+    if (listing.status === "withdrawn") {
+      return envelope("already_off_sale", "this listing is off sale", 409);
+    }
+
+    listing.status = "withdrawn";
+    listing.publicationState = "withdrawn";
+
+    /*
+      Bookings that still stand. `exp_offsale` is the pause walkthrough's own
+      listing and carries some, because the sentence about what pausing did
+      NOT do is the whole point of the response.
+    */
+    const bookingsToHonour =
+      listing.id === "exp_offsale" || listing.id === "exp_dive" ? 3 : 0;
+    return HttpResponse.json({
+      state: "withdrawn",
+      upcomingDepartures: listing.upcomingDepartures ?? 0,
+      bookingsToHonour,
+      guestsToHonour: bookingsToHonour * 2,
+      ...(bookingsToHonour > 0
+        ? {
+            note: "This listing is off sale — nobody new can book it. The 3 bookings you have already taken are unchanged. You still need to run those departures, or call each one off yourself.",
+          }
+        : {}),
+      next: "Ask us to put it back whenever you are ready — there is a button for it on the listing. We check it before travellers see it again.",
+    });
+  });
+
+/**
+ * Resuming a paused listing — `resume` and `relist`, one handler under two
+ * names (yuvoy-operator#44, D-032.4). Immediate: no queue and no admin.
+ *
+ * The API's rules, modelled rather than waved through:
+ *   - already published, or awaiting its first approval → idempotent, the
+ *     state as it is, nothing written;
+ *   - anything else that is not paused → `409 not_withdrawn`;
+ *   - a mandatory field still empty → `400` naming it in `details.missing`,
+ *     "so you find out while the form is open".
+ *
+ * `next` is the API's unconditional "travellers can book it now", which is
+ * false for a listing whose account cannot sell — kept, and not rendered.
+ */
+const resumeHandler = (path: string) =>
+  http.post(url(path), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner or manager can put a listing back on sale",
+        403,
+      );
+    }
+
+    const listing = mockExperiences.find((e) => e.id === String(params.id));
+    if (!listing) return envelope("not_found", "no such listing", 404);
+
+    const next = "It is back on sale. Travellers can see it and book it now.";
+    const state = listing.publicationState ?? "draft";
+    if (state === "published" || state === "in_review") {
+      return HttpResponse.json({ state, next });
+    }
+    if (state !== "withdrawn") {
+      return envelope("not_withdrawn", "this listing is not off sale", 409);
+    }
+    if (listing.publishBlockers?.length) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message:
+              "we still need a few things before this can go back on sale",
+            details: { missing: listing.publishBlockers },
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    listing.publicationState = "published";
+    listing.status = "live";
+    return HttpResponse.json({ state: "published", next });
+  });
 
 export const handlers = [
   /* -------------------------------------------------------------- auth --- */
@@ -1930,77 +2160,14 @@ export const handlers = [
    * `live_changes_in_review` and KEEPS SELLING — "bookings already made are
    * unaffected either way; their terms were snapshotted at checkout".
    */
-  /**
-   * Taking your own listing off sale — yuvoy-operator#30 §6.
-   *
-   * **Cancels nothing and refunds nothing**, and the response says what is
-   * still owed. The `note` is present only when there are bookings to honour,
-   * because that is the sentence a client must render verbatim: an operator
-   * who assumes withdrawing cancelled the bookings simply does not turn up.
-   */
-  http.post(url("/experiences/:id/withdraw"), async ({ request, params }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-    const me = sessionUser(request)!;
-    if (!canManage(me)) {
-      return envelope("forbidden", "OWNER or MANAGER only.", 403);
-    }
-
-    const listing = mockExperiences.find((e) => e.id === String(params.id));
-    if (!listing) return envelope("not_found", "No such listing.", 404);
-
-    const body = (await request.json()) as {
-      reasonCode?: string;
-      confirmExperienceId?: string;
-    };
-    if (body.confirmExperienceId !== listing.id) {
-      return envelope(
-        "confirmation_required",
-        "The id did not match. Nothing changed.",
-        400,
-      );
-    }
-    if (!body.reasonCode) {
-      return envelope(
-        "invalid_reason_code",
-        "Why are you taking it off sale?",
-        400,
-      );
-    }
-    if (listing.status === "withdrawn") {
-      return envelope("already_off_sale", "Already off sale.", 409);
-    }
-    /*
-      A draft is already selling nothing, so withdrawing it is not a state
-      change — and calling a draft "withdrawn" would confuse the two.
-    */
-    if (listing.status === "draft") {
-      return envelope("cannot_withdraw", "A draft is not on sale.", 409);
-    }
-
-    listing.status = "withdrawn";
-    listing.publicationState = "withdrawn";
-
-    /*
-      Bookings that still stand. `exp_offsale` is the withdraw walkthrough's own
-      listing and carries some, because the sentence about what withdrawing did
-      NOT do is the whole point of the response.
-    */
-    const bookingsToHonour =
-      listing.id === "exp_offsale" || listing.id === "exp_dive" ? 3 : 0;
-    return HttpResponse.json({
-      state: "withdrawn",
-      upcomingDepartures: listing.upcomingDepartures ?? 0,
-      bookingsToHonour,
-      guestsToHonour: bookingsToHonour * 2,
-      ...(bookingsToHonour > 0
-        ? {
-            note: "Three bookings are already made and still stand — you owe those travellers the trip. Nothing was cancelled or refunded.",
-          }
-        : {}),
-      next: "send_a_revision_to_put_it_back",
-    });
-  }),
+  /*
+    Pausing and resuming a listing — yuvoy-operator#30 §6, #44. Each is one
+    handler under two names, as the API registers it; see the factories above.
+  */
+  pauseHandler("/experiences/:id/withdraw"),
+  pauseHandler("/experiences/:id/pause"),
+  resumeHandler("/experiences/:id/resume"),
+  resumeHandler("/experiences/:id/relist"),
 
   http.post(url("/experiences/:id/revisions"), async ({ request, params }) => {
     const failed = requireSession(request);
@@ -2617,12 +2784,17 @@ export const handlers = [
 
     const parties = slot.parties.map((p) => {
       const recorded = attendance[p.bookingId];
+      /*
+        `cash` is held back. `Manifest.parties[]` carries none in the contract,
+        and a mock that sent it would let the manifest ship reading a field the
+        real API has never sent — the screen joins `GET /bookings` instead
+        (yuvoy-operator#40 §1).
+      */
+      const { cash: _cash, ...party } = p;
+      void _cash;
       return {
-        ...p,
-        state:
-          recorded?.outcome === "arrived"
-            ? p.state
-            : (recorded?.outcome ?? p.state),
+        ...party,
+        state: p.bookingId ? bookingStateOf(p) : p.state,
         arrived: recorded ? true : p.arrived,
         arrivedAt: recorded?.arrivedAt ?? p.arrivedAt,
       };
@@ -2679,19 +2851,28 @@ export const handlers = [
     const u = new URL(request.url);
     const from = u.searchParams.get("from");
     const to = u.searchParams.get("to");
-    const inWindow = (startsAt: string, timezone: string) => {
-      const day = marketDate(new Date(startsAt), timezone);
-      return (!from || day >= from) && (!to || day <= to);
+    /*
+      UTC DAYS, as the API reads them — `from` is UTC midnight and `to` runs
+      to the next one (`internal/handler/operator.go`), not the market's
+      calendar. This filtered on the market day, which is kinder than the API:
+      a 05:00 IST departure is 23:30 UTC the evening before, and a client that
+      asked for its market day would find it here and miss it in production.
+    */
+    const lo = from ? Date.parse(`${from}T00:00:00Z`) : -Infinity;
+    const hi = to ? Date.parse(`${to}T00:00:00Z`) + 86_400_000 : Infinity;
+    const inWindow = (startsAt: string) => {
+      const t = Date.parse(startsAt);
+      return t >= lo && t < hi;
     };
 
     const captured = SLOTS.flatMap((slot) =>
-      inWindow(slot.startsAt, slot.timezone)
+      inWindow(slot.startsAt)
         ? slot.parties
             .filter((p) => p.bookingId)
             .map((p) => ({
               id: p.bookingId,
               reference: p.reference,
-              state: attendance[p.bookingId]?.outcome ?? p.state,
+              state: bookingStateOf(p),
               guests: p.guests,
               experience: slot.title,
               slot: { startsAt: slot.startsAt, timezone: slot.timezone },
@@ -2700,12 +2881,14 @@ export const handlers = [
                 new Date(slot.startsAt).getTime() - 3 * 86_400_000,
               ).toISOString(),
               money: bookingMoney(p),
+              // Present only on a cash booking — "branch on the key existing".
+              ...(p.cash ? { cash: bookingCashOf(p) } : {}),
             }))
         : [],
     );
 
     const awaiting = REQUESTS.filter(
-      (r) => !answered[r.id] && inWindow(r.startsAt, r.timezone),
+      (r) => !answered[r.id] && inWindow(r.startsAt),
     ).map((r) => ({
       id: r.id,
       state: "pending_request",
@@ -2742,7 +2925,7 @@ export const handlers = [
         return HttpResponse.json({
           id: party.bookingId,
           reference: party.reference,
-          state: attendance[party.bookingId]?.outcome ?? party.state,
+          state: bookingStateOf(party),
           guests: party.guests,
           experience: slot.title,
           slot: { startsAt: slot.startsAt, timezone: slot.timezone },
@@ -2751,6 +2934,7 @@ export const handlers = [
             new Date(slot.startsAt).getTime() - 3 * 86_400_000,
           ).toISOString(),
           money: bookingMoney(party),
+          ...(party.cash ? { cash: bookingCashOf(party) } : {}),
         });
       }
     }
@@ -3359,4 +3543,104 @@ export const handlers = [
     attendance[id] = { outcome, arrivedAt: existing?.arrivedAt };
     return HttpResponse.json({ outcome, arrivedAt: existing?.arrivedAt });
   }),
+
+  /* -------------------------------------------------------------- cash -- */
+
+  /**
+   * Taking the cash — yuvoy-operator#40 §1.
+   *
+   * The API's own rules, in the API's own order (`RecordCashCollected`):
+   *
+   *   1. not a cash booking → 409, "already paid online";
+   *   2. already recorded → the FIRST report, `alreadyRecorded: true`, the
+   *      amount never overwritten — checked before the state, so a retry on a
+   *      booking that has since been completed still gets its answer;
+   *   3. a booking that can no longer take money → 409;
+   *   4. more than the fare → 409, refused rather than trimmed.
+   *
+   * Not role-gated: "whoever is holding the phone at the gangway is who takes
+   * the cash." The messages are production's, lower case and all, because the
+   * screen renders them.
+   */
+  http.post(
+    url("/bookings/:id/cash-collected"),
+    async ({ request, params }) => {
+      const failed = requireSession(request);
+      if (failed) return failed;
+
+      const id = String(params.id);
+      const found = partyOf(id);
+      if (!found)
+        return envelope("not_found", "we could not find that booking", 404);
+
+      const { party } = found;
+      if (!party.cash) {
+        return envelope(
+          "conflict",
+          "this booking was already paid online — there is nothing to collect",
+          409,
+        );
+      }
+
+      const fare = party.cash.collectPaise;
+      const first =
+        cashTaken[id] ??
+        (party.cash.collected && party.cash.collectedAt
+          ? {
+              collectedPaise: party.cash.collectedPaise ?? fare,
+              collectedAt: party.cash.collectedAt,
+            }
+          : undefined);
+      if (first) {
+        return HttpResponse.json({
+          collectedPaise: first.collectedPaise,
+          shortfallPaise: fare - first.collectedPaise,
+          collectedAt: first.collectedAt,
+          state: bookingStateOf(party),
+          alreadyRecorded: true,
+        });
+      }
+
+      const state = bookingStateOf(party);
+      if (state !== "paid_pending_ops" && state !== "confirmed") {
+        return envelope(
+          "conflict",
+          `this booking is not on the departure: it is ${state}`,
+          409,
+        );
+      }
+
+      const body = (await request.json().catch(() => ({}))) as {
+        collectedPaise?: unknown;
+      };
+      let amount = fare;
+      if (body.collectedPaise !== undefined) {
+        if (
+          typeof body.collectedPaise !== "number" ||
+          !Number.isInteger(body.collectedPaise) ||
+          body.collectedPaise < 0
+        ) {
+          return envelope("invalid_input", "that is not an amount", 400);
+        }
+        amount = body.collectedPaise;
+      }
+      if (amount > fare) {
+        return envelope(
+          "conflict",
+          "that is more than the fare for this booking",
+          409,
+        );
+      }
+
+      const collectedAt = new Date().toISOString();
+      cashTaken[id] = { collectedPaise: amount, collectedAt };
+      return HttpResponse.json({
+        collectedPaise: amount,
+        shortfallPaise: fare - amount,
+        collectedAt,
+        state: "confirmed",
+        alreadyRecorded: false,
+      });
+    },
+  ),
 ];

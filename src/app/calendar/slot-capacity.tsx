@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import {
   recordOfflineSale,
   setCapacity,
@@ -45,6 +46,19 @@ export function SlotCapacity({ slot }: { slot: OperatorSlot }) {
       <p className="text-forest/70 mt-1 text-sm">
         {slot.sold} of {slot.seats} sold · {slot.remaining} left
       </p>
+      {/*
+        The way to the departure itself — who is booked on it, telling them
+        something, and calling it off. Pausing a listing tells an operator to
+        cancel a departure from here (yuvoy-operator#44), and before this link
+        a departure next week could not be reached at all: the day screen
+        offers today and tomorrow only.
+      */}
+      <Link
+        href={`/today/${slot.id}`}
+        className="text-forest tap-target mt-1 text-sm underline underline-offset-2"
+      >
+        Who is booked, and calling it off
+      </Link>
       {/*
         What "left" means on this row, said only when the API says which.
 

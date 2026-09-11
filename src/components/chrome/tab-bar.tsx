@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { isBareRoute, isFocusedRoute } from "@/lib/site/nav";
+import { isBareRoute, isFocusedRoute, type NavBadges } from "@/lib/site/nav";
 import { NavList } from "./nav-items";
 
 /**
@@ -22,7 +22,7 @@ import { NavList } from "./nav-items";
  * scrollbar is hidden because a scrollbar inside a 56px pill is noise, and
  * `overscroll-contain` stops a sideways drag on the bar from moving the page.
  */
-export function TabBar() {
+export function TabBar({ badges }: { badges?: NavBadges }) {
   const pathname = usePathname();
   if (isFocusedRoute(pathname) || isBareRoute(pathname)) return null;
 
@@ -32,7 +32,7 @@ export function TabBar() {
       className="tabbar-foot pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 lg:hidden"
     >
       <div className="app-chrome ring-cream/12 no-scrollbar pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain rounded-full p-1.5 ring-1">
-        <NavList orientation="bar" />
+        <NavList orientation="bar" badges={badges} />
       </div>
     </nav>
   );

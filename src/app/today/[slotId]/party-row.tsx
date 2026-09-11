@@ -4,8 +4,10 @@ import { useActionState, useState } from "react";
 import { markAttendance, type AttendanceState } from "./actions";
 import { isHolding, type PartyForClient } from "@/lib/day/types";
 import type { ScreeningSignal } from "@/lib/day/screening";
+import type { BookingCash } from "@/lib/money/bookings";
 import { cn } from "@/lib/cn";
 import { RelayPanel } from "./relay-panel";
+import { CashCollect } from "@/app/bookings/cash-collect";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -23,6 +25,8 @@ export function PartyRow({
   slotId,
   departed,
   screening,
+  cash,
+  timezone,
 }: {
   /**
    * The screener is NOT on this type. It is decided on the server and arrives
@@ -45,6 +49,17 @@ export function PartyRow({
    * "A false alarm on this signal teaches an instructor to skip the column."
    */
   screening: ScreeningSignal;
+  /**
+   * How this party is paying — yuvoy-operator#40 §1. Required, so a manifest
+   * cannot forget to say.
+   *
+   *   `BookingCash`  paying at the counter: the fare, and whether it is taken
+   *   `null`         not a cash booking — paid online, or a hold
+   *   `undefined`    could not tell; the page says so above the list
+   */
+  cash: BookingCash | null | undefined;
+  /** The departure's own zone, for when the cash was taken. */
+  timezone: string;
 }) {
   const [state, act, pending] = useActionState<AttendanceState, FormData>(
     markAttendance,
@@ -63,6 +78,13 @@ export function PartyRow({
     and reversible in the only sense that matters (the boat leaves anyway).
   */
   const [armed, setArmed] = useState<"completed" | "no_show" | null>(null);
+  /*
+    The cash is still owed. Completing the trip first strands it: the API
+    takes cash only from a booking that is `paid_pending_ops` or `confirmed`,
+    so once this one is completed the notes in the operator's hand can never
+    be recorded — said at the confirmation, where it can still be avoided.
+  */
+  const cashStillOwed = Boolean(cash && !cash.collected);
 
   return (
     <li
@@ -174,6 +196,12 @@ export function PartyRow({
                   ? `Mark ${party.name} as a no-show? This cannot be changed afterwards.`
                   : `Mark ${party.name} as completed? This cannot be changed afterwards.`}
               </p>
+              {armed === "completed" && cashStillOwed ? (
+                <p className="text-terra-deep w-full text-sm font-bold">
+                  Record the cash first. Once the trip is completed, the cash
+                  can no longer be recorded.
+                </p>
+              ) : null}
               <Button
                 type="submit"
                 name="outcome"
@@ -207,6 +235,22 @@ export function PartyRow({
         <p role="alert" className="text-terra-deep mt-3 text-sm font-bold">
           {state.message}
         </p>
+      ) : null}
+
+      {/*
+        Cash at the counter — yuvoy-operator#40 §1. Its own block and its own
+        form, under the attendance buttons and never merged with them:
+        "somebody can turn up and not pay". A hold is not a booking yet, so it
+        has nothing to collect against.
+      */}
+      {!holding && cash ? (
+        <CashCollect
+          bookingId={party.bookingId ?? ""}
+          slotId={slotId}
+          state={party.state ?? ""}
+          cash={cash}
+          timezone={timezone}
+        />
       ) : null}
 
       {/*

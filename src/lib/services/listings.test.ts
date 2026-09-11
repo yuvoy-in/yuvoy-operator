@@ -80,6 +80,31 @@ describe("what a status says", () => {
   it("says nothing at all for a missing status", () => {
     expect(describeStatus(undefined).selling).toBe(false);
   });
+
+  it("uses the product's three words — Live, Paused, In review (#44)", () => {
+    expect(describeStatus("live").label).toBe("Live");
+    expect(describeStatus("withdrawn").label).toBe("Paused");
+    expect(describeStatus("in_review").label).toBe("In review");
+    // Selling while an edit is read, said in the same vocabulary.
+    expect(describeStatus("live_changes_in_review").label).toBe(
+      "Live · edit in review",
+    );
+  });
+
+  it("never tells a paused operator that putting it back waits on us", () => {
+    /*
+      D-032.4. Resuming is the operator's own switch and is immediate. The old
+      body — "send a change to put it back in front of us" — was false twice:
+      an approved edit never republished a withdrawn listing, and since
+      yuvoy-api#157 nothing waits on a review at all. An operator who believes
+      it does waits for a queue that does not exist.
+    */
+    const body = describeStatus("withdrawn").body.toLowerCase();
+    expect(body).toContain("resume");
+    for (const stale of ["review", "send a change", "in front of us"]) {
+      expect(body, stale).not.toContain(stale);
+    }
+  });
 });
 
 describe("why we came back", () => {

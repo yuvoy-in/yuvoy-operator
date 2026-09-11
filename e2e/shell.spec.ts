@@ -9,9 +9,9 @@ import AxeBuilder from "@axe-core/playwright";
 
 const DEV_CODE = "424242";
 
-async function signIn(page: Page) {
+async function signIn(page: Page, phone = "+919000000101") {
   await page.goto("/sign-in");
-  await page.getByLabel("Your phone number").fill("+919000000101");
+  await page.getByLabel("Your phone number").fill(phone);
   await page.getByRole("button", { name: "Send me a code" }).click();
   await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -29,7 +29,7 @@ test("a tab root names exactly five destinations, and says where you are", async
   page,
 }) => {
   /*
-    Five since yuvoy-operator#22. Services joined the bar because the catalogue
+    Five since yuvoy-operator#22. Listings joined the bar because the catalogue
     — what a business sells and the footage that sells it — is the work rather
     than the back office, and burying it behind the Business door is what made
     it unreachable.
@@ -49,7 +49,7 @@ test("the bar reaches every destination", async ({ page }) => {
   for (const [name, path, heading] of [
     ["Bookings", "/bookings", "Bookings"],
     ["Calendar", "/calendar", "Calendar"],
-    ["Services", "/services/activities", "Listings"],
+    ["Listings", "/services/activities", "Listings"],
     ["Business", "/account", "Nemo Reef Watersports"],
   ] as const) {
     await page
@@ -164,6 +164,58 @@ test("the rail stays put while the page scrolls", async ({
   await expect(
     page.getByRole("navigation", { name: /Primary/i }).getByRole("link"),
   ).toHaveCount(5);
+});
+
+/*
+  The two counts on the bar — yuvoy-operator#42.
+
+  "These badges turn unfinished obligations into visible work queues." Each is
+  the number of rows under "Waiting on you" on the screen its stop opens, and
+  each is SAID, not just drawn: the bubble is decorative and the link carries
+  the number in words, so a screen reader hears what it counts.
+
+  Asserted as a shape rather than a figure on Bookings: other specs answer
+  requests against the same server while this runs.
+*/
+test("Bookings carries the number of requests waiting on an answer", async ({
+  page,
+}) => {
+  await signIn(page);
+  const bookings = page
+    .getByRole("navigation", { name: /Primary/i })
+    .first()
+    .getByRole("link", { name: /^Bookings/ });
+  await expect(bookings).toHaveAccessibleName(
+    /^Bookings, \d+ waiting on your answer$/,
+  );
+});
+
+test("Business carries no count when nothing is waiting on the operator", async ({
+  page,
+}) => {
+  // The fixture owner owes us nothing: no badge, and no zero either.
+  await signIn(page);
+  const business = page
+    .getByRole("navigation", { name: /Primary/i })
+    .first()
+    .getByRole("link", { name: /^Business/ });
+  await expect(business).toHaveAccessibleName("Business");
+});
+
+test("Business counts exactly the list it opens", async ({ page }) => {
+  // A new account with two documents to send.
+  await signIn(page, "+919000000105");
+  const business = page
+    .getByRole("navigation", { name: /Primary/i })
+    .first()
+    .getByRole("link", { name: /^Business/ });
+  await expect(business).toHaveAccessibleName("Business, 2 waiting on you");
+
+  await business.click();
+  await page.waitForURL("**/account");
+  await expect(
+    page.getByRole("region", { name: "Waiting on you" }).getByRole("listitem"),
+  ).toHaveCount(2);
 });
 
 /*

@@ -100,10 +100,15 @@ test("each booking shows what it contributed, and the list says why it does not 
     has captured nothing, so it carries no money and says so — never a row of
     ₹0s inviting somebody to reconcile it. `req_urgent` is the request no test
     ever answers, so it is always here.
+
+    And its state in the operator's words. This line used to assert that the
+    raw `pending_request` token was on screen, which pinned the defect rather
+    than the fact; "no booking is described by a column value" below holds
+    the other half.
   */
   const awaiting = list.locator("li").filter({ hasText: "Reuben Mathai" });
   await expect(awaiting.getByText(/No money has moved/)).toBeVisible();
-  await expect(awaiting.getByText("pending_request")).toBeVisible();
+  await expect(awaiting.getByText("Waiting on you")).toBeVisible();
   await expect(awaiting.getByText("₹0")).toHaveCount(0);
 
   // No traveller phone number, anywhere on this list (O12).
@@ -130,4 +135,24 @@ test("/earnings has no accessibility violations", async ({ page }) => {
     .analyze();
 
   expect(results.violations).toEqual([]);
+});
+
+test("no booking is described by a column value", async ({ page }) => {
+  /*
+    The By booking list printed `· pending_request` beside a booking with no
+    money — the raw `fulfilment_state` yuvoy-operator#34 removed from Bookings
+    and this list kept. Said in the operator's words now, and a cash booking
+    says it was taken at the counter rather than showing gross ₹0 and a
+    negative net.
+  */
+  await signIn(page);
+  await page.goto("/earnings");
+  await expect(page.getByRole("heading", { name: "Earnings" })).toBeVisible();
+
+  const body = (await page.locator("body").innerText()).toLowerCase();
+  for (const token of ["pending_request", "paid_pending_ops", "no_show"]) {
+    expect(body, `"${token}" is a column value, not a word`).not.toContain(
+      token,
+    );
+  }
 });

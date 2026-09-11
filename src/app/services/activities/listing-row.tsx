@@ -12,7 +12,7 @@ import {
 import { activityChoices, type Vocabulary } from "@/lib/services/vocabulary";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
-import { WithdrawListingForm } from "./withdraw-listing-form";
+import { PauseResume } from "./pause-resume";
 import { inputClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 
@@ -187,7 +187,7 @@ export function ListingRow({
       {listing.upcomingDepartures !== undefined ? (
         <p className="text-forest/70 mt-3 text-xs">
           {listing.upcomingDepartures === 0
-            ? "No departures scheduled. Add some on Capacity."
+            ? "No departures scheduled. Add some on Calendar."
             : `${listing.upcomingDepartures} departure${
                 listing.upcomingDepartures === 1 ? "" : "s"
               } coming up`}
@@ -562,22 +562,26 @@ export function ListingRow({
       ) : null}
 
       {/*
-        Taking it off sale — yuvoy-operator#30 §6.
+        Pausing and resuming — yuvoy-operator#30 §6, #44.
 
-        Offered only on a listing that is actually selling. A draft is already
-        selling nothing, so withdrawing it is not a state change, and calling a
-        draft "withdrawn" would confuse the two — which is why the API declines
-        it too.
+        Pause on a PUBLISHED listing: live, live with an edit in review, and
+        not selling — published and earning nothing, and still somebody's boat
+        to take out of the water. Resume on a paused one. A draft, and anything
+        awaiting its first approval, gets neither: "In review has been
+        submitted and has no pause/resume button."
 
-        Below the edit control rather than beside it: this is the one action on
-        the row that is hard to undo (putting it back goes through review), and
-        it should not sit a thumb's width from "Propose a change".
+        Keyed on `publicationState` rather than `status`, because pausing is a
+        publication act and `status` folds in the latest revision.
+
+        Below the edit control rather than beside it: pausing stops new
+        bookings, and it should not sit a thumb's width from "Propose a
+        change".
       */}
       {listing.id ? (
-        <WithdrawListingForm
+        <PauseResume
           experienceId={listing.id}
           title={listing.title ?? "this listing"}
-          selling={status.selling}
+          publicationState={listing.publicationState}
         />
       ) : null}
     </li>

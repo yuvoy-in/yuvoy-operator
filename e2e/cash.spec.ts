@@ -158,3 +158,190 @@ test("/cash has no accessibility violations", async ({ page }) => {
     .analyze();
   expect(results.violations).toEqual([]);
 });
+
+/* =========================================== §1 · taking cash at the counter */
+
+/**
+ * yuvoy-operator#40 §1 — recording that the money was taken.
+ *
+ * `slot_cash` is tomorrow's Reef dive, and it carries a party for every state
+ * the collection has to tell apart. Recording mutates the Next server both
+ * projects share, so each walkthrough takes a party of its own; the rest are
+ * read and never touched.
+ */
+const CASH_DEPARTURE = "/today/slot_cash";
+
+function mineToCollect(project: string) {
+  return project === "mobile"
+    ? { whole: "Kavya Iyer", less: "Lena Park" }
+    : { whole: "Tom Becker", less: "Omar Haddad" };
+}
+
+test("a cash booking says what to take, and a card booking says nothing", async ({
+  page,
+}) => {
+  await signIn(page, OWNER);
+  await page.goto(CASH_DEPARTURE);
+
+  const owed = page.locator("li").filter({ hasText: "Anil Kumar" });
+  await expect(owed.getByText("₹9,000 to take in cash")).toBeVisible();
+  await expect(owed.getByRole("button", { name: "Cash taken" })).toBeVisible();
+  // A separate act from arriving — "somebody can turn up and not pay".
+  await expect(
+    owed.getByRole("button", { name: "Here", exact: true }),
+  ).toBeVisible();
+
+  // Paid online: nothing to collect, and nothing said about cash.
+  const card = page.locator("li").filter({ hasText: "Sofia Alves" });
+  await expect(card.getByRole("button", { name: /Cash taken/ })).toHaveCount(0);
+  await expect(card.getByText(/to take in cash|taken ·/)).toHaveCount(0);
+
+  // Already taken: read plainly, "with no way to tap it again".
+  const taken = page.locator("li").filter({ hasText: "Meera Das" });
+  await expect(taken.getByText("₹9,000 taken · 08:10")).toBeVisible();
+  await expect(
+    taken.getByRole("button", { name: /Cash taken|Took less/ }),
+  ).toHaveCount(0);
+});
+
+test("the whole fare is one tap, and a second phone's tap is not an error", async ({
+  page,
+}, testInfo) => {
+  const who = mineToCollect(testInfo.project.name).whole;
+  await signIn(page, OWNER);
+  await page.goto(CASH_DEPARTURE);
+
+  // A second phone at the same business, loaded before the first one taps.
+  const second = await page.context().newPage();
+  await second.goto(CASH_DEPARTURE);
+  const theirs = second.locator("li").filter({ hasText: who });
+  await expect(
+    theirs.getByRole("button", { name: "Cash taken" }),
+  ).toBeVisible();
+
+  const mine = page.locator("li").filter({ hasText: who });
+  await mine.getByRole("button", { name: "Cash taken" }).click();
+  await expect(mine.getByText(/^₹9,000 taken · \d\d:\d\d$/)).toBeVisible();
+  await expect(mine.getByRole("button", { name: "Cash taken" })).toHaveCount(0);
+
+  /*
+    The retry, which "will happen" and "must not be punished": the API answers
+    it with the first report and `alreadyRecorded`. The stale phone shows the
+    recorded state — not an error, and not a second confirmation.
+  */
+  await theirs.getByRole("button", { name: "Cash taken" }).click();
+  await expect(theirs.getByText(/^₹9,000 taken · \d\d:\d\d$/)).toBeVisible();
+  await expect(theirs.getByRole("alert")).toHaveCount(0);
+  await expect(theirs.getByText(/short of the fare/)).toHaveCount(0);
+  await second.close();
+
+  // A fact on the booking, not a state of the page: it survives a reload.
+  await page.reload();
+  await expect(
+    page
+      .locator("li")
+      .filter({ hasText: who })
+      .getByText(/₹9,000 taken/),
+  ).toBeVisible();
+});
+
+test("taking less says the gap before it is recorded, and once after", async ({
+  page,
+}, testInfo) => {
+  const who = mineToCollect(testInfo.project.name).less;
+  await signIn(page, OWNER);
+  await page.goto(CASH_DEPARTURE);
+
+  const row = page.locator("li").filter({ hasText: who });
+  await row.getByRole("button", { name: "Took less" }).click();
+  const box = row.getByLabel("What you took, in rupees");
+
+  // More than the fare is refused before anything is sent.
+  await box.fill("14000");
+  await expect(row.getByText(/more than the fare of ₹13,500/)).toBeVisible();
+  await expect(row.getByRole("button", { name: /^Record/ })).toBeDisabled();
+
+  // The mis-key is visible while it can still be fixed.
+  await box.fill("3000");
+  await expect(
+    row.getByText("That is ₹10,500 less than the fare of ₹13,500."),
+  ).toBeVisible();
+  await row.getByRole("button", { name: "Record ₹3,000" }).click();
+
+  await expect(
+    row.getByText("Recorded ₹3,000. That is ₹10,500 short of the fare."),
+  ).toBeVisible();
+  await expect(
+    row.getByText(/^₹3,000 taken of ₹13,500 · \d\d:\d\d$/),
+  ).toBeVisible();
+
+  // "Say it once, quietly": a reload keeps the fact and drops the sentence.
+  await page.reload();
+  const after = page.locator("li").filter({ hasText: who });
+  await expect(after.getByText(/₹3,000 taken of ₹13,500/)).toBeVisible();
+  await expect(after.getByText(/short of the fare/)).toHaveCount(0);
+});
+
+test("the bookings list asks for the cash, and never says a payment is clearing", async ({
+  page,
+}) => {
+  /*
+    YV-5DT6RKVQ in production: a cash booking read "Payment clearing", because
+    `paid_pending_ops` was all the screen had. Nothing was clearing.
+  */
+  await signIn(page, OWNER);
+  await page.goto("/bookings");
+
+  const owed = page
+    .getByRole("region", { name: "Booked" })
+    .getByRole("link")
+    .filter({ hasText: "Anil Kumar" });
+  await expect(owed.getByText("Collect ₹9,000")).toBeVisible();
+
+  const body = await page.locator("body").innerText();
+  expect(body).not.toContain("Payment clearing");
+});
+
+test("a cash booking's own page offers the collection, and no card arithmetic", async ({
+  page,
+}) => {
+  await signIn(page, OWNER);
+  await page.goto("/bookings/bkg_cash_owed");
+
+  await expect(
+    page.getByRole("heading", { name: "Cash at the counter" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cash taken" })).toBeVisible();
+
+  /*
+    The API sends `money` on a cash booking as gross ₹0, the share as
+    commission and a NEGATIVE net. As arithmetic that says the operator lost
+    money on a trip they were paid for in full.
+  */
+  await expect(page.getByText("Yuvoy's commission")).toHaveCount(0);
+  await expect(page.getByText(/−\s*₹/)).toHaveCount(0);
+  await expect(page.getByText(/No money has moved/)).toHaveCount(0);
+});
+
+test("staff can take the cash — whoever holds the phone at the gangway", async ({
+  page,
+}) => {
+  // Not role-gated in the contract, so not gated here: "a crew member who
+  // cannot record it records it later from memory".
+  await signIn(page, STAFF);
+  await page.goto(CASH_DEPARTURE);
+  const owed = page.locator("li").filter({ hasText: "Anil Kumar" });
+  await expect(owed.getByRole("button", { name: "Cash taken" })).toBeEnabled();
+});
+
+test("/today/slot_cash has no accessibility violations", async ({ page }) => {
+  await signIn(page, OWNER);
+  await page.goto(CASH_DEPARTURE);
+  await expect(page.getByText("₹9,000 taken · 08:10")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
+});

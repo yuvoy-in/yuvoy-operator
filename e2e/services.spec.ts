@@ -25,7 +25,7 @@ async function signIn(page: Page, phone = "+919000000101") {
   await page.waitForURL("**/today");
 }
 
-test("Services is a stop on the bar, and both its pages light it", async ({
+test("Listings is a stop on the bar, and both its pages light it", async ({
   page,
 }) => {
   await signIn(page);
@@ -33,7 +33,7 @@ test("Services is a stop on the bar, and both its pages light it", async ({
   for (const route of ["/services/activities", "/services/reels"]) {
     await page.goto(route);
     const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-    const current = nav.getByRole("link", { name: "Services" });
+    const current = nav.getByRole("link", { name: "Listings" });
     await expect(current).toHaveAttribute("aria-current", "page");
 
     /*
@@ -80,7 +80,7 @@ test("every listing says where it is, including the ones that are not selling", 
   await page.goto("/services/activities");
 
   const live = page.locator("li").filter({ hasText: "Reef dive" });
-  await expect(live.getByText("On sale", { exact: true })).toBeVisible();
+  await expect(live.getByText("Live", { exact: true })).toBeVisible();
 
   const draft = page.locator("li").filter({ hasText: "Island boat day" });
   await expect(draft.getByText("Draft", { exact: true })).toBeVisible();
@@ -139,8 +139,8 @@ test("nothing on this screen ever says a listing was saved and is selling", asyn
   const text = (await page.locator("body").innerText()).toLowerCase();
   expect(text).not.toContain("saved ✓");
   expect(text).not.toContain("published successfully");
-  // The one place "on sale" appears is against a listing that IS on sale.
-  expect(text).toContain("with us");
+  // An edit being read is named for what it is — in review — never "saved".
+  expect(text).toContain("in review");
 });
 
 test("an operator writes a listing, and it lands as a draft", async ({
@@ -219,8 +219,9 @@ test("sending a change on a live listing says it keeps selling", async ({
     Its own listing, one per project.
 
     A revision moves `status` in the shared Next server process, so submitting
-    against a row another test asserts on would take "On sale" away from
-    whichever ran second — which is exactly what happened with `Reef dive`.
+    against a row another test asserts on would turn "Live" into "Live · edit
+    in review" under whichever ran second — which is exactly what happened
+    with `Reef dive`.
     Same call the call-off fixtures make on the day screen.
   */
   const who =
@@ -277,7 +278,7 @@ test("the switcher counts both halves, including at zero", async ({ page }) => {
   await signIn(page);
   await page.goto("/services/activities");
 
-  const section = page.getByRole("navigation", { name: "Services" });
+  const section = page.getByRole("navigation", { name: "What you sell" });
   await expect(section.getByRole("link", { name: /Listings/ })).toHaveAttribute(
     "aria-current",
     "page",
@@ -491,8 +492,8 @@ test("a listing that predates the taxonomy can be given an activity type", async
   /*
     Its own listing, one per project. A revision moves `status` in the shared
     Next server process, so submitting against a row another test asserts on
-    would take "On sale" away from whichever ran second — the same trap the
-    revision fixtures above exist for.
+    would turn "Live" into "Live · edit in review" under whichever ran second
+    — the same trap the revision fixtures above exist for.
   */
   const who =
     testInfo.project.name === "mobile"
@@ -562,32 +563,34 @@ test("a listing's own name can be corrected", async ({ page }) => {
   await expect(title).toBeEditable();
 });
 
-test("a listing can be taken off sale, and it says what that did NOT do", async ({
+test("a listing can be paused and resumed, and pausing says what it did NOT do", async ({
   page,
 }, testInfo) => {
   /*
-    yuvoy-operator#30 §6 — the thing an operator could not do. Only an admin
-    could, "so an operator whose boat was out of the water for a month had to
-    ask somebody at Yuvoy — a queue with a portal in front of it."
+    yuvoy-operator#30 §6, #44 — the operator's own switch, both ways. Only an
+    admin could take a listing off sale, "so an operator whose boat was out of
+    the water for a month had to ask somebody at Yuvoy"; and until D-032.4
+    putting it back waited on a review — which this test used to assert, in
+    "goes through review", and which is now false.
 
-    The assertion that matters is the second one. **Withdrawing cancels nothing
-    and refunds nothing**: confirmed bookings stand and the operator still owes
-    those travellers the trip. Somebody who assumes otherwise does not turn up,
-    and eleven people are on a jetty — so the API's own sentence is rendered
-    verbatim rather than paraphrased.
+    The assertion that matters most is still the note. **Pausing cancels
+    nothing and refunds nothing**: confirmed bookings stand and the operator
+    still owes those travellers the trip. Somebody who assumes otherwise does
+    not turn up — so the API's own sentence is rendered verbatim.
 
     Single-tenant: it mutates the shared listing, so it runs on one project.
   */
   test.skip(
     testInfo.project.name !== "mobile",
-    "takes a shared listing off sale — single-tenant by design",
+    "pauses a shared listing — single-tenant by design",
   );
 
   await signIn(page);
   await page.goto("/services/activities");
 
   const row = page.locator("li").filter({ hasText: "Sunrise paddle" });
-  await row.getByRole("button", { name: "Take it off sale" }).click();
+  await expect(row.getByText("Live", { exact: true })).toBeVisible();
+  await row.getByRole("button", { name: "Pause", exact: true }).click();
 
   // Warned BEFORE the decision, too.
   await expect(
@@ -598,18 +601,57 @@ test("a listing can be taken off sale, and it says what that did NOT do", async 
 
   // A wrong id is refused, and nothing changes.
   await row.getByLabel(/Type this listing/).fill("exp_wrong");
-  await row.getByRole("button", { name: "Take it off sale" }).click();
+  await row.getByRole("button", { name: "Pause it" }).click();
   await expect(row.getByText(/does not match this listing/)).toBeVisible();
 
   await row.getByLabel(/Type this listing/).fill("exp_offsale");
-  await row.getByRole("button", { name: "Take it off sale" }).click();
+  await row.getByRole("button", { name: "Pause it" }).click();
 
-  await expect(row.getByText("Off sale")).toBeVisible();
+  await expect(row.getByText("Paused", { exact: true }).first()).toBeVisible();
   // The API's sentence, verbatim — the one that stops somebody not turning up.
-  await expect(row.getByText(/still stand/)).toBeVisible();
+  await expect(row.getByText(/are unchanged/)).toBeVisible();
   await expect(
     row.getByText(/upcoming departures have stopped being offered/),
   ).toBeVisible();
-  // And how to undo it, which is not a button.
-  await expect(row.getByText(/goes through review/)).toBeVisible();
+  /*
+    Nothing on the row sends the operator to wait for us. The API's own
+    `next` still says "we check it before travellers see it again", and it is
+    not rendered.
+  */
+  await expect(row.getByText(/review|we check it/i)).toHaveCount(0);
+
+  // And back, with nothing to wait for.
+  await row.getByRole("button", { name: "Resume", exact: true }).click();
+  await row.getByRole("button", { name: "Yes, resume it" }).click();
+  await expect(row.getByText("Resumed", { exact: true })).toBeVisible();
+  await expect(row.getByText("Live", { exact: true })).toBeVisible();
+});
+
+test("a paused listing that is missing something says what, and stays paused", async ({
+  page,
+}) => {
+  /*
+    Resuming "is refused with 400 when something mandatory is missing, so you
+    find out while the form is open rather than after putting something back
+    that cannot sell". The refusal names the field in words rather than saying
+    "something is missing". Nothing changes, so both projects may run it.
+  */
+  await signIn(page);
+  await page.goto("/services/activities");
+
+  const row = page.locator("li").filter({ hasText: "Dusk paddle" });
+  await expect(row.getByText("Paused", { exact: true })).toBeVisible();
+  await row.getByRole("button", { name: "Resume", exact: true }).click();
+  await row.getByRole("button", { name: "Yes, resume it" }).click();
+  await expect(row.getByRole("alert")).toContainText(
+    "Still missing: where to meet",
+  );
+
+  await page.reload();
+  await expect(
+    page
+      .locator("li")
+      .filter({ hasText: "Dusk paddle" })
+      .getByText("Paused", { exact: true }),
+  ).toBeVisible();
 });

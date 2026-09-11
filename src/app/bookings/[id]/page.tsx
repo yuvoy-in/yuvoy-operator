@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError } from "@/lib/api/errors";
@@ -10,6 +11,7 @@ import { formatPaise } from "@/lib/format/money";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { Screen } from "@/components/chrome/screen";
+import { CashCollect } from "@/app/bookings/cash-collect";
 
 export const metadata: Metadata = { title: "Booking" };
 export const dynamic = "force-dynamic";
@@ -36,7 +38,8 @@ export const dynamic = "force-dynamic";
  * which means somebody has not answered the health question — not what they
  * answered. That flag lives on the manifest, per departure, and it stays
  * there; a booking detail page is not a second place to leak a health answer
- * from.
+ * from. The product demo shows one here; the owner ruled on 11 Sep 2026 that
+ * this rule stands (yuvoy-operator#43).
  */
 export default async function BookingPage({
   params,
@@ -44,7 +47,7 @@ export default async function BookingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
 
   let booking;
   try {
@@ -64,7 +67,7 @@ export default async function BookingPage({
     throw err;
   }
 
-  const state = describeBookingState(booking.state);
+  const state = describeBookingState(booking.state, booking.cash);
 
   return (
     <Screen
@@ -99,16 +102,54 @@ export default async function BookingPage({
         </dl>
       </Panel>
 
-      {/*
-        The money on THIS booking, for the "why is this two hundred rupees less
-        than I expected" question. Frozen at capture, so a commission change
-        today cannot restate what was earned last week.
+      {booking.cash ? (
+        /*
+          PAID AT THE COUNTER — yuvoy-operator#40 §1.
 
-        Absent means NO MONEY MOVED, not "unknown" — a request awaiting an
-        answer has captured nothing — so the absence stays an absence rather
-        than becoming a row of zeroes somebody tries to reconcile.
-      */}
-      {booking.money ? (
+          Not the card arithmetic below, and not a softened version of it. The
+          API sends `money` on a cash booking as gross ₹0 and a negative net —
+          nothing was captured and the share on the fare is stored — and read
+          as arithmetic that says the operator lost money on a trip they were
+          paid for in full. `toBookingLine` drops it; this says what is true
+          instead, and puts the collection where the operator can record it.
+        */
+        <section className="mt-6" aria-labelledby="cash-heading">
+          <Panel>
+            <h2 id="cash-heading" className="label text-forest/75">
+              Cash at the counter
+            </h2>
+            <p className="text-forest/80 mt-2 text-sm">
+              They hand you the fare on the day. None of it passes through
+              Yuvoy, so there is no payout on this booking.
+            </p>
+            {/*
+              `/cash` is OWNER or MANAGER, like earnings, so a staff login is
+              not sent to a screen that turns it away.
+            */}
+            {me.canManage ? (
+              <p className="text-forest/80 mt-2 text-sm">
+                Yuvoy&rsquo;s share of it shows on{" "}
+                <Link href="/cash" className="underline underline-offset-2">
+                  Cash you&rsquo;ve collected
+                </Link>{" "}
+                once the trip is done.
+              </p>
+            ) : null}
+            <CashCollect
+              bookingId={booking.id}
+              slotId=""
+              state={booking.state}
+              cash={booking.cash}
+              timezone={booking.timezone}
+            />
+          </Panel>
+        </section>
+      ) : booking.money ? (
+        /*
+          The money on THIS booking, for the "why is this two hundred rupees
+          less than I expected" question. Frozen at capture, so a commission
+          change today cannot restate what was earned last week.
+        */
         <Panel className="mt-6 p-0">
           <dl className="divide-cream-line divide-y text-sm">
             <Row label="Gross">{formatPaise(booking.money.grossPaise)}</Row>
@@ -129,6 +170,11 @@ export default async function BookingPage({
           </p>
         </Panel>
       ) : (
+        /*
+          Absent means NO MONEY MOVED, not "unknown" — a request awaiting an
+          answer has captured nothing — so the absence stays an absence rather
+          than becoming a row of zeroes somebody tries to reconcile.
+        */
         <p className="text-forest/70 mt-6 text-sm">
           No money has moved on this one yet.
         </p>

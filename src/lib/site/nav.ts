@@ -5,10 +5,22 @@
  *
  * Five destinations. The day is what an operator opens at 6am; **bookings**
  * is who is coming; **calendar** is where the seats are promised, "the single
- * most important number in the system"; **services** is what the business
- * actually consists of — what they sell and the footage that sells it; and
- * everything else about the business — money, people, whether the account can
- * trade — sits behind one door.
+ * most important number in the system"; **listings** is what the business
+ * actually sells and the footage that sells it; and everything else about the
+ * business — money, people, whether the account can trade — sits behind one
+ * door.
+ *
+ * ## Why Services became Listings (yuvoy-operator#42)
+ *
+ * Owner ruling, 11 September 2026, on the product demo's five tabs: keep
+ * Today and the Business door, rename Services to Listings, add the two
+ * badges. The tab said "Services" while the screen under it said "Listings",
+ * which is the one-word-per-thing rule (D-031 C10) broken in the most visible
+ * place there is. The URLs stay under `/services`: they are in operators'
+ * histories, and a path is not something anybody reads.
+ *
+ * Earnings stays a door inside Business until the API behind the demo's
+ * Earnings tab exists (yuvoy-operator#47).
  *
  * ## Why Requests became Bookings (yuvoy-operator#32, #34)
  *
@@ -27,21 +39,16 @@
  * an operator edits, **experience** where a traveller reads, **departure** for
  * a dated occurrence.
  *
- * ## Why services is a stop rather than another thing behind Business
+ * ## Why listings is a stop rather than another thing behind Business
  *
  * Owner ruling, 6 September 2026 (yuvoy-operator#22). Reels lived under the
  * Business door and Activities did not exist at all, which meant an operator
  * could sign in, read what was outstanding on their account, and then do
  * nothing about the two things the business IS.
- *
- * Business is the back office — money, people, standing. The catalogue is not
- * back office: adding a listing and putting a clip on it is the work, and
- * burying it two taps behind a door named for the paperwork is what made it
- * unreachable. So the bar went from four stops to five.
  */
 
 export type NavIcon =
-  "today" | "bookings" | "calendar" | "services" | "business";
+  "today" | "bookings" | "calendar" | "listings" | "business";
 
 export interface NavItem {
   href: string;
@@ -75,8 +82,8 @@ export const NAV: readonly NavItem[] = [
   },
   {
     href: "/services/activities",
-    label: "Services",
-    icon: "services",
+    label: "Listings",
+    icon: "listings",
     /*
       The section, not the page. `/services` has two pages under it and the
       stop points at the first — an operator opening this tab is far more often
@@ -92,11 +99,49 @@ export const NAV: readonly NavItem[] = [
     match: (p) =>
       p.startsWith("/account") ||
       p.startsWith("/earnings") ||
+      p.startsWith("/cash") ||
       p.startsWith("/payouts") ||
       p.startsWith("/profile") ||
+      p.startsWith("/logo") ||
       p.startsWith("/team"),
   },
 ] as const;
+
+/**
+ * The two counts on the bar — yuvoy-operator#42.
+ *
+ * "Bookings shows the count of pending requests. Account shows the count of
+ * missing required verification documents. These badges turn unfinished
+ * obligations into visible work queues."
+ *
+ * Each count is the number of rows under the matching heading on the screen
+ * the stop opens — "Waiting on you" on both — and never a figure worked out
+ * separately. A badge that says 3 over a screen listing 2 is the fastest way
+ * to teach somebody to ignore it.
+ *
+ * **Absent means unknown, never zero.** A read that failed renders no badge,
+ * which is the same thing a genuinely empty queue renders — the one wrong
+ * answer is a number nobody measured.
+ */
+export interface NavBadges {
+  /** Seat requests waiting on an answer: the queue on Bookings. */
+  bookings?: number;
+  /** Items on the account waiting on the operator: the list on Business. */
+  business?: number;
+}
+
+/** Which stop carries which count, and what the count is OF, said out loud. */
+export const BADGES: Partial<
+  Record<NavIcon, { key: keyof NavBadges; spoken: string }>
+> = {
+  bookings: { key: "bookings", spoken: "waiting on your answer" },
+  business: { key: "business", spoken: "waiting on you" },
+};
+
+/** A count as the bubble draws it. Past nine the exact number is not the point. */
+export function badgeText(count: number): string {
+  return count > 9 ? "9+" : String(count);
+}
 
 /**
  * FOCUSED routes: screens an operator goes INTO rather than between.
@@ -105,9 +150,9 @@ export const NAV: readonly NavItem[] = [
  * manifest sits under Today; the money and people screens sit under Business,
  * and each goes back to the door it came through.
  *
- * **Services is NOT focused**, and that is the difference between a stop and a
- * screen you go into. Activities and Reels are two halves of one job — "this
- * activity has no video" and "this clip is attached to nothing" are the same
+ * **Listings is NOT focused**, and that is the difference between a stop and a
+ * screen you go into. Listings and Reels are two halves of one job — "this
+ * listing has no video" and "this clip is attached to nothing" are the same
  * question asked from both ends — so an operator moves between them
  * constantly, and a back disc that leaves the section would be in the way
  * every time.
@@ -118,6 +163,7 @@ export const FOCUSED_ROUTE_PREFIXES = [
   // is a tab root; `/bookings/` with the slash is a booking.
   "/bookings/",
   "/earnings",
+  "/cash",
   "/payouts",
   "/profile",
   // The logo, which is mandatory before an operator can be booked and is

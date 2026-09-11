@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { fraunces, satoshi } from "@/lib/fonts";
 import { AppShell } from "@/components/chrome/app-shell";
+import { navBadges } from "@/lib/site/nav-badges";
 import { THEME_COLOR } from "@/lib/site/theme";
 import "./globals.css";
 
@@ -34,9 +35,17 @@ export const viewport: Viewport = {
   */
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  /*
+    The bar's two counts — yuvoy-operator#42. Read here because the chrome is
+    a client component and the counts come from `/operator/v1`, which a
+    browser is never allowed to call. `navBadges` cannot throw: a signed-out
+    door, a dead session or a dropped connection costs a badge, never a page.
+  */
+  const badges = await navBadges();
+
   return (
     <html lang="en" className={`${fraunces.variable} ${satoshi.variable}`}>
       <body className="bg-forest text-cream">
@@ -46,7 +55,7 @@ export default function RootLayout({
         >
           Skip to content
         </a>
-        <AppShell>{children}</AppShell>
+        <AppShell badges={badges}>{children}</AppShell>
       </body>
     </html>
   );

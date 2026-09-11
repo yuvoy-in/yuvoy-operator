@@ -1,8 +1,15 @@
 import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
+import { marketDate } from "@/lib/format/market-time";
 import type { ChangeRequest, Earnings, EarningsState } from "./earnings";
 import { toCommission, type Commission } from "./commission";
-import { byDeparture, toBookingLine, type BookingLine } from "./bookings";
+import {
+  byDeparture,
+  toBookingCash,
+  toBookingLine,
+  type BookingCash,
+  type BookingLine,
+} from "./bookings";
 
 export async function getEarnings(
   token: string,
@@ -70,6 +77,60 @@ export async function listBookings(
     });
     if (error) throw error;
     return (data.items ?? []).map(toBookingLine).sort(byDeparture);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which bookings on one departure are paid at the counter — yuvoy-operator#40 §1.
+ *
+ * `Manifest.parties[]` carries no cash at all, and `OperatorBooking` does, so
+ * the manifest joins this by booking id. One request for the whole departure,
+ * never one per row: a jetty on one bar of signal does not get a round trip
+ * for every party.
+ *
+ * ## The window asks for both readings of the day
+ *
+ * `from` and `to` are declared as bare dates, and the API reads them as UTC
+ * days — `from` is UTC midnight and `to` runs to the next one — while every
+ * date an operator sees is the market's. A 05:00 IST departure is 23:30 UTC
+ * the evening before, so asking only for its market day would miss it. Asking
+ * from the earlier of the two dates to the later covers both, and the join is
+ * by id, so a wider window costs nothing but rows that are ignored.
+ *
+ * ## `null` is "could not tell", and it is kept apart from "no cash"
+ *
+ * The result maps a booking id to its cash (`BookingCash`) or to `null` when
+ * the booking was read and is paid online. An id MISSING from the map was not
+ * read at all — the call failed, or the list was cut short — and the screen
+ * says it could not check rather than treating that booking as settled. The
+ * failure the other way is somebody waved onto a boat owing ₹10,000.
+ */
+export async function cashForDeparture(
+  token: string,
+  startsAt: string,
+  timezone: string,
+): Promise<Map<string, BookingCash | null> | null> {
+  const instant = new Date(startsAt);
+  if (Number.isNaN(instant.getTime())) return null;
+
+  const utc = instant.toISOString().slice(0, 10);
+  const market = marketDate(instant, timezone);
+  const [from, to] = utc <= market ? [utc, market] : [market, utc];
+
+  try {
+    const { data, error } = await operatorApi(token).GET("/bookings", {
+      params: { query: { from, to } },
+    });
+    if (error) throw error;
+
+    const byBooking = new Map<string, BookingCash | null>();
+    for (const raw of data.items ?? []) {
+      if (!raw.id) continue;
+      byBooking.set(raw.id, toBookingCash(raw.cash) ?? null);
+    }
+    return byBooking;
   } catch {
     return null;
   }

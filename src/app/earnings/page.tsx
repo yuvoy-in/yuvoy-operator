@@ -13,7 +13,12 @@ import {
   payoutHold,
   reconciles,
 } from "@/lib/money/earnings";
-import { bookingReconciles } from "@/lib/money/bookings";
+import {
+  bookingReconciles,
+  describeCash,
+  type BookingLine,
+} from "@/lib/money/bookings";
+import { describeBookingState } from "@/lib/day/booking-state";
 import { formatPaise } from "@/lib/format/money";
 import { marketDay, marketTime, now } from "@/lib/format/market-time";
 import { Empty, Problem } from "@/components/ui/states";
@@ -285,17 +290,34 @@ export default async function EarningsPage({
                       </p>
                     ) : null}
                   </>
+                ) : b.cash ? (
+                  /*
+                    Paid at the counter — yuvoy-operator#40. None of it passed
+                    through Yuvoy, so it is in none of the figures above, and
+                    the share owed on it lives on `/cash`. The API's `money` on
+                    such a booking is gross ₹0 and a negative net, which
+                    `toBookingLine` drops rather than let this list render.
+                  */
+                  <p className="text-forest/70 border-cream-line mt-3 border-t px-5 py-4 text-sm">
+                    Cash at the counter, so it is not in these figures.{" "}
+                    <span className="font-bold">
+                      {describeCash(b.cash, b.timezone)}
+                    </span>
+                  </p>
                 ) : (
                   /*
                     "Absent, not zeroed." A booking that has captured nothing
                     has nothing to reconcile, and a row of ₹0s would invite
-                    exactly that. `state` is a bare string in the contract, so
-                    it is shown rather than interpreted.
+                    exactly that.
+
+                    The state in the operator's words. This printed the raw
+                    column value — `pending_request` — which is the defect
+                    yuvoy-operator#34 fixed on Bookings and this list kept.
                   */
                   <p className="text-forest/70 border-cream-line mt-3 border-t px-5 py-4 text-sm">
                     No money has moved for this booking yet.
-                    {b.state ? (
-                      <span className="font-bold"> · {b.state}</span>
+                    {stateWord(b) ? (
+                      <span className="font-bold"> · {stateWord(b)}</span>
                     ) : null}
                   </p>
                 )}
@@ -306,6 +328,11 @@ export default async function EarningsPage({
       </section>
     </Screen>
   );
+}
+
+/** A booking's state in the operator's words, or nothing for one we cannot name. */
+function stateWord(b: BookingLine): string | null {
+  return describeBookingState(b.state, b.cash)?.label ?? null;
 }
 
 function MonthLink({

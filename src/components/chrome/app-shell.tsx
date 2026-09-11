@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
-import { isBareRoute } from "@/lib/site/nav";
+import { isBareRoute, type NavBadges } from "@/lib/site/nav";
 import { NavList } from "./nav-items";
 import { TabBar } from "./tab-bar";
 import { Wordmark } from "@/components/ui/wordmark";
@@ -31,8 +31,19 @@ import { Wordmark } from "@/components/ui/wordmark";
  * A signed-out door (`isBareRoute`) draws no rail and no bar: there is no
  * session to navigate with, and a rail whose every link bounces back to the
  * sign-in form is a rail that teaches somebody the portal is broken.
+ *
+ * `badges` are counted on the server by the root layout (yuvoy-operator#42)
+ * and only drawn here. This component cannot read them itself: it is a client
+ * component, and the counts come from `/operator/v1`, which a browser is never
+ * allowed to call.
  */
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  badges,
+}: {
+  children: ReactNode;
+  badges?: NavBadges;
+}) {
   const bare = isBareRoute(usePathname());
 
   return (
@@ -48,7 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <p className="label text-cream/70 mt-3">For operators</p>
         </div>
         <nav aria-label="Primary" className="px-3">
-          <NavList orientation="rail" />
+          <NavList orientation="rail" badges={badges} />
         </nav>
       </aside>
 
@@ -56,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main id="main" className="flex min-w-0 flex-1 flex-col">
           {children}
         </main>
-        <TabBar />
+        <TabBar badges={badges} />
       </div>
     </div>
   );

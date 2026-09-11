@@ -15,6 +15,9 @@ vi.mock("./actions", () => ({
   markAttendance: (prev: unknown, form: FormData) => markAttendance(prev, form),
   sendRelay: vi.fn(async () => ({})),
 }));
+vi.mock("@/app/bookings/cash-actions", () => ({
+  recordCashCollected: vi.fn(async () => ({})),
+}));
 
 const party = {
   bookingId: "bk_1",
@@ -25,12 +28,21 @@ const party = {
   arrived: false,
 };
 
+const TZ = "Asia/Kolkata";
+
 describe("PartyRow — terminal outcomes", () => {
   it("asks before recording a no-show, and records it on the second tap", async () => {
     const user = userEvent.setup();
     render(
       <ul>
-        <PartyRow party={party} slotId="slot_dawn" departed screening={null} />
+        <PartyRow
+          party={party}
+          slotId="slot_dawn"
+          departed
+          screening={null}
+          cash={null}
+          timezone={TZ}
+        />
       </ul>,
     );
 
@@ -51,7 +63,14 @@ describe("PartyRow — terminal outcomes", () => {
     const user = userEvent.setup();
     render(
       <ul>
-        <PartyRow party={party} slotId="slot_dawn" departed screening={null} />
+        <PartyRow
+          party={party}
+          slotId="slot_dawn"
+          departed
+          screening={null}
+          cash={null}
+          timezone={TZ}
+        />
       </ul>,
     );
     await user.click(screen.getByRole("button", { name: "Completed" }));
@@ -64,7 +83,14 @@ describe("PartyRow — terminal outcomes", () => {
     const user = userEvent.setup();
     render(
       <ul>
-        <PartyRow party={party} slotId="slot_dawn" departed screening={null} />
+        <PartyRow
+          party={party}
+          slotId="slot_dawn"
+          departed
+          screening={null}
+          cash={null}
+          timezone={TZ}
+        />
       </ul>,
     );
     await user.click(screen.getByRole("button", { name: "Here" }));
@@ -81,6 +107,8 @@ describe("PartyRow — the medical screener", () => {
           slotId="slot_dawn"
           departed
           screening={screening}
+          cash={null}
+          timezone={TZ}
         />
       </ul>,
     );
@@ -154,9 +182,109 @@ describe("PartyRow — the medical screener", () => {
             slotId="slot_dawn"
             departed
             screening={null}
+            cash={null}
+            timezone={TZ}
           />
         </ul>,
       ),
     ).not.toThrow();
+  });
+});
+
+describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
+  const owed = { collectPaise: 900_000, collected: false };
+  const cashParty = { ...party, state: "paid_pending_ops" };
+
+  it("offers taking the cash as its own act, beside arriving and not instead of it", () => {
+    render(
+      <ul>
+        <PartyRow
+          party={cashParty}
+          slotId="slot_cash"
+          departed={false}
+          screening={null}
+          cash={owed}
+          timezone={TZ}
+        />
+      </ul>,
+    );
+    expect(screen.getByRole("button", { name: "Here" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Cash taken" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("₹9,000 to take in cash")).toBeInTheDocument();
+  });
+
+  it("offers a booking paid online nothing to collect", () => {
+    render(
+      <ul>
+        <PartyRow
+          party={party}
+          slotId="slot_cash"
+          departed={false}
+          screening={null}
+          cash={null}
+          timezone={TZ}
+        />
+      </ul>,
+    );
+    expect(screen.queryByRole("button", { name: /Cash taken/ })).toBeNull();
+    expect(screen.queryByText(/in cash/)).toBeNull();
+  });
+
+  it("never offers a hold a collection — it is not a booking yet", () => {
+    render(
+      <ul>
+        <PartyRow
+          party={{ ...party, bookingId: "", state: "holding" }}
+          slotId="slot_cash"
+          departed={false}
+          screening={null}
+          cash={owed}
+          timezone={TZ}
+        />
+      </ul>,
+    );
+    expect(screen.queryByRole("button", { name: /Cash taken/ })).toBeNull();
+  });
+
+  it("warns before a trip is completed with its cash unrecorded", async () => {
+    /*
+      The API takes cash only from a `paid_pending_ops` or `confirmed` booking,
+      so completing first strands the notes in the operator's hand for good.
+    */
+    const user = userEvent.setup();
+    render(
+      <ul>
+        <PartyRow
+          party={{ ...party, state: "confirmed" }}
+          slotId="slot_cash"
+          departed
+          screening={null}
+          cash={owed}
+          timezone={TZ}
+        />
+      </ul>,
+    );
+    await user.click(screen.getByRole("button", { name: "Completed" }));
+    expect(screen.getByText(/Record the cash first/)).toBeInTheDocument();
+  });
+
+  it("says nothing about cash when completing a booking with none owed", async () => {
+    const user = userEvent.setup();
+    render(
+      <ul>
+        <PartyRow
+          party={party}
+          slotId="slot_dawn"
+          departed
+          screening={null}
+          cash={null}
+          timezone={TZ}
+        />
+      </ul>,
+    );
+    await user.click(screen.getByRole("button", { name: "Completed" }));
+    expect(screen.queryByText(/Record the cash first/)).toBeNull();
   });
 });

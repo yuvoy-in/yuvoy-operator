@@ -84,6 +84,20 @@ export interface StatusCopy {
   accountGap: boolean;
 }
 
+/*
+  THE DEMO'S WORDS — yuvoy-operator#44.
+
+  "Three states — Live accepts bookings, Paused is operator-disabled, In review
+  has been submitted and has no pause/resume button." `live` read "On sale",
+  `withdrawn` "Off sale" and `in_review` "With us"; they now read as the
+  product names them, and every body still says who has the listing next.
+
+  `withdrawn` is the one whose MEANING changed, not only its word. Since
+  D-032.4 (yuvoy-api#157) putting a listing back is the operator's own switch
+  and is immediate, so "send a change to put it back in front of us" became
+  false twice over: approving an edit never republished a withdrawn listing,
+  and nothing waits on us any more.
+*/
 const STATUS: Record<ListingStatus, StatusCopy> = {
   draft: {
     label: "Draft",
@@ -94,7 +108,7 @@ const STATUS: Record<ListingStatus, StatusCopy> = {
     accountGap: false,
   },
   in_review: {
-    label: "With us",
+    label: "In review",
     body: "We are reading it. Nothing is on sale until it is approved.",
     selling: false,
     canSubmit: false,
@@ -102,7 +116,7 @@ const STATUS: Record<ListingStatus, StatusCopy> = {
     accountGap: false,
   },
   live: {
-    label: "On sale",
+    label: "Live",
     body: "Travellers can book this.",
     selling: true,
     canSubmit: true,
@@ -110,7 +124,7 @@ const STATUS: Record<ListingStatus, StatusCopy> = {
     accountGap: false,
   },
   live_changes_in_review: {
-    label: "On sale · edit with us",
+    label: "Live · edit in review",
     /*
       The sentence the contract asks clients to say, because "the obvious
       assumption is the opposite": an edit under review does NOT take a live
@@ -132,8 +146,8 @@ const STATUS: Record<ListingStatus, StatusCopy> = {
     accountGap: false,
   },
   withdrawn: {
-    label: "Off sale",
-    body: "Taken off sale. Send a change to put it back in front of us.",
+    label: "Paused",
+    body: "You paused it, so nobody new can book it. Resume it when you are ready — it goes straight back on sale.",
     selling: false,
     canSubmit: true,
     needsAnswer: false,
@@ -383,15 +397,17 @@ export function describeBlockers(
 }
 
 /**
- * Why an operator is taking their own listing off sale — yuvoy-operator#30 §6.
+ * Why an operator is pausing their own listing — yuvoy-operator#30 §6, #44.
  *
  * The thing they could not do: only an admin could take a listing off sale, so
  * an operator whose boat was out of the water for a month had to ask somebody
  * at Yuvoy — a queue with a portal in front of it.
  *
- * A closed set in the contract, so it is rendered rather than paraphrased.
+ * A closed set in the contract — the same five on `pause` as on `withdraw`,
+ * which is the same handler under its older name — so it is rendered rather
+ * than paraphrased.
  */
-export const WITHDRAW_REASONS = [
+export const PAUSE_REASONS = [
   { code: "seasonal_close", label: "Closed for the season" },
   { code: "not_running", label: "Not running this at the moment" },
   { code: "price_wrong", label: "The price is wrong" },
@@ -399,4 +415,4 @@ export const WITHDRAW_REASONS = [
   { code: "other", label: "Something else" },
 ] as const;
 
-export type WithdrawReason = (typeof WITHDRAW_REASONS)[number]["code"];
+export type PauseReason = (typeof PAUSE_REASONS)[number]["code"];

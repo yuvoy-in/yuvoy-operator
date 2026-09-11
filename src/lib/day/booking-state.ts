@@ -1,3 +1,6 @@
+import type { BookingCash } from "@/lib/money/bookings";
+import { formatPaise } from "@/lib/format/money";
+
 /**
  * A booking's state, in the operator's words.
  *
@@ -47,9 +50,10 @@ const STATES: Record<string, BookingStateCopy> = {
   */
   arrived: { label: "Checked in", live: true },
   /*
-    The one that must never reach a screen unmapped. It means the traveller
-    has paid and the booking is not yet visible to the projection — a race
-    window of milliseconds to seconds, not a waiting room.
+    Paid, and not yet visible to the projection — a race window of
+    milliseconds to seconds, not a waiting room. TRUE ONLY OF A CARD BOOKING:
+    see `describeBookingState` for the cash booking that sits in the same
+    state meaning the opposite.
   */
   paid_pending_ops: { label: "Payment clearing", live: true },
   declined: { label: "Not taken · refunded", live: false },
@@ -58,11 +62,61 @@ const STATES: Record<string, BookingStateCopy> = {
   no_show: { label: "Did not board", live: false },
 };
 
+/** The states in which the counter can still take the money. The API's own set. */
+const CAN_TAKE_CASH = new Set(["paid_pending_ops", "confirmed", "arrived"]);
+
+/**
+ * The words for a booking's state — and its cash, which is not optional.
+ *
+ * ## Why `cash` is a required parameter
+ *
+ * yuvoy-operator#40. A cash booking sits in `paid_pending_ops` from the moment
+ * the traveller commits until the operator records the notes in their hand,
+ * and this function used to read state alone — so it said "Payment clearing"
+ * about a booking where nothing is clearing and the operator is the one who
+ * has to collect ₹10,000. Seen in production on YV-5DT6RKVQ.
+ *
+ * Required rather than optional so the next screen that describes a booking
+ * cannot forget to pass it: `describeBookingState(b.state)` does not compile.
+ * Pass `undefined` for a booking that genuinely has none — that is a decision
+ * written at the call site, not a default nobody chose.
+ */
 export function describeBookingState(
   state: string | undefined,
+  cash: BookingCash | undefined,
 ): BookingStateCopy | null {
   const key = state?.trim().toLowerCase();
   if (!key) return null;
+
+  if (cash) {
+    if (!cash.collected && CAN_TAKE_CASH.has(key)) {
+      /*
+        The actionable state — "what puts this booking on somebody's list for
+        the morning". Named for the act and the amount, never for a bank.
+      */
+      return {
+        label:
+          cash.collectPaise === null
+            ? "Collect cash"
+            : `Collect ${formatPaise(cash.collectPaise)}`,
+        live: true,
+      };
+    }
+    if (key === "paid_pending_ops") {
+      /*
+        Collected, and the state has not caught up. The API moves a cash
+        booking to `confirmed` in the same write that records the notes, so
+        this is a read racing that write — and "Payment clearing" is exactly
+        the sentence it must not fall through to.
+      */
+      return { label: "Cash taken", live: true };
+    }
+    if (key === "declined") {
+      // Nothing was ever charged on a cash booking, so nothing was refunded.
+      return { label: "Not taken", live: false };
+    }
+  }
+
   return STATES[key] ?? null;
 }
 
@@ -74,5 +128,5 @@ export function describeBookingState(
  * a traveller a seat on.
  */
 export function isUpcomingBooking(state: string | undefined): boolean {
-  return describeBookingState(state)?.live === true;
+  return describeBookingState(state, undefined)?.live === true;
 }

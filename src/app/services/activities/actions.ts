@@ -6,7 +6,11 @@ import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { CATEGORIES, type Category } from "@/lib/services/vocabulary";
-import { WITHDRAW_REASONS, type WithdrawReason } from "@/lib/services/listings";
+import {
+  PAUSE_REASONS,
+  describeBlockers,
+  type PauseReason,
+} from "@/lib/services/listings";
 
 /**
  * O7 — an operator writes their own listing, and proposes changes to it.
@@ -491,11 +495,11 @@ export async function submitRevision(
   return { submitted: true };
 }
 
-export interface WithdrawState {
+export interface PauseState {
   message?: string;
   /**
    * What was typed, handed back so a refusal does not empty the form. See the
-   * note in `withdrawListing`.
+   * note in `pauseListing`.
    */
   typed?: { reasonCode?: string; confirmExperienceId?: string };
   /** Bumped per attempt, so the form remounts and re-reads its defaults. */
@@ -510,28 +514,37 @@ export interface WithdrawState {
   };
 }
 
-const withdrawSchema = z.object({
+const pauseSchema = z.object({
   id: z.string().min(1),
   reasonCode: z.enum(
-    WITHDRAW_REASONS.map((r) => r.code) as [
-      WithdrawReason,
-      ...WithdrawReason[],
-    ],
+    PAUSE_REASONS.map((r) => r.code) as [PauseReason, ...PauseReason[]],
   ),
   note: z.string().trim().optional(),
   confirmExperienceId: z.string().trim().min(1),
 });
 
 /**
- * Taking your own listing off sale — yuvoy-operator#30 §6.
+ * Pausing your own listing — yuvoy-operator#30 §6, #44.
+ *
+ * `POST /experiences/{id}/pause`, "the word the product uses". It is the same
+ * handler as `withdraw` under its older name, same body, same answer; the old
+ * name is kept by the API for a deployed portal and is no longer called here.
  *
  * ## It cancels nothing, and the screen says so twice
  *
- * "This cancels nothing and refunds nothing. Future departures keep their rows
- * and simply stop being offered; confirmed bookings are untouched and you still
- * owe those travellers the trip." An operator who assumes otherwise **will not
- * turn up**, which is the single worst outcome this action can produce — so the
- * form says it before, and the API's own `note` says it after, verbatim.
+ * "Pausing cancels nothing and refunds nothing. Everybody already booked still
+ * has their seat and still expects you at the meeting point." An operator who
+ * assumes otherwise **will not turn up**, which is the single worst outcome
+ * this action can produce — so the form says it before, and the API's own
+ * `note` says it after, verbatim.
+ *
+ * ## What is NOT rendered from the answer
+ *
+ * `next`. The API still sends "ask us to put it back … we check it before
+ * travellers see it again", which D-032.4 made false: resuming is the
+ * operator's own switch and is immediate. Rendering the server's sentence is
+ * the rule; rendering a server sentence that sends an operator to wait for a
+ * review that does not exist is not. Raised on yuvoy-operator#44.
  *
  * ## Confirmed by typing the id, not by a checkbox
  *
@@ -540,11 +553,11 @@ const withdrawSchema = z.object({
  * sale". The comparison happens here as well as at the API, because a Server
  * Action is a public POST endpoint whatever the form does.
  */
-export async function withdrawListing(
-  _prev: WithdrawState,
+export async function pauseListing(
+  _prev: PauseState,
   form: FormData,
-): Promise<WithdrawState> {
-  const parsed = withdrawSchema.safeParse({
+): Promise<PauseState> {
+  const parsed = pauseSchema.safeParse({
     id: String(form.get("id") ?? ""),
     reasonCode: String(form.get("reasonCode") ?? ""),
     note: String(form.get("note") ?? ""),
@@ -565,7 +578,7 @@ export async function withdrawListing(
     confirmExperienceId:
       String(form.get("confirmExperienceId") ?? "") || undefined,
   };
-  const again = (message: string): WithdrawState => ({
+  const again = (message: string): PauseState => ({
     message,
     typed,
     attempt: (_prev.attempt ?? 0) + 1,
@@ -585,13 +598,13 @@ export async function withdrawListing(
   const { token, me } = await requireOperator();
   if (!me.canManage) {
     return again(
-      "Your role cannot take a listing off sale. An owner or manager has to.",
+      "Your role cannot pause a listing. An owner or manager has to.",
     );
   }
 
   try {
     const { data, error } = await operatorApi(token).POST(
-      "/experiences/{id}/withdraw",
+      "/experiences/{id}/pause",
       {
         params: { path: { id } },
         body: { reasonCode, confirmExperienceId, ...(note ? { note } : {}) },
@@ -619,19 +632,135 @@ export async function withdrawListing(
     }
     if (err instanceof OperatorApiError) {
       if (err.code === "already_off_sale") {
-        return again("This one is already off sale.");
+        return again("This one is not on sale, so there is nothing to pause.");
       }
-      if (err.code === "cannot_withdraw") {
+      /*
+        Somebody is mid-checkout on it. "Withdrawing now would strand them at
+        the payment step … holds are ten minutes, and withdrawing is never
+        urgent." Said as a wait, because that is the whole answer.
+      */
+      if (err.code === "sale_in_progress") {
         return again(
-          "This listing cannot be taken off sale from here. Message us and a person will do it.",
+          "Somebody is paying for this listing right now. Try again in a few minutes — nothing changed.",
         );
       }
       if (err.status === 403) {
         return again(
-          "Your role cannot take a listing off sale. An owner or manager has to.",
+          "Your role cannot pause a listing. An owner or manager has to.",
         );
       }
+      if (err.isNotFound) {
+        return again("That listing is not on this account any more.");
+      }
     }
-    return again("Could not take it off sale. Nothing changed.");
+    return again("Could not pause it. Nothing changed.");
+  }
+}
+
+export interface ResumeState {
+  message?: string;
+  /** What the API says the listing is now. See `resumeListing` for `in_review`. */
+  done?: { state: "published" | "in_review" };
+}
+
+const resumeSchema = z.object({ id: z.string().min(1) });
+
+/** `details.missing` off a refusal, as field names — or nothing. */
+function missingFields(details: unknown): string[] {
+  if (!details || typeof details !== "object") return [];
+  const missing = (details as { missing?: unknown }).missing;
+  return Array.isArray(missing)
+    ? missing.filter((m): m is string => typeof m === "string" && m !== "")
+    : [];
+}
+
+/**
+ * Resuming your own paused listing — yuvoy-operator#44, D-032.4.
+ *
+ * `POST /experiences/{id}/resume`. "Immediate. No queue, no admin." The owner
+ * reversed the morning's review queue after reading the product demo: a pause
+ * is "the boat is out of the water this fortnight", and if coming back costs a
+ * wait nobody pauses at all — they leave the listing selling and decline the
+ * bookings, which is worse for the traveller.
+ *
+ * ## Two answers, and neither is taken on the API's word alone
+ *
+ *   - `published` — back on sale. The API's `next` says "Travellers can see it
+ *     and book it now", unconditionally, and that is not always true: "a
+ *     listing resumed while your insurance is lapsed or your account is not
+ *     live is `published` and still unsellable". So the screen says it is back
+ *     on sale and that the listing's own label says whether anything on the
+ *     account still stops sales — which the re-rendered row does.
+ *   - `in_review` — a listing awaiting its FIRST approval "does not move".
+ *     Idempotent and not an error, and not a sentence about being on sale.
+ *
+ * ## Refused with what is missing
+ *
+ * `400` carries `details.missing` in the revision body's spelling, which
+ * `describeBlockers` already turns into words — so the refusal names the
+ * fields rather than saying "something is missing".
+ */
+export async function resumeListing(
+  _prev: ResumeState,
+  form: FormData,
+): Promise<ResumeState> {
+  const parsed = resumeSchema.safeParse({ id: String(form.get("id") ?? "") });
+  if (!parsed.success) {
+    return {
+      message: "That listing could not be resumed. Refresh and try again.",
+    };
+  }
+  const { id } = parsed.data;
+
+  const { token, me } = await requireOperator();
+  if (!me.canManage) {
+    return {
+      message: "Your role cannot resume a listing. An owner or manager has to.",
+    };
+  }
+
+  try {
+    const { data, error } = await operatorApi(token).POST(
+      "/experiences/{id}/resume",
+      { params: { path: { id } } },
+    );
+    if (error) throw error;
+
+    // The row's own label moves — Paused becomes Live, or Not selling — and
+    // says more about the listing than a message could.
+    revalidatePath("/services/activities");
+    return {
+      done: { state: data.state === "in_review" ? "in_review" : "published" },
+    };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return { message: "No signal. Nothing changed — it is still paused." };
+    }
+    if (err instanceof OperatorApiError) {
+      if (err.status === 400) {
+        const missing = missingFields(err.details);
+        return {
+          message: missing.length
+            ? `It cannot go back on sale yet. Still missing: ${describeBlockers(missing).join(", ")}.`
+            : "It cannot go back on sale yet — something it needs is missing. Propose a change to fill it in.",
+        };
+      }
+      if (err.code === "not_withdrawn") {
+        return {
+          message:
+            "It is not paused, so there is nothing to resume. Refresh to see where it is.",
+        };
+      }
+      if (err.status === 403) {
+        return {
+          message:
+            "Your role cannot resume a listing. An owner or manager has to.",
+        };
+      }
+      if (err.isNotFound) {
+        return { message: "That listing is not on this account any more." };
+      }
+    }
+    return { message: "Could not resume it. Nothing changed." };
   }
 }

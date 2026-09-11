@@ -688,6 +688,6 @@ test("attaching to a listing nobody can book says so", async ({ page }) => {
   await expect(row.getByText(/nobody will see this yet/)).toBeVisible();
 
   // A live listing draws no warning.
-  await select.selectOption({ label: "Reef dive · On sale" });
+  await select.selectOption({ label: "Reef dive · Live" });
   await expect(row.getByText(/nobody will see this yet/)).toBeHidden();
 });

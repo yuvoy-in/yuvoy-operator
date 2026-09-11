@@ -4,6 +4,7 @@ import { requireOperator } from "@/lib/auth/session";
 import { listOpenRequests } from "@/lib/day/requests";
 import { urgencyOf } from "@/lib/day/request-types";
 import { listBookings } from "@/lib/money/fetch";
+import { describeCash } from "@/lib/money/bookings";
 import {
   describeBookingState,
   isUpcomingBooking,
@@ -221,7 +222,12 @@ function BookingList({
       ) : (
         <ul className="mt-3 space-y-3">
           {bookings.map((b) => {
-            const state = describeBookingState(b.state);
+            /*
+              With its cash — yuvoy-operator#40. A cash booking waiting on the
+              operator reads "Collect ₹9,000", never the card sentence
+              "Payment clearing" its state would otherwise produce.
+            */
+            const state = describeBookingState(b.state, b.cash);
             return (
               <li key={b.id}>
                 <Link
@@ -264,6 +270,16 @@ function BookingList({
                   <p className="text-forest/70 mt-1 text-sm">
                     {b.guests} {b.guests === 1 ? "guest" : "guests"}
                   </p>
+                  {/*
+                    Once taken, the row says so and when. While it is owed the
+                    chip already carries the amount, and a second line saying
+                    the same would bury the rest of the row.
+                  */}
+                  {b.cash?.collected ? (
+                    <p className="text-forest/70 mt-1 text-sm">
+                      {describeCash(b.cash, b.timezone)}
+                    </p>
+                  ) : null}
                 </Link>
               </li>
             );

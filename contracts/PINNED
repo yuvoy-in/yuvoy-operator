@@ -15,36 +15,46 @@
 # `pnpm contract:check` fails the build if this copy stops matching the ref.
 repo=yuvoy-in/yuvoy-api
 path=contracts/operator-openapi.yaml
-# 10 Sep 2026, tenth bump. Forward from 3a643cde69c0. Four new operations and
-# one new schema; nothing was removed and nothing this portal reads changed
-# shape.
+# 11 Sep 2026, eleventh bump. Forward from 64d49ee5481e across yuvoy-api
+# #151–#160. Six new operations and one new object on a booking; nothing was
+# removed and nothing this portal already read changed shape.
 #
 # Consumed in this change:
-#   - `GET /commission-owed` (op#40 §2). What the operator owes us on cash we
-#     never handled. There is no payout to take it out of, so it is a balance —
-#     and the trips behind it are listed, which is the point of the screen.
+#   - `OperatorBooking.cash` (op#40 §1, yuvoy-api#156). Present ONLY on a
+#     booking the traveller pays at the counter — the fare to take, whether it
+#     was taken, and what was recorded. Branched on the key existing, never on
+#     `state`: `paid_pending_ops` is what a card booking looks like in the same
+#     instant, which is how YV-5DT6RKVQ read "Payment clearing" in production.
+#   - `POST /bookings/{id}/cash-collected` (op#40 §1). On the manifest, beside
+#     arriving and never merged with it, and on the booking's own page.
+#     `Manifest.parties[]` still carries no cash, so the manifest joins
+#     `GET /bookings` by booking id.
+#   - `POST /experiences/{id}/pause` and `/resume` (op#44, yuvoy-api#157). The
+#     operator's own switch, both ways, immediate. `withdraw` and `relist` are
+#     the same handlers under the old names and are no longer called here.
+#
+# Read, and deliberately NOT taken at face value:
+#   - A cash booking's `money` arrives as gross 0, commission on the fare, net
+#     negative — `captured_amount_paise` is 0 rather than null. As arithmetic
+#     it tells an operator they lost money on a trip they were paid for in
+#     full, so `toBookingLine` drops `money` whenever `cash` is present.
+#   - `GET /bookings?from&to` selects on UTC day boundaries, not the market's.
+#     The manifest's cash join asks for both readings of the departure's day.
+#   - `POST /experiences/{id}/resume` answers "Travellers can see it and book
+#     it now" unconditionally, including for a listing whose account cannot
+#     sell. That sentence is not rendered. All three raised on the issues.
 #
 # NOT consumed here, and each needs its own change:
-#   - `POST /bookings/{id}/cash-collected` (op#40 §1). The endpoint is fine;
-#     the MANIFEST is what is missing. A party carries no fare, no way to tell
-#     a cash booking from a card one, and nowhere to read back a collection
-#     that was already recorded — so the button cannot be put on the right
-#     rows, cannot name an amount, and would forget itself on reload. Raised on
-#     yuvoy-operator#40 and reassigned; the screen lands the day the manifest
-#     says which parties owe cash.
-#   - `POST /experiences/{id}/relist` and `RevisionOutcome`. A listing withdrawn
-#     by its operator can be put back on sale; this portal has the withdraw
-#     half only. Its own issue.
-#   - `POST /slots/{id}/time`. Moving a departure's time. Nothing in the
+#   - `GET`/`PUT /story` and `POST`/`DELETE /story/photos` (op#41).
+#   - `PATCH /slots/{id}/time`. Moving a departure's time. Nothing in the
 #     calendar offers it yet.
-#   - `202` on the logo upload, for an account already LIVE — a new mark is
-#     reviewed before it replaces the one on every reel. The logo screen
-#     treats every 2xx alike today and would tell an operator the change is
-#     live when it is pending. Its own issue.
+#   - `202` on the logo PUT for an account already LIVE — a new mark is
+#     reviewed before it replaces the one on every reel. The logo screen still
+#     treats every 2xx alike.
 #
 # `git ls-remote` was the check for this ref, not `gh api .../commits/master`,
 # which served a five-minute-stale SHA twice on 8 Sep and cost a retracted
 # issue.
-ref=64d49ee5481e96ca1313c32941672df9f7e9f477
+ref=79ce45afd3fb78ed35e8b590c278d46eb463fd2c
 branch=master
-pinned_on=2026-09-10
+pinned_on=2026-09-11

@@ -106,8 +106,8 @@ export default async function ActivitiesPage() {
   const destinations = destinationChoices(vocabulary);
 
   return (
-    <Screen stageLabel="Services">
-      <p className="eyebrow text-terra-deep">Services</p>
+    <Screen stageLabel="Listings">
+      <p className="eyebrow text-terra-deep">What you sell</p>
       {/* "Listing" everywhere an operator edits — D-031 C10,
           yuvoy-operator#36. The nav said "Manage services" and the screen
           under it said "Activities", while the API calls them experiences

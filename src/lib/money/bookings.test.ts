@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   bookingReconciles,
   byDeparture,
+  describeCash,
+  toBookingCash,
   toBookingLine,
   type OperatorBooking,
 } from "./bookings";
@@ -106,5 +108,122 @@ describe("what one booking contributed", () => {
       state: "",
       money: undefined,
     });
+    expect(line.cash).toBeUndefined();
+  });
+});
+
+describe("a booking paid at the counter — yuvoy-operator#40 §1", () => {
+  it("is a cash booking exactly when the wire carries `cash`", () => {
+    // Presence is the signal. "Absent means they have already paid us and you
+    // collect nothing" — so a card booking in `paid_pending_ops` stays a card
+    // booking, however alike the two states look.
+    expect(
+      toBookingLine(booking({ state: "paid_pending_ops" })).cash,
+    ).toBeUndefined();
+    expect(
+      toBookingLine(
+        booking({
+          state: "paid_pending_ops",
+          cash: { collectPaise: 1_000_000, collected: false },
+        }),
+      ).cash,
+    ).toEqual({ collectPaise: 1_000_000, collected: false });
+  });
+
+  it("never shows card arithmetic on a cash booking", () => {
+    /*
+      What the API really sends: captured is 0, the commission on the fare is
+      stored, so gross ₹0 − commission ₹1,500 = net −₹1,500, and it even
+      reconciles. Rendered, that tells an operator they lost money on a trip
+      they were paid for in full.
+    */
+    const line = toBookingLine(
+      booking({
+        cash: { collectPaise: 1_000_000, collected: false },
+        money: {
+          grossPaise: 0,
+          commissionPaise: 150_000,
+          refundsPaise: 0,
+          netPaise: -150_000,
+        },
+      }),
+    );
+    expect(line.money).toBeUndefined();
+    expect(line.cash?.collectPaise).toBe(1_000_000);
+  });
+
+  it("keeps a cash booking a cash booking when the fare is unreadable", () => {
+    const cash = toBookingCash({
+      collectPaise: "lots",
+      collected: false,
+    } as unknown as OperatorBooking["cash"]);
+    expect(cash).toEqual({ collectPaise: null, collected: false });
+  });
+
+  it("reads a recorded time as a recorded collection", () => {
+    // The dangerous reading of a contradiction is "not taken": it offers the
+    // button again and asks a traveller for the money twice.
+    const cash = toBookingCash({
+      collectPaise: 1_000_000,
+      collected: false,
+      collectedAt: "2026-09-14T03:34:00Z",
+      collectedPaise: 1_000_000,
+    });
+    expect(cash?.collected).toBe(true);
+  });
+
+  it("says what to take, and after, what was taken and when", () => {
+    expect(
+      describeCash(
+        { collectPaise: 1_000_000, collected: false },
+        "Asia/Kolkata",
+      ),
+    ).toBe("₹10,000 to take in cash");
+    expect(
+      describeCash(
+        {
+          collectPaise: 1_000_000,
+          collected: true,
+          collectedAt: "2026-09-14T03:34:00Z",
+          collectedPaise: 1_000_000,
+        },
+        "Asia/Kolkata",
+      ),
+    ).toBe("₹10,000 taken · 09:04");
+  });
+
+  it("names the fare beside a collection only when less was taken", () => {
+    // The mis-key case — 300 typed for 3000 — is the one the fare exposes.
+    expect(
+      describeCash(
+        {
+          collectPaise: 1_000_000,
+          collected: true,
+          collectedAt: "2026-09-14T03:34:00Z",
+          collectedPaise: 300_000,
+        },
+        "Asia/Kolkata",
+      ),
+    ).toBe("₹3,000 taken of ₹10,000 · 09:04");
+  });
+
+  it("never says 'paid' — they were paid, we were not", () => {
+    for (const text of [
+      describeCash(
+        { collectPaise: 1_000_000, collected: false },
+        "Asia/Kolkata",
+      ),
+      describeCash({ collectPaise: null, collected: false }, "Asia/Kolkata"),
+      describeCash(
+        {
+          collectPaise: null,
+          collected: true,
+          collectedAt: "2026-09-14T03:34:00Z",
+        },
+        "Asia/Kolkata",
+      ),
+    ]) {
+      expect(text.toLowerCase()).not.toContain("paid");
+    }
   });
 });

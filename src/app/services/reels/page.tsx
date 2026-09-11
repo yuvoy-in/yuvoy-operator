@@ -110,8 +110,8 @@ export default async function ReelsPage() {
       nothing" are the same question from both ends. A back control that left
       the section would be in the way every time.
     */
-    <Screen stageLabel="Services">
-      <p className="eyebrow text-terra-deep">Services</p>
+    <Screen stageLabel="Listings">
+      <p className="eyebrow text-terra-deep">What you sell</p>
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
         Photos &amp; reels
       </h1>

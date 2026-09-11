@@ -1028,6 +1028,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/story": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your public story, as a traveller reads it
+         * @description **Not the same thing as `/profile`.** That is your LEGAL identity — legal name, entity type, GSTIN, registered address — compliance data no traveller ever sees. This is what somebody reads before deciding whether to get on a stranger's boat.
+         *
+         *     `reviewed` carries the two fields you cannot change in place. A year printed beside a verified badge is read as something we checked, and an address is somewhere a person physically walks to — both are claims a traveller acts on, so they change through us. They are returned here so you can see what is live; render them, do not offer them as inputs.
+         */
+        get: operations["getOperatorStory"];
+        /**
+         * Write your story
+         * @description `about` and `languages` only, and that is the whole point of the split: these are yours outright. Getting them wrong is embarrassing, not unsafe.
+         *
+         *     **`about` is 40 to 600 characters, or empty.** Forty because two words on a trust surface is worse than an honest blank; six hundred because nobody reads more on a phone at a jetty. Sending it empty clears it.
+         *
+         *     Duplicate and blank languages are dropped rather than refused — a list somebody tapped twice is not an error worth a screen.
+         *
+         *     Not behind step-up and not OWNER-only. Nothing here takes money, moves money, or puts anything on sale.
+         */
+        put: operations["saveOperatorStory"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/story/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a photograph of the operation
+         * @description **The boat, the shop, the crew — not the experience.** Footage of the experience belongs on a listing reel; a gallery standing in for it is the failure a video-first feed exists to prevent.
+         *
+         *     Upload the bytes through the existing image upload intent, then send the `imageId` here. The API never proxies image bytes, for the same reason the logo does not: that is an API that falls over on island 4G.
+         *
+         *     **Five maximum.** The position is chosen for you — the lowest free slot, so removing the third and adding another fills the hole rather than leaving a gap the gallery renders as a missing tile. Sending the same image twice returns the photograph you already have rather than an error.
+         */
+        post: operations["addOperatorPhoto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/story/photos/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a photograph
+         * @description Another business's photograph answers exactly as one that does not exist.
+         */
+        delete: operations["removeOperatorPhoto"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/experiences/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Put your own paused listing back on sale
+         * @description **Immediate. No queue, no admin.** The listing goes from `withdrawn` straight to `published` and travellers can book it again.
+         *
+         *     This reverses the behaviour shipped earlier the same day, in which resuming joined an admin queue (D-032.4). A pause is "the boat is out of the water this fortnight" — a fact only you know. If coming back costs a wait, nobody pauses at all: they leave the listing selling and decline the bookings, which is worse for the traveller than the friction was ever worth.
+         *
+         *     **Nothing about review is weakened by this.** Resuming changes no content — the words, the price and the reel are what was already approved, because every edit still goes through `POST /experiences/{id}/revisions`. And publication is not what protects a traveller: eligibility is re-derived on every read, so a listing resumed while your insurance is lapsed or your account is not live is `published` and still unsellable. The state says what YOU want; whether anybody can buy is decided separately.
+         *
+         *     Refused with `400` when something mandatory is missing, so you find out while the form is open rather than after putting something back that cannot sell. `details.missing` names them.
+         *
+         *     Idempotent: resuming a listing already on sale is not an error. A listing still awaiting its FIRST approval answers `in_review` and does not move — resuming cannot skip a review that has never happened.
+         *
+         *     OWNER or MANAGER — the person who can take a listing off sale is the person who puts it back.
+         *
+         *     `POST /experiences/{id}/relist` is the same operation under its older name and behaves identically. It is kept so a deployed portal does not break, and should not be used in new work.
+         */
+        post: operations["resumeExperience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/experiences/{id}/relist": {
         parameters: {
             query?: never;
@@ -1038,14 +1146,36 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Ask for a withdrawn listing to go back on sale
-         * @description The ask, not the act. Moves the listing from `withdrawn` to `in_review`, where it joins the queue an admin already works. **It does not put it in front of travellers** — only the admin publication endpoint does that, and that is deliberate.
+         * Put your own paused listing back on sale (older name for resume)
+         * @description Identical to `POST /experiences/{id}/resume` — same handler, same result. Kept so the deployed portal keeps working; use `resume` in new work.
          *
-         *     Refused with `400` when something mandatory is missing, so an operator whose listing lost a field while it was off sale finds out while the form is open rather than after two days in a queue. `details.missing` names them.
-         *
-         *     Idempotent: asking twice is not an error. OWNER or MANAGER — the person who can take a listing off sale is the person who can ask for it back.
+         *     **Its behaviour changed with D-032.4.** It used to move the listing to `in_review` and wait for an admin. It now puts it back on sale immediately.
          */
         post: operations["relistExperience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/experiences/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take your own listing off sale (same act as withdraw)
+         * @description Identical to `POST /experiences/{id}/withdraw` — same handler, same result, same request body. `pause` is the word the product uses; `withdraw` is kept so the deployed portal keeps working.
+         *
+         *     **Pausing cancels nothing and refunds nothing.** Everybody already booked still has their seat and still expects you at the meeting point. It stops NEW bookings, and that is all it does.
+         *
+         *     Put it back yourself with `POST /experiences/{id}/resume`.
+         */
+        post: operations["pauseExperience"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1069,9 +1199,9 @@ export interface paths {
          *
          *     Not a state machine. The admin endpoint carries four publication states; the transitions an operator owns are "off" and "please put it back".
          *
-         *     **Putting it back goes through review** — `POST /operator/v1/experiences/{id}/relist` — for the same reason approving a copy edit does not republish a withdrawn listing: putting something back in front of travellers is a deliberate decision, not a side effect.
+         *     **You put it back yourself** — `POST /experiences/{id}/resume` — and it is on sale immediately, with no queue and no admin (D-032.4).
          *
-         *     This used to say "send a revision", and that was **false**. Approval republishes `draft` and `in_review` and leaves `withdrawn` alone, so an operator following this sentence waited for something that was never going to happen. There is an endpoint for it now.
+         *     Approving a copy edit still does NOT republish it, and that has not changed: an edit and "put this back on sale" are different acts, and only one of them is a decision about what travellers can see. What changed is who makes that decision for a listing that was already approved: you do.
          *
          *     OWNER or MANAGER only.
          */
@@ -1680,6 +1810,25 @@ export interface components {
             };
             /** Format: date-time */
             createdAt?: string;
+            /**
+             * @description **Present only when the traveller is paying you at the counter.** Absent means they have already paid us and you collect nothing.
+             *
+             *     Without this you cannot tell a cash booking from a card one, and `paid_pending_ops` reads as "payment clearing" — which on a cash booking is the opposite of the truth. Nothing is clearing. You are the one who has to collect, and the booking is not settled until you record it.
+             *
+             *     `collected: false` is the ACTIONABLE state — it is what puts this booking on somebody's list for the morning. Record it with `POST /bookings/{id}/cash-collected`.
+             *
+             *     Note `collectPaise` is the FARE and is not the same number as `money.grossPaise`, which is what WE captured — zero here, for the whole life of the booking, because the money never passes through us.
+             */
+            cash?: {
+                /** @description What to take from them, in INR paise. */
+                collectPaise: number;
+                /** @description Whether you have recorded taking it. */
+                collected: boolean;
+                /** Format: date-time */
+                collectedAt?: string;
+                /** @description What you reported taking, which may be less than the fare if you gave them something off. */
+                collectedPaise?: number;
+            };
             /**
              * @description What this one booking contributed, so an operator asking "why is this two hundred rupees less than I expected" can answer it here rather than by messaging us.
              *
@@ -3975,7 +4124,111 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    relistExperience: {
+    getOperatorStory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The story. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        about: string;
+                        languages: string[];
+                        photos: {
+                            id: string;
+                            position: number;
+                            url?: string;
+                        }[];
+                        reviewed: {
+                            operatingSince?: number;
+                            findThemAt?: string;
+                            why?: string;
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    saveOperatorStory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    about?: string;
+                    languages?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. The whole story comes back. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    addOperatorPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    imageId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        position: number;
+                        url?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description You already have five. Remove one first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeOperatorPhoto: {
         parameters: {
             query?: never;
             header?: never;
@@ -3986,7 +4239,29 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Asked. It is in the queue, not on sale. */
+            /** @description Gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resumeExperience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Back on sale. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3994,8 +4269,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        state: "in_review";
-                        /** @description Say this out loud. An operator who has asked needs to know it is not live yet, or they will assume it is and stop checking. */
+                        state: "published" | "in_review";
+                        /** @description Say this out loud, so an operator knows it is live and does not go looking for a queue to wait in. */
                         next: string;
                     };
                 };
@@ -4012,7 +4287,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description `not_withdrawn` — the listing is not off sale. */
+            /** @description `not_withdrawn` — the listing is in a state that cannot resume. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4021,6 +4296,90 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    relistExperience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Back on sale. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        state: "published" | "in_review";
+                        next: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `not_withdrawn` — the listing is in a state that cannot resume. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    pauseExperience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    reasonCode: "seasonal_close" | "not_running" | "price_wrong" | "details_wrong" | "other";
+                    note?: string;
+                    /** @description Must equal the id in the path. Not a boolean: a checkbox is one mis-tap on a wet phone away from taking a live listing off sale. */
+                    confirmExperienceId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Off sale. Nothing was cancelled and nothing was refunded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        state: "withdrawn";
+                        upcomingDepartures: number;
+                        bookingsToHonour: number;
+                        guestsToHonour: number;
+                        /** @description Present when `bookingsToHonour` is above zero, and clients must render it verbatim. An operator who assumes pausing cancelled the bookings will simply not turn up. */
+                        note?: string;
+                        next: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     withdrawOperatorExperience: {

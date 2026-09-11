@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { readSessionToken, requireOperator } from "@/lib/auth/session";
 import { getManifest } from "@/lib/day/manifest";
-import { orderParties, isHolding } from "@/lib/day/types";
+import { orderParties, isHolding, type PartyForClient } from "@/lib/day/types";
+import type { BookingCash } from "@/lib/money/bookings";
+import { cashForDeparture } from "@/lib/money/fetch";
 import { screeningSignal, screeningSummary } from "@/lib/day/screening";
 import { OperatorApiError } from "@/lib/api/errors";
 import {
@@ -138,6 +140,36 @@ export default async function ManifestPage({
   const confirmedRows = rows.filter((r) => !isHolding(r.party));
   const holdRows = rows.filter((r) => isHolding(r.party));
 
+  /*
+    CASH AT THE COUNTER — yuvoy-operator#40 §1.
+
+    The manifest carries no cash; `GET /bookings` does. So this is one read for
+    the whole departure, joined by booking id, and only when there is a booking
+    to join — a departure of holds, or one called off, asks nothing.
+
+    Three answers per party, and the third is kept apart on purpose: paying at
+    the counter (`BookingCash`), not (`null` — paid online, or a hold), and
+    COULD NOT TELL (`undefined` — the read failed, or it did not return that
+    booking). Could-not-tell is said above the list rather than drawn as
+    nothing to collect, because the failure that way is somebody waved onto a
+    boat still owing ₹10,000.
+  */
+  const bookedRows = rows.filter(({ party }) => Boolean(party.bookingId));
+  const cashByBooking =
+    startsAt && bookedRows.length > 0 && !manifest.calledOff
+      ? await cashForDeparture(token, startsAt, timezone)
+      : null;
+  const cashOf = (party: PartyForClient): BookingCash | null | undefined => {
+    if (!party.bookingId) return null;
+    if (!cashByBooking) return undefined;
+    return cashByBooking.has(party.bookingId)
+      ? (cashByBooking.get(party.bookingId) ?? null)
+      : undefined;
+  };
+  const unchecked = manifest.calledOff
+    ? 0
+    : bookedRows.filter(({ party }) => cashOf(party) === undefined).length;
+
   // Read once, in the async work, and passed down. A clock read during render
   // is impure and the React compiler refuses it — and a "has it departed yet"
   // that flips between two renders is a set of buttons appearing and vanishing
@@ -251,6 +283,21 @@ export default async function ManifestPage({
         </section>
       ) : null}
 
+      {unchecked > 0 ? (
+        <div className="mt-8">
+          <Problem
+            title={
+              unchecked === bookedRows.length
+                ? "We could not check who owes cash at the counter"
+                : unchecked === 1
+                  ? "We could not check whether one booking here owes cash"
+                  : `We could not check whether ${unchecked} bookings here owe cash`
+            }
+            body="Anybody paying you at the counter still has to hand it over. Each booking's own page says how it is paid — open it from Bookings before they board."
+          />
+        </div>
+      ) : null}
+
       <section className="mt-10" aria-labelledby="confirmed">
         <h2 id="confirmed" className="label text-forest/75">
           Coming
@@ -271,6 +318,8 @@ export default async function ManifestPage({
                 slotId={slotId}
                 departed={departed}
                 screening={signal}
+                cash={cashOf(party)}
+                timezone={timezone}
               />
             ))}
           </ul>
@@ -299,6 +348,8 @@ export default async function ManifestPage({
                 slotId={slotId}
                 departed={departed}
                 screening={signal}
+                cash={cashOf(party)}
+                timezone={timezone}
               />
             ))}
           </ul>

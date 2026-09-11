@@ -83,6 +83,20 @@ export interface MockParty {
     needsAttention: boolean;
     answeredVersion?: number;
   };
+  /**
+   * Paid at the counter — yuvoy-operator#40 §1.
+   *
+   * On the BOOKING, never on the manifest party: `Manifest.parties[]` carries
+   * no cash in the contract, and `mocks/handlers.ts` strips this before a
+   * manifest goes out. A mock that let it through would let the manifest ship
+   * reading a field the real API has never sent.
+   */
+  cash?: {
+    collectPaise: number;
+    collected: boolean;
+    collectedAt?: string;
+    collectedPaise?: number;
+  };
 }
 
 export interface MockSlot {
@@ -281,6 +295,108 @@ export const SLOTS: MockSlot[] = [
         reference: "YV-5E6F7G8H",
         name: "Ravi Shankar",
         guests: 3,
+        state: "confirmed",
+        arrived: false,
+      },
+    ],
+  },
+  /*
+    CASH AT THE COUNTER — yuvoy-operator#40 §1.
+
+    Its own departure, tomorrow, so none of the counts the day, the manifest's
+    screener summary or the relay assert on moves. Every state the collection
+    has to tell apart is on it:
+
+      Kavya / Tom     owe the whole fare     one per project, recorded in full
+      Lena / Omar     owe the whole fare     one per project, recorded SHORT
+      Anil            owes the whole fare    never touched — the read side
+      Meera           already taken, 08:10   the row that must offer nothing
+      Sofia           paid online            the row that must say nothing
+
+    Recording mutates state in the Next server both Playwright projects share,
+    which is why the two walkthroughs take a party each — a fixture two tests
+    can both collect from is a race in the FIXTURE.
+
+    ₹4,500 a seat, as `bookingMoney` prices every other party.
+  */
+  {
+    id: "slot_cash",
+    experienceId: "exp_dive",
+    title: "Reef dive",
+    startsAt: todayAt("10:00", 1),
+    timezone: TZ,
+    seats: 16,
+    sold: 15,
+    remaining: 1,
+    bookingMode: "allotment",
+    status: "open",
+    meetingPoint: "Beach 3 dive hut",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_cash_a",
+        reference: "YV-C4SH1A2B",
+        name: "Kavya Iyer",
+        guests: 2,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 900_000, collected: false },
+      },
+      {
+        bookingId: "bkg_cash_b",
+        reference: "YV-C4SH3C4D",
+        name: "Tom Becker",
+        guests: 2,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 900_000, collected: false },
+      },
+      {
+        bookingId: "bkg_short_a",
+        reference: "YV-SH0RT5E6",
+        name: "Lena Park",
+        guests: 3,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 1_350_000, collected: false },
+      },
+      {
+        bookingId: "bkg_short_b",
+        reference: "YV-SH0RT7F8",
+        name: "Omar Haddad",
+        guests: 3,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 1_350_000, collected: false },
+      },
+      {
+        bookingId: "bkg_cash_owed",
+        reference: "YV-0WED9K3L",
+        name: "Anil Kumar",
+        guests: 2,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 900_000, collected: false },
+      },
+      {
+        bookingId: "bkg_cash_taken",
+        reference: "YV-TAKEN4M5",
+        name: "Meera Das",
+        guests: 2,
+        state: "confirmed",
+        arrived: false,
+        cash: {
+          collectPaise: 900_000,
+          collected: true,
+          collectedAt: todayAt("08:10"),
+          collectedPaise: 900_000,
+        },
+      },
+      {
+        bookingId: "bkg_card",
+        reference: "YV-CARD6N7P",
+        name: "Sofia Alves",
+        guests: 1,
         state: "confirmed",
         arrived: false,
       },

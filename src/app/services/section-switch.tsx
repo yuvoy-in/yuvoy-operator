@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 
 /**
- * The two halves of Services, and the way between them.
+ * The two halves of Listings, and the way between them.
  *
  * ## Why a switcher rather than two separate screens
  *
@@ -53,7 +53,7 @@ export function SectionSwitch({
   ];
 
   return (
-    <nav aria-label="Services" className="mt-6">
+    <nav aria-label="What you sell" className="mt-6">
       <ul className="border-cream-line bg-cream-deep flex gap-1 rounded-full border p-1">
         {items.map((item) => {
           const active = pathname.startsWith(item.href);

@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { operatorApi } from "@/lib/api/server-client";
@@ -57,6 +58,25 @@ async function signInRedirect(): Promise<string> {
   }
 }
 
+/**
+ * `GET /me`, asked once per request however many things need the answer.
+ *
+ * Every authenticated page asks through `requireOperator()`, and since
+ * yuvoy-operator#42 the root layout asks too, for the Business badge — so
+ * without this a page paid for the same round trip twice on one bar of signal.
+ * `cache` is request-scoped: a Server Action is its own request and still
+ * reads the role at the moment of the tap, which is the property the actions
+ * rely on.
+ *
+ * Errors are thrown, not returned, exactly as the call sites below already
+ * expected — the error middleware in `server-client` raises them.
+ */
+export const readMe = cache(async (token: string) => {
+  const { data, error } = await operatorApi(token).GET("/me", {});
+  if (error) throw error;
+  return data;
+});
+
 export interface OperatorIdentity {
   id: string;
   name: string;
@@ -101,8 +121,7 @@ export async function sessionState(): Promise<SessionState> {
   const token = await readSessionToken();
   if (!token) return "none";
   try {
-    const { error } = await operatorApi(token).GET("/me", {});
-    if (error) throw error;
+    await readMe(token);
     return "alive";
   } catch (err) {
     const status = classifyMeFailure(err);
@@ -128,8 +147,7 @@ export async function requireOperator(): Promise<{
   if (!token) redirect(await signInRedirect());
 
   try {
-    const { data, error } = await operatorApi(token).GET("/me", {});
-    if (error) throw error;
+    const data = await readMe(token);
     return {
       token,
       me: {

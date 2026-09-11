@@ -51,9 +51,9 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     the media upload the contract puts no role on.
 
     The "Add a reel" door came off this screen with yuvoy-operator#33 §4 — it
-    opened Services, which is its own tab, and one screen should not live in
-    two places. The Services stop in the bar is the way there, and it is not
-    role-gated. What replaced it here is the LOGO, which is mandatory before an
+    opened what is now Listings, which is its own tab, and one screen should
+    not live in two places. The Listings stop in the bar is the way there, and
+    it is not role-gated. What replaced it here is the LOGO, which is mandatory before an
     operator can be booked and is also ungated: `PUT /logo` declares a generic
     Forbidden and names no role.
   */
@@ -63,7 +63,7 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     page
       .getByRole("navigation", { name: /Primary/i })
       .first()
-      .getByRole("link", { name: "Services" }),
+      .getByRole("link", { name: "Listings" }),
   ).toBeVisible();
   await expect(
     page
