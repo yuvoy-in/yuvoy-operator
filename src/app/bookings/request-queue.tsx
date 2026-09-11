@@ -29,9 +29,16 @@ import { GrantedReceipt, RequestRow, type Receipt } from "./request-row";
 export function RequestQueue({
   requests,
   canAnswer,
+  at,
+  today,
+  tomorrow,
 }: {
   requests: OpenRequest[];
   canAnswer: boolean;
+  /** When the page rendered, on the server's clock. Each row's age reads it. */
+  at: number;
+  today: string;
+  tomorrow: string;
 }) {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
 
@@ -67,6 +74,9 @@ export function RequestQueue({
           request={request}
           canAnswer={canAnswer}
           onGranted={onGranted}
+          at={at}
+          today={today}
+          tomorrow={tomorrow}
         />
       ))}
     </ul>

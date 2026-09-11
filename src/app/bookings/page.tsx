@@ -3,15 +3,33 @@ import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import { listOpenRequests } from "@/lib/day/requests";
 import { urgencyOf } from "@/lib/day/request-types";
+import {
+  BOOKINGS_PAGE,
+  apiWindow,
+  inMarketDays,
+  shiftDay,
+} from "@/lib/day/calendar";
+import {
+  byMarketDay,
+  mostRecentFirst,
+  uniqueById,
+} from "@/lib/day/booking-days";
 import { listBookings } from "@/lib/money/fetch";
-import { describeCash } from "@/lib/money/bookings";
+import { describeCash, type BookingLine } from "@/lib/money/bookings";
 import {
   describeBookingState,
   isUpcomingBooking,
 } from "@/lib/day/booking-state";
-import { marketDay, marketDays, marketTime } from "@/lib/format/market-time";
-import { Empty, Problem } from "@/components/ui/states";
+import {
+  dayCaption,
+  marketDay,
+  marketDays,
+  marketTime,
+  now,
+} from "@/lib/format/market-time";
+import { Problem } from "@/components/ui/states";
 import { Chip } from "@/components/ui/chip";
+import { buttonClass } from "@/components/ui/button";
 import { panelClass } from "@/components/ui/panel";
 import { RequestQueue } from "./request-queue";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
@@ -30,7 +48,7 @@ const BACK_DAYS = 30;
 const AHEAD_DAYS = 90;
 
 /**
- * Who has booked — yuvoy-operator#34.
+ * Who has booked — yuvoy-operator#34, and the demo's three views, #43.
  *
  * ## Why this tab replaced Requests
  *
@@ -48,38 +66,58 @@ const AHEAD_DAYS = 90;
  * means knowing the date first. "Has my booking come through" is the common
  * phone call, and they could not answer it without guessing.
  *
- * Requests are still first on the page and still ordered by how soon each
- * expires. They are the only thing here with a deadline, and a queue whose job
- * is to stop requests dying must not be re-sorted for tidiness.
+ * ## Requests, Confirmed and Past — places on one screen, not three tabs
+ *
+ * The demo splits these into sub-tabs. Here they are three sections in that
+ * order, with a row of links to each, and that is deliberate rather than an
+ * omission: the queue is the only thing on the screen with a deadline, and a
+ * tab that hides it behind "Confirmed" is a request left to expire. One screen
+ * also keeps the promise #34 made — a booking is never on it twice, in two
+ * visual languages — checkable in one place.
+ *
+ * - **Requests** stay first, ordered by how soon each expires; each says when
+ *   the trip is and how long ago they asked.
+ * - **Confirmed** is the promises still to keep, grouped by the day the trip
+ *   runs with the day's bookings and guests added up.
+ * - **Past** is everything that has run or will not, most recent first.
  *
  * ## What an operator may and may not see
  *
- * **No phone number, ever.** `contact` carries the name and only the name —
- * `whatsapp` was removed in M13 per D-018: "a traveller gives us a number so
- * we can tell them about their booking, not so it can be added to an
- * operator's contacts." The reference is how a person walking up a jetty is
- * matched to a row, and the relay is how they are reached. No contact column
- * is added here because the endpoint returns something that looks like one.
+ * **No phone number, ever** — masked or not, and whatever the demo draws.
+ * `contact` carries the name and only the name — `whatsapp` was removed in
+ * M13 per D-018: "a traveller gives us a number so we can tell them about
+ * their booking, not so it can be added to an operator's contacts." The
+ * reference is how a person walking up a jetty is matched to a row, and the
+ * relay is how they are reached.
  */
 export default async function BookingsPage() {
   const { token, me } = await requireOperator();
-  const { today } = await marketDays();
+  const { today, tomorrow } = await marketDays();
+  const at = await now();
 
-  const from = shift(today, -BACK_DAYS);
-  const to = shift(today, AHEAD_DAYS);
+  const ahead = shiftDay(today, AHEAD_DAYS);
+  const back = shiftDay(today, -BACK_DAYS);
+  const yesterday = shiftDay(today, -1);
 
   /*
-    Two sources, one screen, and neither may take the other down.
+    Three reads, and none may take another down.
 
-    Requests come from `/requests` and are the queue with a deadline; bookings
-    come from `/bookings` and are the record. `listBookings` already degrades
-    to `null` on failure for Earnings, and that distinction is kept: `null` is
-    "we could not load it" and `[]` is "nothing in this window", which are
-    different sentences and only one of them is a reason to worry.
+    Requests come from `/requests` and are the queue with a deadline. The
+    bookings are read as TWO windows rather than one, because `GET /bookings`
+    stops at 100 rows, oldest trip first, with no cursor: one read of four
+    months lets a busy month of the past push next week's trips off the end of
+    the list. Each window is asked a day wider than it means — the API's dates
+    are UTC days, the screen's are the market's — and cut back to its days.
+
+    `null` stays "we could not load it" and `[]` stays "nothing in this
+    window": different sentences, and only one is a reason to worry.
   */
-  const [requests, bookings] = await Promise.all([
+  const upcomingAsked = apiWindow(today, ahead);
+  const pastAsked = apiWindow(back, yesterday);
+  const [requests, upcomingRead, pastRead] = await Promise.all([
     listOpenRequests(token).catch(() => null),
-    listBookings(token, from, to),
+    listBookings(token, upcomingAsked.from, upcomingAsked.to),
+    listBookings(token, pastAsked.from, pastAsked.to),
   ]);
 
   const critical = (requests ?? []).filter(
@@ -91,20 +129,41 @@ export default async function BookingsPage() {
 
     `GET /bookings` includes `pending_request` rows — the contract says so
     itself when it explains why such a row carries no `money` — and
-    `GET /requests` returns the same open requests. Rendering both lists whole
-    would put one traveller on one screen twice, in two visual languages, with
-    only one of the two carrying the clock and the buttons that matter.
-
-    The queue wins, because it is the copy that can be acted on. Filtered
-    here rather than in the fetch so the "nothing in this window" branch below
-    still counts a request as something rather than saying the window is
-    empty while a request sits above it.
+    `GET /requests` returns the same open requests. The queue wins, because it
+    is the copy that can be acted on.
   */
-  const settled = (bookings ?? []).filter(
-    (b) => b.state?.trim().toLowerCase() !== "pending_request",
-  );
-  const upcoming = settled.filter((b) => isUpcomingBooking(b.state));
-  const past = settled.filter((b) => !isUpcomingBooking(b.state));
+  const notARequest = (b: BookingLine) =>
+    b.state?.trim().toLowerCase() !== "pending_request";
+
+  const upcomingDays =
+    upcomingRead === null
+      ? null
+      : inMarketDays(upcomingRead, today, ahead).filter(notARequest);
+  const pastDays =
+    pastRead === null
+      ? null
+      : inMarketDays(pastRead, back, yesterday).filter(notARequest);
+
+  // Confirmed: promises still to keep, from today on.
+  const confirmed =
+    upcomingDays === null
+      ? null
+      : upcomingDays.filter((b) => isUpcomingBooking(b.state));
+  /*
+    Past: every trip before today whatever became of it, and any from today on
+    that is no longer going ahead. Both reads are needed to say that honestly,
+    so either failing is a failure of the whole section rather than a shorter
+    list nobody is told about.
+  */
+  const past =
+    upcomingDays === null || pastDays === null
+      ? null
+      : mostRecentFirst(
+          uniqueById(
+            pastDays,
+            upcomingDays.filter((b) => !isUpcomingBooking(b.state)),
+          ),
+        );
 
   return (
     <Screen>
@@ -132,12 +191,57 @@ export default async function BookingsPage() {
         </div>
       ) : null}
 
-      <section className="mt-10" aria-labelledby="waiting-heading">
+      <nav aria-label="On this screen" className="mt-6 flex flex-wrap gap-2">
+        <a
+          href="#requests"
+          className={buttonClass({
+            variant: "outline",
+            size: "sm",
+            block: false,
+          })}
+        >
+          {requests && requests.length > 0
+            ? `Requests · ${requests.length}`
+            : "Requests"}
+        </a>
+        <a
+          href="#confirmed"
+          className={buttonClass({
+            variant: "outline",
+            size: "sm",
+            block: false,
+          })}
+        >
+          Confirmed
+        </a>
+        <a
+          href="#past"
+          className={buttonClass({
+            variant: "outline",
+            size: "sm",
+            block: false,
+          })}
+        >
+          Past
+        </a>
+      </nav>
+
+      <section
+        id="requests"
+        className="mt-10 scroll-mt-6"
+        aria-labelledby="waiting-heading"
+      >
         <h2 id="waiting-heading" className="font-display text-3xl">
           Waiting on you
         </h2>
+        {/*
+          The demo's sentence, kept because it is why answering fast is a
+          conversion job and not an admin chore.
+        */}
         <p className="text-forest/70 mt-2 text-sm">
-          Nobody holds a seat until you say yes. Soonest to expire first.
+          Nobody holds a seat until you say yes. Guests see &ldquo;confirming
+          with the operator&rdquo; until you answer — fast answers are what stop
+          them walking to a counter. Soonest to expire first.
         </p>
 
         {critical > 0 ? (
@@ -159,7 +263,13 @@ export default async function BookingsPage() {
               the receipt an accept produces has to outlive the row the next
               refresh removes. See `RequestQueue`.
             */
-            <RequestQueue requests={requests} canAnswer={me.canManage} />
+            <RequestQueue
+              requests={requests}
+              canAnswer={me.canManage}
+              at={at}
+              today={today}
+              tomorrow={tomorrow}
+            />
           )}
         </div>
       </section>
@@ -169,129 +279,155 @@ export default async function BookingsPage() {
           Booked
         </h2>
         <p className="text-forest/70 mt-2 text-sm">
-          Listed by the day the trip runs — the last month and the next three.
+          By the day the trip runs — the last month and the next three.
         </p>
 
-        {bookings === null ? (
-          <div className="mt-5">
-            <Problem
-              title="The bookings did not load"
-              body="This is us, not you. Try again in a moment — nothing has changed because of it."
-            />
-          </div>
-        ) : settled.length === 0 ? (
-          <div className="mt-5">
-            <Empty
-              title="Nothing booked in this window"
-              body="Bookings appear here by the day the trip runs, so one made today for a trip in six months is not in this list yet."
-            />
-          </div>
-        ) : (
-          <>
-            <BookingList
-              heading="Still to come"
-              bookings={upcoming}
-              empty="Nothing ahead in the next three months."
-            />
-            <BookingList
-              heading="Been and gone"
-              bookings={past}
-              empty="Nothing behind you in the last month."
-            />
-          </>
-        )}
+        <div id="confirmed" className="mt-8 scroll-mt-6">
+          <h3 className="label text-forest/75">Confirmed</h3>
+          {confirmed === null ? (
+            <div className="mt-3">
+              <Problem
+                title="The bookings did not load"
+                body="This is us, not you. Try again in a moment — nothing has changed because of it."
+              />
+            </div>
+          ) : confirmed.length === 0 ? (
+            <p className="text-forest/70 mt-3 text-sm">
+              Nothing ahead in the next three months.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-6">
+              {byMarketDay(confirmed).map((group) => (
+                <div key={group.day || "no-time"}>
+                  <h4 className="text-base font-bold">
+                    {group.day
+                      ? dayCaption(group.day, today, tomorrow)
+                      : "No time on these yet"}
+                  </h4>
+                  {/* "Grouped by date, summarised as total bookings and guests." */}
+                  <p className="text-forest/70 mt-0.5 text-sm">
+                    {`${group.bookings.length} ${group.bookings.length === 1 ? "booking" : "bookings"} · ${group.guests} ${group.guests === 1 ? "guest" : "guests"}`}
+                  </p>
+                  <ul className="mt-3 space-y-3">
+                    {group.bookings.map((b) => (
+                      <BookingRow key={b.id} booking={b} dated={false} />
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+          {upcomingRead !== null && upcomingRead.length >= BOOKINGS_PAGE ? (
+            <p className="text-forest/70 mt-3 text-xs">
+              Only the first {BOOKINGS_PAGE} bookings from today could be read,
+              so later trips may be missing from this list.
+            </p>
+          ) : null}
+        </div>
+
+        <div id="past" className="mt-10 scroll-mt-6">
+          <h3 className="label text-forest/75">Past</h3>
+          {past === null ? (
+            <div className="mt-3">
+              <Problem
+                title="The bookings did not load"
+                body="This is us, not you. Try again in a moment — nothing has changed because of it."
+              />
+            </div>
+          ) : past.length === 0 ? (
+            <p className="text-forest/70 mt-3 text-sm">
+              Nothing behind you in the last month.
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {past.map((b) => (
+                <BookingRow key={b.id} booking={b} dated />
+              ))}
+            </ul>
+          )}
+          {pastRead !== null && pastRead.length >= BOOKINGS_PAGE ? (
+            <p className="text-forest/70 mt-3 text-xs">
+              Only {BOOKINGS_PAGE} bookings from the last month could be read,
+              so the most recent may be missing from this list.
+            </p>
+          ) : null}
+        </div>
       </section>
     </Screen>
   );
 }
 
-function BookingList({
-  heading,
-  bookings,
-  empty,
+/**
+ * One booking, linking to its own screen.
+ *
+ * `dated` says the day as well as the time. Under a day's heading the day is
+ * already said, so the row gives the time alone; in Past every row needs both.
+ */
+function BookingRow({
+  booking: b,
+  dated,
 }: {
-  heading: string;
-  bookings: Awaited<ReturnType<typeof listBookings>> & object;
-  empty: string;
+  booking: BookingLine;
+  dated: boolean;
 }) {
-  return (
-    <div className="mt-8">
-      <h3 className="label text-forest/75">{heading}</h3>
-      {bookings.length === 0 ? (
-        <p className="text-forest/70 mt-3 text-sm">{empty}</p>
-      ) : (
-        <ul className="mt-3 space-y-3">
-          {bookings.map((b) => {
-            /*
-              With its cash — yuvoy-operator#40. A cash booking waiting on the
-              operator reads "Collect ₹9,000", never the card sentence
-              "Payment clearing" its state would otherwise produce.
-            */
-            const state = describeBookingState(b.state, b.cash);
-            return (
-              <li key={b.id}>
-                <Link
-                  href={`/bookings/${b.id}`}
-                  className={panelClass(
-                    "raised",
-                    "hover:border-forest/40 ease-interaction block transition-colors duration-200",
-                  )}
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    {/*
-                      The name if we have it, the reference if not. Never a
-                      number: `contact` carries the name and only the name.
-                    */}
-                    <p className="text-base font-bold">
-                      {b.name || b.reference}
-                    </p>
-                    {/*
-                      Mapped, never raw. This list returns `fulfilment_state`
-                      verbatim — a column value — so an unmapped one renders no
-                      chip rather than shouting `paid_pending_ops` at somebody.
-                    */}
-                    {state ? (
-                      <Chip tone={state.live ? "accent" : "neutral"}>
-                        {state.label}
-                      </Chip>
-                    ) : null}
-                  </div>
-                  {b.reference ? (
-                    <p className="text-forest/70 mt-1 font-mono text-sm tracking-wider">
-                      {b.reference}
-                    </p>
-                  ) : null}
-                  <p className="text-forest/70 mt-2 text-sm">
-                    {b.experience}
-                    {b.startsAt
-                      ? ` · ${marketDay(b.startsAt, b.timezone)}, ${marketTime(b.startsAt, b.timezone)}`
-                      : null}
-                  </p>
-                  <p className="text-forest/70 mt-1 text-sm">
-                    {b.guests} {b.guests === 1 ? "guest" : "guests"}
-                  </p>
-                  {/*
-                    Once taken, the row says so and when. While it is owed the
-                    chip already carries the amount, and a second line saying
-                    the same would bury the rest of the row.
-                  */}
-                  {b.cash?.collected ? (
-                    <p className="text-forest/70 mt-1 text-sm">
-                      {describeCash(b.cash, b.timezone)}
-                    </p>
-                  ) : null}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
+  /*
+    With its cash — yuvoy-operator#40. A cash booking waiting on the operator
+    reads "Collect ₹9,000", never the card sentence "Payment clearing" its
+    state would otherwise produce.
+  */
+  const state = describeBookingState(b.state, b.cash);
+  const when = b.startsAt
+    ? dated
+      ? `${marketDay(b.startsAt, b.timezone)}, ${marketTime(b.startsAt, b.timezone)}`
+      : marketTime(b.startsAt, b.timezone)
+    : null;
 
-/** A date `days` either side of `day`, as `YYYY-MM-DD`. */
-function shift(day: string, days: number): string {
-  const t = Date.parse(`${day}T00:00:00Z`);
-  return new Date(t + days * 86_400_000).toISOString().slice(0, 10);
+  return (
+    <li>
+      <Link
+        href={`/bookings/${b.id}`}
+        className={panelClass(
+          "raised",
+          "hover:border-forest/40 ease-interaction block transition-colors duration-200",
+        )}
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          {/*
+            The name if we have it, the reference if not. Never a number:
+            `contact` carries the name and only the name.
+          */}
+          <p className="text-base font-bold">{b.name || b.reference}</p>
+          {/*
+            Mapped, never raw. This list returns `fulfilment_state` verbatim —
+            a column value — so an unmapped one renders no chip rather than
+            shouting `paid_pending_ops` at somebody.
+          */}
+          {state ? (
+            <Chip tone={state.live ? "accent" : "neutral"}>{state.label}</Chip>
+          ) : null}
+        </div>
+        {b.reference ? (
+          <p className="text-forest/70 mt-1 font-mono text-sm tracking-wider">
+            {b.reference}
+          </p>
+        ) : null}
+        <p className="text-forest/70 mt-2 text-sm">
+          {when ? `${when} · ${b.experience}` : b.experience}
+        </p>
+        <p className="text-forest/70 mt-1 text-sm">
+          {b.guests} {b.guests === 1 ? "guest" : "guests"}
+        </p>
+        {/*
+          Once taken, the row says so and when. While it is owed the chip
+          already carries the amount, and a second line saying the same would
+          bury the rest of the row.
+        */}
+        {b.cash?.collected ? (
+          <p className="text-forest/70 mt-1 text-sm">
+            {describeCash(b.cash, b.timezone)}
+          </p>
+        ) : null}
+      </Link>
+    </li>
+  );
 }

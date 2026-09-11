@@ -13,6 +13,7 @@ import {
   urgencyOf,
   type OpenRequest,
 } from "@/lib/day/request-types";
+import { requestWhen } from "@/lib/day/request-time";
 import { marketTime } from "@/lib/format/market-time";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
@@ -78,8 +79,16 @@ export function RequestRow({
   request,
   canAnswer,
   onGranted,
+  at,
+  today,
+  tomorrow,
 }: {
   request: OpenRequest;
+  /** When the page rendered, on the server's clock — for the request's age. */
+  at: number;
+  /** The market's today and tomorrow, so the trip's day reads as a word. */
+  today: string;
+  tomorrow: string;
   /**
    * OWNER or MANAGER. The contract refuses the write, not the read:
    * `POST /requests/{id}/accept` is 403 "STAFF cannot commit seats".
@@ -114,6 +123,7 @@ export function RequestRow({
   const urgency = urgencyOf(request.minutesToAnswer);
   const grantable = canAnswer && canGrant(request);
   const short = (request.seatsGrantable ?? 0) < (request.guests ?? 0);
+  const when = requestWhen(request, at, today, tomorrow);
 
   const receipt: Receipt | null = state.granted
     ? {
@@ -156,6 +166,13 @@ export function RequestRow({
         {request.guests} {request.guests === 1 ? "guest" : "guests"} ·{" "}
         {request.experience}
       </p>
+
+      {/*
+        Which boat, and how long they have been waiting — yuvoy-operator#43.
+        Beside the clock rather than instead of it: the clock says how long is
+        left to answer, this says for which departure and since when.
+      */}
+      {when ? <p className="text-forest/70 mt-1 text-sm">{when}</p> : null}
 
       {/*
         Seats left, beside the decision. "Accept with no sense of what is left

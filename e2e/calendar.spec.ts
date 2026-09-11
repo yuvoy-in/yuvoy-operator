@@ -170,6 +170,15 @@ test("closing dates says plainly that it did not cancel anybody", async ({
   await page
     .getByRole("button", { name: "Close dates to new bookings" })
     .click();
+  /*
+    Its own day, twelve out, carrying one confirmed party. This used to close
+    TODAY, which was harmless only while the mock read nothing back from a
+    closure; now a closed day reads as closed, and closing today would take
+    the day screen's departures off sale under every other test.
+  */
+  const today = await page.getByLabel("First day").inputValue();
+  await page.getByLabel("First day").fill(dayAfter(today, 12));
+  await page.getByLabel("Last day").fill(dayAfter(today, 12));
   await page.getByRole("radio", { name: "Weather" }).check();
   await page.getByRole("button", { name: "Close them" }).click();
 
@@ -471,13 +480,111 @@ test("a failed listing read costs the picker, not the screen", async ({
   await expect(page.getByText(/you have not written one yet/i)).toHaveCount(0);
 });
 
+/*
+  Fourteen days, one at a time — yuvoy-operator#45.
+
+  "Calendar controls sellable capacity; Bookings owns customer obligation
+  resolution." The assertions that matter most are the two sentences a closure
+  must say before it happens, word for word.
+*/
+test("fourteen days, each saying what is on it", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/calendar");
+
+  const days = page
+    .getByRole("region", { name: "The next fourteen days" })
+    .getByRole("region");
+  await expect(days).toHaveCount(14);
+  await expect(
+    days.first().getByRole("heading", { name: "Today" }),
+  ).toBeVisible();
+  await expect(
+    days.nth(1).getByRole("heading", { name: "Tomorrow" }),
+  ).toBeVisible();
+
+  // A day with boats says how many times they leave, and what is sold.
+  await expect(days.nth(1)).toContainText(/\d+ start times? · \d+ sold/);
+  // A day with none says so, rather than leaving a gap in the list.
+  await expect(days.nth(3)).toContainText("No departures scheduled");
+});
+
+test("Manage says what closing does not do, before anything is closed", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/calendar");
+
+  // Tomorrow: never closed by any test, and it has people confirmed on it.
+  const tomorrow = page.getByRole("region", { name: "Tomorrow" });
+  await tomorrow.getByRole("button", { name: /^Manage/ }).click();
+
+  // Both of the issue's sentences, verbatim.
+  await expect(
+    tomorrow.getByText(
+      "Closing stops new bookings straight away. Bookings you've already confirmed stay live — resolve those one by one in Bookings.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    tomorrow.getByText(
+      /^\d+ guests? (is|are) already confirmed\. Closing won't move them — resolve each booking in Bookings\.$/,
+    ),
+  ).toBeVisible();
+
+  // And the heavier act is named as a different one, somewhere else.
+  await expect(tomorrow.getByText(/refunds everyone on it/)).toBeVisible();
+});
+
+test("closing one day from Manage closes it, and says who is still owed", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile",
+    "closes a shared fixture day — single-tenant by design, so it runs on the primary project only",
+  );
+  await signIn(page);
+  await page.goto("/calendar");
+
+  // The innermost region carrying the fixture: the day, not the fortnight.
+  const day = page
+    .getByRole("region")
+    .filter({ hasText: "Lagoon kayak (closing fixture B)" })
+    .last();
+  await day.getByRole("button", { name: /^Manage/ }).click();
+
+  await expect(
+    day.getByText(
+      "3 guests are already confirmed. Closing won't move them — resolve each booking in Bookings.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  await day.getByRole("radio", { name: "Weather" }).check();
+  await day.getByRole("button", { name: /^Close / }).click();
+
+  // The receipt says who is still owed — and survives the day turning Closed.
+  await expect(day.getByText(/is closed to new bookings$/)).toBeVisible();
+  await expect(day.getByText(/You still owe 1 booking\./)).toBeVisible();
+  await expect(day.getByText("Closed", { exact: true })).toBeVisible();
+  // The departure says why it is not selling, in the API's own sentence.
+  await expect(
+    day.getByText(
+      "This departure is closed. Anybody already booked on it is unaffected.",
+    ),
+  ).toBeVisible();
+});
+
 test("/calendar has no accessibility violations", async ({ page }) => {
   await signIn(page);
   await page.goto("/calendar");
-  // Both forms open, or the audit only ever sees two collapsed buttons.
+  // Every form open, or the audit only ever sees collapsed buttons.
   await page.getByRole("button", { name: "Add departures" }).click();
   await page
     .getByRole("button", { name: "Close dates to new bookings" })
+    .click();
+  await page
+    .getByRole("region", { name: "Tomorrow" })
+    .getByRole("button", { name: /^Manage/ })
     .click();
   await page.waitForLoadState("networkidle");
 

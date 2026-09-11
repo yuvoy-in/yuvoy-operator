@@ -799,8 +799,74 @@ function storyResponse() {
   };
 }
 
+/*
+  Dates closed to new bookings this session — yuvoy-operator#45.
+
+  Read back, as the API reads them back: `POST /blackouts` sets every open
+  departure on those market days (of one listing, or of all of them) to
+  `closed`, and `GET /slots` then answers with that status and the reason it
+  is not on sale. Before this a closure changed nothing the calendar could
+  show, so no test could see a day turn Closed.
+*/
+let blackouts: { from: string; to: string; experienceId?: string }[] = [];
+
+/** A departure's status as the API would answer it now. */
+function slotStatusOf(slot: MockSlot): string {
+  if (calledOff[slot.id]) return "cancelled";
+  if (slot.status !== "open") return slot.status;
+  const day = new Intl.DateTimeFormat("en-CA", {
+    timeZone: slot.timezone,
+  }).format(new Date(slot.startsAt));
+  const closed = blackouts.some(
+    (b) =>
+      day >= b.from &&
+      day <= b.to &&
+      (!b.experienceId || b.experienceId === slot.experienceId),
+  );
+  return closed ? "closed" : "open";
+}
+
+/**
+ * Whether a departure is on sale, and the API's sentence when it is not — the
+ * part of `OperatorSaleBlock` (yuvoy-api `catalog/operator_sale.go`) the
+ * fixtures can reach, in its order and with its words.
+ *
+ * Including its one wrong sentence: a called-off departure is
+ * `departure_closed` there too, with "Anybody already booked on it is
+ * unaffected". Modelled on purpose, so the screen's refusal to print that
+ * about a call-off is exercised rather than assumed.
+ */
+function saleVerdictOf(
+  slot: MockSlot,
+  seats: number,
+  sold: number,
+): { onSale: boolean; notOnSaleReason?: string; notOnSaleDetail?: string } {
+  const notOnSale = (reason: string, detail: string) => ({
+    onSale: false,
+    notOnSaleReason: reason,
+    notOnSaleDetail: detail,
+  });
+  if (slotStatusOf(slot) !== "open") {
+    return notOnSale(
+      "departure_closed",
+      "This departure is closed. Anybody already booked on it is unaffected.",
+    );
+  }
+  if (Date.parse(slot.startsAt) <= Date.now()) {
+    return notOnSale(
+      "departure_past_cutoff",
+      "Bookings for this departure have closed.",
+    );
+  }
+  if (slot.bookingMode === "allotment" && seats - sold <= 0) {
+    return notOnSale("departure_full", "Every seat on this departure is sold.");
+  }
+  return { onSale: true };
+}
+
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
+  blackouts = [];
   attendance = {};
   codeAttempts = {};
   answered = {};
@@ -2947,13 +3013,22 @@ export const handlers = [
     const from = u.searchParams.get("from");
     const to = u.searchParams.get("to");
 
-    // Created departures are read back like any other. A mock whose reads
-    // ignore its writes proves the message rendered and nothing about the row.
+    /*
+      UTC days, as the API reads them: `from` is UTC midnight and `to` runs to
+      the next one (yuvoy-api `operator_platform.go`). This used to filter on
+      the MARKET's day, which is kinder than production — a screen asking for
+      "today" was handed a 05:00 IST departure here that the API would have
+      left out. Faithful now, so it is `listSlots` widening the window that
+      keeps those boats on the screen, and a regression there shows.
+
+      Created departures are read back like any other. A mock whose reads
+      ignore its writes proves the message rendered and nothing about the row.
+    */
+    const startMs = from ? Date.parse(`${from}T00:00:00Z`) : -Infinity;
+    const endMs = to ? Date.parse(`${to}T00:00:00Z`) + 86_400_000 : Infinity;
     const inRange = [...SLOTS, ...createdSlots].filter((s) => {
-      const day = new Intl.DateTimeFormat("en-CA", {
-        timeZone: s.timezone,
-      }).format(new Date(s.startsAt));
-      return (!from || day >= from) && (!to || day <= to);
+      const t = Date.parse(s.startsAt);
+      return t >= startMs && t < endMs;
     });
 
     /*
@@ -2980,7 +3055,8 @@ export const handlers = [
           // Omitted when the fixture omits it. One departure has no mode on
           // purpose: the screen must say nothing rather than assume held seats.
           ...(s.bookingMode ? { bookingMode: s.bookingMode } : {}),
-          status: calledOff[s.id] ? "cancelled" : s.status,
+          status: slotStatusOf(s),
+          ...saleVerdictOf(s, seats, sold),
         };
       }),
     });
@@ -3529,6 +3605,7 @@ export const handlers = [
       from?: string;
       to?: string;
       reasonCode?: string;
+      experienceId?: string;
     };
     const REASONS = [
       "WEATHER",
@@ -3558,14 +3635,29 @@ export const handlers = [
       Closing dates is NOT cancelling people. The count includes live holds,
       whose bookings predate the closure and can still complete — which is
       exactly the thing an operator assumes did not survive.
+
+      Counted across the range whatever its departures' status, so closing a
+      day twice still reports who is owed on it; a called-off departure owes
+      nobody. And the closure is RECORDED, so `GET /slots` reads it back the
+      way the API does — `closed`, and not on sale — for one listing when the
+      body names one, and for every listing when it does not.
     */
-    const inRange = SLOTS.filter((s) => {
+    const inRange = [...SLOTS, ...createdSlots].filter((s) => {
+      if (calledOff[s.id] || s.status === "cancelled") return false;
+      if (body.experienceId && s.experienceId !== body.experienceId) {
+        return false;
+      }
       const day = new Intl.DateTimeFormat("en-CA", {
         timeZone: s.timezone,
       }).format(new Date(s.startsAt));
       return day >= body.from! && day <= body.to!;
     });
     const existingBookings = inRange.reduce((n, s) => n + s.parties.length, 0);
+    blackouts.push({
+      from: body.from,
+      to: body.to,
+      ...(body.experienceId ? { experienceId: body.experienceId } : {}),
+    });
 
     return HttpResponse.json({
       closed: true,

@@ -747,3 +747,65 @@ test("a booking that is not yours is a 404, never a 403", async ({ page }) => {
   const res = await page.goto("/bookings/bk_not_yours");
   expect(res?.status()).toBe(404);
 });
+
+/*
+  Requests, Confirmed, Past — yuvoy-operator#43.
+
+  The demo's three sub-tabs, as three places on one screen with a link to
+  each: the queue is the only thing here with a deadline, and a tab that hid
+  it behind "Confirmed" would be a request left to expire.
+*/
+test("bookings has the demo's three places, and each link goes to its own", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/bookings");
+
+  const onThisScreen = page.getByRole("navigation", {
+    name: "On this screen",
+  });
+  await expect(
+    onThisScreen.getByRole("link", { name: /^Requests/ }),
+  ).toHaveAttribute("href", "#requests");
+  await expect(
+    onThisScreen.getByRole("link", { name: "Past" }),
+  ).toHaveAttribute("href", "#past");
+
+  await onThisScreen.getByRole("link", { name: "Confirmed" }).click();
+  await expect(page).toHaveURL(/#confirmed$/);
+  await expect(
+    page.getByRole("heading", { name: "Confirmed", exact: true }),
+  ).toBeVisible();
+});
+
+test("confirmed bookings are grouped by the day they run, with that day's totals", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/bookings");
+
+  const booked = page.getByRole("region", { name: "Booked" });
+  // "Grouped by date, summarised as total bookings and guests."
+  await expect(
+    booked.getByRole("heading", { level: 4, name: "Tomorrow" }),
+  ).toBeVisible();
+  await expect(
+    booked.getByText(/^\d+ bookings? · \d+ guests?$/).first(),
+  ).toBeVisible();
+  await expect(
+    booked.getByRole("heading", { name: "Past", exact: true }),
+  ).toBeVisible();
+});
+
+test("a request says when the trip is, and how long ago they asked", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/bookings");
+
+  const row = page.locator("li").filter({ hasText: NEVER_ANSWERED.urgent });
+  await expect(row).toContainText(
+    /(Today|Tomorrow|[A-Z][a-z]+day,? \d+ [A-Z][a-z]+) at \d\d:\d\d/,
+  );
+  await expect(row).toContainText(/asked (just now|\d+ (min|h|d) ago)/);
+});

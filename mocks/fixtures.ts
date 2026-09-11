@@ -417,6 +417,62 @@ export const SLOTS: MockSlot[] = [
     calledOff: { reasonCode: "weather" },
     parties: [],
   },
+  /*
+    Two days of their own, twelve and thirteen out, for closing a day —
+    yuvoy-operator#45.
+
+    A closure is read back now: the day turns Closed and its departures go off
+    sale. A test closing TODAY would take the day screen's departures off sale
+    under every other test, so each closing test has a day nothing else looks
+    at, carrying one confirmed party — which makes "you still owe 1 booking"
+    and "3 guests are already confirmed" true of exactly one day each.
+  */
+  {
+    id: "slot_closing_a",
+    experienceId: "exp_snorkel",
+    title: "Lagoon kayak (closing fixture A)",
+    startsAt: todayAt("08:00", 12),
+    timezone: TZ,
+    seats: 6,
+    sold: 2,
+    remaining: 4,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_closing_a",
+        reference: "YV-7K3M8Q2A",
+        name: "Noor Hassan",
+        guests: 2,
+        state: "confirmed",
+        arrived: false,
+      },
+    ],
+  },
+  {
+    id: "slot_closing_b",
+    experienceId: "exp_snorkel",
+    title: "Lagoon kayak (closing fixture B)",
+    startsAt: todayAt("08:00", 13),
+    timezone: TZ,
+    seats: 6,
+    sold: 3,
+    remaining: 3,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_closing_b",
+        reference: "YV-9P4R6T1B",
+        name: "Jonas Weber",
+        guests: 3,
+        state: "confirmed",
+        arrived: false,
+      },
+    ],
+  },
 ];
 
 export const DEV_CODE = "424242";

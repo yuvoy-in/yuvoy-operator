@@ -1,10 +1,17 @@
 import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
 import { listListings, listSlots } from "@/lib/day/manifest";
-import { marketDays } from "@/lib/format/market-time";
+import {
+  apiWindow,
+  calendarDays,
+  confirmedGuestsByDay,
+  departuresOn,
+} from "@/lib/day/calendar";
+import { listBookings } from "@/lib/money/fetch";
+import { dayCaption, marketDays } from "@/lib/format/market-time";
 import { Empty, Problem } from "@/components/ui/states";
-import { SlotCapacity } from "./slot-capacity";
 import { BlackoutForm } from "./blackout-form";
+import { DayGroup } from "./day-group";
 import { DepartureForm } from "./departure-form";
 import { Screen } from "@/components/chrome/screen";
 
@@ -16,9 +23,6 @@ export const metadata: Metadata = { title: "Calendar" };
 */
 export const dynamic = "force-dynamic";
 
-/** How far ahead capacity is editable in one screen. */
-const DAYS_AHEAD = 14;
-
 /**
  * O9 — where the operator promises seats.
  *
@@ -27,33 +31,50 @@ const DAYS_AHEAD = 14;
  * and "trip" is the traveller's word for their own booking. Both appeared
  * on this screen, for the same object, within a scroll of each other.
  *
- * "The single most important number in the system." Two weeks ahead, because
- * that is what somebody with a few days on an island plans in, and because a
- * calendar of ninety days on a phone is a calendar nobody scrolls.
+ * "The single most important number in the system."
+ *
+ * ## Fourteen days, one at a time — yuvoy-operator#45
+ *
+ * Today and the next thirteen, each with its name, how many times boats leave,
+ * what is sold, and a Manage that closes the day in place. A day with nothing
+ * on it still gets a line, because "nothing scheduled on Thursday" is an
+ * answer and a gap in a list is not.
+ *
+ * **Calendar controls sellable capacity; Bookings owns customer obligation
+ * resolution.** Closing here stops new sales and cancels nobody, and every
+ * sentence on this screen about people already booked sends the operator to
+ * Bookings rather than pretending to deal with them.
  */
 export default async function CapacityPage() {
   const { token, me } = await requireOperator();
-  const { today } = await marketDays();
+  const { today, tomorrow } = await marketDays();
+  const days = calendarDays(today);
+  const first = days[0];
+  const last = days[days.length - 1];
+  // Asked a day wider than the fortnight either side: the API's dates are UTC
+  // days, and these are the market's. `confirmedGuestsByDay` cuts it back.
+  const bookingsWindow = apiWindow(first, last);
 
-  const end = new Date(`${today}T00:00:00+05:30`);
-  end.setDate(end.getDate() + DAYS_AHEAD);
   /*
-    Two calls, in parallel, answering two different questions.
+    Three calls, in parallel, answering three different questions.
 
-    The fortnight is what this screen EDITS. The listings are every listing
-    this operator has, from `GET /experiences` — the same source the Services
-    tab reads, so a listing cannot exist on one tab and not the other
-    (yuvoy-operator#32).
+    The fortnight's departures are what this screen EDITS. The listings are
+    every listing this operator has, from `GET /experiences` — the same source
+    the Listings tab reads, so a listing cannot exist on one tab and not the
+    other (yuvoy-operator#32). And the bookings are who is already confirmed
+    on each day: the number in the one sentence a closure must say first.
 
-    They used to come off the departures, which made the picker a function of
-    the departures a listing already had. A listing created an hour ago was
-    absent from the one screen that could give it dates, and nothing on the
-    page said why.
+    A failed bookings read costs that number and nothing else — the sentence
+    is still said, without a count — so it degrades to `null` rather than
+    taking a working seat-editing screen down.
   */
-  const [slots, listings] = await Promise.all([
-    listSlots(token, today, end.toISOString().slice(0, 10)),
+  const [slots, listings, bookings] = await Promise.all([
+    listSlots(token, first, last),
     listListings(token),
+    listBookings(token, bookingsWindow.from, bookingsWindow.to),
   ]);
+
+  const guests = confirmedGuestsByDay(bookings, days);
 
   return (
     <Screen>
@@ -83,11 +104,11 @@ export default async function CapacityPage() {
       ) : null}
 
       {/*
-        Adding comes before closing, and both before the list.
+        Adding comes before closing, and both before the days.
 
         The order is the order of the questions an operator arrives with: is
-        there a departure for Saturday, is the week off, and what do the ones I
-        have look like. Both forms are collapsed until pressed, so the list is
+        there a departure for Saturday, is the week off, and what do the days I
+        have look like. Both forms are collapsed until pressed, so the days are
         still the first thing on the screen.
       */}
       {me.canManage ? (
@@ -100,20 +121,37 @@ export default async function CapacityPage() {
         <BlackoutForm today={today} />
       </div>
 
-      <div className="mt-8">
+      <section className="mt-12" aria-labelledby="fortnight">
+        <h2 id="fortnight" className="font-display text-3xl">
+          The next fourteen days
+        </h2>
+        <p className="text-forest/70 mt-2 text-sm">
+          This screen decides what can still be sold. The people already booked
+          are looked after in Bookings.
+        </p>
+
         {slots.length === 0 ? (
-          <Empty
-            title="Nothing scheduled"
-            body="No departures in the next two weeks. A departure that is not here is one Yuvoy cannot sell."
-          />
+          <div className="mt-6">
+            <Empty
+              title="Nothing scheduled"
+              body="No departures in the next two weeks. A departure that is not here is one Yuvoy cannot sell."
+            />
+          </div>
         ) : (
-          <ul className="space-y-3">
-            {slots.map((slot) => (
-              <SlotCapacity key={slot.id} slot={slot} />
+          <div className="mt-6 space-y-6">
+            {days.map((day) => (
+              <DayGroup
+                key={day}
+                day={day}
+                label={dayCaption(day, today, tomorrow)}
+                departures={departuresOn(slots, day)}
+                guests={guests ? (guests.get(day) ?? 0) : null}
+                canManage={me.canManage}
+              />
             ))}
-          </ul>
+          </div>
         )}
-      </div>
+      </section>
     </Screen>
   );
 }

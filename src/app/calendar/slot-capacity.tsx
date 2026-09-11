@@ -9,7 +9,7 @@ import {
   type OfflineSaleState,
 } from "./actions";
 import type { OperatorSlot } from "@/lib/day/types";
-import { marketDay, marketTime } from "@/lib/format/market-time";
+import { marketTime } from "@/lib/format/market-time";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { inputClass } from "@/components/ui/input";
@@ -40,12 +40,40 @@ export function SlotCapacity({ slot }: { slot: OperatorSlot }) {
         <span className="font-display text-2xl leading-none">
           {marketTime(slot.startsAt, slot.timezone)}
         </span>
-        <Chip>{marketDay(slot.startsAt, slot.timezone)}</Chip>
+        {/*
+          The day it runs used to sit here. The calendar groups by day now
+          (yuvoy-operator#45), so the chip says the one thing the heading
+          above cannot: that THIS departure is not selling.
+        */}
+        {slot.status === "cancelled" ? (
+          <Chip>Called off</Chip>
+        ) : slot.onSale === false ? (
+          <Chip>Not on sale</Chip>
+        ) : null}
       </div>
       <p className="mt-2 text-base font-bold">{slot.title}</p>
       <p className="text-forest/70 mt-1 text-sm">
         {slot.sold} of {slot.seats} sold · {slot.remaining} left
       </p>
+      {/*
+        Why it is not selling, in the API's own sentence — "render this when you
+        meet a reason you do not recognise", and for the ones this build does
+        know it is still the best sentence available. Per departure, because a
+        certificate lapsing on Tuesday takes Wednesday's boat off sale and
+        leaves Monday's selling.
+
+        NOT for a called-off departure. The API files `cancelled` under
+        `departure_closed` and sends "Anybody already booked on it is
+        unaffected" — the opposite of what a call-off did, which cancelled and
+        refunded all of them. Raised on yuvoy-operator#45.
+      */}
+      {slot.status === "cancelled" ? (
+        <p className="text-forest/80 mt-1 text-sm">
+          Called off. Everyone booked on it was cancelled and refunded.
+        </p>
+      ) : slot.onSale === false && slot.notOnSaleDetail ? (
+        <p className="text-forest/80 mt-1 text-sm">{slot.notOnSaleDetail}</p>
+      ) : null}
       {/*
         The way to the departure itself — who is booked on it, telling them
         something, and calling it off. Pausing a listing tells an operator to

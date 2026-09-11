@@ -1,6 +1,7 @@
 import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
 import type { Manifest, OperatorListing, OperatorSlot } from "./types";
+import { apiWindow, inMarketDays } from "./calendar";
 
 export * from "./types";
 
@@ -32,36 +33,56 @@ export async function getManifest(
   return data;
 }
 
-/** Departures in a date range, ordered first-off-first. */
+/**
+ * Departures on a run of MARKET days, ordered first-off-first.
+ *
+ * `from` and `to` are the market's dates — what an operator means by "today" —
+ * and the API reads them as UTC days. Asked for as they are, a 05:00 IST
+ * departure drops off its own morning (it is 23:30 UTC the evening before)
+ * and tomorrow's turns up tonight, on the day screen as much as the calendar.
+ * So the request is widened by a day either side and the answer cut back to
+ * the days that were asked for. See `apiWindow`.
+ */
 export async function listSlots(
   token: string,
   from: string,
   to: string,
 ): Promise<OperatorSlot[]> {
+  const asked = apiWindow(from, to);
   const { data, error } = await operatorApi(token).GET("/slots", {
-    params: { query: { from, to } },
+    params: { query: { from: asked.from, to: asked.to } },
   });
   if (error) throw error;
 
-  return (data.items ?? [])
-    .map((s) => ({
-      id: s.id ?? "",
-      title: s.title ?? "Departure",
-      startsAt: s.startsAt ?? "",
-      timezone: s.timezone ?? "Asia/Kolkata",
-      seats: s.seats ?? 0,
-      sold: s.sold ?? 0,
-      remaining: s.remaining ?? 0,
-      /*
+  const slots = (data.items ?? []).map((s): OperatorSlot => ({
+    id: s.id ?? "",
+    title: s.title ?? "Departure",
+    startsAt: s.startsAt ?? "",
+    timezone: s.timezone ?? "Asia/Kolkata",
+    seats: s.seats ?? 0,
+    sold: s.sold ?? 0,
+    remaining: s.remaining ?? 0,
+    /*
         Left undefined when absent rather than defaulted. `allotment` is the
         commoner mode and would be the tempting default, and it is the one that
         makes a claim: it would put "3 seats left" against a departure that
         holds nothing until the operator answers.
       */
-      ...(s.bookingMode ? { bookingMode: s.bookingMode } : {}),
-      status: s.status ?? "open",
-    }))
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    ...(s.bookingMode ? { bookingMode: s.bookingMode } : {}),
+    status: s.status ?? "open",
+    /*
+        Whether a traveller can buy it, and the API's sentence when not. Left
+        out when absent, for the same reason as `bookingMode`: an older API
+        sending neither must not read as a calendar of boats nobody can book.
+      */
+    ...(typeof s.onSale === "boolean" ? { onSale: s.onSale } : {}),
+    ...(s.notOnSaleReason ? { notOnSaleReason: s.notOnSaleReason } : {}),
+    ...(s.notOnSaleDetail ? { notOnSaleDetail: s.notOnSaleDetail } : {}),
+  }));
+
+  return inMarketDays(slots, from, to).sort((a, b) =>
+    a.startsAt.localeCompare(b.startsAt),
+  );
 }
 
 /**

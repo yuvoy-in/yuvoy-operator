@@ -104,6 +104,16 @@ export interface OperatorSlot {
    */
   bookingMode?: "allotment" | "request";
   status: string;
+  /**
+   * Whether a traveller can buy this departure right now — read from the same
+   * view the traveller surfaces read, per row. Optional: absent on an older
+   * API, and absent must not render as "not on sale".
+   */
+  onSale?: boolean;
+  /** A closed set that grows; `notOnSaleDetail` is what gets rendered. */
+  notOnSaleReason?: string;
+  /** "A sentence to render verbatim. Present only when `onSale` is false." */
+  notOnSaleDetail?: string;
 }
 
 /**
