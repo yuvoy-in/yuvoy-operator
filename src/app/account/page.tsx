@@ -338,16 +338,23 @@ export default async function AccountPage() {
           ) : null}
 
           {/*
-            Editing any of it is still not here. O6 is the screen for that and
-            the contract has no write path yet — `POST /change-requests` does
-            not exist, only the bank-specific one. Said out loud rather than
-            left as a silence: an operator holding a renewed certificate needs
-            to know where to send it.
+            Where a change goes, said once and truthfully. Documents are sent
+            from Business details (`POST /credentials`), including a renewal
+            inside sixty days of expiry — which is where the Replace above
+            leads. The registered details are locked once the account is live,
+            and there is still no general change-request path for them
+            (`POST /change-requests` exists only for bank details), so those
+            are a message to us.
+
+            This used to say no document could be sent or replaced here at
+            all: true before `POST /credentials` existed, and flatly
+            contradicted by the Replace button above it since
+            yuvoy-operator#46.
           */}
           <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
-            You cannot send or replace a document here yet — message us and a
-            person will take it. We will put it on this screen when the API can
-            accept one.
+            Documents are sent from Business details, and a person at Yuvoy
+            checks each one before it counts. Your registered details are fixed
+            while the account is live — message us if any of them has changed.
           </p>
 
           <div className="mt-8">

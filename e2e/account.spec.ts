@@ -91,11 +91,30 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
   */
   await expect(page.getByText("Expires in 21 days")).toBeVisible();
 
-  // Editing is still not here — O6, and the contract has no write path. Said
-  // out loud so somebody holding a renewed certificate knows where to send it.
+  /*
+    And said as the loss of sales it is — yuvoy-operator#46, verbatim:
+    "{Document} expires {date}. Listings that need it come down that day."
+  */
+  await expect(
+    page.getByText(
+      /^Insurance expires \d{1,2} [A-Z][a-z]+ \d{4}\. Listings that need it come down that day\.$/,
+    ),
+  ).toBeVisible();
+
+  /*
+    With the way to renew it, because twenty-one days is inside the window in
+    which `POST /credentials` accepts a renewal. The registration, 400 days
+    out, offers nothing: the API would refuse a new copy of it.
+  */
+  const replace = page.getByRole("link", { name: "Replace it" });
+  await expect(replace).toHaveCount(1);
+  await expect(replace).toHaveAttribute("href", "/profile#documents");
+
+  // The sentence that said no document could be sent here at all is gone —
+  // false since `POST /credentials`, and contradicted by the Replace above.
   await expect(
     page.getByText(/You cannot send or replace a document here yet/),
-  ).toBeVisible();
+  ).toHaveCount(0);
 });
 
 test("a signed-up account that cannot sell is never told it is live", async ({
