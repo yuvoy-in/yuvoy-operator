@@ -103,6 +103,7 @@ export const NAV: readonly NavItem[] = [
       p.startsWith("/payouts") ||
       p.startsWith("/profile") ||
       p.startsWith("/logo") ||
+      p.startsWith("/story") ||
       p.startsWith("/team"),
   },
 ] as const;
@@ -169,6 +170,9 @@ export const FOCUSED_ROUTE_PREFIXES = [
   // The logo, which is mandatory before an operator can be booked and is
   // reached from the blocker that says so (yuvoy-operator#33, #35 §2).
   "/logo",
+  // What travellers read about the business, reached from the Business door
+  // beside the logo (yuvoy-operator#41).
+  "/story",
   "/team",
 ] as const;
 

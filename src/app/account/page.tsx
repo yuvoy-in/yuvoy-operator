@@ -8,9 +8,12 @@ import { readShape } from "@/lib/account/read-shape";
 import {
   blockerAction,
   blockerText,
+  byDocumentType,
   byGatingFirst,
   credentialName,
   credentialText,
+  documentAction,
+  expirySentences,
   gatesSale,
   headline,
   splitByWaitingOn,
@@ -29,6 +32,7 @@ import {
   ChevronRightIcon,
   CoinsIcon,
   ImageIcon,
+  StoryIcon,
   UsersIcon,
 } from "@/components/ui/icons";
 import { Chip } from "@/components/ui/chip";
@@ -302,6 +306,17 @@ export default async function AccountPage() {
                 body="The mark travellers see on a card with no clip. We need one before you can be booked."
               />
               {/*
+                WHAT TRAVELLERS READ ABOUT YOU — yuvoy-operator#41. Ungated like
+                the logo: "not behind step-up and not OWNER-only", and the
+                person who runs the boat is the one who should describe it.
+              */}
+              <Door
+                href="/story"
+                icon={StoryIcon}
+                title="Your story"
+                body="What travellers read about you before they book — in your words, with photographs of the operation."
+              />
+              {/*
                 The "Add a reel" door was here and is gone — yuvoy-operator#33
                 §4. It opened Services, which is its own tab, and one screen
                 should not live in two places: a second door to the same screen
@@ -523,14 +538,49 @@ function Outstanding({ standing }: { standing: Standing }) {
 
 /** Every document Yuvoy holds or is waiting for, and when it runs out. */
 function Credentials({ standing, at }: { standing: Standing; at: number }) {
+  /*
+    THE SENTENCE AN EXPIRY EARNS — yuvoy-operator#46, verbatim, above the list
+    rather than inside a row: "Public liability insurance expires 30 Nov 2026.
+    Listings that need it come down that day." A date in small type on the
+    fourth row down is how a lapsed licence becomes a cancelled booking.
+  */
+  const expiring = expirySentences(standing.credentials, at);
+  /*
+    One action per DOCUMENT, on the first row of its type. The list is the
+    history — last year's certificate sits beside this year's — so the action
+    is decided for the type as a whole, and only where `POST /credentials`
+    will take what it leads to.
+  */
+  const actions = new Map(
+    [...byDocumentType(standing.credentials)].map(([type, rows]) => [
+      type,
+      documentAction(rows, at),
+    ]),
+  );
+  const offered = new Set<string>();
+
   return (
     <section className="mt-10" aria-labelledby="documents">
       <h2 id="documents" className="label text-forest/75">
         Your documents
       </h2>
+      {expiring.length > 0 ? (
+        <Panel tone="alert" className="mt-3">
+          <ul className="space-y-2">
+            {expiring.map((line) => (
+              <li key={line} className="text-base font-bold">
+                {line}
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ) : null}
       <ul className="mt-3 space-y-3">
         {standing.credentials.map((c, i) => {
           const row = credentialText(c, at);
+          const type = c.type?.trim() ?? "";
+          const action = offered.has(type) ? null : (actions.get(type) ?? null);
+          offered.add(type);
           return (
             <li key={`${c.type}-${i}`} className={panelClass()}>
               <div className="flex items-baseline justify-between gap-3">
@@ -570,6 +620,15 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
                 </p>
               ) : c.issuer ? (
                 <p className="text-forest/70 mt-1 text-sm">{c.issuer}</p>
+              ) : null}
+              {action ? (
+                <ButtonLink
+                  href={action.href}
+                  variant="secondary"
+                  className="mt-4"
+                >
+                  {action.label}
+                </ButtonLink>
               ) : null}
             </li>
           );

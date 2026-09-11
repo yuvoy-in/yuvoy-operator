@@ -32,6 +32,10 @@ path=contracts/operator-openapi.yaml
 #   - `POST /experiences/{id}/pause` and `/resume` (op#44, yuvoy-api#157). The
 #     operator's own switch, both ways, immediate. `withdraw` and `relist` are
 #     the same handlers under the old names and are no longer called here.
+#   - `GET`/`PUT /story` and `POST`/`DELETE /story/photos` (op#41, the second
+#     change on this pin), with photographs uploaded through the logo's
+#     `POST /logo/upload-intents` as the contract directs. `/story` is a
+#     focused screen behind Business.
 #
 # Read, and deliberately NOT taken at face value:
 #   - A cash booking's `money` arrives as gross 0, commission on the fare, net
@@ -43,9 +47,15 @@ path=contracts/operator-openapi.yaml
 #   - `POST /experiences/{id}/resume` answers "Travellers can see it and book
 #     it now" unconditionally, including for a listing whose account cannot
 #     sell. That sentence is not rendered. All three raised on the issues.
+#   - `about` is "40 to 600 characters", and the API measures it with Go's
+#     `len` — bytes of UTF-8, so a curly apostrophe is three and so is every
+#     letter of Hindi. The counter on `/story` counts the same bytes, so it
+#     cannot pass a paragraph the API then refuses. Raised on op#41.
+#   - `POST /story/photos` does not ask the image host whether the upload
+#     arrived, as `PUT /logo` does. The uploader sends the id only after the
+#     host has answered 2xx. Raised on op#41.
 #
 # NOT consumed here, and each needs its own change:
-#   - `GET`/`PUT /story` and `POST`/`DELETE /story/photos` (op#41).
 #   - `PATCH /slots/{id}/time`. Moving a departure's time. Nothing in the
 #     calendar offers it yet.
 #   - `202` on the logo PUT for an account already LIVE — a new mark is

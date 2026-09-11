@@ -730,6 +730,75 @@ let createdSlots: MockSlot[] = [];
 let cashTaken: Record<string, { collectedPaise: number; collectedAt: string }> =
   {};
 
+/*
+  The business's own story — yuvoy-operator#41.
+
+  Seeded so every part of the screen has something to draw: words somebody
+  wrote, two languages, two photographs, and both reviewed facts. The reviewed
+  pair is a constant rather than state, because `PUT /story` has no parameter
+  for either — a mock that let one change would let the screen offer to.
+*/
+interface MockStoryPhoto {
+  id: string;
+  imageId: string;
+  position: number;
+}
+
+interface MockStory {
+  about: string;
+  languages: string[];
+  photos: MockStoryPhoto[];
+}
+
+function seedStory(): MockStory {
+  return {
+    about:
+      "A small dive centre on Beach No. 3. Two instructors, one boat, and groups of four at most.",
+    languages: ["English", "Hindi"],
+    photos: [
+      { id: "sph_boat", imageId: "img_story_boat", position: 1 },
+      { id: "sph_crew", imageId: "img_story_crew", position: 2 },
+    ],
+  };
+}
+
+let story: MockStory = seedStory();
+
+const STORY_REVIEWED = {
+  operatingSince: 2014,
+  findThemAt: "Beach No. 3, Havelock (Swaraj Dweep)",
+  why: "These two are read as things we checked, so they change through us rather than in place.",
+};
+
+/**
+ * A placeholder photograph of the operation: a `data:` URI, so the portal's
+ * CSP (`img-src 'self' data: …`) draws it with no network, and there is no
+ * picture of anybody's boat to license. Brand tokens only.
+ */
+function storyPhotoUrl(position: number): string {
+  const waterline = 120 + position * 24;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360"><rect width="480" height="360" fill="#16362e"/><rect y="${waterline}" width="480" height="${360 - waterline}" fill="#0a100e"/><rect x="${200 + position * 20}" y="140" width="10" height="10" fill="#be7149"/></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+function storyPhotoJson(photo: MockStoryPhoto) {
+  return {
+    id: photo.id,
+    position: photo.position,
+    url: storyPhotoUrl(photo.position),
+  };
+}
+
+/** `GET /story`, as the API writes it. */
+function storyResponse() {
+  return {
+    about: story.about,
+    languages: story.languages,
+    photos: story.photos.map(storyPhotoJson),
+    reviewed: STORY_REVIEWED,
+  };
+}
+
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
   attendance = {};
@@ -750,6 +819,7 @@ export function __resetOperatorMocks() {
   mockExperiences = seedExperiences();
   createdSlots = [];
   cashTaken = {};
+  story = seedStory();
   resetMockUploads();
   resetMockPhotos();
   photoIntents = {};
@@ -1822,6 +1892,148 @@ export const handlers = [
       { type, state: "pending", next: "we_check_it" },
       { status: 201 },
     );
+  }),
+
+  /* ------------------------------------------------------------ story --- */
+
+  /**
+   * The business's own story — yuvoy-operator#41. The API's shapes, and its
+   * lower-case sentences, so the screen's reading of both is exercised.
+   */
+  http.get(url("/story"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json(storyResponse());
+  }),
+
+  http.put(url("/story"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const body = (await request.json().catch(() => null)) as {
+      about?: unknown;
+      languages?: unknown;
+    } | null;
+    if (!body || typeof body !== "object") {
+      return envelope("invalid_input", "we could not read that", 400);
+    }
+
+    /*
+      The API's order and the API's arithmetic: trim, then Go's `len`, which
+      counts bytes. A mock that counted characters would pass a paragraph
+      production refuses, and the screen's own count would never meet it.
+    */
+    const about = typeof body.about === "string" ? body.about.trim() : "";
+    const size = new TextEncoder().encode(about).length;
+    if (about !== "" && (size < 40 || size > 600)) {
+      return envelope(
+        "invalid_input",
+        "we cannot use that: tell them 40 to 600 characters about the business",
+        400,
+      );
+    }
+    const languages = Array.isArray(body.languages)
+      ? body.languages.map((l) => String(l))
+      : [];
+    // Counted BEFORE blanks and repeats go — the API's own order.
+    if (languages.length > 8) {
+      return envelope(
+        "invalid_input",
+        "we cannot use that: at most eight languages",
+        400,
+      );
+    }
+    const seen = new Set<string>();
+    story.about = about;
+    story.languages = languages
+      .map((l) => l.trim())
+      .filter((l) => {
+        if (!l || seen.has(l)) return false;
+        seen.add(l);
+        return true;
+      });
+    return HttpResponse.json(storyResponse());
+  }),
+
+  /**
+   * The logo's upload slot, which a story photograph rides — "upload the bytes
+   * through the existing image upload intent". The file goes to the mock image
+   * host on a different origin, exactly as it does in production.
+   */
+  http.post(url("/logo/upload-intents"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const imageId = `img_${Math.random().toString(36).slice(2, 10)}`;
+    return HttpResponse.json(
+      {
+        imageId,
+        uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/photos/${imageId}`,
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        maxBytes: 10 * 1024 * 1024,
+        next: "upload_then_put",
+      },
+      { status: 201 },
+    );
+  }),
+
+  http.post(url("/story/photos"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const body = (await request.json().catch(() => ({}))) as {
+      imageId?: unknown;
+    };
+    const imageId = typeof body.imageId === "string" ? body.imageId.trim() : "";
+    if (!imageId) {
+      return envelope("invalid_input", "we could not read that image", 400);
+    }
+
+    /*
+      Already theirs? The same photograph back, BEFORE looking for a slot —
+      otherwise "a double tap on a wet phone would be told the gallery is
+      full". And, like the API, nothing here asks the host whether the file
+      arrived; that is the uploader's job until the API does it.
+    */
+    const existing = story.photos.find((p) => p.imageId === imageId);
+    if (existing) {
+      return HttpResponse.json(storyPhotoJson(existing), { status: 201 });
+    }
+
+    // The lowest free slot, so removing the third and adding one fills it.
+    const taken = new Set(story.photos.map((p) => p.position));
+    const position = [1, 2, 3, 4, 5].find((n) => !taken.has(n));
+    if (position === undefined) {
+      return envelope(
+        "conflict",
+        "you already have five photographs — remove one first",
+        409,
+      );
+    }
+
+    const photo: MockStoryPhoto = {
+      id: `sph_${Math.random().toString(36).slice(2, 10)}`,
+      imageId,
+      position,
+    };
+    story.photos = [...story.photos, photo].sort(
+      (a, b) => a.position - b.position,
+    );
+    return HttpResponse.json(storyPhotoJson(photo), { status: 201 });
+  }),
+
+  http.delete(url("/story/photos/:id"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    // Another business's photograph answers exactly as one that does not
+    // exist; here there is only one business, so absent is the whole test.
+    const id = String(params.id);
+    if (!story.photos.some((p) => p.id === id)) {
+      return envelope("not_found", "we could not find that photograph", 404);
+    }
+    story.photos = story.photos.filter((p) => p.id !== id);
+    return new HttpResponse(null, { status: 204 });
   }),
 
   /* ------------------------------------------------------ photographs --- */

@@ -6,6 +6,7 @@ import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { rupeesToPaise } from "@/lib/money/cash";
+import { sentence } from "@/lib/format/sentence";
 
 /**
  * Taking the cash — yuvoy-operator#40 §1.
@@ -52,14 +53,6 @@ const schema = z.object({
   mode: z.enum(["fare", "less"]),
   amount: z.string(),
 });
-
-/** The API's own sentences start in lower case; a screen's do not. */
-function sentence(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return "";
-  const capital = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-  return /[.!?]$/.test(capital) ? capital : `${capital}.`;
-}
 
 export async function recordCashCollected(
   prev: CashState,

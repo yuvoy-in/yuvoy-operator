@@ -5,8 +5,12 @@ import {
   gatesSale,
   credentialName,
   credentialText,
+  documentAction,
+  expirySentence,
+  expirySentences,
   expiryWarning,
   headline,
+  replaceAction,
   splitByWaitingOn,
   standingOf,
   stateLabel,
@@ -397,5 +401,117 @@ describe("what a credential row says", () => {
     );
     expect(row.text).toBe("Under appeal");
     expect(row.tone).toBe("warn");
+  });
+});
+
+describe("an expiry, said as the loss of sales it is — yuvoy-operator#46", () => {
+  it("renders the issue's sentence for a verified document inside sixty days", () => {
+    expect(expirySentence(credential({ expiresOn: "2026-10-05" }), NOW)).toBe(
+      "Insurance expires 5 October 2026. Listings that need it come down that day.",
+    );
+  });
+
+  it("says nothing before the window, after the date, or for a document that is not keeping listings up", () => {
+    expect(
+      expirySentence(credential({ expiresOn: "2027-06-01" }), NOW),
+    ).toBeNull();
+    // Already expired: the row says so, and louder.
+    expect(
+      expirySentence(credential({ expiresOn: "2026-09-04" }), NOW),
+    ).toBeNull();
+    expect(
+      expirySentence(
+        credential({ state: "pending", expiresOn: "2026-10-05" }),
+        NOW,
+      ),
+    ).toBeNull();
+    expect(
+      expirySentence(credential({ expiresOn: undefined }), NOW),
+    ).toBeNull();
+  });
+});
+
+describe("a Replace the API will accept — yuvoy-operator#46", () => {
+  it("offers none for a document that is current and months from expiry", () => {
+    // `POST /credentials` refuses a new copy until the renewal window opens.
+    expect(
+      replaceAction(credential({ expiresOn: "2027-06-01" }), NOW),
+    ).toBeNull();
+    expect(replaceAction(credential({ expiresOn: undefined }), NOW)).toBeNull();
+  });
+
+  it("opens exactly when the API's renewal window does", () => {
+    // Sixty days from 5 September 2026 is 4 November.
+    expect(replaceAction(credential({ expiresOn: "2026-11-04" }), NOW)).toEqual(
+      { href: "/profile#documents", label: "Replace it" },
+    );
+    expect(
+      replaceAction(credential({ expiresOn: "2026-11-05" }), NOW),
+    ).toBeNull();
+  });
+
+  it("asks for a new one when the last was turned down or has run out", () => {
+    expect(replaceAction(credential({ state: "rejected" }), NOW)?.label).toBe(
+      "Send a new one",
+    );
+    expect(replaceAction(credential({ state: "expired" }), NOW)?.label).toBe(
+      "Send a new one",
+    );
+  });
+});
+
+describe("a document is its whole history, not one row — yuvoy-operator#46", () => {
+  it("says nothing about a certificate that has already been renewed", () => {
+    // The list carries last year's copy beside this year's.
+    const renewed = [
+      credential({ expiresOn: "2026-09-20" }),
+      credential({ expiresOn: "2027-09-20" }),
+    ];
+    expect(expirySentences(renewed, NOW)).toEqual([]);
+    expect(documentAction(renewed, NOW)).toBeNull();
+  });
+
+  it("warns, and offers the renewal, when the best copy is the one running out", () => {
+    const rows = [credential({ expiresOn: "2026-10-05" })];
+    expect(expirySentences(rows, NOW)).toEqual([
+      "Insurance expires 5 October 2026. Listings that need it come down that day.",
+    ]);
+    expect(documentAction(rows, NOW)?.label).toBe("Replace it");
+  });
+
+  it("keeps warning while a renewal waits with us — the date is still the date", () => {
+    const rows = [
+      credential({ expiresOn: "2026-10-05" }),
+      credential({ state: "pending", expiresOn: undefined }),
+    ];
+    expect(expirySentences(rows, NOW)).toHaveLength(1);
+    expect(documentAction(rows, NOW)?.label).toBe("Replace it");
+  });
+
+  it("offers nothing under an old refusal once a current copy is held", () => {
+    const rows = [
+      credential({ state: "rejected" }),
+      credential({ expiresOn: "2027-06-01" }),
+    ];
+    expect(documentAction(rows, NOW)).toBeNull();
+  });
+
+  it("asks for a new one when every copy was refused or has run out", () => {
+    expect(
+      documentAction([credential({ state: "rejected" })], NOW)?.label,
+    ).toBe("Send a new one");
+    // Verified, and its date has passed before its state caught up.
+    expect(
+      documentAction([credential({ expiresOn: "2026-09-01" })], NOW)?.label,
+    ).toBe("Send a new one");
+  });
+
+  it("counts a document that never expires as the best copy there is", () => {
+    const rows = [
+      credential({ expiresOn: "2026-10-05" }),
+      credential({ expiresOn: undefined }),
+    ];
+    expect(expirySentences(rows, NOW)).toEqual([]);
+    expect(documentAction(rows, NOW)).toBeNull();
   });
 });

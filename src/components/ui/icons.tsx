@@ -187,3 +187,13 @@ export function ImageIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** A speech bubble with two lines in it: the business in its own words. */
+export function StoryIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 5h16v11h-9l-4 3.5V16H4z" />
+      <path d="M8 9h8M8 12h5" />
+    </Icon>
+  );
+}

@@ -1,5 +1,5 @@
 import type { components } from "@/lib/api/schema.gen";
-import { daysUntilMarketDate } from "@/lib/format/market-time";
+import { daysUntilMarketDate, marketDateLabel } from "@/lib/format/market-time";
 
 /**
  * Why this operator can or cannot sell, and who has to move next.
@@ -259,6 +259,19 @@ export function credentialText(
   }
 }
 
+/**
+ * Sixty days: when this portal starts warning, and when the API starts taking
+ * a replacement.
+ *
+ * Two rules that happen to be one number, kept as one constant so they cannot
+ * drift apart. yuvoy-api accepts a renewal inside the same window
+ * (`RenewalWindow`, 60 × 24h, `operator_credential_submit.go`); before it,
+ * `POST /credentials` refuses a new copy of a verified document, because "a new
+ * row would only put a LIVE operator back behind an unverified document". If
+ * the API's window moves, the warning and the Replace beside it move with it.
+ */
+export const RENEWAL_DAYS = 60;
+
 /** How near an expiry is, or null when it is not worth a sentence yet. */
 export function expiryWarning(
   credential: OperatorCredential,
@@ -272,8 +285,155 @@ export function expiryWarning(
   if (days === 1) return "Expires tomorrow";
   // Sixty days is a season's notice on an island where paperwork travels by
   // ferry. Sooner than that is not a warning, it is a surprise.
-  if (days <= 60) return `Expires in ${days} days`;
+  if (days <= RENEWAL_DAYS) return `Expires in ${days} days`;
   return null;
+}
+
+/**
+ * The sentence an expiring document earns — yuvoy-operator#46, verbatim.
+ *
+ * "Public liability insurance expires 30 Nov 2026. Listings that need it come
+ * down that day." Word for word, because "an operator who thinks an expiring
+ * document is a paperwork nag rather than a scheduled loss of sales will not
+ * act on it."
+ *
+ * Only for a VERIFIED document dated inside the renewal window. An expired one
+ * already says so, louder; a pending or rejected one is not what is keeping
+ * the listings up today.
+ */
+export function expirySentence(
+  credential: OperatorCredential,
+  now: number,
+): string | null {
+  if (credential.state !== "verified" || !credential.expiresOn) return null;
+  const days = daysUntilMarketDate(credential.expiresOn, now);
+  if (days === null || days < 0 || days > RENEWAL_DAYS) return null;
+  return `${credentialName(credential)} expires ${marketDateLabel(credential.expiresOn)}. Listings that need it come down that day.`;
+}
+
+/**
+ * Where to send a replacement, when the API will take one — yuvoy-operator#46.
+ *
+ * A current verified document gets no action at all: `POST /credentials`
+ * refuses it until the renewal window opens, and a button that ends in a
+ * refusal is worse than no button.
+ */
+export function replaceAction(
+  credential: OperatorCredential,
+  now: number,
+): { href: string; label: string } | null {
+  switch (credential.state) {
+    case "rejected":
+    case "expired":
+      return { href: "/profile#documents", label: "Send a new one" };
+    case "pending":
+      // Filing again replaces the pending copy rather than stacking beside it.
+      return { href: "/profile#documents", label: "Replace it" };
+    case "verified": {
+      if (!credential.expiresOn) return null;
+      const days = daysUntilMarketDate(credential.expiresOn, now);
+      return days !== null && days <= RENEWAL_DAYS
+        ? { href: "/profile#documents", label: "Replace it" }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * The credentials as the documents they are: rows grouped by type, in the
+ * order the list has them.
+ *
+ * `credentials` is the whole HISTORY, ordered by type rather than by date — an
+ * operator who renewed holds last year's certificate beside this year's — so
+ * anything that decides what to DO about a document has to look at every row
+ * of its type, never one row alone.
+ */
+export function byDocumentType(
+  credentials: readonly OperatorCredential[],
+): Map<string, OperatorCredential[]> {
+  const groups = new Map<string, OperatorCredential[]>();
+  for (const credential of credentials) {
+    const type = credential.type?.trim() ?? "";
+    groups.set(type, [...(groups.get(type) ?? []), credential]);
+  }
+  return groups;
+}
+
+/**
+ * The row that decides a document type: the verified one lasting longest.
+ *
+ * The API decides eligibility on the best satisfying row per type — `order by
+ * expires_on desc nulls first limit 1` — and this is that ordering: no expiry
+ * beats any date, and a later date beats an earlier one. Reading rows one at a
+ * time is how a superseded certificate once told a compliant, selling operator
+ * that their insurance had expired.
+ */
+function bestVerified(
+  rows: readonly OperatorCredential[],
+): OperatorCredential | null {
+  let best: OperatorCredential | null = null;
+  for (const row of rows) {
+    if (row.state !== "verified") continue;
+    if (!best) {
+      best = row;
+    } else if (
+      best.expiresOn &&
+      (!row.expiresOn || row.expiresOn > best.expiresOn)
+    ) {
+      best = row;
+    }
+  }
+  return best;
+}
+
+/**
+ * Every expiry sentence the documents earn, one per document type, from the
+ * type's best verified row — a certificate that has already been renewed is
+ * not about to take anything down.
+ */
+export function expirySentences(
+  credentials: readonly OperatorCredential[],
+  now: number,
+): string[] {
+  const out: string[] = [];
+  for (const rows of byDocumentType(credentials).values()) {
+    const best = bestVerified(rows);
+    const line = best ? expirySentence(best, now) : null;
+    if (line) out.push(line);
+  }
+  return out;
+}
+
+/**
+ * What to do about one document type, as the API will accept it.
+ *
+ * Decided for the TYPE, for the reason `bestVerified` gives: a "Send a new
+ * one" under last year's rejected copy of a certificate that has since been
+ * verified would send a document the API refuses.
+ */
+export function documentAction(
+  rows: readonly OperatorCredential[],
+  now: number,
+): { href: string; label: string } | null {
+  const best = bestVerified(rows);
+  if (best) {
+    // Held: a Replace only once the renewal window is open.
+    if (!best.expiresOn) return null;
+    const days = daysUntilMarketDate(best.expiresOn, now);
+    if (days === null || days > RENEWAL_DAYS) return null;
+    if (days >= 0) return replaceAction(best, now);
+    // Its date has passed, so nothing current is held — fall through.
+  }
+  const pending = rows.find((r) => r.state === "pending");
+  if (pending) return replaceAction(pending, now);
+  const refusedOrLapsed = rows.find(
+    (r) => r.state === "rejected" || r.state === "expired",
+  );
+  if (refusedOrLapsed) return replaceAction(refusedOrLapsed, now);
+  // A verified row past its date whose state has not caught up yet.
+  return best ? { href: "/profile#documents", label: "Send a new one" } : null;
 }
 
 /** `directorate_registration` → `Directorate registration`. */

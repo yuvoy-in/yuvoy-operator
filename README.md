@@ -54,19 +54,23 @@ well-meaning commit from showing one the day it does.
 ## The chassis (v2.7, shared with the traveller app)
 
 The portal draws the same rounded chassis as `yuvoy-app`: a forest **stage**, a
-cream **sheet** rising out of it, a floating **bar** with four destinations
-(Today · Requests · Capacity · Business), and pills and discs at the portal's
-own 56px `dock-target`. The tokens are the app's, diffed byte for byte by
-`pnpm tokens:check`; the primitives live in `src/components/ui` and the
-chassis in `src/components/chrome`. The design record is
-`yuvoy-app/docs/DESIGN_SYSTEM.md`, section v2.7.
+cream **sheet** rising out of it, a floating **bar** with five destinations
+(Today · Bookings · Calendar · Listings · Business), and pills and discs at the
+portal's own 56px `dock-target`. Bookings counts the requests waiting on an
+answer and Business counts what is waiting on the operator; a count that could
+not be read draws nothing (yuvoy-operator#42). The tokens are the app's, diffed
+byte for byte by `pnpm tokens:check`; the primitives live in
+`src/components/ui` and the chassis in `src/components/chrome`. The design
+record is `yuvoy-app/docs/DESIGN_SYSTEM.md`, section v2.7.
 
-Everything about the business that is not the day — earnings, payout details,
-team access, uploading a reel, whether the account can trade, signing out —
-sits behind the **Business** door (`/account`). A focused screen (a manifest,
-any of the Business screens) hides the bar and carries a back control; the
-sign-in and invitation doors draw no chrome at all. `src/lib/site/nav.ts` is
-the registry and `nav.test.ts` pins which routes are which.
+Listings (`/services`) holds what the business sells and the footage that sells
+it. Everything else about the business that is not the day — earnings, cash
+collected, payout details, team access, the logo, the story travellers read,
+whether the account can trade, signing out — sits behind the **Business** door
+(`/account`). A focused screen (a manifest, one booking, any of the Business
+screens) hides the bar and carries a back control; the sign-in and invitation
+doors draw no chrome at all. `src/lib/site/nav.ts` is the registry and
+`nav.test.ts` pins which routes are which.
 
 ## Built so far
 

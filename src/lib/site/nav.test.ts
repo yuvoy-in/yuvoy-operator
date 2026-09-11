@@ -33,6 +33,8 @@ describe("focused and bare routes", () => {
     ["/cash", "focused"],
     ["/payouts", "focused"],
     ["/team", "focused"],
+    // What travellers read about the business (yuvoy-operator#41).
+    ["/story", "focused"],
     ["/sign-in", "bare"],
     ["/signup", "bare"],
     ["/join", "bare"],
@@ -109,6 +111,7 @@ describe("focused and bare routes", () => {
       "/payouts",
       "/profile",
       "/logo",
+      "/story",
       "/team",
     ]) {
       expect(business.match(path), path).toBe(true);
@@ -171,6 +174,7 @@ describe("focused and bare routes", () => {
       "/payouts",
       "/profile",
       "/logo",
+      "/story",
       "/team",
     ]) {
       const matched = NAV.filter((n) => n.match(path));
