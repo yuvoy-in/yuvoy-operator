@@ -104,7 +104,7 @@ function BlackoutRound({
             </p>
             <p className="text-forest/90 mt-2 text-sm">
               {state.result.note ||
-                "That includes anybody mid-checkout — their hold predates the closure and can still complete. Run them, or call each one off from its own departure."}
+                "That includes anybody mid-checkout. Their hold predates the closure and can still complete. Run them, or call each one off from its own departure."}
             </p>
           </>
         ) : (

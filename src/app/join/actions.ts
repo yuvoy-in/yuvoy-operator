@@ -114,7 +114,7 @@ export async function acceptInvite(
       */
       return {
         message:
-          "That did not work. Check the number and the code, and ask whoever invited you to send a new one — codes last seven days.",
+          "That did not work. Check the number and the code, and ask whoever invited you to send a new one. Codes last seven days.",
       };
     }
     return { message: "We could not accept that invitation just now." };

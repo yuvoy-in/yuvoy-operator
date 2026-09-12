@@ -161,7 +161,7 @@ export function JoinTokenForm({
             </p>
             {state.devCode ? (
               <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
-                Development build — the code is{" "}
+                Development build: the code is{" "}
                 <strong className="font-mono">{state.devCode}</strong>. This
                 never appears in production.
               </p>

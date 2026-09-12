@@ -186,7 +186,7 @@ export function RequestRow({
         )}
       >
         {short
-          ? `Only ${request.seatsGrantable} seat${request.seatsGrantable === 1 ? "" : "s"} left — not enough for this party`
+          ? `Only ${request.seatsGrantable} seat${request.seatsGrantable === 1 ? "" : "s"} left: not enough for this party`
           : `${request.seatsGrantable} seat${request.seatsGrantable === 1 ? "" : "s"} still grantable`}
       </p>
 

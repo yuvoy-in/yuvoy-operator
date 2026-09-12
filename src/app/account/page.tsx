@@ -181,7 +181,7 @@ export default async function AccountPage() {
                   read as approval, so this says the true thing instead of the
                   reassuring one.
                 */
-                "This portal could not read your account's standing just now. It does not mean anything is wrong — but it does mean we should not tell you that nothing is."}
+                "This portal could not read your account's standing just now. It does not mean anything is wrong, but it does mean we should not tell you that nothing is."}
           </p>
 
           {/*
@@ -314,7 +314,7 @@ export default async function AccountPage() {
                 href="/story"
                 icon={StoryIcon}
                 title="Your story"
-                body="What travellers read about you before they book — in your words, with photographs of the operation."
+                body="What travellers read about you before they book: in your words, with photographs of the operation."
               />
               {/*
                 The "Add a reel" door was here and is gone — yuvoy-operator#33
@@ -354,7 +354,7 @@ export default async function AccountPage() {
           <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
             Documents are sent from Business details, and a person at Yuvoy
             checks each one before it counts. Your registered details are fixed
-            while the account is live — message us if any of them has changed.
+            while the account is live. Message us if any of them has changed.
           </p>
 
           <div className="mt-8">
@@ -380,7 +380,7 @@ export default async function AccountPage() {
           </p>
           <p className="text-forest/80 mt-3 text-base">
             We have not told you why here, because this screen does not know. A
-            person at Yuvoy does — that is the conversation to have.
+            person at Yuvoy does. That is the conversation to have.
           </p>
 
           <Panel tone="alert" className="mt-8">
@@ -508,7 +508,7 @@ function Outstanding({ standing }: { standing: Standing }) {
           */}
           <p className="text-forest/70 mt-3 text-sm">
             A person at Yuvoy checks each of these. If one was turned down and
-            you do not know why, ring us — we cannot show you the reason here
+            you do not know why, ring us. We cannot show you the reason here
             yet.
           </p>
         </section>

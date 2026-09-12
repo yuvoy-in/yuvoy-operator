@@ -118,7 +118,7 @@ export function describeRole(role: string): RoleDescription | null {
           their margins. Caught by `pnpm qa`'s contract parse changing buckets
           under the re-pin, not by anybody reading this.
         */
-        can: "Everything a manager can, plus this list — the stand-in for an owner who is off the island.",
+        can: "Everything a manager can, plus this list: the stand-in for an owner who is off the island.",
         /*
           What actually remains OWNER-only: the bank change ("Three gates, not
           one: OWNER only"), and acting on an owner or another admin, which is
@@ -137,7 +137,7 @@ export function describeRole(role: string): RoleDescription | null {
     case "STAFF":
       return {
         label: "Staff",
-        can: "Today's manifest — marks people off as they arrive.",
+        can: "Today's manifest: marks people off as they arrive.",
         cannot:
           "Sees seat requests but cannot answer them, and cannot see earnings.",
       };

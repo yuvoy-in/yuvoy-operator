@@ -77,7 +77,7 @@ export function MemberRow({
         <p className="text-forest/80 mt-2 text-sm">
           {member.pending
             ? "The code we sent them no longer works."
-            : "Signed out everywhere, now — not at their next sign-in. If their phone is open on this portal, the next thing they tap will ask them to sign in."}
+            : "Signed out everywhere, now. Not at their next sign-in. If their phone is open on this portal, the next thing they tap will ask them to sign in."}
         </p>
       </li>
     );
@@ -219,7 +219,7 @@ export function MemberRow({
               <p className="text-forest/80 mt-1.5 text-sm">
                 {member.pending
                   ? "The code we sent them stops working. You can invite them again."
-                  : "Their sessions end immediately — not at their next sign-in. You can invite them again afterwards."}
+                  : "Their sessions end immediately. Not at their next sign-in. You can invite them again afterwards."}
               </p>
               <div className="mt-4 flex gap-2">
                 <Button

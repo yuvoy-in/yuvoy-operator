@@ -114,7 +114,7 @@ export async function createAccount(
     if (err instanceof OperatorNetworkError) {
       // Nothing was created, so the honest thing is that it can be retried —
       // and retrying must not mean retyping.
-      return refuse({ message: "No signal. Nothing was sent — try again." });
+      return refuse({ message: "No signal. Nothing was sent. Try again." });
     }
     if (err instanceof OperatorApiError) {
       if (err.status === 429) {

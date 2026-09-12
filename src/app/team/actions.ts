@@ -153,7 +153,7 @@ export async function inviteMember(
     };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was sent — try again." };
+      return { message: "No signal. Nothing was sent. Try again." };
     }
     if (err instanceof OperatorApiError) {
       if (err.code === "cannot_invite") {
@@ -169,7 +169,7 @@ export async function inviteMember(
         */
         return {
           message:
-            "We could not send that invitation. Check the number, and note that an owner cannot be invited — the first one is set up by Yuvoy.",
+            "We could not send that invitation. Check the number, and note that an owner cannot be invited. The first one is set up by Yuvoy.",
         };
       }
       if (err.status === 403) {
@@ -225,7 +225,7 @@ export async function removeMember(
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return {
-        message: "No signal. They were NOT removed — they still have access.",
+        message: "No signal. They were NOT removed. They still have access.",
       };
     }
     if (err instanceof OperatorApiError) {
@@ -237,7 +237,7 @@ export async function removeMember(
         */
         return {
           message:
-            "That cannot be removed — it is either you, or the last owner. Refresh to see who is on the account now.",
+            "That cannot be removed. It is either you, or the last owner. Refresh to see who is on the account now.",
         };
       }
       if (err.status === 403) {
@@ -277,7 +277,7 @@ const idSchema = z.string().min(1);
 function accessFailure(err: unknown, verb: string): AccessState {
   if (err instanceof OperatorNetworkError) {
     return {
-      message: `No signal. Nothing changed — ${verb} again when you have one.`,
+      message: `No signal. Nothing changed: ${verb} again when you have one.`,
     };
   }
   if (err instanceof OperatorApiError) {
@@ -289,7 +289,7 @@ function accessFailure(err: unknown, verb: string): AccessState {
       */
       return {
         message:
-          "That cannot be changed — it is either your own access, or the last owner. Refresh to see who is on the account now.",
+          "That cannot be changed. It is either your own access, or the last owner. Refresh to see who is on the account now.",
       };
     }
     if (err.status === 403) {

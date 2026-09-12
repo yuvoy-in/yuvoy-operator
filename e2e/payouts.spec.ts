@@ -36,7 +36,7 @@ test.describe.configure({ mode: "serial" });
  */
 async function clearOpenChange(page: Page) {
   await page.goto("/payouts");
-  const brake = page.getByRole("button", { name: "This wasn't me — stop it" });
+  const brake = page.getByRole("button", { name: "This wasn't me. Stop it" });
   if (await brake.count()) {
     await brake.first().click();
     await expect(page.getByText("Stopped. Nothing was changed.")).toBeVisible();
@@ -71,7 +71,7 @@ test("the in-flight change shows both clocks and the brake", async ({
 
   // The fixture is `cooling`: approved, not yet live, still stoppable.
   await expect(
-    page.getByText("Approved, not yet live — still stoppable"),
+    page.getByText("Approved, not yet live: still stoppable"),
   ).toBeVisible();
 
   // Both windows, always — the design is only trustworthy if it is visible.
@@ -82,7 +82,7 @@ test("the in-flight change shows both clocks and the brake", async ({
 
   // The brake, prominent, at every stoppable stage.
   await expect(
-    page.getByRole("button", { name: "This wasn't me — stop it" }),
+    page.getByRole("button", { name: "This wasn't me. Stop it" }),
   ).toBeVisible();
   await expect(page.getByText("It takes no code and no waiting")).toBeVisible();
 
@@ -116,7 +116,7 @@ test("the emergency brake works, and needs no code", async ({ page }) => {
     and making them pass another code first puts the emergency brake further
     away than the accelerator."
   */
-  await page.getByRole("button", { name: "This wasn't me — stop it" }).click();
+  await page.getByRole("button", { name: "This wasn't me. Stop it" }).click();
   await expect(page.getByText("Stopped. Nothing was changed.")).toBeVisible();
 });
 
@@ -179,12 +179,10 @@ test("a valid change is raised, and nothing is live yet", async ({ page }) => {
     says more than a "raised" message could — and is live rather than a
     snapshot.
   */
-  await expect(
-    page.getByText("Raised — you can still stop this"),
-  ).toBeVisible();
+  await expect(page.getByText("Raised: you can still stop this")).toBeVisible();
   await expect(page.getByText(/Bank ••••6789/)).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "This wasn't me — stop it" }),
+    page.getByRole("button", { name: "This wasn't me. Stop it" }),
   ).toBeVisible();
   // And the form is gone, because only one change may be open at a time.
   await expect(page.getByText(/already a change in progress/)).toBeVisible();
@@ -209,9 +207,7 @@ test("a bank change in flight holds the payout, and earnings says so", async ({
   await page.getByRole("button", { name: "Send the code" }).click();
   await page.getByLabel("The code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Raise the change" }).click();
-  await expect(
-    page.getByText("Raised — you can still stop this"),
-  ).toBeVisible();
+  await expect(page.getByText("Raised: you can still stop this")).toBeVisible();
 
   // "A payout on hold because a bank change is in flight should say so — that
   // is a real state and the operator can act on it."
@@ -220,7 +216,7 @@ test("a bank change in flight holds the payout, and earnings says so", async ({
     page.getByText("Payouts are on hold while your bank change is reviewed"),
   ).toBeVisible();
   await expect(
-    page.getByText(/objection window — you can still stop it/),
+    page.getByText(/objection window: you can still stop it/),
   ).toBeVisible();
   await expect(page.getByText(/If you did not request this/)).toBeVisible();
 });

@@ -156,7 +156,7 @@ export function validateRelay(
     return {
       field: "detail",
       message:
-        "Letters, numbers and basic punctuation only — no links or line breaks.",
+        "Letters, numbers and basic punctuation only: no links or line breaks.",
     };
   }
 

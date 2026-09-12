@@ -5,7 +5,7 @@ describe("sentence", () => {
   it("capitalises and stops an API message, keeping its words", () => {
     expect(
       sentence("you already have five photographs — remove one first"),
-    ).toBe("You already have five photographs — remove one first.");
+    ).toBe("You already have five photographs. Remove one first.");
   });
 
   it("leaves a sentence that already ends alone", () => {

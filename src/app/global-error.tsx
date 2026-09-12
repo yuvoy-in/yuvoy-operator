@@ -35,7 +35,7 @@ export default function GlobalError({ reset }: { reset: () => void }) {
             Yuvoy could not load
           </h1>
           <p style={{ marginTop: "0.75rem", fontSize: "1rem" }}>
-            Something went wrong before the page could start. Try again — if it
+            Something went wrong before the page could start. Try again. If it
             keeps happening, call us on +91 81216 57657.
           </p>
           <button

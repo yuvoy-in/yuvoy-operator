@@ -130,7 +130,7 @@ export function rightsProblem(input: RightsInput): RightsProblem | null {
     return {
       field: "peopleConsentConfirmed",
       message:
-        "Answer the question about the people in the clip. There is no default — a moderator cannot tell by watching.",
+        "Answer the question about the people in the clip. There is no default. A moderator cannot tell by watching.",
     };
   }
 

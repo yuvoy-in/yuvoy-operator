@@ -510,6 +510,27 @@ extracted.** It has not been — that is a recorded debt, not an oversight.
 fails on any divergence. It warns rather than fails when that checkout is absent, so
 CI does not block on a repo it did not clone.
 
+## Copy
+
+- **No long dash in anything an operator reads.** No em dash (U+2014), en dash
+  (U+2013) or horizontal bar (U+2015). Owner direction 2026-09-12: they read as
+  AI slop. Use a comma, a colon, a full stop, parentheses, or a middot for a
+  pairing, and a plain hyphen for a range. `pnpm check:dashes` fails on one and
+  runs first in `pnpm lint`. Scope is rendered
+  copy, so the check blanks comments before it looks; comments and this README
+  are out of scope.
+- **Text from yuvoy-api is stripped on the way in**, by
+  `src/lib/format/dedash.ts`, rather than at each screen that happens to render
+  it. A single break becomes a full stop and the tail is capitalised: almost
+  every string the API sends is two independent clauses, and a comma splices
+  them. The capacity refusal is why it matters, not style. With a comma,
+  "Cancel the bookings you cannot take first, we will refund them" reads as us
+  announcing the refund as the next step rather than as the consequence of
+  cancelling. A tail that cannot stand on its own takes a comma instead, since
+  a full stop there would leave a fragment. Wired into `sentence()`, the
+  story's review reason, a departure's `notOnSaleDetail`, and the blackout
+  receipt's note.
+
 ## Deployment
 
 Its own Vercel project on its own origin (D-102). `main` deploys; nothing else does.

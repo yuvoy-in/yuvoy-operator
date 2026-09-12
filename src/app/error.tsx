@@ -36,7 +36,7 @@ export default function Error({ reset }: { reset: () => void }) {
       </h1>
       <p className="text-forest/70 mt-3 text-base">
         Usually the connection rather than anything you did. Nothing on this
-        screen is lost — it simply is not here yet.
+        screen is lost. It simply is not here yet.
       </p>
 
       <Button onClick={reset} className="mt-8">
@@ -53,8 +53,8 @@ export default function Error({ reset }: { reset: () => void }) {
         this portal cannot tell them from here whether the tap landed.
       */}
       <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
-        If you had just tapped something — accepted a request, sent a message,
-        marked somebody off — check whether it took effect before doing it
+        If you had just tapped something (accepted a request, sent a message,
+        marked somebody off), check whether it took effect before doing it
         again.
       </p>
     </Screen>

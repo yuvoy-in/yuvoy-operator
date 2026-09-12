@@ -164,7 +164,7 @@ export async function changeBank(
         // silently decides which account wins."
         return {
           message:
-            "There is already a bank change in progress. Stop that one first — two at once means whichever is approved last silently wins.",
+            "There is already a bank change in progress. Stop that one first. Two at once means whichever is approved last silently wins.",
         };
       }
       if (err.code === "step_up_required") {
@@ -215,7 +215,7 @@ export async function cancelChange(
     if (error) throw error;
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. It was NOT stopped — try again." };
+      return { message: "No signal. It was NOT stopped. Try again." };
     }
     if (err instanceof OperatorApiError) {
       if (err.code === "change_already_decided") {
@@ -226,7 +226,7 @@ export async function cancelChange(
         */
         return {
           message:
-            "It has already gone through — this could not be stopped. Call us now on +91 81216 57657.",
+            "It has already gone through. This could not be stopped. Call us now on +91 81216 57657.",
         };
       }
       if (err.status === 403) {

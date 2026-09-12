@@ -46,7 +46,7 @@ export default function JoinPage() {
         >
           Sign in
         </Link>
-        . Codes last seven days — if yours has expired, ask whoever invited you
+        . Codes last seven days. If yours has expired, ask whoever invited you
         to send another.
       </p>
     </Screen>

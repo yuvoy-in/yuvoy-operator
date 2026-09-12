@@ -29,19 +29,19 @@ export function describeChange(state: ChangeState): {
   switch (state) {
     case "objection_window":
       return {
-        title: "Raised — you can still stop this",
+        title: "Raised: you can still stop this",
         body: "We messaged the owner the moment it was raised. Nobody at Yuvoy has looked at it yet, and it becomes reviewable in 24 hours.",
         stoppable: true,
       };
     case "pending":
       return {
         title: "Awaiting review by a person at Yuvoy",
-        body: "The objection window closed without anybody stopping it. That did not approve it — a person still has to.",
+        body: "The objection window closed without anybody stopping it. That did not approve it. A person still has to.",
         stoppable: true,
       };
     case "cooling":
       return {
-        title: "Approved, not yet live — still stoppable",
+        title: "Approved, not yet live: still stoppable",
         body: "A person approved it. It goes live 24 hours after that, and until it does you can still stop it.",
         stoppable: true,
       };
@@ -118,7 +118,7 @@ export function bankProblem(input: BankInput): BankProblem | null {
     return {
       field: "ifsc",
       message:
-        "An IFSC looks like HDFC0001234 — four letters, then a zero, then six more. The fifth character is always a zero, never a letter O.",
+        "An IFSC looks like HDFC0001234: four letters, then a zero, then six more. The fifth character is always a zero, never a letter O.",
     };
   }
 

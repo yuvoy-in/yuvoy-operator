@@ -59,7 +59,7 @@ export function ListingPicker({
   if (listings === null) {
     return (
       <p className="text-terra-deep text-sm font-bold">
-        We could not load your listings. Try again in a moment — this is us, not
+        We could not load your listings. Try again in a moment. This is us, not
         you.
       </p>
     );
@@ -157,7 +157,7 @@ export function ListingPicker({
         {role === "hero" ? (
           <p className="text-forest/70 mt-2 text-xs">
             A listing shows one first {noun}. If it already has one, choose
-            Gallery — or move the existing one first.
+            Gallery, or move the existing one first.
           </p>
         ) : null}
       </fieldset>

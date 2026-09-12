@@ -90,7 +90,7 @@ export async function saveLogo(imageId: string): Promise<LogoSaveState> {
     if (err instanceof OperatorApiError && err.status === 400) {
       // "The upload has not arrived at the host yet." The honest reading is
       // that the file never made it, whatever the browser reported.
-      return { message: "That upload did not finish — choose it again." };
+      return { message: "That upload did not finish. Choose it again." };
     }
     return failure(err);
   }
@@ -114,7 +114,7 @@ function failure(err: unknown): { message: string; unavailable?: boolean } {
       return {
         unavailable: true,
         message:
-          "Logos are switched off for now — nothing to do with your picture. We will tell you when they open.",
+          "Logos are switched off for now: nothing to do with your picture. We will tell you when they open.",
       };
     }
     if (err.status === 502) {

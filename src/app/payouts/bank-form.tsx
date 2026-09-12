@@ -32,7 +32,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
     return (
       <p className="text-forest/70 text-sm">
         Only the owner can change where the money goes. That is not a
-        permissions quirk — a stolen login plus one convincing phone call is
+        permissions quirk. A stolen login plus one convincing phone call is
         otherwise enough to redirect a season&rsquo;s takings.
       </p>
     );
@@ -78,7 +78,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
         <p className="text-forest/70 mt-1.5 text-xs">
           We store the last four digits only
           {account.replace(/\D/g, "").length >= 4
-            ? ` — ${maskAccount(account)}`
+            ? `: ${maskAccount(account)}`
             : ""}
           . A person confirms the rest with you out of band.
         </p>
@@ -118,7 +118,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
           A code goes to the owner&rsquo;s phone
         </p>
         <p className="text-forest/80 mt-1.5 text-sm">
-          Whoever asks. A manager who requested this will not receive it — that
+          Whoever asks. A manager who requested this will not receive it. That
           is the point of sending it to the owner.
         </p>
 
@@ -137,13 +137,13 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
               className={inputClass("mt-2 font-mono text-2xl tracking-[0.4em]")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
-              It lasts ten minutes — long enough for a bad phone keyboard, short
+              It lasts ten minutes: long enough for a bad phone keyboard, short
               enough that a session left open at a dive shop is not still
               elevated after lunch.
             </p>
             {step.devCode ? (
               <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
-                Development build — the code is{" "}
+                Development build: the code is{" "}
                 <strong className="font-mono">{step.devCode}</strong>.
               </p>
             ) : null}

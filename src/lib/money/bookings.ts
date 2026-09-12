@@ -175,7 +175,7 @@ export function describeCash(cash: BookingCash, timezone: string): string {
     }${when}`;
   }
   return cash.collectPaise === null
-    ? "Cash at the counter — the amount did not load"
+    ? "Cash at the counter: the amount did not load"
     : `${formatPaise(cash.collectPaise)} to take in cash`;
 }
 

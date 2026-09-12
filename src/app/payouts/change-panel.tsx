@@ -82,7 +82,7 @@ export function ChangePanel({
       {/* Both clocks, always — the design is only trustworthy if it is visible. */}
       <dl className="border-cream-line mt-4 space-y-2 border-t pt-4 text-sm">
         {requestedAt ? (
-          <Row label="Raised" value={clock(requestedAt) ?? "—"} />
+          <Row label="Raised" value={clock(requestedAt) ?? "-"} />
         ) : null}
         <Row
           label="You can object until"
@@ -92,7 +92,7 @@ export function ChangePanel({
           label="Goes live"
           value={
             clock(coolingUntil) ??
-            "Not yet scheduled — a person must approve it first"
+            "Not yet scheduled: a person must approve it first"
           }
         />
       </dl>
@@ -107,7 +107,7 @@ export function ChangePanel({
         */
         <p className="text-forest/80 mt-5 text-sm">
           If this was not asked for, an owner or an admin can stop it. Your role
-          cannot — tell them now rather than waiting.
+          cannot. Tell them now rather than waiting.
         </p>
       ) : null}
 
@@ -118,7 +118,7 @@ export function ChangePanel({
             Did you not ask for this?
           </p>
           <p className="text-forest/80 mt-1 text-sm">
-            Stop it now. It takes no code and no waiting — that is deliberate.
+            Stop it now. It takes no code and no waiting. That is deliberate.
           </p>
           <Button
             type="submit"
@@ -126,7 +126,7 @@ export function ChangePanel({
             variant="danger"
             className="mt-3"
           >
-            {pending ? "Stopping…" : "This wasn't me — stop it"}
+            {pending ? "Stopping…" : "This wasn't me. Stop it"}
           </Button>
         </form>
       ) : null}

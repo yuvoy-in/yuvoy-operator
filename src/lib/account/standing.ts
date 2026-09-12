@@ -488,8 +488,8 @@ export function headline(standing: Standing): { title: string; body: string } {
     return {
       title:
         outstanding === 1
-          ? "Your account is live — one thing is still outstanding"
-          : `Your account is live — ${outstanding} things are still outstanding`,
+          ? "Your account is live: one thing is still outstanding"
+          : `Your account is live: ${outstanding} things are still outstanding`,
       body: anyGating
         ? "Travellers can book your departures. Some of what is below may still be holding a listing back."
         : "Travellers can book your departures. These are not blocking you, but we still need them.",

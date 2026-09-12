@@ -157,7 +157,7 @@ function DepartureRound({
             <p className="text-base font-bold">Nothing to add</p>
             <p className="text-forest/80 mt-2 text-sm">
               Every one of those days and times already has a departure, so
-              nothing was changed. Pressing again is safe — it never sells the
+              nothing was changed. Pressing again is safe. It never sells the
               same boat twice.
             </p>
           </>
@@ -197,8 +197,8 @@ function DepartureRound({
           We could not load your listings just now
         </p>
         <p className="text-forest/80 mt-2 text-sm">
-          Everything below still works — this is only the list of listings to
-          add a departure to. Reload the page to try again.
+          Everything below still works. This is only the list of listings to add
+          a departure to. Reload the page to try again.
         </p>
       </Panel>
     );
@@ -210,8 +210,8 @@ function DepartureRound({
         <p className="text-base font-bold">Adding a departure</p>
         <p className="text-forest/80 mt-2 text-sm">
           A departure belongs to a listing, and you have not written one yet.
-          Start there and the dates come next — a draft is fine, and you can
-          fill in its calendar before we approve it.
+          Start there and the dates come next. A draft is fine, and you can fill
+          in its calendar before we approve it.
         </p>
         {/*
           "Message us and we will add the first one for you" stopped being true
@@ -456,7 +456,7 @@ function DepartureRound({
           className={inputClass("mt-2 w-28 text-lg")}
         />
         <p className="text-forest/70 mt-2 text-xs">
-          What you are selling to Yuvoy — not what the boat holds.
+          What you are selling to Yuvoy, not what the boat holds.
         </p>
       </div>
 

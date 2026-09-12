@@ -100,7 +100,7 @@ export default async function PayoutsPage() {
           */
           <p className="text-forest/80 mt-3 text-sm">
             There is already a change in progress. Stop it above before raising
-            another — two at once would mean whichever is approved last silently
+            another. Two at once would mean whichever is approved last silently
             wins.
           </p>
         ) : (

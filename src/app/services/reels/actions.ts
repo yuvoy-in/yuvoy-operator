@@ -142,7 +142,7 @@ export async function createUploadIntent(
         */
         const full = fullCeiling(err.details)!;
         return {
-          message: `That listing already shows ${full.limit} ${full.noun}. Remove one first — your ${full.other} are not affected.`,
+          message: `That listing already shows ${full.limit} ${full.noun}. Remove one first. Your ${full.other} are not affected.`,
         };
       }
       if (err.status === 409) {
@@ -175,7 +175,7 @@ export async function createUploadIntent(
         */
         return {
           message:
-            "Uploads are switched off for now — nothing to do with your clip. We will tell you when they open.",
+            "Uploads are switched off for now: nothing to do with your clip. We will tell you when they open.",
         };
       }
     }
@@ -217,7 +217,7 @@ export async function confirmUpload(intentId: string): Promise<ConfirmState> {
     };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. The upload is safe — try again shortly." };
+      return { message: "No signal. The upload is safe. Try again shortly." };
     }
     if (err instanceof OperatorApiError && err.isNotFound) {
       return { message: "That upload is no longer here. Start again." };
@@ -322,7 +322,7 @@ export async function attestRights(
     return { done: { note: data.note } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was recorded — try again." };
+      return { message: "No signal. Nothing was recorded. Try again." };
     }
     if (err instanceof OperatorApiError) {
       if (err.isNotFound) {
@@ -391,7 +391,7 @@ export async function withdrawMedia(
     return { withdrawn: { note: data.note } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. It is still up — try again." };
+      return { message: "No signal. It is still up. Try again." };
     }
     if (err instanceof OperatorApiError && err.isNotFound) {
       /*
@@ -448,7 +448,7 @@ export async function attachMedia(
     return { done: true };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. The clip was not attached — try again." };
+      return { message: "No signal. The clip was not attached. Try again." };
     }
     if (err instanceof OperatorApiError) {
       if (err.isNotFound) {
@@ -471,7 +471,7 @@ export async function attachMedia(
         const ceiling = fullCeiling(err.details);
         return {
           message: ceiling
-            ? `That listing already shows ${ceiling.limit} ${ceiling.noun}. Take one down before adding another — ${ceiling.other} are counted separately and are not affected.`
+            ? `That listing already shows ${ceiling.limit} ${ceiling.noun}. Take one down before adding another: ${ceiling.other} are counted separately and are not affected.`
             : err.message,
         };
       }
@@ -622,7 +622,7 @@ export async function createPhotoIntent(
         const full = fullCeiling(err.details);
         return {
           message: full
-            ? `That listing already shows ${full.limit} ${full.noun}. Remove one first — your ${full.other} are not affected.`
+            ? `That listing already shows ${full.limit} ${full.noun}. Remove one first. Your ${full.other} are not affected.`
             : "That listing already shows as many photographs as we display.",
         };
       }
@@ -638,7 +638,7 @@ export async function createPhotoIntent(
         return {
           unavailable: true,
           message:
-            "Photographs are switched off for now — nothing to do with your picture. We will tell you when they open.",
+            "Photographs are switched off for now: nothing to do with your picture. We will tell you when they open.",
         };
       }
       if (err.status === 502) {
@@ -702,7 +702,7 @@ export async function completePhotoUpload(
     if (error) throw error;
 
     if (!data.mediaAssetId) {
-      return { message: "That upload did not finish — try again." };
+      return { message: "That upload did not finish. Try again." };
     }
 
     // It is now a media asset awaiting review, and appears in `GET /media`
@@ -711,13 +711,13 @@ export async function completePhotoUpload(
     return { mediaAssetId: data.mediaAssetId };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. We could not confirm it — try again." };
+      return { message: "No signal. We could not confirm it. Try again." };
     }
     if (err instanceof OperatorApiError) {
       if (err.status === 400) {
         // "The upload has not arrived at the host yet." The honest reading is
         // that the file never made it, whatever the browser reported.
-        return { message: "That upload did not finish — try again." };
+        return { message: "That upload did not finish. Try again." };
       }
       if (err.isNotFound) {
         /*

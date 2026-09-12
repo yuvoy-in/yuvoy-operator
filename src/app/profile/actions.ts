@@ -123,7 +123,7 @@ export async function saveDetails(
     if (error) throw error;
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was saved — try again." };
+      return { message: "No signal. Nothing was saved. Try again." };
     }
     if (err instanceof OperatorApiError) {
       if (err.code === "details_locked" || err.status === 409) {
@@ -134,7 +134,7 @@ export async function saveDetails(
         */
         return {
           message:
-            "Your account is live now, so these are locked — the documents we verified were checked against them. Message us to change anything here.",
+            "Your account is live now, so these are locked. The documents we verified were checked against them. Message us to change anything here.",
         };
       }
       if (err.status === 400 && err.message) return { message: err.message };
@@ -235,7 +235,7 @@ export async function fileCredential(
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return {
-        message: "No signal. Nothing was sent — we have not got it yet.",
+        message: "No signal. Nothing was sent. We have not got it yet.",
       };
     }
     if (err instanceof OperatorApiError) {

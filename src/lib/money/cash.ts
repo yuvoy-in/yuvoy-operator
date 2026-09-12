@@ -62,11 +62,11 @@ export function fareComparisonText(comparison: FareComparison): string {
     case "more":
       return `That is more than the fare of ${formatPaise(comparison.farePaise)}. We cannot record more than the fare.`;
     case "whole":
-      return "That is the whole fare — the same as Cash taken.";
+      return "That is the whole fare, the same as Cash taken.";
     case "less":
       return `That is ${formatPaise(comparison.shortPaise)} less than the fare of ${formatPaise(comparison.farePaise)}.`;
     case "nothing":
-      return `That records nothing taken — the whole ${formatPaise(comparison.farePaise)} short.`;
+      return `That records nothing taken, the whole ${formatPaise(comparison.farePaise)} short.`;
     case "unknown-fare":
       return "The fare did not load, so check this against what they owe before you record it.";
   }

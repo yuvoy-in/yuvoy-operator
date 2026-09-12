@@ -108,7 +108,7 @@ test("the team is two lists: people, and invitations nobody has used", async ({
     page
       .locator("li")
       .filter({ hasText: "Arun Biswas" })
-      .getByText("Today's manifest — marks people off as they arrive."),
+      .getByText("Today's manifest: marks people off as they arrive."),
   ).toBeVisible();
   await expect(
     page
@@ -434,7 +434,7 @@ test("a wrong code on /join gives one answer, whatever went wrong", async ({
   */
   const alert = page.locator("form").getByRole("alert");
   await expect(alert).toContainText("That did not work");
-  await expect(alert).toContainText("codes last seven days");
+  await expect(alert).toContainText("Codes last seven days");
 });
 
 test("removing somebody ends their access now, and says so", async ({
@@ -465,9 +465,7 @@ test("removing somebody ends their access now, and says so", async ({
 
   await row.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(
-    row.getByText(
-      "Their sessions end immediately — not at their next sign-in.",
-    ),
+    row.getByText("Their sessions end immediately. Not at their next sign-in."),
   ).toBeVisible();
   await row.getByRole("button", { name: "Remove", exact: true }).click();
 

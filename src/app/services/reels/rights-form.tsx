@@ -160,7 +160,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
               required
               className="accent-terra-deep size-5 shrink-0"
             />
-            <span className="text-sm">Yes — they knew and agreed</span>
+            <span className="text-sm">Yes, they knew and agreed</span>
           </label>
           <label className={choiceClass()}>
             <input
@@ -171,7 +171,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
               className="accent-terra-deep size-5 shrink-0"
             />
             <span className="text-sm">
-              No — or there is nobody recognisable in it
+              No, or there is nobody recognisable in it
             </span>
           </label>
         </div>

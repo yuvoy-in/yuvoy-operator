@@ -152,10 +152,10 @@ export function confirmedGuestsByDay(
  * turn up, and the people who paid are standing on a jetty."
  */
 export const CLOSING_SENTENCE =
-  "Closing stops new bookings straight away. Bookings you've already confirmed stay live — resolve those one by one in Bookings.";
+  "Closing stops new bookings straight away. Bookings you've already confirmed stay live. Resolve those one by one in Bookings.";
 
 /** The second, verbatim — "4 guests are already confirmed. …" */
 export function alreadyConfirmedSentence(guests: number): string {
   const who = guests === 1 ? "1 guest is" : `${guests} guests are`;
-  return `${who} already confirmed. Closing won't move them — resolve each booking in Bookings.`;
+  return `${who} already confirmed. Closing won't move them. Resolve each booking in Bookings.`;
 }

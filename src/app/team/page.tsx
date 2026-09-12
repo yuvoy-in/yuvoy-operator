@@ -103,7 +103,7 @@ export default async function TeamPage() {
           <div className="mt-3">
             <Empty
               title="Nobody is listed"
-              body="That should not be possible — an account always has an owner. Message us before you rely on this screen."
+              body="That should not be possible. An account always has an owner. Message us before you rely on this screen."
             />
           </div>
         ) : (
@@ -205,7 +205,7 @@ export default async function TeamPage() {
             redirect a season&rsquo;s takings.
           </p>
           <p className="text-forest/80 mt-3 text-sm">
-            Removing somebody ends their sessions immediately — on their next
+            Removing somebody ends their sessions immediately: on their next
             tap, not at their next sign-in. That is the difference between
             &ldquo;we removed them&rdquo; and &ldquo;we removed them a fortnight
             from now&rdquo;, and the reason somebody is removed in a hurry is

@@ -164,7 +164,7 @@ export function PhotoUploader({
         setPhase({
           name: "failed",
           message:
-            "The picture did not reach us. Check your signal and try again — nothing was saved.",
+            "The picture did not reach us. Check your signal and try again. Nothing was saved.",
         });
         return;
       }
@@ -172,7 +172,7 @@ export function PhotoUploader({
       setPhase({
         name: "failed",
         message:
-          "The picture did not reach us. Check your signal and try again — nothing was saved.",
+          "The picture did not reach us. Check your signal and try again. Nothing was saved.",
       });
       return;
     }
@@ -187,7 +187,7 @@ export function PhotoUploader({
     if (!done.mediaAssetId) {
       setPhase({
         name: "failed",
-        message: done.message ?? "That upload did not finish — try again.",
+        message: done.message ?? "That upload did not finish. Try again.",
       });
       return;
     }
@@ -286,7 +286,7 @@ export function PhotoUploader({
             connection means starting again.
           */}
           <p className="text-forest/70 mt-3 text-xs">
-            Stay on this screen while it uploads — a photograph goes in one go
+            Stay on this screen while it uploads. A photograph goes in one go
             and cannot pick up where it left off.
           </p>
 

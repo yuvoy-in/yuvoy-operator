@@ -116,7 +116,7 @@ export function JoinLink({
             selectable. This says what to do instead, which is all it can.
           */
           <p role="status" className="text-forest/80 text-sm">
-            Could not copy it here — select the link above and copy it by hand.
+            Could not copy it here. Select the link above and copy it by hand.
           </p>
         ) : null}
       </div>

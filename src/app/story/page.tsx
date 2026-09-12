@@ -71,7 +71,7 @@ export default async function StoryPage() {
         <div className="mt-8">
           <Problem
             title="Your story did not load"
-            body="Nothing has changed. Try again in a moment — a blank form here could save over what travellers already see."
+            body="Nothing has changed. Try again in a moment. A blank form here could save over what travellers already see."
           />
         </div>
       ) : (
@@ -95,7 +95,7 @@ export default async function StoryPage() {
             */}
             <p className="text-forest/70 mt-2 text-sm">
               {
-                "The boat, the shop, the crew — not the trip itself. Footage of the experience belongs on a listing's reel, which is where travellers look for it."
+                "The boat, the shop, the crew. Not the trip itself. Footage of the experience belongs on a listing's reel, which is where travellers look for it."
               }
             </p>
 
