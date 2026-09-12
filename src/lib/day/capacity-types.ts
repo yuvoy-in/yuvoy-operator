@@ -39,7 +39,7 @@ export function capacityProblem(seats: number, sold: number): string | null {
   if (seats > MAX_SEATS)
     return `The most a departure can offer is ${MAX_SEATS}.`;
   if (seats < sold) {
-    return `${sold} ${sold === 1 ? "seat is" : "seats are"} already sold. You cannot go below that — it would strand somebody who has paid. Setting it to exactly ${sold} closes the departure without stranding anyone.`;
+    return `${sold} ${sold === 1 ? "seat is" : "seats are"} already sold. You cannot go below that. It would strand somebody who has paid. Setting it to exactly ${sold} closes the departure without stranding anyone.`;
   }
   return null;
 }

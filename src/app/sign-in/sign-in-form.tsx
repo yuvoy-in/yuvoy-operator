@@ -93,7 +93,7 @@ export function SignInForm({ next }: { next?: string | null }) {
           </p>
           {state.devCode ? (
             <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
-              Development build — the code is{" "}
+              Development build: the code is{" "}
               <strong className="font-mono">{state.devCode}</strong>. This never
               appears in production.
             </p>
@@ -143,7 +143,7 @@ export function SignInForm({ next }: { next?: string | null }) {
             I already have a code
           </Button>
           <p className="text-forest/70 text-xs">
-            If somebody at Yuvoy gave you one, use this — it takes you straight
+            If somebody at Yuvoy gave you one, use this. It takes you straight
             to the code without messaging your phone.
           </p>
         </>

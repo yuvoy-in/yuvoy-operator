@@ -19,6 +19,7 @@ import {
   departureProblem,
 } from "@/lib/day/departures";
 import { marketDays } from "@/lib/format/market-time";
+import { dedash, dedashText } from "@/lib/format/dedash";
 
 /**
  * The four capacity writes.
@@ -96,7 +97,7 @@ export async function setCapacity(
       return { slotId, message: "No signal. Seats were not changed." };
     }
     if (err instanceof OperatorApiError) {
-      if (err.status === 409) return { slotId, message: err.message };
+      if (err.status === 409) return { slotId, message: dedash(err.message) };
       if (err.status === 403) {
         return {
           slotId,
@@ -180,7 +181,10 @@ export async function addBlackout(
     revalidatePath("/calendar");
     revalidatePath("/today");
     return {
-      result: { existingBookings: data.existingBookings ?? 0, note: data.note },
+      result: {
+        existingBookings: data.existingBookings ?? 0,
+        note: dedashText(data.note),
+      },
     };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
@@ -287,7 +291,7 @@ export async function recordOfflineSale(
     if (err instanceof OperatorNetworkError) {
       // Emphatic on purpose: an operator who thinks a counter sale was
       // recorded and walks away leaves us selling seats that are gone.
-      return { message: "No signal. The sale was NOT recorded — try again." };
+      return { message: "No signal. The sale was NOT recorded. Try again." };
     }
     if (err instanceof OperatorApiError) {
       if (err.isNotFound)
@@ -446,9 +450,9 @@ export async function addDepartures(
       result: {
         created: data.created ?? 0,
         asked,
-        note: data.note,
+        note: dedashText(data.note),
         onSale: data.onSale,
-        notOnSaleDetail: data.notOnSaleDetail,
+        notOnSaleDetail: dedashText(data.notOnSaleDetail),
       },
     };
   } catch (err) {

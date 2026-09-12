@@ -158,7 +158,7 @@ export function departureProblem(
   if (days > MAX_RANGE_DAYS) {
     return {
       field: "toDate",
-      message: `That is ${days} days. Add up to ${MAX_RANGE_DAYS} at a time — a season is about as far ahead as anybody plans in one go.`,
+      message: `That is ${days} days. Add up to ${MAX_RANGE_DAYS} at a time. A season is about as far ahead as anybody plans in one go.`,
     };
   }
 
@@ -179,7 +179,7 @@ export function departureProblem(
   if (count > MAX_DEPARTURES_PER_PRESS) {
     return {
       field: "times",
-      message: `That would be ${count} departures in one go. Yuvoy sells a seat on every one of them, so do it in smaller batches — up to ${MAX_DEPARTURES_PER_PRESS} at a time.`,
+      message: `That would be ${count} departures in one go. Yuvoy sells a seat on every one of them, so do it in smaller batches, up to ${MAX_DEPARTURES_PER_PRESS} at a time.`,
     };
   }
 

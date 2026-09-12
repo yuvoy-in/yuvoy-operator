@@ -158,8 +158,8 @@ export default async function ReelsPage() {
       <Panel className="mt-8">
         <h2 className="font-display text-2xl">Add a reel</h2>
         <p className="text-forest/70 mt-2 text-sm">
-          Upright, up to 60 seconds. Choose the listing first, then the file —
-          losing signal pauses the upload instead of starting it again.
+          Upright, up to 60 seconds. Choose the listing first, then the file.
+          Losing signal pauses the upload instead of starting it again.
         </p>
         <div className="mt-5">
           <Uploader listings={listings} />

@@ -135,7 +135,7 @@ describe("CashCollect — the answer", () => {
 
   it("keeps the typed amount when nothing was recorded", async () => {
     record.mockImplementation(async () => ({
-      message: "No signal — nothing was recorded yet.",
+      message: "No signal. Nothing was recorded yet.",
       typed: "3000",
       attempt: 1,
     }));

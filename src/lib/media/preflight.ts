@@ -111,7 +111,7 @@ export function preflight(
   if (file.size > limits.maxBytes) {
     problems.push({
       severity: "refuse",
-      message: `That clip is ${formatBytes(file.size)}. The most we can take is ${formatBytes(limits.maxBytes)} — trim it, or export it smaller.`,
+      message: `That clip is ${formatBytes(file.size)}. The most we can take is ${formatBytes(limits.maxBytes)}. Trim it, or export it smaller.`,
     });
   }
 
@@ -150,7 +150,7 @@ export function preflight(
         severity: actual > 1 ? "refuse" : "warn",
         message:
           actual > 1
-            ? `That was filmed sideways — ${facts.width}×${facts.height}. The feed is upright ${limits.aspectRatio}, and a landscape clip shows as a small box between black bars.`
+            ? `That was filmed sideways: ${facts.width}×${facts.height}. The feed is upright ${limits.aspectRatio}, and a landscape clip shows as a small box between black bars.`
             : `That is ${facts.width}×${facts.height}, not quite ${limits.aspectRatio}. It will still work; it may be cropped a little at the top and bottom.`,
       });
     }
@@ -165,7 +165,7 @@ export function preflight(
     problems.push({
       severity: "warn",
       message:
-        "This browser could not read the video to check its length or shape. It should still upload — we will tell you if it is not usable.",
+        "This browser could not read the video to check its length or shape. It should still upload. We will tell you if it is not usable.",
     });
   }
 

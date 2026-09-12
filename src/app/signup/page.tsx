@@ -56,7 +56,7 @@ export default function SignUpPage() {
         </p>
         <p className="text-forest/80 mt-2 text-sm">
           You can sign in straight away and get set up. Travellers cannot book
-          you until somebody at Yuvoy has checked your business over — you will
+          you until somebody at Yuvoy has checked your business over. You will
           see exactly what is outstanding, and who it is with, as soon as you
           are in.
         </p>

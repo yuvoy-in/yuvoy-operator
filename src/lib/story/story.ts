@@ -11,6 +11,8 @@
  * request finding out.
  */
 
+import { dedashText } from "@/lib/format/dedash";
+
 /** Fewer than this is "two words on a trust surface". Empty is allowed. */
 export const ABOUT_MIN = 40;
 /** "Nobody reads more on a phone at a jetty." */
@@ -89,7 +91,7 @@ export function toStory(raw: unknown): Story | null {
       operatingSince:
         typeof since === "number" && Number.isInteger(since) ? since : null,
       findThemAt: textOrNull(reviewed.findThemAt),
-      why: textOrNull(reviewed.why),
+      why: dedashText(textOrNull(reviewed.why)),
     },
   };
 }
@@ -128,7 +130,7 @@ export function aboutIssue(text: string): string | null {
     return `At least ${ABOUT_MIN} characters, or leave it empty. Two words on your page reads worse than none.`;
   }
   if (size > ABOUT_MAX) {
-    return `${ABOUT_MAX} characters at most — this is ${size}.`;
+    return `${ABOUT_MAX} characters at most. This is ${size}.`;
   }
   return null;
 }
@@ -161,7 +163,7 @@ export function parseLanguages(input: string): string[] {
 /** Too many languages, or nothing. */
 export function languagesIssue(languages: readonly string[]): string | null {
   return languages.length > LANGUAGES_MAX
-    ? `${LANGUAGES_MAX} languages at most — this is ${languages.length}.`
+    ? `${LANGUAGES_MAX} languages at most. This is ${languages.length}.`
     : null;
 }
 

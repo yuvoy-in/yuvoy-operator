@@ -78,7 +78,7 @@ export default async function EarningsPage({
         <div className="mt-6">
           <Problem
             title="Earnings are for an owner or a manager"
-            body="A staff login runs the day — today's manifest, who has arrived — and does not carry what the business is owed. Ask an owner or a manager if you need the figure."
+            body="A staff login runs the day (today's manifest, who has arrived) and does not carry what the business is owed. Ask an owner or a manager if you need the figure."
           />
         </div>
       </Screen>
@@ -127,7 +127,7 @@ export default async function EarningsPage({
         <div className="mt-6">
           <Problem
             title="Payouts are on hold while your bank change is reviewed"
-            body={`${hold.summary ?? "A bank change"} is ${hold.state === "cooling" ? "approved and waiting out its cooling period" : hold.state === "objection_window" ? "in its objection window — you can still stop it" : "awaiting review"}. Nothing is paid out until it settles. If you did not request this, stop it now from Payout details.`}
+            body={`${hold.summary ?? "A bank change"} is ${hold.state === "cooling" ? "approved and waiting out its cooling period" : hold.state === "objection_window" ? "in its objection window: you can still stop it" : "awaiting review"}. Nothing is paid out until it settles. If you did not request this, stop it now from Payout details.`}
           />
         </div>
       ) : null}
@@ -167,7 +167,7 @@ export default async function EarningsPage({
         <div className="mt-6">
           <Problem
             title="These figures do not add up"
-            body="Gross minus commission minus refunds does not equal the net shown. Do not reconcile against this — send us the dates and we will find it."
+            body="Gross minus commission minus refunds does not equal the net shown. Do not reconcile against this. Send us the dates and we will find it."
           />
         </div>
       ) : null}
@@ -216,7 +216,7 @@ export default async function EarningsPage({
           <div className="mt-4">
             <Problem
               title="The bookings did not load"
-              body="The totals above are unaffected. Try again in a moment — nothing here has changed because of it."
+              body="The totals above are unaffected. Try again in a moment. Nothing here has changed because of it."
             />
           </div>
         ) : bookings.length === 0 ? (
@@ -285,8 +285,7 @@ export default async function EarningsPage({
                         className="text-terra-deep px-5 pb-4 text-sm font-bold"
                       >
                         These figures do not add up. Do not reconcile against
-                        this booking — send us the reference and we will find
-                        it.
+                        this booking. Send us the reference and we will find it.
                       </p>
                     ) : null}
                   </>

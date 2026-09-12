@@ -6,8 +6,10 @@
  * the same strings go into its logs. A screen's sentences start with a capital
  * and end with a stop. The words are left exactly as the API chose them.
  */
+import { dedash } from "./dedash";
+
 export function sentence(text: string): string {
-  const trimmed = text.trim();
+  const trimmed = dedash(text).trim();
   if (!trimmed) return "";
   const capital = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   return /[.!?]$/.test(capital) ? capital : `${capital}.`;

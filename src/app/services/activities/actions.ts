@@ -11,6 +11,7 @@ import {
   describeBlockers,
   type PauseReason,
 } from "@/lib/services/listings";
+import { dedashText } from "@/lib/format/dedash";
 
 /**
  * O7 — an operator writes their own listing, and proposes changes to it.
@@ -212,7 +213,7 @@ export async function createListing(
     return { created: { id: data.id ?? "", title: parsed.data.title } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was saved — try again." };
+      return { message: "No signal. Nothing was saved. Try again." };
     }
     if (err instanceof OperatorApiError) {
       /*
@@ -227,7 +228,7 @@ export async function createListing(
       if (err.code === "payload_too_large") {
         return {
           message:
-            "That is more text than we can accept in one go. Shorten the longest box — the lists and the safety notes are the usual culprits — and send it again.",
+            "That is more text than we can accept in one go. Shorten the longest box (the lists and the safety notes are the usual culprits) and send it again.",
         };
       }
       if (err.status === 409) {
@@ -462,13 +463,13 @@ export async function submitRevision(
     if (error) throw error;
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was sent — try again." };
+      return { message: "No signal. Nothing was sent. Try again." };
     }
     if (err instanceof OperatorApiError && err.code === "payload_too_large") {
       // See the create action above. No retry: the same body fails the same.
       return {
         message:
-          "That is more text than we can accept in one go. Shorten the longest box — the lists and the safety notes are the usual culprits — and send it again.",
+          "That is more text than we can accept in one go. Shorten the longest box (the lists and the safety notes are the usual culprits) and send it again.",
       };
     }
     if (err instanceof OperatorApiError) {
@@ -623,12 +624,12 @@ export async function pauseListing(
         upcomingDepartures: data.upcomingDepartures,
         bookingsToHonour: data.bookingsToHonour,
         guestsToHonour: data.guestsToHonour,
-        note: data.note,
+        note: dedashText(data.note),
       },
     };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return again("No signal. Nothing was sent — it is still on sale.");
+      return again("No signal. Nothing was sent. It is still on sale.");
     }
     if (err instanceof OperatorApiError) {
       if (err.code === "already_off_sale") {
@@ -641,7 +642,7 @@ export async function pauseListing(
       */
       if (err.code === "sale_in_progress") {
         return again(
-          "Somebody is paying for this listing right now. Try again in a few minutes — nothing changed.",
+          "Somebody is paying for this listing right now. Try again in a few minutes. Nothing changed.",
         );
       }
       if (err.status === 403) {
@@ -734,7 +735,7 @@ export async function resumeListing(
     };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing changed — it is still paused." };
+      return { message: "No signal. Nothing changed. It is still paused." };
     }
     if (err instanceof OperatorApiError) {
       if (err.status === 400) {
@@ -742,7 +743,7 @@ export async function resumeListing(
         return {
           message: missing.length
             ? `It cannot go back on sale yet. Still missing: ${describeBlockers(missing).join(", ")}.`
-            : "It cannot go back on sale yet — something it needs is missing. Propose a change to fill it in.",
+            : "It cannot go back on sale yet. Something it needs is missing. Propose a change to fill it in.",
         };
       }
       if (err.code === "not_withdrawn") {

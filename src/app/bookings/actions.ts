@@ -69,7 +69,7 @@ function isAccountGap(err: unknown): boolean {
 /** Maps the contract's refusals onto something an operator can act on. */
 function explain(err: unknown, verb: string): string {
   if (err instanceof OperatorNetworkError) {
-    return "No signal. Nothing was sent — the request is still open.";
+    return "No signal. Nothing was sent. The request is still open.";
   }
   if (err instanceof OperatorApiError) {
     if (err.code === "request_not_open") {
@@ -97,7 +97,7 @@ function explain(err: unknown, verb: string): string {
       here revalidates the queue.
     */
     if (err.code === "operator_not_sellable") {
-      return "We cannot take bookings for you right now. This request is still open — check Business for what is outstanding, then answer it.";
+      return "We cannot take bookings for you right now. This request is still open. Check Business for what is outstanding, then answer it.";
     }
     if (err.status === 403) {
       // The contract is specific: STAFF may not commit seats.

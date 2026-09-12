@@ -63,7 +63,7 @@ export function DayManage({
           {guests === null ? (
             <p className="text-terra-deep mt-2 text-sm font-bold">
               Anybody already confirmed on this day stays booked. Closing
-              won&apos;t move them — resolve each booking in Bookings.
+              won&apos;t move them. Resolve each booking in Bookings.
             </p>
           ) : guests > 0 ? (
             <p className="text-terra-deep mt-2 text-sm font-bold">
@@ -77,7 +77,7 @@ export function DayManage({
 
           <p className="text-forest/70 mt-4 text-sm">
             To stop selling one departure only, set its seats to what is already
-            sold — it is in the list below. Calling a departure off is a heavier
+            sold. It is in the list below. Calling a departure off is a heavier
             act: it cancels it and refunds everyone on it, and it is done from
             the departure itself.
           </p>

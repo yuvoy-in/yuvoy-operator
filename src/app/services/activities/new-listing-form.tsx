@@ -257,7 +257,7 @@ export function NewListingForm({
             it blank should know now rather than after waiting for a review.
           */}
           <p id="new-price-help" className="text-forest/70 mt-1.5 text-xs">
-            In rupees. You can leave it out and add it later — but we cannot
+            In rupees. You can leave it out and add it later, but we cannot
             approve a listing with no price, so it will sit as a draft until
             there is one.
           </p>

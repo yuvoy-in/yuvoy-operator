@@ -27,7 +27,7 @@ type Phase =
   | { name: "failed"; message: string; unavailable?: boolean };
 
 const DID_NOT_ARRIVE =
-  "The picture did not reach us. Check your signal and try again — nothing was added.";
+  "The picture did not reach us. Check your signal and try again. Nothing was added.";
 
 export function PhotoUploader({ remaining }: { remaining: number }) {
   const [phase, setPhase] = useState<Phase>({ name: "idle" });

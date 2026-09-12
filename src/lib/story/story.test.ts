@@ -38,7 +38,7 @@ describe("how long `about` is — yuvoy-operator#41", () => {
   it("allows exactly six hundred, and refuses one more", () => {
     expect(aboutIssue("a".repeat(ABOUT_MAX))).toBeNull();
     expect(aboutIssue("a".repeat(ABOUT_MAX + 1))).toMatch(
-      /600 characters at most — this is 601/,
+      /600 characters at most\. This is 601/,
     );
   });
 
@@ -72,7 +72,7 @@ describe("the languages box", () => {
     expect(parseLanguages(eightAndABlank)).toHaveLength(8);
     expect(languagesIssue(parseLanguages(eightAndABlank))).toBeNull();
     expect(languagesIssue(parseLanguages("A,B,C,D,E,F,G,H,I"))).toMatch(
-      /8 languages at most — this is 9/,
+      /8 languages at most\. This is 9/,
     );
   });
 });

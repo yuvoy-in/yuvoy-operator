@@ -68,7 +68,7 @@ export function DetailsForm({
           />
         </dl>
         <p className="text-forest/70 mt-4 text-sm">
-          Your account is live, so these are fixed — the documents we verified
+          Your account is live, so these are fixed. The documents we verified
           were checked against them. Message us if anything here has changed.
         </p>
       </Panel>
@@ -81,7 +81,7 @@ export function DetailsForm({
         <p className="text-base font-bold">Saved</p>
         <p className="text-forest/80 mt-2 text-sm">
           We have what an invoice and a payout need. Nothing goes live on this
-          alone — the documents are the other half.
+          alone. The documents are the other half.
         </p>
       </Panel>
     );
@@ -141,7 +141,7 @@ export function DetailsForm({
             and demanding a number they cannot legally obtain would block
             exactly the businesses this marketplace exists for."
           */
-          hint="Only if you are registered. Leave it blank if you are not — plenty of operators are under the threshold."
+          hint="Only if you are registered. Leave it blank if you are not. Plenty of operators are under the threshold."
         />
 
         <fieldset className="space-y-5">

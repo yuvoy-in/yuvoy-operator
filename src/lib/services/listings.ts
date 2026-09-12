@@ -147,7 +147,7 @@ const STATUS: Record<ListingStatus, StatusCopy> = {
   },
   withdrawn: {
     label: "Paused",
-    body: "You paused it, so nobody new can book it. Resume it when you are ready — it goes straight back on sale.",
+    body: "You paused it, so nobody new can book it. Resume it when you are ready. It goes straight back on sale.",
     selling: false,
     canSubmit: true,
     needsAnswer: false,

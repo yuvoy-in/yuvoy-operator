@@ -74,7 +74,7 @@ export default async function CashPage() {
         </h1>
         <p className="text-forest/80 mt-4 text-base">
           This one is for whoever handles the money. Ask an owner or a manager
-          at your business — your sign-in works, it just does not open this.
+          at your business. Your sign-in works, it just does not open this.
         </p>
       </Screen>
     );
@@ -130,7 +130,7 @@ export default async function CashPage() {
               holding the fare.
             */}
             You took this money directly, so there is no payout for us to take
-            our share out of. It is a balance instead —{" "}
+            our share out of. It is a balance instead:{" "}
             {commission.bookings === 1
               ? "one completed trip"
               : `${commission.bookings} completed trips`}
@@ -146,7 +146,7 @@ export default async function CashPage() {
             <div className="mt-6">
               <Problem
                 title="These lines do not add up to the total"
-                body="The trips listed below do not account for the share shown above. Do not settle against this — send us the dates and we will find it."
+                body="The trips listed below do not account for the share shown above. Do not settle against this. Send us the dates and we will find it."
               />
             </div>
           ) : null}
@@ -168,7 +168,7 @@ export default async function CashPage() {
                       rather than folded into a sentence.
                     */}
                     <p className="font-mono text-base font-bold">
-                      {line.bookingReference || "—"}
+                      {line.bookingReference || "-"}
                     </p>
                     <p className="text-forest/70 shrink-0 text-sm">
                       {line.tripDate ? marketDateLabel(line.tripDate) : null}
@@ -217,7 +217,7 @@ export default async function CashPage() {
       */}
       <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
         There is nothing to tap here. Settling up happens between us and a
-        person, not through this screen — this is so the number is never a
+        person, not through this screen. This is so the number is never a
         surprise when it does.
       </p>
     </Screen>

@@ -67,7 +67,7 @@ export function InviteForm() {
           }
         />
         <p id="invite-phone-help" className="text-forest/70 mt-1.5 text-xs">
-          With the country code. We message them a code — nothing is granted
+          With the country code. We message them a code. Nothing is granted
           until they use it.
         </p>
       </div>
@@ -115,7 +115,7 @@ export function InviteForm() {
         <p className="text-forest/70 mt-3 text-xs">
           There is no Owner option. The owner is whoever the payout account
           belongs to, and that is not something one login can hand to a phone
-          number — Yuvoy sets it up. Staff is preselected: it is the safest of
+          number. Yuvoy sets it up. Staff is preselected: it is the safest of
           the two, and the one a boat phone should have.
         </p>
       </fieldset>
@@ -149,7 +149,7 @@ export function InviteForm() {
             {state.sent.phone}
           </p>
           <p className="text-forest/80 mt-2 text-sm">
-            Check that number. If it is wrong, invite the right one — a new
+            Check that number. If it is wrong, invite the right one. A new
             invitation to the same person replaces the old code rather than
             adding a second.
           </p>
@@ -181,7 +181,7 @@ export function InviteForm() {
           )}
           {state.devCode ? (
             <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
-              Development build — their code is{" "}
+              Development build: their code is{" "}
               <strong className="font-mono">{state.devCode}</strong>.
             </p>
           ) : null}

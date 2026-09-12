@@ -267,7 +267,7 @@ export async function callOffDeparture(
   if (confirmSlotId.trim() !== slotId) {
     return {
       message:
-        "That is not this departure's id. Nothing was cancelled — check it and try again.",
+        "That is not this departure's id. Nothing was cancelled. Check it and try again.",
     };
   }
 

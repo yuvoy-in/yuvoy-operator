@@ -110,14 +110,14 @@ export function PauseResume({
         ) : bookingsToHonour > 0 ? (
           <p className="text-terra-deep mt-3 text-sm font-bold">
             You still owe {bookingsToHonour}{" "}
-            {bookingsToHonour === 1 ? "booking" : "bookings"} — {guestsToHonour}{" "}
+            {bookingsToHonour === 1 ? "booking" : "bookings"}, {guestsToHonour}{" "}
             {guestsToHonour === 1 ? "guest" : "guests"}. Those trips still run.
           </p>
         ) : null}
 
         <p className="text-forest/70 mt-3 text-sm">
-          Resume it here whenever you are ready. It goes straight back on sale —
-          nothing waits on us.
+          Resume it here whenever you are ready. It goes straight back on sale.
+          Nothing waits on us.
         </p>
 
         <ResumeControl
@@ -175,7 +175,7 @@ export function PauseResume({
         <p className="text-forest/80 mt-1.5 text-sm">
           Anybody already booked still expects their trip, and you still owe it
           to them. To cancel a departure and refund its travellers, open it from
-          Calendar and call it off — one at a time, each confirmed on its own.
+          Calendar and call it off: one at a time, each confirmed on its own.
         </p>
       </Panel>
 
@@ -234,7 +234,7 @@ export function PauseResume({
           memorised, and hiding it would turn a confirmation into a puzzle.
         */}
         <p className="text-forest/70 mt-1.5 text-xs">
-          <span className="font-mono">{experienceId}</span> — for {title}
+          <span className="font-mono">{experienceId}</span> · for {title}
         </p>
         <input
           id={`pause-confirm-${experienceId}`}
@@ -318,7 +318,7 @@ function ResumeControl({
       <input type="hidden" name="id" value={experienceId} />
       <p className="text-sm font-bold">Put {title} back on sale?</p>
       <p className="text-forest/80 mt-1.5 text-sm">
-        It goes back on sale as soon as you do — there is no review to wait for.
+        It goes back on sale as soon as you do. There is no review to wait for.
       </p>
       {message ? (
         <p role="alert" className="text-terra-deep mt-3 text-sm font-bold">
@@ -376,7 +376,7 @@ function Resumed({ state }: { state: "published" | "in_review" }) {
       */}
       <p className="text-forest/80 mt-2 text-sm">
         It is back on sale. If anything on your account stops sales, the label
-        on this listing says so — resuming does not change that.
+        on this listing says so. Resuming does not change that.
       </p>
     </Panel>
   );

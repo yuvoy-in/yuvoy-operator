@@ -2,6 +2,7 @@ import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
 import type { Manifest, OperatorListing, OperatorSlot } from "./types";
 import { apiWindow, inMarketDays } from "./calendar";
+import { dedash } from "@/lib/format/dedash";
 
 export * from "./types";
 
@@ -77,7 +78,9 @@ export async function listSlots(
       */
     ...(typeof s.onSale === "boolean" ? { onSale: s.onSale } : {}),
     ...(s.notOnSaleReason ? { notOnSaleReason: s.notOnSaleReason } : {}),
-    ...(s.notOnSaleDetail ? { notOnSaleDetail: s.notOnSaleDetail } : {}),
+    ...(s.notOnSaleDetail
+      ? { notOnSaleDetail: dedash(s.notOnSaleDetail) }
+      : {}),
   }));
 
   return inMarketDays(slots, from, to).sort((a, b) =>

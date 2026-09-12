@@ -131,7 +131,7 @@ export function PartyRow({
 
       {holding ? (
         <p className="text-terra-deep mt-3 text-sm font-bold">
-          Still paying. Not a confirmed seat yet — they may still turn up.
+          Still paying. Not a confirmed seat yet. They may still turn up.
         </p>
       ) : settled ? (
         <p className="text-forest/70 mt-3 text-sm font-bold">

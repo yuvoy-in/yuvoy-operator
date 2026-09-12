@@ -54,7 +54,7 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
     if (file.size > LOCAL_MAX_BYTES) {
       setPhase({
         name: "failed",
-        message: `That is ${formatBytes(file.size)}. A logo should be under ${formatBytes(LOCAL_MAX_BYTES)} — it is shown small.`,
+        message: `That is ${formatBytes(file.size)}. A logo should be under ${formatBytes(LOCAL_MAX_BYTES)}. It is shown small.`,
       });
       return;
     }
@@ -99,7 +99,7 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
         setPhase({
           name: "failed",
           message:
-            "The picture did not reach us. Check your signal and try again — nothing was changed.",
+            "The picture did not reach us. Check your signal and try again. Nothing was changed.",
         });
         return;
       }
@@ -107,7 +107,7 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
       setPhase({
         name: "failed",
         message:
-          "The picture did not reach us. Check your signal and try again — nothing was changed.",
+          "The picture did not reach us. Check your signal and try again. Nothing was changed.",
       });
       return;
     }
@@ -137,8 +137,7 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
         </p>
         <p className="text-forest/70 mt-2 text-sm">
           Travellers see it on a card with no clip, and on the page about your
-          business. Change it whenever you like — nothing is verified against
-          it.
+          business. Change it whenever you like. Nothing is verified against it.
         </p>
         <Button onClick={reset} variant="secondary" className="mt-4">
           Choose a different one

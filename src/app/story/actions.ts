@@ -71,7 +71,7 @@ export async function saveStory(
     if (error) throw error;
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was saved — try again." };
+      return { message: "No signal. Nothing was saved. Try again." };
     }
     if (err instanceof OperatorApiError && err.status === 400 && err.message) {
       // "tell them 40 to 600 characters about the business" — the API's own
@@ -153,7 +153,7 @@ export async function addStoryPhoto(imageId: string): Promise<AddPhotoState> {
       if (err.status === 400) {
         return {
           message:
-            "That picture did not reach us in a form we can use — choose it again.",
+            "That picture did not reach us in a form we can use. Choose it again.",
         };
       }
     }
@@ -193,7 +193,7 @@ export async function removeStoryPhoto(
       return {};
     }
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. It is still on your page — try again." };
+      return { message: "No signal. It is still on your page. Try again." };
     }
     return { message: "It was not removed. Try again." };
   }
@@ -208,7 +208,7 @@ function photoFailure(err: unknown): {
   unavailable?: boolean;
 } {
   if (err instanceof OperatorNetworkError) {
-    return { message: "No signal. Nothing was added — try again." };
+    return { message: "No signal. Nothing was added. Try again." };
   }
   if (err instanceof OperatorApiError) {
     if (err.status === 403) {
@@ -220,7 +220,7 @@ function photoFailure(err: unknown): {
       return {
         unavailable: true,
         message:
-          "Photographs cannot be added right now — nothing is wrong with your picture.",
+          "Photographs cannot be added right now. Nothing is wrong with your picture.",
       };
     }
     if (err.status === 502) {

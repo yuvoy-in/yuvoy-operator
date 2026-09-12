@@ -187,7 +187,7 @@ export default async function ManifestPage({
         {startsAt ? marketDay(startsAt, timezone) : "Departure"}
       </p>
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-        {startsAt ? marketTime(startsAt, timezone) : "—"}{" "}
+        {startsAt ? marketTime(startsAt, timezone) : "-"}{" "}
         <span className="text-3xl">{manifest.experience}</span>
       </h1>
 
@@ -293,7 +293,7 @@ export default async function ManifestPage({
                   ? "We could not check whether one booking here owes cash"
                   : `We could not check whether ${unchecked} bookings here owe cash`
             }
-            body="Anybody paying you at the counter still has to hand it over. Each booking's own page says how it is paid — open it from Bookings before they board."
+            body="Anybody paying you at the counter still has to hand it over. Each booking's own page says how it is paid. Open it from Bookings before they board."
           />
         </div>
       ) : null}

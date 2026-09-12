@@ -100,7 +100,7 @@ export function photoPreflight(
   if (file.size > limits.maxBytes) {
     problems.push({
       severity: "refuse",
-      message: `That photograph is ${formatBytes(file.size)}. The most we can take is ${formatBytes(limits.maxBytes)} — travellers open these on island 4G, so a smaller export is better for them too.`,
+      message: `That photograph is ${formatBytes(file.size)}. The most we can take is ${formatBytes(limits.maxBytes)}. Travellers open these on island 4G, so a smaller export is better for them too.`,
     });
   }
 
@@ -108,7 +108,7 @@ export function photoPreflight(
   if (longEdge > 0 && longEdge < SOFT_LONG_EDGE) {
     problems.push({
       severity: "warn",
-      message: `That is ${facts.width}×${facts.height}, which will look soft on a phone. It will still upload — a larger one from the original photo is better if you have it.`,
+      message: `That is ${facts.width}×${facts.height}, which will look soft on a phone. It will still upload. A larger one from the original photo is better if you have it.`,
     });
   }
 

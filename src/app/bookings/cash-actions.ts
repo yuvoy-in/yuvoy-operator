@@ -87,7 +87,7 @@ export async function recordCashCollected(
   if (mode === "less") {
     const paise = rupeesToPaise(typed);
     if (paise === null) {
-      return again("Type what you took in whole rupees — digits only.");
+      return again("Type what you took in whole rupees, digits only.");
     }
     collectedPaise = paise;
   }
@@ -127,14 +127,14 @@ export async function recordCashCollected(
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return again(
-        "No signal — nothing was recorded yet. Tap again when you have a bar; a second tap is safe, it can only be recorded once.",
+        "No signal. Nothing was recorded yet. Tap again when you have a bar; a second tap is safe, it can only be recorded once.",
       );
     }
     if (err instanceof OperatorApiError) {
       if (err.isNotFound) {
         // Gone and "not yours" are one answer, by design.
         return again(
-          "We could not find that booking. Refresh the page — it may have been cancelled.",
+          "We could not find that booking. Refresh the page. It may have been cancelled.",
         );
       }
       if (err.status === 409 || err.status === 400) {
@@ -151,10 +151,10 @@ export async function recordCashCollected(
       }
       if (err.status === 503) {
         return again(
-          "We cannot record that right now — nothing was recorded. Write it down and try again shortly.",
+          "We cannot record that right now. Nothing was recorded. Write it down and try again shortly.",
         );
       }
     }
-    return again("Not recorded. Try again — a second tap is safe.");
+    return again("Not recorded. Try again. A second tap is safe.");
   }
 }

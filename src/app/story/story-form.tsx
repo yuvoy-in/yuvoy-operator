@@ -113,7 +113,7 @@ function StoryRound({
         <div id="about-count" className="mt-1.5 space-y-1 text-xs">
           {size === 0 ? (
             <p className="text-forest/70">
-              Empty is fine — nothing shows on your page until you write
+              Empty is fine. Nothing shows on your page until you write
               something.
             </p>
           ) : (
@@ -160,7 +160,7 @@ function StoryRound({
           }
         >
           {langsProblem ??
-            "Separate them with commas — English, Hindi, Bengali. Up to eight. For a traveller who is nervous in the water, this is often what decides it."}
+            "Separate them with commas: English, Hindi, Bengali. Up to eight. For a traveller who is nervous in the water, this is often what decides it."}
         </p>
       </div>
 

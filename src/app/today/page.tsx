@@ -119,7 +119,7 @@ export default async function TodayPage({
           <Link href="/bookings" className="text-terra-deep underline">
             Open the queue
           </Link>{" "}
-          to check — one may be waiting.
+          to check. One may be waiting.
         </Panel>
       ) : null}
 
@@ -156,7 +156,7 @@ export default async function TodayPage({
             title="Nothing scheduled"
             body={
               date === today
-                ? "No departures today. If that is wrong, check your slots — a departure that is not here is one Yuvoy cannot sell."
+                ? "No departures today. If that is wrong, check your slots. A departure that is not here is one Yuvoy cannot sell."
                 : date === tomorrow
                   ? "Nothing on the books for tomorrow yet."
                   : "Nothing on the books for that day."

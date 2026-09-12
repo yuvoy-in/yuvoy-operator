@@ -153,7 +153,7 @@ export function SlotCapacity({ slot }: { slot: OperatorSlot }) {
         </div>
         <p className="text-forest/70 mt-1.5 text-xs">
           {slot.sold > 0
-            ? `Cannot go below ${slot.sold} — that is what is already sold. Setting it to exactly ${slot.sold} closes the departure without stranding anyone.`
+            ? `Cannot go below ${slot.sold}. That is what is already sold. Setting it to exactly ${slot.sold} closes the departure without stranding anyone.`
             : "Nothing sold yet, so this can be anything up to 200."}
         </p>
 
@@ -282,7 +282,7 @@ function CounterSale({
           className={inputClass("bg-cream mt-2 w-28 text-lg")}
         />
         <p className="text-forest/70 mt-1.5 text-xs">
-          So we stop selling them. This is a report, not a request — it is
+          So we stop selling them. This is a report, not a request. It is
           recorded even if it oversells the boat, because refusing it would not
           un-sell the seats.
         </p>

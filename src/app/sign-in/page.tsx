@@ -114,7 +114,7 @@ export default async function SignInPage({
         >
           Create an account
         </Link>
-        . You can sign in straight away — a person at Yuvoy checks your business
+        . You can sign in straight away. A person at Yuvoy checks your business
         over before travellers can book you.
       </p>
     </Screen>

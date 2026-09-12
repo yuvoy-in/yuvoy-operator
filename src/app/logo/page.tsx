@@ -106,7 +106,7 @@ export default async function LogoPage() {
       </Panel>
 
       <p className="text-forest/70 mt-8 text-sm">
-        A logo is the one thing here you can change whenever you like — it is
+        A logo is the one thing here you can change whenever you like. It is
         presentation, not identity, and nothing is verified against it.
         Replacing it removes the old picture rather than keeping both.
       </p>

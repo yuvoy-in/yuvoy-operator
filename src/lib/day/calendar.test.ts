@@ -145,13 +145,13 @@ describe("who is already confirmed on a day", () => {
 
   it("says both of the issue's sentences word for word", () => {
     expect(CLOSING_SENTENCE).toBe(
-      "Closing stops new bookings straight away. Bookings you've already confirmed stay live — resolve those one by one in Bookings.",
+      "Closing stops new bookings straight away. Bookings you've already confirmed stay live. Resolve those one by one in Bookings.",
     );
     expect(alreadyConfirmedSentence(4)).toBe(
-      "4 guests are already confirmed. Closing won't move them — resolve each booking in Bookings.",
+      "4 guests are already confirmed. Closing won't move them. Resolve each booking in Bookings.",
     );
     expect(alreadyConfirmedSentence(1)).toBe(
-      "1 guest is already confirmed. Closing won't move them — resolve each booking in Bookings.",
+      "1 guest is already confirmed. Closing won't move them. Resolve each booking in Bookings.",
     );
   });
 });

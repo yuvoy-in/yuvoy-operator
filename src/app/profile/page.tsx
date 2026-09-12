@@ -129,7 +129,7 @@ export default async function ProfilePage() {
         {detailsUnavailable ? (
           <Problem
             title="We could not load your details"
-            body="Nothing is lost — refresh and they should come back. You can still send us a document below."
+            body="Nothing is lost. Refresh and they should come back. You can still send us a document below."
           />
         ) : (
           <DetailsForm

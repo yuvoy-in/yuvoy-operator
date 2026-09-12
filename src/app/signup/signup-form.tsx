@@ -66,12 +66,12 @@ export function SignUpForm() {
             is true either way.
           */}
           <p className="text-forest/70 mt-2 text-sm">
-            Almost there. For {formatE164(state.phone ?? "")} — it lasts a few
+            Almost there. For {formatE164(state.phone ?? "")}. It lasts a few
             minutes.
           </p>
           {state.devCode ? (
             <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
-              Development build — the code is{" "}
+              Development build: the code is{" "}
               <strong className="font-mono">{state.devCode}</strong>. This never
               appears in production.
             </p>

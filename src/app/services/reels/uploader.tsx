@@ -256,7 +256,7 @@ export function Uploader({
         setPhase({
           name: "failed",
           message:
-            "We could not reach the upload server. Check your signal and try again — nothing has been sent.",
+            "We could not reach the upload server. Check your signal and try again. Nothing has been sent.",
         });
         return;
       }
@@ -389,7 +389,7 @@ export function Uploader({
     setPhase({
       name: "failed",
       message:
-        "The video is taking longer than usual to process. Nothing is lost — it will stay in your reel list, or choose the same clip again to check now.",
+        "The video is taking longer than usual to process. Nothing is lost. It will stay in your reel list, or choose the same clip again to check now.",
       bound: identityOf(file),
       uploaded: file.size,
     });
@@ -432,7 +432,7 @@ export function Uploader({
           <p role="alert" className="text-terra-deep text-sm font-bold">
             {phase.by
               ? `This upload already holds ${formatBytes(phase.uploaded ?? 0)} of ${phase.by.name}.`
-              : `An upload is already going for this business, and it is not this clip — ${formatBytes(phase.uploaded ?? 0)} of something else has arrived.`}
+              : `An upload is already going for this business, and it is not this clip. ${formatBytes(phase.uploaded ?? 0)} of something else has arrived.`}
           </p>
           {/*
             One clip at a time is the API's rule. What CAN happen is said
@@ -448,13 +448,13 @@ export function Uploader({
             {phase.by ? (
               <>
                 One clip at a time. Choose {phase.by.name} again and it carries
-                on from where it stopped — this works after closing the tab or
+                on from where it stopped. This works after closing the tab or
                 restarting your phone. A different clip cannot go in until that
                 one finishes
               </>
             ) : (
               <>
-                One clip at a time, and this browser did not start that one — so
+                One clip at a time, and this browser did not start that one, so
                 it cannot be picked up from here. Whoever did can carry on with
                 it from their own phone. Anything else waits until it finishes
               </>
@@ -511,7 +511,7 @@ export function Uploader({
             */
             <p className="text-forest/80 mt-2 text-xs">
               Choose {phase.bound.name} again and it carries on from{" "}
-              {formatBytes(phase.uploaded ?? 0)} — nothing already sent is sent
+              {formatBytes(phase.uploaded ?? 0)}. Nothing already sent is sent
               twice.
             </p>
           ) : (
@@ -552,8 +552,8 @@ export function Uploader({
 
           {phase.resumeFrom > 0 ? (
             <p className="text-forest/80 mt-3 text-sm" role="status">
-              Picks up from {formatBytes(phase.resumeFrom)} already uploaded —
-              nothing is sent twice.
+              Picks up from {formatBytes(phase.resumeFrom)} already uploaded.
+              Nothing is sent twice.
             </p>
           ) : null}
 
@@ -587,7 +587,7 @@ export function Uploader({
               */}
               <p className="text-forest/70 mt-3 text-xs">
                 Best to stay on this page until it finishes. Losing signal is
-                fine — it picks up where it left off. If the tab closes or your
+                fine. It picks up where it left off. If the tab closes or your
                 phone restarts, come back here and choose the same clip: it
                 carries on from where it stopped.
               </p>
@@ -650,7 +650,7 @@ export function Uploader({
             So the ask is still to stay, and the way back is still said.
           */}
           <p className="text-forest/70 mt-2 text-sm">
-            This takes a minute or two. Stay here if you can — if you lose the
+            This takes a minute or two. Stay here if you can. If you lose the
             page, choose the same clip again and we will pick it up from here.
           </p>
           {phase.resumes > 0 ? (

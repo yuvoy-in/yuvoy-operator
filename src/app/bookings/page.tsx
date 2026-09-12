@@ -240,7 +240,7 @@ export default async function BookingsPage() {
         */}
         <p className="text-forest/70 mt-2 text-sm">
           Nobody holds a seat until you say yes. Guests see &ldquo;confirming
-          with the operator&rdquo; until you answer — fast answers are what stop
+          with the operator&rdquo; until you answer. Fast answers are what stop
           them walking to a counter. Soonest to expire first.
         </p>
 
@@ -279,7 +279,7 @@ export default async function BookingsPage() {
           Booked
         </h2>
         <p className="text-forest/70 mt-2 text-sm">
-          By the day the trip runs — the last month and the next three.
+          By the day the trip runs: the last month and the next three.
         </p>
 
         <div id="confirmed" className="mt-8 scroll-mt-6">
@@ -288,7 +288,7 @@ export default async function BookingsPage() {
             <div className="mt-3">
               <Problem
                 title="The bookings did not load"
-                body="This is us, not you. Try again in a moment — nothing has changed because of it."
+                body="This is us, not you. Try again in a moment. Nothing has changed because of it."
               />
             </div>
           ) : confirmed.length === 0 ? (
@@ -331,7 +331,7 @@ export default async function BookingsPage() {
             <div className="mt-3">
               <Problem
                 title="The bookings did not load"
-                body="This is us, not you. Try again in a moment — nothing has changed because of it."
+                body="This is us, not you. Try again in a moment. Nothing has changed because of it."
               />
             </div>
           ) : past.length === 0 ? (

@@ -521,13 +521,13 @@ test("Manage says what closing does not do, before anything is closed", async ({
   // Both of the issue's sentences, verbatim.
   await expect(
     tomorrow.getByText(
-      "Closing stops new bookings straight away. Bookings you've already confirmed stay live — resolve those one by one in Bookings.",
+      "Closing stops new bookings straight away. Bookings you've already confirmed stay live. Resolve those one by one in Bookings.",
       { exact: true },
     ),
   ).toBeVisible();
   await expect(
     tomorrow.getByText(
-      /^\d+ guests? (is|are) already confirmed\. Closing won't move them — resolve each booking in Bookings\.$/,
+      /^\d+ guests? (is|are) already confirmed\. Closing won't move them\. Resolve each booking in Bookings\.$/,
     ),
   ).toBeVisible();
 
@@ -554,7 +554,7 @@ test("closing one day from Manage closes it, and says who is still owed", async 
 
   await expect(
     day.getByText(
-      "3 guests are already confirmed. Closing won't move them — resolve each booking in Bookings.",
+      "3 guests are already confirmed. Closing won't move them. Resolve each booking in Bookings.",
       { exact: true },
     ),
   ).toBeVisible();

@@ -182,7 +182,7 @@ export default async function BookingPage({
 
       <p className="text-forest/70 border-cream-line mt-10 border-t pt-6 text-xs">
         We do not show traveller phone numbers. Read the reference back to them
-        at the jetty — they have it in every message we send — and to tell
+        at the jetty (they have it in every message we send) and to tell
         everybody on a departure something, use the message box on that day
         under Today.
       </p>
