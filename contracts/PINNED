@@ -65,6 +65,54 @@ path=contracts/operator-openapi.yaml
 # `git ls-remote` was the check for this ref, not `gh api .../commits/master`,
 # which served a five-minute-stale SHA twice on 8 Sep and cost a retracted
 # issue.
-ref=79ce45afd3fb78ed35e8b590c278d46eb463fd2c
+# ---
+#
+# 13 Sep 2026. Forward from 79ce45afd3fb to 4c9e49f28451. Twenty-two new paths
+# and thirty new operations; **nothing removed**, and no operation, path or
+# schema disappeared. Checked explicitly, because a portal is a set of screens
+# already built against this document.
+#
+# The batch is most of the operator work filed today (op#43, #45, #46, #47,
+# #50, #51, #52) plus the listing workspace on #44. Almost none of it is
+# consumed yet. It is pinned now, on its own, so that the story work below
+# shows only story changes.
+#
+# Consumed in the change that follows this pin (op#41):
+#   - `POST /story/photos/upload-intents` + `createStoryPhotoUpload`. Story
+#     photographs minted through `/logo/upload-intents`, which is OWNER and
+#     MANAGER only, so a STAFF member could write the story and was refused at
+#     the photograph step. This slot is open to every operator role, which is
+#     the same set that may edit the story.
+#   - `slug` on `getOperatorMe`, at the top level beside `operatorId` and
+#     always present (`operators.slug` is `not null unique`). It is what makes
+#     "Preview your operator page" buildable without guessing an address.
+#
+# Breaking-ish, and it is the reason two test fixtures changed with the pin:
+#   - `OperatorCredential` now REQUIRES `id` and `hasFile`. `id` is what an
+#     upload names on `POST /credentials/{id}/upload-intents`, and `hasFile` is
+#     "sent on every row, so a screen offers an upload or shows the file
+#     without inferring either from a field being absent". No source file reads
+#     either, so the typechecker only reached the fixtures — but a fixture that
+#     cannot be sent by the API is a test proving the wrong shape.
+#
+# NOT consumed, and each needs its own change. Listed so the next session does
+# not have to diff the contract to find them:
+#   - The listing workspace: `saveListingDraft`, `submitListingDraft`,
+#     `getListingWorkspace`, `saveListingSchedule`, `replaceListingQuestions`
+#     (op#44).
+#   - Bookings: `cancelOperatorBooking`, `recordCashReturned`,
+#     `closeOperatorDeparture`, `reopenOperatorClosure` (op#43, op#45).
+#   - Money: `listSettlements`, `getSettlement`, `getSettlementOverview`,
+#     `downloadSettlementStatement` (op#47).
+#   - Messages: `listOperatorMessageThreads`, `getOperatorBookingMessages`,
+#     `sendOperatorBookingMessage`, `markOperatorBookingMessagesRead` (op#52).
+#   - Credentials with their own upload slot, and
+#     `getCredentialRequirements` (op#46).
+#   - Notification switches, per user and per team member (op#51).
+#
+# `git ls-remote` was the check for this ref, not `gh api .../commits/master`,
+# which served a five-minute-stale SHA twice on 8 Sep and cost a retracted
+# issue.
+ref=4c9e49f2845152a8798573429410a50920013e94
 branch=master
-pinned_on=2026-09-11
+pinned_on=2026-09-13

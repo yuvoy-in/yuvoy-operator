@@ -73,6 +73,13 @@ const GATED: Array<[string, string, unknown?]> = [
     { reasonCode: "WEATHER", confirmSlotId: "slot_any" },
   ],
   ["GET", "/earnings?from=2030-01-01&to=2030-01-31"],
+  /*
+    The logo's mark is the business's — yuvoy-operator#41. Gated here because
+    story photographs used to ride this intent, and the correction is only
+    meaningful if the difference between the two slots is real in the mock as
+    well as in the contract.
+  */
+  ["POST", "/logo/upload-intents"],
 ];
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -89,6 +96,25 @@ describe("manage-only endpoints refuse STAFF with the contract's 403", () => {
       expect(json.error.code).toBe("forbidden");
     });
   }
+
+  it("does NOT refuse a story photograph, which any operator may add", async () => {
+    /*
+      The whole of the second correction on yuvoy-operator#41. Story
+      photographs minted through `/logo/upload-intents`, which is owner and
+      manager only — so a STAFF member could write the story and was refused at
+      the photograph step, having already chosen a file.
+
+      `/story/photos/upload-intents` is open to every operator role, which is
+      the same set that may edit the story. Beside the gated list rather than
+      inside it, because the claim is the opposite one.
+    */
+    const staff = await signIn(STAFF);
+    const res = await call(staff, "POST", "/story/photos/upload-intents");
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { imageId: string; uploadUrl: string };
+    expect(body.imageId).toBeTruthy();
+    expect(body.uploadUrl).toBeTruthy();
+  });
 
   it("is a role refusal, not a broken endpoint: the OWNER gets past it", async () => {
     const owner = await signIn(OWNER);

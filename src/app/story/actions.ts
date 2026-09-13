@@ -23,11 +23,18 @@ import {
  * 403, and `pnpm qa` fails a gate the contract did not ask for — inventing one
  * would stop the person who actually runs the boat from describing it.
  *
- * ## Photographs ride the logo's upload intent
+ * ## Photographs have their own upload slot
  *
- * "Upload the bytes through the existing image upload intent, then send the
- * `imageId`." So `POST /logo/upload-intents` mints the slot, the browser posts
- * the file straight to the image host, and only then is the id sent here.
+ * They used to ride the LOGO's intent, on the issue's original instruction to
+ * "upload the bytes through the existing image upload intent". Hima corrected
+ * that: `POST /logo/upload-intents` is OWNER and MANAGER only, because a logo
+ * is the business's mark — so a STAFF member could write the story and was
+ * refused at the photograph step, having already chosen a file.
+ *
+ * `POST /story/photos/upload-intents` is open to every operator role, which is
+ * the same set that may edit the story. The shape is otherwise identical: the
+ * slot is minted here, the browser posts the file straight to the image host,
+ * and only then is the id sent to `POST /story/photos`.
  *
  * The order is load-bearing. `POST /story/photos` does not ask the host
  * whether the file arrived — `PUT /logo` does — so an id sent after a failed
@@ -98,8 +105,14 @@ export async function createPhotoIntent(): Promise<PhotoIntentState> {
   const { token } = await requireOperator();
 
   try {
+    /*
+      The STORY's slot, never the logo's. The logo intent is owner and manager
+      only; this one is open to every operator role, and the story itself is
+      editable by all of them. Using the logo's meant a staff member picked a
+      file and was then refused (yuvoy-operator#41).
+    */
     const { data, error } = await operatorApi(token).POST(
-      "/logo/upload-intents",
+      "/story/photos/upload-intents",
       {},
     );
     if (error) throw error;

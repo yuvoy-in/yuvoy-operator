@@ -83,11 +83,11 @@ export function PauseResume({
   const resumeIsLatest = (resumed.at ?? 0) > (paused.at ?? 0);
 
   if (resumed.done && resumeIsLatest) {
-    return <Resumed state={resumed.done.state} />;
+    return <Resumed state={resumed.done.state} next={resumed.done.next} />;
   }
 
   if (paused.done) {
-    const { upcomingDepartures, bookingsToHonour, guestsToHonour, note } =
+    const { upcomingDepartures, bookingsToHonour, guestsToHonour, note, next } =
       paused.done;
     return (
       <Panel tone={bookingsToHonour > 0 ? "alert" : "done"} className="mt-4">
@@ -115,9 +115,23 @@ export function PauseResume({
           </p>
         ) : null}
 
+        {/*
+          The API's `next`, verbatim — yuvoy-operator#44.
+
+          It was suppressed and replaced by the sentence below, because the API
+          sent "ask us to put it back … we check it before travellers see it
+          again", which D-032.4 had made false. yuvoy-api#167 rewrote it to say
+          that resuming is the operator's own button and needs nobody at Yuvoy,
+          so the server's sentence is printed again.
+
+          Our own line survives as the fallback for an answer that carries no
+          `next` at all — an older deployment, or a field the API stops
+          sending. Two sentences saying the same thing would be worse than
+          either; one of them only appears when the other cannot.
+        */}
         <p className="text-forest/70 mt-3 text-sm">
-          Resume it here whenever you are ready. It goes straight back on sale.
-          Nothing waits on us.
+          {next ??
+            "Resume it here whenever you are ready. It goes straight back on sale. Nothing waits on us."}
         </p>
 
         <ResumeControl
@@ -352,7 +366,32 @@ function ResumeControl({
  * What resuming did — and, for a listing still awaiting its first approval,
  * what it could not do.
  */
-function Resumed({ state }: { state: "published" | "in_review" }) {
+/**
+ * What resuming did, in the API's own words — yuvoy-operator#44.
+ *
+ * `next` was suppressed here, and for a real reason: it claimed "Travellers
+ * can see it and book it now" unconditionally, which is false for a listing
+ * resumed while the account or its documents stop sales. yuvoy-api#167 made
+ * the sentence conditional on what is actually true — back on sale; back on
+ * the listings but not bookable while something on the account stops sales;
+ * or, for a listing never approved, still waiting for its first check — so it
+ * is printed verbatim again.
+ *
+ * The server chooses the sentence better than this screen can. It reads the
+ * account's standing and the listing back; this component knows only the
+ * state.
+ *
+ * Both fallbacks stay for an answer that carries no `next`: an older
+ * deployment, or a field the API stops sending. Neither claims more than the
+ * state supports.
+ */
+function Resumed({
+  state,
+  next,
+}: {
+  state: "published" | "in_review";
+  next?: string;
+}) {
   if (state === "in_review") {
     return (
       <Panel className="mt-4" role="status">
@@ -360,8 +399,8 @@ function Resumed({ state }: { state: "published" | "in_review" }) {
           Still waiting for its first approval
         </p>
         <p className="text-forest/80 mt-2 text-sm">
-          Resuming cannot skip a review that has not happened yet. It goes on
-          sale when we approve it.
+          {next ??
+            "Resuming cannot skip a review that has not happened yet. It goes on sale when we approve it."}
         </p>
       </Panel>
     );
@@ -369,14 +408,9 @@ function Resumed({ state }: { state: "published" | "in_review" }) {
   return (
     <Panel tone="done" className="mt-4" role="status">
       <p className="text-base font-bold">Resumed</p>
-      {/*
-        Not the API's "travellers can book it now", which is unconditional and
-        not always true: a listing resumed while the account cannot sell is
-        published and still unsellable. The re-rendered label above says which.
-      */}
       <p className="text-forest/80 mt-2 text-sm">
-        It is back on sale. If anything on your account stops sales, the label
-        on this listing says so. Resuming does not change that.
+        {next ??
+          "It is back on sale. If anything on your account stops sales, the label on this listing says so. Resuming does not change that."}
       </p>
     </Panel>
   );

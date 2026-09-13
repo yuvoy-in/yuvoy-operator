@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
 import { PHOTOS_MAX, toStory } from "@/lib/story/story";
+import { operatorPageUrl } from "@/lib/site/traveller-app";
 import { Screen } from "@/components/chrome/screen";
 import { panelClass } from "@/components/ui/panel";
 import { Problem } from "@/components/ui/states";
+import { ExternalIcon } from "@/components/ui/icons";
 import { PhotoUploader } from "./photo-uploader";
 import { RemovePhoto } from "./remove-photo";
 import { StoryForm } from "./story-form";
@@ -29,17 +31,23 @@ export const dynamic = "force-dynamic";
  *     reads as a bug; a stated fact with a way to request a change reads as
  *     deliberate."
  *
- * ## No "Preview your operator page" button, yet
+ * ## Preview your operator page
  *
- * The preview is the public page itself, addressed by the business's slug —
- * and no operator endpoint returns that slug. A button that guessed the
- * address would lead to somebody else's page on the day the guess was wrong.
- * Raised on yuvoy-operator#41.
+ * The preview is the public page itself, addressed by the business's slug.
+ * There was no button for a while because no operator endpoint returned that
+ * slug, and a button that guessed the address would lead to somebody else's
+ * page on the day the guess was wrong. `GET /me` carries `slug` now
+ * (yuvoy-api#164), so the address is read rather than constructed.
+ *
+ * Still guarded on the field being there. Required in a pinned contract is a
+ * promise about master, not about the deployed API, and no button at all beats
+ * one pointing at `/o/undefined`.
  *
  * A focused screen behind Business, like the logo beside it.
  */
 export default async function StoryPage() {
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
+  const publicPage = operatorPageUrl(me.slug);
 
   /*
     NOT soft-failing, unlike the logo. `PUT /story` writes `about` and
@@ -66,6 +74,24 @@ export default async function StoryPage() {
         your boat. Your registered name and address are separate, under Business
         details, and travellers never see those.
       </p>
+
+      {/*
+        The page itself, as travellers see it. Opened in a new tab rather than
+        navigated to: it is a different origin and a different product, and an
+        operator halfway through writing their story should come back to a form
+        they have not lost. `rel="noreferrer"` with it, as everywhere.
+      */}
+      {publicPage ? (
+        <a
+          href={publicPage}
+          target="_blank"
+          rel="noreferrer"
+          className="text-terra-deep hover:text-forest ease-interaction mt-4 inline-flex min-h-11 items-center gap-2 text-sm underline underline-offset-4 transition-colors duration-200"
+        >
+          Preview your operator page
+          <ExternalIcon className="size-4" />
+        </a>
+      ) : null}
 
       {story === null ? (
         <div className="mt-8">

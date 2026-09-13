@@ -99,25 +99,30 @@ export function toStory(raw: unknown): Story | null {
 /**
  * How long `about` is, measured the way the API measures it.
  *
- * `SaveStory` trims and then checks `len(about)` — and Go's `len` of a string
- * is its BYTES of UTF-8, not its characters (yuvoy-api
- * `operator_public_identity.go`). For plain English the two agree. They part
- * company on exactly what a phone types on its own — a curly apostrophe or an
- * em dash is three bytes — and on every word of Hindi or Bengali, three bytes
- * a letter. A counter of characters would say "590 of 600" over a paragraph
- * the API refuses, which is the one thing a counter must never do.
+ * ## It counted bytes, and the API now counts characters
  *
- * Raised on yuvoy-operator#41. If the API moves to counting characters, this
- * is the line that changes.
+ * `SaveStory` used to check `len(about)`, and Go's `len` of a string is its
+ * BYTES of UTF-8. This counted the same bytes so the screen could never pass a
+ * paragraph the API would refuse. It was raised on yuvoy-operator#41 because
+ * the rule was wrong on both sides and landed on exactly the wrong people: a
+ * business writing in Bengali got about 200 characters rather than 600, since
+ * every letter is three bytes.
+ *
+ * The API moved to `utf8.RuneCountInString`, which is what the database
+ * constraint has always measured (Postgres `length()` counts characters). So
+ * the portal is now the strict one, and Hima's note says so directly:
+ * "Counting code points after trimming measures exactly what the API and the
+ * database now measure."
+ *
+ * ## Code points, not `.length`
+ *
+ * `"नमस्ते".length` is 6 and `[...].length` is 6 here, but a string's `.length`
+ * is UTF-16 code units: an emoji is 2, and a business that puts one in its
+ * story would be charged double for it. Spreading iterates code points, which
+ * is what a rune is.
  */
 export function aboutSize(text: string): number {
-  return new TextEncoder().encode(text.trim()).length;
-}
-
-/** Whether the count runs ahead of the letters, so the screen can say why. */
-export function countsFaster(text: string): boolean {
-  const trimmed = text.trim();
-  return aboutSize(trimmed) !== [...trimmed].length;
+  return [...text.trim()].length;
 }
 
 /** What is wrong with `about` as the API would judge it, or nothing. */

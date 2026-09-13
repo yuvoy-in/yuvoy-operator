@@ -34,6 +34,18 @@ const blocker = (over: Partial<Blocker> = {}): Blocker => ({
 const credential = (
   over: Partial<OperatorCredential> = {},
 ): OperatorCredential => ({
+  /*
+    `id` and `hasFile` became required on `OperatorCredential` in the 13 Sep
+    contract: an id is what an upload names on
+    `POST /credentials/{id}/upload-intents`, and `hasFile` is sent on every row
+    "so a screen offers an upload or shows the file without inferring either
+    from a field being absent".
+
+    Set here so the fixture is a shape the API can actually send. Nothing in
+    `standing.ts` reads either, which is why this was only a type error.
+  */
+  id: "cred_insurance",
+  hasFile: false,
   type: "insurance",
   state: "verified",
   mandatory: true,

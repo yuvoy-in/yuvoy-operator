@@ -150,11 +150,59 @@ export function ListingRow({
       ) : null}
 
       {/*
-        Why we came back. A closed set in the contract "precisely so you can
-        render them rather than paraphrase" — and a code this build has never
-        met falls back to the API's own note rather than to a guess.
+        A FIRST listing sent back — yuvoy-operator#44, yuvoy-api#180.
+
+        `sentBack` is "present while a reviewer has sent this listing back to
+        you before it was ever on sale, and absent otherwise". Before it
+        existed, such a listing simply sat in review and the operator had no
+        way to learn why: `review.rejectionCode` below covers a rejected EDIT
+        to something already live, which is a different thing.
+
+        Said louder than that one, because the two are not equally urgent. A
+        rejected edit leaves a listing selling; this one has never sold and
+        will not until it comes back — and it is a draft again, which is the
+        part an operator cannot guess.
+
+        The reason uses the same closed set and the same fallback: a code this
+        build has never met falls back to the reviewer's own note rather than
+        to a guess.
       */}
-      {listing.review?.rejectionCode ? (
+      {listing.sentBack ? (
+        <div className="border-terra-deep/30 mt-3 border-t pt-3">
+          <p className="text-terra-deep text-sm font-bold">
+            We sent this back to you.{" "}
+            {describeRejection(listing.sentBack.rejectionCode) ??
+              listing.sentBack.rejectionNote ??
+              "Message us and we will say why."}
+          </p>
+          {/*
+            The reviewer's own words, when there are any. Empty when they wrote
+            nothing, which the contract states, so this is not a missing-field
+            branch.
+          */}
+          {describeRejection(listing.sentBack.rejectionCode) &&
+          listing.sentBack.rejectionNote?.trim() ? (
+            <p className="text-forest/80 mt-1.5 text-sm">
+              {listing.sentBack.rejectionNote}
+            </p>
+          ) : null}
+          <p className="text-forest/70 mt-1.5 text-sm">
+            It is a draft again. Change it below and send it to us when you are
+            ready.
+          </p>
+        </div>
+      ) : null}
+
+      {/*
+        Why we came back on an EDIT. A closed set in the contract "precisely so
+        you can render them rather than paraphrase" — and a code this build has
+        never met falls back to the API's own note rather than to a guess.
+
+        Not shown beside `sentBack` above: a listing sent back before it ever
+        sold is one situation, and two panels about the same rejection would
+        read as two rejections.
+      */}
+      {!listing.sentBack && listing.review?.rejectionCode ? (
         <div className="border-terra-deep/30 mt-3 border-t pt-3">
           <p className="text-terra-deep text-sm font-bold">
             {rejection ??

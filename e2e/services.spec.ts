@@ -294,6 +294,82 @@ test("the switcher counts both halves, including at zero", async ({ page }) => {
   ).toHaveAttribute("aria-current", "page");
 });
 
+test("the price says what the business receives, at its own rate", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#44. The form asked for a price and never said what arrives.
+    The rate was on no readable response until yuvoy-api#180, and hardcoding
+    15% was refused on 11 September: a business on its own negotiated rate
+    would have been shown a figure that was wrong about its own money.
+
+    ₹4,500 at the fixture's 1500 bps is ₹675 to Yuvoy and ₹3,825 to them.
+  */
+  await signIn(page);
+  await page.goto("/services/activities");
+  await page
+    .getByRole("button", { name: /Add a listing|New listing/i })
+    .click();
+
+  await expect(page.getByText(/You receive/)).toHaveCount(0);
+  await page.getByLabel("Price", { exact: true }).fill("4500");
+  await expect(page.getByText(/You receive/)).toContainText("₹3,825");
+  await expect(page.getByText(/You receive/)).toContainText("15%");
+
+  // Nothing at all with no price: there is nothing to split.
+  await page.getByLabel("Price", { exact: true }).fill("");
+  await expect(page.getByText(/You receive/)).toHaveCount(0);
+});
+
+test("a listing can be given a health check, from the API's own list", async ({
+  page,
+}) => {
+  /*
+    The waiver preview waited on a settable `screenerKey` (yuvoy-api#180). The
+    keys come from the vocabulary rather than a list here: a screener is "added
+    or retired on medical advice rather than by a release", so a hardcoded
+    option would be refused with a 400 the day one changed.
+  */
+  await signIn(page);
+  await page.goto("/services/activities");
+  await page
+    .getByRole("button", { name: /Add a listing|New listing/i })
+    .click();
+
+  const picker = page.getByLabel("Health check before booking");
+  await expect(picker).toBeVisible();
+  // "None" is the default, and a real choice: most listings need no waiver.
+  await expect(picker).toHaveValue("");
+  await expect(
+    picker.getByRole("option", { name: "Diving health check (RSTC)" }),
+  ).toHaveCount(1);
+  // Said plainly, because it turns a party away before any seat is held.
+  await expect(
+    page.getByText(/turned away before any seat is held/),
+  ).toBeVisible();
+});
+
+test("a first listing sent back says so, and says it is a draft again", async ({
+  page,
+}) => {
+  /*
+    yuvoy-api#180. Before `sentBack` existed such a listing sat in review and
+    the operator had no way to learn why — `review.rejectionCode` covers a
+    rejected EDIT to something already live, which is a different thing.
+  */
+  await signIn(page);
+  await page.goto("/services/activities");
+
+  const row = page.getByRole("listitem").filter({ hasText: "Night fishing" });
+  await expect(row.getByText(/We sent this back to you/)).toBeVisible();
+  await expect(row.getByText(/Which jetty gate/)).toBeVisible();
+  await expect(row.getByText(/It is a draft again/)).toBeVisible();
+
+  // ONE panel, not two. The row carries a `review.rejectionCode` as well, and
+  // two panels about one rejection read as two rejections.
+  await expect(row.getByText(/Which jetty gate/)).toHaveCount(1);
+});
+
 test("/services/activities has no accessibility violations", async ({
   page,
 }) => {
@@ -614,16 +690,33 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
     row.getByText(/upcoming departures have stopped being offered/),
   ).toBeVisible();
   /*
-    Nothing on the row sends the operator to wait for us. The API's own
-    `next` still says "we check it before travellers see it again", and it is
-    not rendered.
+    The API's `next`, rendered VERBATIM again — yuvoy-operator#44.
+
+    It was suppressed, and rightly: the sentence said "ask us to put it back …
+    we check it before travellers see it again", which D-032.4 had made false.
+    yuvoy-api#167 rewrote it, so the server's words are printed. Asserted on
+    the server's exact phrasing rather than a paraphrase, because a portal that
+    quietly substituted its own would pass a looser check.
   */
-  await expect(row.getByText(/review|we check it/i)).toHaveCount(0);
+  await expect(
+    row.getByText(/Put it back on sale yourself whenever you are ready/),
+  ).toBeVisible();
+  // And still nothing that sends the operator to wait for us.
+  await expect(row.getByText(/we check it before travellers/i)).toHaveCount(0);
 
   // And back, with nothing to wait for.
   await row.getByRole("button", { name: "Resume", exact: true }).click();
   await row.getByRole("button", { name: "Yes, resume it" }).click();
   await expect(row.getByText("Resumed", { exact: true })).toBeVisible();
+  /*
+    The resume sentence is the server's too. It used to claim "travellers can
+    book it now" unconditionally, which is false for a listing whose account
+    cannot sell — the portal suppressed it for that, and yuvoy-api#167 made it
+    conditional on what is true.
+  */
+  await expect(
+    row.getByText("It is back on sale. Travellers can see it and book it now."),
+  ).toBeVisible();
   await expect(row.getByText("Live", { exact: true })).toBeVisible();
 });
 

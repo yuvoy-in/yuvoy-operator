@@ -713,51 +713,20 @@ const NEEDS_MANAGE = [];
   finish();
 
   /*
-    GATED IN CODE, SILENT IN PROSE — yuvoy-operator#44.
+    THE EXEMPTION THAT CLOSED ITSELF — yuvoy-operator#44.
 
-    `POST /experiences/{id}/pause` and `/resume` are OWNER or MANAGER: the API
-    registers both behind `RequireOperatorRole(Owner, Manager)` in its
-    routes.go, exactly like `withdraw`, whose prose this parse reads. Their own
-    descriptions never say so in a phrase above — pause is "identical to
-    withdraw", resume says "OWNER or MANAGER — the person who…" — so without
-    this the parse files them under no role at all, and `/services` switching
-    from `withdraw` to `pause` reads as a route gating on a role nobody asked
-    for.
+    `POST /experiences/{id}/pause` and `/resume` were gated in the API's
+    routes.go and silent in their prose, so this parse filed them under no role
+    and `/services` switching from `withdraw` to `pause` read as a route gating
+    on a role nobody asked for. A `PROSE_GAPS` map carried both, with the
+    reason.
 
-    A Map with a reason per entry, like every other exemption in this file, and
-    each entry must still be a path the contract has: a stale one would quietly
-    cover whatever is written at that path next.
+    yuvoy-api#167 wrote the roles down: pause now ends "OWNER, ADMIN or MANAGER
+    only.", which this parse already recognises, and resume names them in its
+    403. Both entries were removed only after checking that this file still
+    passes without them — a stale exemption is worse than none, because it
+    quietly covers whatever is written at that path next.
   */
-  const PROSE_GAPS = new Map([
-    [
-      "POST /experiences/{id}/pause",
-      "RequireOperatorRole(Owner, Manager) in yuvoy-api routes.go; the description says only that it is identical to withdraw. Raised on yuvoy-operator#44.",
-    ],
-    [
-      "POST /experiences/{id}/resume",
-      "RequireOperatorRole(Owner, Manager) in yuvoy-api routes.go; its 'OWNER or MANAGER —' matches no phrase this parse recognises. Raised on yuvoy-operator#44.",
-    ],
-  ]);
-  for (const [operation, reason] of PROSE_GAPS) {
-    const [gapMethod, gapPath] = operation.split(" ");
-    if (!reason || reason.length < 40) {
-      problems.push(
-        `scripts/qa.mjs: PROSE_GAPS entry "${operation}" has no real reason.`,
-      );
-    }
-    if (!lines.includes(`  ${gapPath}:`)) {
-      problems.push(
-        `scripts/qa.mjs: PROSE_GAPS names ${operation}, which the contract no ` +
-          `longer has. A stale entry covers whatever is written at that path next.`,
-      );
-      continue;
-    }
-    if (
-      !NEEDS_MANAGE.some((e) => e.method === gapMethod && e.path === gapPath)
-    ) {
-      NEEDS_MANAGE.push({ method: gapMethod, path: gapPath });
-    }
-  }
 }
 
 /*
@@ -1437,6 +1406,52 @@ for (const f of files) {
         }
       }
     }
+  }
+}
+
+/* ------ 15. the story's photographs use the story's own upload slot ------ */
+
+/**
+ * `/logo/upload-intents` called from anywhere but the logo.
+ *
+ * Story photographs minted through the logo's intent, on the issue's original
+ * instruction to "upload the bytes through the existing image upload intent".
+ * It was corrected on yuvoy-operator#41: that slot is OWNER and MANAGER only,
+ * because a logo is the business's mark, while the story is editable by every
+ * operator role. So a STAFF member could write their story, choose a
+ * photograph, and be refused a 403 after picking the file.
+ *
+ * `POST /story/photos/upload-intents` is the open one.
+ *
+ * A test cannot catch a revert of this cheaply: the mock's role gate proves
+ * the two endpoints differ, and the Server Action's own test would need a
+ * session. The mistake is one string in one file, so it is checked as one
+ * string in one file — which also fails in the diff, where somebody can still
+ * see why.
+ */
+
+{
+  const LOGO_INTENT = "/logo/upload-intents";
+  for (const f of files) {
+    if (!code(f).includes(LOGO_INTENT)) continue;
+    // The logo's own screen is the one caller that should have it.
+    if (/src[/\\]app[/\\]logo[/\\]/.test(f)) continue;
+    /*
+      And a test may NAME it, which is not calling it. `mock-roles.test.ts`
+      drives this endpoint as a staff member precisely to prove it is gated —
+      the assertion that gives the rest of this check its meaning. A guard that
+      refused the test proving the rule is a guard nobody can satisfy.
+    */
+    if (/\.test\.tsx?$/.test(f)) continue;
+
+    problems.push(
+      `${rel(f)}: calls ${LOGO_INTENT}, which is OWNER and MANAGER only ` +
+        `because a logo is the business's mark. A story photograph must use ` +
+        `POST /story/photos/upload-intents, which is open to every operator ` +
+        `role — the same set that may edit the story. Using the logo's slot ` +
+        `let a staff member write their story and then be refused a 403 ` +
+        `after choosing a file (yuvoy-operator#41).`,
+    );
   }
 }
 

@@ -189,6 +189,14 @@ const FIXTURE_POSTER =
  */
 type MockExperience = {
   id: string;
+  /**
+   * A first listing a reviewer sent back — yuvoy-api#180.
+   *
+   * Distinct from `review.rejectionCode`, which is a rejected EDIT to
+   * something already live. This one has never sold, is a draft again, and
+   * before the field existed the operator had no way to learn why.
+   */
+  sentBack?: { rejectionCode: string; rejectionNote: string; at: string };
   slug?: string;
   title: string;
   summary?: string;
@@ -564,6 +572,25 @@ function seedExperiences(): MockExperience[] {
       unitPricePaise: 340000,
       sellable: true,
       upcomingDepartures: 0,
+      /*
+        A FIRST listing sent back — yuvoy-api#180.
+
+        This fixture already was one: `changes_rejected` over a listing that
+        has never been published. It carried only `review.rejectionCode`, which
+        the contract now reserves for a rejected EDIT to something already
+        live, so the portal had no way to say the thing that matters most about
+        this state — that it is a draft again and will not sell until it comes
+        back.
+
+        Both are set, because that is what the API sends: `status` reads
+        `changes_rejected` while it is sent back, and `review` still records
+        the decision. The portal shows one panel, not two.
+      */
+      sentBack: {
+        rejectionCode: "meeting_point_unclear",
+        rejectionNote: "Which jetty gate? A traveller cannot find this.",
+        at: new Date().toISOString(),
+      },
       review: {
         state: "rejected",
         since: new Date().toISOString(),
@@ -1115,6 +1142,29 @@ function requireAccessManager(request: Request, targetId: string) {
  * passes against a mock kinder than the API proves nothing about the refusal.
  * Found by the 2 Sep audit; `mock-roles.test.ts` now drives each one.
  */
+/**
+ * One IMAGE-hosting slot, for the logo's intent and the story's.
+ *
+ * The two endpoints answer the same shape and differ only in who may call
+ * them, so the body is written once — a second copy is how they drift and how
+ * a portal ends up handling one and not the other.
+ *
+ * Named apart from `uploadIntent` above, which is the tus slot a reel or a
+ * listing photograph uploads through: a different protocol, a different
+ * ceiling and a different response.
+ */
+function imageIntent() {
+  const imageId = `img_${Math.random().toString(36).slice(2, 10)}`;
+  return {
+    imageId,
+    // A different origin, exactly as in production.
+    uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/photos/${imageId}`,
+    expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    maxBytes: 10 * 1024 * 1024,
+    next: "upload_then_put",
+  };
+}
+
 function requireManager(request: Request, refusal: string) {
   const failed = requireSession(request);
   if (failed) return failed;
@@ -1331,7 +1381,14 @@ const pauseHandler = (path: string) =>
             note: "This listing is off sale — nobody new can book it. The 3 bookings you have already taken are unchanged. You still need to run those departures, or call each one off yourself.",
           }
         : {}),
-      next: "Ask us to put it back whenever you are ready — there is a button for it on the listing. We check it before travellers see it again.",
+      /*
+        The API's sentence, as yuvoy-api#167 rewrote it. It used to say "ask us
+        to put it back … we check it before travellers see it again", which
+        D-032.4 had made false — resuming is the operator's own button and is
+        immediate — and the portal suppressed it for that reason. Both the
+        wording and the suppression are gone.
+      */
+      next: "Put it back on sale yourself whenever you are ready. There is a button for it on this listing, and it takes effect at once.",
     });
   });
 
@@ -1346,8 +1403,13 @@ const pauseHandler = (path: string) =>
  *   - a mandatory field still empty → `400` naming it in `details.missing`,
  *     "so you find out while the form is open".
  *
- * `next` is the API's unconditional "travellers can book it now", which is
- * false for a listing whose account cannot sell — kept, and not rendered.
+ * `next` is CHOSEN BY WHAT IS TRUE since yuvoy-api#167. It used to be an
+ * unconditional "travellers can book it now", which is false for a listing
+ * whose account cannot sell, and the portal suppressed it for that reason.
+ *
+ * The three sentences are modelled rather than collapsed into one, because the
+ * portal now prints whichever arrives verbatim: a mock that always sent the
+ * happy one would let the screen ship a claim it never makes.
  */
 const resumeHandler = (path: string) =>
   http.post(url(path), async ({ request, params }) => {
@@ -1364,10 +1426,24 @@ const resumeHandler = (path: string) =>
     const listing = mockExperiences.find((e) => e.id === String(params.id));
     if (!listing) return envelope("not_found", "no such listing", 404);
 
-    const next = "It is back on sale. Travellers can see it and book it now.";
     const state = listing.publicationState ?? "draft";
+
+    /*
+      Which of the three is true. `sellable === false` is the case the old
+      unconditional sentence lied about: a listing that is published and still
+      unsellable, because something on the account stops sales — a lapsed
+      insurance document, a standing that is not LIVE. Eligibility is
+      re-derived on every read, so publishing never settles it.
+    */
+    const sentenceFor = (now: string) =>
+      now === "in_review"
+        ? "It is back on your listings. This one is still waiting for its first check, so travellers cannot see it yet."
+        : listing.sellable === false
+          ? "It is back on your listings. Something on your account is stopping sales, so travellers cannot book it yet. Business says what."
+          : "It is back on sale. Travellers can see it and book it now.";
+
     if (state === "published" || state === "in_review") {
-      return HttpResponse.json({ state, next });
+      return HttpResponse.json({ state, next: sentenceFor(state) });
     }
     if (state !== "withdrawn") {
       return envelope("not_withdrawn", "this listing is not off sale", 409);
@@ -1388,7 +1464,10 @@ const resumeHandler = (path: string) =>
 
     listing.publicationState = "published";
     listing.status = "live";
-    return HttpResponse.json({ state: "published", next });
+    return HttpResponse.json({
+      state: "published",
+      next: sentenceFor("published"),
+    });
   });
 
 export const handlers = [
@@ -1543,6 +1622,13 @@ export const handlers = [
       name: me.name,
       roles: me.roles,
       operatorId: OPERATOR.operatorId,
+      /*
+        Per-BUSINESS, like `operatorId` beside it — every colleague signed into
+        the same account sees the same slug. Always present: `operators.slug`
+        is `not null unique`.
+      */
+      slug: OPERATOR.slug,
+      commissionRateBps: OPERATOR.commissionRateBps,
       canManage: canManage(me),
       ...(account ? { account } : {}),
     });
@@ -2022,25 +2108,38 @@ export const handlers = [
   }),
 
   /**
-   * The logo's upload slot, which a story photograph rides — "upload the bytes
-   * through the existing image upload intent". The file goes to the mock image
-   * host on a different origin, exactly as it does in production.
+   * The LOGO's upload slot. Owner and manager only, because a logo is the
+   * business's mark.
+   *
+   * A story photograph used to ride this one, on the issue's original
+   * instruction. It is gated differently and that gate is modelled here, so a
+   * portal that went back to using it for photographs would fail a staff
+   * member's test rather than a staff member (yuvoy-operator#41).
    */
   http.post(url("/logo/upload-intents"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
-
-    const imageId = `img_${Math.random().toString(36).slice(2, 10)}`;
-    return HttpResponse.json(
-      {
-        imageId,
-        uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/photos/${imageId}`,
-        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-        maxBytes: 10 * 1024 * 1024,
-        next: "upload_then_put",
-      },
-      { status: 201 },
+    const denied = requireManager(
+      request,
+      "Only an owner or a manager can change the logo.",
     );
+    if (denied) return denied;
+
+    return HttpResponse.json(imageIntent(), { status: 201 });
+  }),
+
+  /**
+   * The STORY's own upload slot — yuvoy-api#161.
+   *
+   * Open to every operator role, which is the same set that may edit the
+   * story. Session only, and deliberately no `requireManage`: that difference
+   * from the logo's slot above is the whole reason this endpoint exists.
+   */
+  http.post(url("/story/photos/upload-intents"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    return HttpResponse.json(imageIntent(), { status: 201 });
   }),
 
   http.post(url("/story/photos"), async ({ request }) => {
@@ -2258,6 +2357,13 @@ export const handlers = [
 
     return HttpResponse.json({
       market: { key: "andaman", name: "Andaman Islands" },
+      /*
+        The health screeners a listing's `screenerKey` may name — yuvoy-api#180.
+        One today, and the set grows by INSERT: "the same read decides which
+        keys a listing write accepts, so every key offered here is accepted and
+        any other key is a 400."
+      */
+      screeners: [{ key: "diving_rstc", label: "Diving health check (RSTC)" }],
       categories: [
         { key: "adventure", label: "Adventure" },
         { key: "nature_wildlife", label: "Nature & wildlife" },
