@@ -6,7 +6,6 @@ import {
   ABOUT_MAX,
   aboutIssue,
   aboutSize,
-  countsFaster,
   languagesIssue,
   parseLanguages,
 } from "@/lib/story/story";
@@ -20,9 +19,14 @@ import { Panel } from "@/components/ui/panel";
  * ## The count is the API's count
  *
  * "Below forty the API returns 400; show the count live, as the demo does."
- * The number shown is `aboutSize`, which measures what the API measures, and
- * when that runs ahead of the letters typed the screen says why rather than
- * leaving somebody to wonder whether it is broken.
+ * The number shown is `aboutSize`, which measures what the API measures.
+ *
+ * It used to measure BYTES, because the API did, and the screen carried a line
+ * explaining that "some letters and symbols take up more room than one, so
+ * this counts faster than you type". That line existed to excuse a rule that
+ * was simply wrong: a business writing in Bengali got about 200 characters
+ * rather than 600. The API counts characters now (yuvoy-operator#41), the
+ * count matches the letters, and the excuse is gone with it.
  *
  * ## Controlled, on purpose
  *
@@ -126,12 +130,6 @@ function StoryRound({
               ) : null}
             </>
           )}
-          {countsFaster(text) ? (
-            <p className="text-forest/70">
-              Some letters and symbols take up more room than one, so this
-              counts faster than you type.
-            </p>
-          ) : null}
         </div>
       </div>
 

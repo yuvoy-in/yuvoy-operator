@@ -1115,6 +1115,29 @@ function requireAccessManager(request: Request, targetId: string) {
  * passes against a mock kinder than the API proves nothing about the refusal.
  * Found by the 2 Sep audit; `mock-roles.test.ts` now drives each one.
  */
+/**
+ * One IMAGE-hosting slot, for the logo's intent and the story's.
+ *
+ * The two endpoints answer the same shape and differ only in who may call
+ * them, so the body is written once — a second copy is how they drift and how
+ * a portal ends up handling one and not the other.
+ *
+ * Named apart from `uploadIntent` above, which is the tus slot a reel or a
+ * listing photograph uploads through: a different protocol, a different
+ * ceiling and a different response.
+ */
+function imageIntent() {
+  const imageId = `img_${Math.random().toString(36).slice(2, 10)}`;
+  return {
+    imageId,
+    // A different origin, exactly as in production.
+    uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/photos/${imageId}`,
+    expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    maxBytes: 10 * 1024 * 1024,
+    next: "upload_then_put",
+  };
+}
+
 function requireManager(request: Request, refusal: string) {
   const failed = requireSession(request);
   if (failed) return failed;
@@ -1543,6 +1566,12 @@ export const handlers = [
       name: me.name,
       roles: me.roles,
       operatorId: OPERATOR.operatorId,
+      /*
+        Per-BUSINESS, like `operatorId` beside it — every colleague signed into
+        the same account sees the same slug. Always present: `operators.slug`
+        is `not null unique`.
+      */
+      slug: OPERATOR.slug,
       canManage: canManage(me),
       ...(account ? { account } : {}),
     });
@@ -2022,25 +2051,38 @@ export const handlers = [
   }),
 
   /**
-   * The logo's upload slot, which a story photograph rides — "upload the bytes
-   * through the existing image upload intent". The file goes to the mock image
-   * host on a different origin, exactly as it does in production.
+   * The LOGO's upload slot. Owner and manager only, because a logo is the
+   * business's mark.
+   *
+   * A story photograph used to ride this one, on the issue's original
+   * instruction. It is gated differently and that gate is modelled here, so a
+   * portal that went back to using it for photographs would fail a staff
+   * member's test rather than a staff member (yuvoy-operator#41).
    */
   http.post(url("/logo/upload-intents"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
-
-    const imageId = `img_${Math.random().toString(36).slice(2, 10)}`;
-    return HttpResponse.json(
-      {
-        imageId,
-        uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/photos/${imageId}`,
-        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-        maxBytes: 10 * 1024 * 1024,
-        next: "upload_then_put",
-      },
-      { status: 201 },
+    const denied = requireManager(
+      request,
+      "Only an owner or a manager can change the logo.",
     );
+    if (denied) return denied;
+
+    return HttpResponse.json(imageIntent(), { status: 201 });
+  }),
+
+  /**
+   * The STORY's own upload slot — yuvoy-api#161.
+   *
+   * Open to every operator role, which is the same set that may edit the
+   * story. Session only, and deliberately no `requireManage`: that difference
+   * from the logo's slot above is the whole reason this endpoint exists.
+   */
+  http.post(url("/story/photos/upload-intents"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    return HttpResponse.json(imageIntent(), { status: 201 });
   }),
 
   http.post(url("/story/photos"), async ({ request }) => {

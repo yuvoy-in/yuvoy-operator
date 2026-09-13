@@ -18,6 +18,15 @@ export const OPERATOR = {
   name: "Priya Raut",
   roles: ["OWNER"],
   operatorId: "op_nemo_reef",
+  /**
+   * The BUSINESS's address on the traveller app — yuvoy-api#164.
+   *
+   * Not the operator id and not derivable from it: `op_nemo_reef` is ours and
+   * the slug is what a traveller can read. It is what "Preview your operator
+   * page" links to, and the reason that button could not be built until the
+   * API sent it (yuvoy-operator#41).
+   */
+  slug: "reef-divers-havelock",
   canManage: true,
 };
 
