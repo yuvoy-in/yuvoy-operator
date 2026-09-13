@@ -189,6 +189,14 @@ const FIXTURE_POSTER =
  */
 type MockExperience = {
   id: string;
+  /**
+   * A first listing a reviewer sent back — yuvoy-api#180.
+   *
+   * Distinct from `review.rejectionCode`, which is a rejected EDIT to
+   * something already live. This one has never sold, is a draft again, and
+   * before the field existed the operator had no way to learn why.
+   */
+  sentBack?: { rejectionCode: string; rejectionNote: string; at: string };
   slug?: string;
   title: string;
   summary?: string;
@@ -564,6 +572,25 @@ function seedExperiences(): MockExperience[] {
       unitPricePaise: 340000,
       sellable: true,
       upcomingDepartures: 0,
+      /*
+        A FIRST listing sent back — yuvoy-api#180.
+
+        This fixture already was one: `changes_rejected` over a listing that
+        has never been published. It carried only `review.rejectionCode`, which
+        the contract now reserves for a rejected EDIT to something already
+        live, so the portal had no way to say the thing that matters most about
+        this state — that it is a draft again and will not sell until it comes
+        back.
+
+        Both are set, because that is what the API sends: `status` reads
+        `changes_rejected` while it is sent back, and `review` still records
+        the decision. The portal shows one panel, not two.
+      */
+      sentBack: {
+        rejectionCode: "meeting_point_unclear",
+        rejectionNote: "Which jetty gate? A traveller cannot find this.",
+        at: new Date().toISOString(),
+      },
       review: {
         state: "rejected",
         since: new Date().toISOString(),
@@ -1601,6 +1628,7 @@ export const handlers = [
         is `not null unique`.
       */
       slug: OPERATOR.slug,
+      commissionRateBps: OPERATOR.commissionRateBps,
       canManage: canManage(me),
       ...(account ? { account } : {}),
     });
@@ -2329,6 +2357,13 @@ export const handlers = [
 
     return HttpResponse.json({
       market: { key: "andaman", name: "Andaman Islands" },
+      /*
+        The health screeners a listing's `screenerKey` may name — yuvoy-api#180.
+        One today, and the set grows by INSERT: "the same read decides which
+        keys a listing write accepts, so every key offered here is accepted and
+        any other key is a 400."
+      */
+      screeners: [{ key: "diving_rstc", label: "Diving health check (RSTC)" }],
       categories: [
         { key: "adventure", label: "Adventure" },
         { key: "nature_wildlife", label: "Nature & wildlife" },

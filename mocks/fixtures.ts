@@ -27,6 +27,14 @@ export const OPERATOR = {
    * API sent it (yuvoy-operator#41).
    */
   slug: "reef-divers-havelock",
+  /**
+   * 15%, in basis points — yuvoy-api#180.
+   *
+   * A real figure rather than a round one would be better still, but 1500 is
+   * the rate `EARNINGS` already implies (810,000 of 5,400,000), so the two
+   * fixtures describe one business rather than two.
+   */
+  commissionRateBps: 1500,
   canManage: true,
 };
 

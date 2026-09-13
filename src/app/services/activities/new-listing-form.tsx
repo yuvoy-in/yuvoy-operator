@@ -4,10 +4,13 @@ import { useActionState, useState } from "react";
 import { createListing, type CreateState } from "./actions";
 import {
   activityChoices,
+  screenerChoices,
   type Choice,
   type Vocabulary,
 } from "@/lib/services/vocabulary";
 import { PRICING_UNITS } from "@/lib/services/listings";
+import { commissionPreview, formatRate } from "@/lib/services/commission";
+import { formatPaise } from "@/lib/format/money";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -49,6 +52,7 @@ export function NewListingForm({
   vocabulary,
   destinations,
   market,
+  commissionRateBps,
 }: {
   /** Every category the API accepts, labelled. Never empty. */
   categories: Choice[];
@@ -63,6 +67,13 @@ export function NewListingForm({
   destinations: Choice[];
   /** The operator's market, named for the empty-destinations case. */
   market: string | null;
+  /**
+   * What Yuvoy keeps, in basis points, for the "you receive" preview.
+   *
+   * `null` when the API sent none, in which case no preview is drawn at all —
+   * see the note beside the price field.
+   */
+  commissionRateBps: number | null;
 }) {
   const [state, act, pending] = useActionState<CreateState, FormData>(
     createListing,
@@ -72,6 +83,20 @@ export function NewListingForm({
   // Drives the activity picker below, which narrows to the chosen category.
   const [category, setCategory] = useState<string | null>(null);
   const activities = activityChoices(vocabulary, category);
+  const screeners = screenerChoices(vocabulary);
+
+  /*
+    The price, held so the "you receive" line can follow it as it is typed.
+    Rupees on screen and paise in the arithmetic: the split is computed in
+    integer paise and rounded once, because a preview that disagrees with the
+    settlement by a paisa invites a conversation about whether we can count.
+  */
+  const [price, setPrice] = useState("");
+  const rupees = Number(price.replace(/[^\d.]/g, ""));
+  const split = commissionPreview(
+    Number.isFinite(rupees) && rupees > 0 ? Math.round(rupees * 100) : null,
+    commissionRateBps,
+  );
 
   if (state.created) {
     return (
@@ -247,9 +272,42 @@ export function NewListingForm({
             name="unitPrice"
             inputMode="numeric"
             className={inputClass("mt-2")}
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
             aria-invalid={state.field === "unitPrice" || undefined}
             aria-describedby="new-price-help"
           />
+
+          {/*
+            WHAT THE BUSINESS RECEIVES — yuvoy-operator#44.
+
+            The form asked for a price and never said what arrives. The rate
+            was nowhere on a readable response until yuvoy-api#180, and
+            hardcoding 15% was refused on 11 September: a business on its own
+            negotiated rate would have been shown a figure that was wrong about
+            its own money.
+
+            It is a PREVIEW and says so. Each booking freezes its own
+            commission at capture, so a rate that changes later never restates
+            one already taken — and a line that read as a promise would be the
+            wrong kind of precise.
+
+            Nothing at all when there is no rate: "absent where the service was
+            not given a standard rate" is not a rate of zero, and rendering the
+            whole fare as received would be the most flattering possible wrong
+            answer. See `commissionPreview`.
+          */}
+          {split ? (
+            <p role="status" className="text-forest/80 mt-2 text-sm">
+              You receive{" "}
+              <span className="font-bold">
+                {formatPaise(split.receivePaise)}
+              </span>{" "}
+              of that, at your {formatRate(commissionRateBps!)} rate. It is
+              worked out again on each booking.
+            </p>
+          ) : null}
+
           {/*
             The one optional field whose absence has a consequence worth saying
             up front. `sellable: false` is reported by the API and means the
@@ -354,6 +412,57 @@ export function NewListingForm({
           Leave either blank and we use two hours and six people. A traveller
           sees the duration on the card, so it is worth saying.
         </p>
+
+        {/*
+          THE WAIVER — yuvoy-operator#44, yuvoy-api#180.
+
+          The one field on this form that is a safety control rather than a
+          description: with a screener set, "a party that declares a condition
+          is refused before any seat is held or money taken".
+
+          Its keys come from the vocabulary, not from a list here: a screener
+          is "added or retired on medical advice rather than by a release", so
+          a hardcoded option would be refused with a 400 the day one changed.
+          The same read decides which keys a write accepts, so every option
+          offered is one the server will take.
+
+          Rendered only when there is something to choose. An empty list is a
+          real answer — no screener can be chosen yet — and a picker with one
+          disabled option is a control that asks for a decision nobody can
+          make.
+        */}
+        {screeners.length > 0 ? (
+          <div>
+            <label htmlFor="new-screener" className="label text-forest/75">
+              Health check before booking
+            </label>
+            <select
+              id="new-screener"
+              name="screenerKey"
+              defaultValue=""
+              className={inputClass("mt-2")}
+              aria-invalid={state.field === "screenerKey" || undefined}
+              aria-describedby="new-screener-help"
+            >
+              {/*
+                "None" is a real choice and the default one. An empty
+                `screenerKey` is always allowed, and most listings need no
+                waiver at all.
+              */}
+              <option value="">No health check</option>
+              {screeners.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <p id="new-screener-help" className="text-forest/70 mt-1.5 text-xs">
+              Anybody booking answers these before they can pay, and a party
+              that declares a condition is turned away before any seat is held.
+              Leave it off unless your activity needs one.
+            </p>
+          </div>
+        ) : null}
 
         {state.message ? (
           <p role="alert" className="text-terra-deep text-sm font-bold">

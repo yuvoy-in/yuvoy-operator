@@ -112,6 +112,34 @@ export function destinationChoices(vocabulary: Vocabulary | null): Choice[] {
     .map((t) => ({ value: t.key, label: t.label || prettify(t.key) }));
 }
 
+/**
+ * The health screeners a listing may use — yuvoy-operator#44, yuvoy-api#180.
+ *
+ * "Show `label` to a person and send `key`." Not an enum: there is one today
+ * (`diving_rstc`) and the set grows by INSERT, so a hardcoded list would go
+ * stale and a key it did not know would be refused with a 400 after the form
+ * was filled in.
+ *
+ * The same read decides which keys a write accepts, so **every key offered
+ * here is accepted and any other key is a 400** — which is what makes a picker
+ * built from this safe, and a free-text field not.
+ *
+ * An empty list is a real state: no screener can be chosen yet. It is not a
+ * failure, and the form renders it as "none available" rather than as an
+ * error.
+ */
+export function screenerChoices(vocabulary: Vocabulary | null): Choice[] {
+  /*
+    `key` and `label` are both required on this one, unlike the destinations
+    above — so no predicate narrowing, and the guard is against a row the
+    deployed API sends empty rather than against the declared type. A pinned
+    contract says what the API WILL send.
+  */
+  return (vocabulary?.screeners ?? [])
+    .filter((t) => Boolean(t.key?.trim()))
+    .map((t) => ({ value: t.key, label: t.label?.trim() || prettify(t.key) }));
+}
+
 /** The operator's market, for a picker that has nothing to offer. */
 export function marketName(vocabulary: Vocabulary | null): string | null {
   return vocabulary?.market?.name ?? null;

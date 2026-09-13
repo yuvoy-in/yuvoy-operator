@@ -46,7 +46,7 @@ export const dynamic = "force-dynamic";
  * already and says what is outstanding.
  */
 export default async function ActivitiesPage() {
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
   const client = operatorApi(token);
 
   /*
@@ -160,6 +160,7 @@ export default async function ActivitiesPage() {
           categories={categories}
           destinations={destinations}
           market={marketName(vocabulary)}
+          commissionRateBps={me.commissionRateBps}
         />
       </div>
 
