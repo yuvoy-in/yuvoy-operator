@@ -614,16 +614,33 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
     row.getByText(/upcoming departures have stopped being offered/),
   ).toBeVisible();
   /*
-    Nothing on the row sends the operator to wait for us. The API's own
-    `next` still says "we check it before travellers see it again", and it is
-    not rendered.
+    The API's `next`, rendered VERBATIM again — yuvoy-operator#44.
+
+    It was suppressed, and rightly: the sentence said "ask us to put it back …
+    we check it before travellers see it again", which D-032.4 had made false.
+    yuvoy-api#167 rewrote it, so the server's words are printed. Asserted on
+    the server's exact phrasing rather than a paraphrase, because a portal that
+    quietly substituted its own would pass a looser check.
   */
-  await expect(row.getByText(/review|we check it/i)).toHaveCount(0);
+  await expect(
+    row.getByText(/Put it back on sale yourself whenever you are ready/),
+  ).toBeVisible();
+  // And still nothing that sends the operator to wait for us.
+  await expect(row.getByText(/we check it before travellers/i)).toHaveCount(0);
 
   // And back, with nothing to wait for.
   await row.getByRole("button", { name: "Resume", exact: true }).click();
   await row.getByRole("button", { name: "Yes, resume it" }).click();
   await expect(row.getByText("Resumed", { exact: true })).toBeVisible();
+  /*
+    The resume sentence is the server's too. It used to claim "travellers can
+    book it now" unconditionally, which is false for a listing whose account
+    cannot sell — the portal suppressed it for that, and yuvoy-api#167 made it
+    conditional on what is true.
+  */
+  await expect(
+    row.getByText("It is back on sale. Travellers can see it and book it now."),
+  ).toBeVisible();
   await expect(row.getByText("Live", { exact: true })).toBeVisible();
 });
 

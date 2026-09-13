@@ -512,6 +512,8 @@ export interface PauseState {
     guestsToHonour: number;
     /** The API's own sentence, rendered VERBATIM. See below. */
     note?: string;
+    /** What happens next, in the API's words. See below. */
+    next?: string;
   };
 }
 
@@ -539,13 +541,18 @@ const pauseSchema = z.object({
  * this action can produce — so the form says it before, and the API's own
  * `note` says it after, verbatim.
  *
- * ## What is NOT rendered from the answer
+ * ## `next` is rendered again
  *
- * `next`. The API still sends "ask us to put it back … we check it before
- * travellers see it again", which D-032.4 made false: resuming is the
+ * It was suppressed. The API sent "ask us to put it back … we check it before
+ * travellers see it again", which D-032.4 had made false: resuming is the
  * operator's own switch and is immediate. Rendering the server's sentence is
  * the rule; rendering a server sentence that sends an operator to wait for a
- * review that does not exist is not. Raised on yuvoy-operator#44.
+ * review that does not exist is not.
+ *
+ * yuvoy-api#167 fixed the wording — it now says that resuming is the
+ * operator's own button and needs nobody at Yuvoy — so the suppression is
+ * lifted and the sentence is printed verbatim, like `note` beside it. Raised
+ * and closed on yuvoy-operator#44.
  *
  * ## Confirmed by typing the id, not by a checkbox
  *
@@ -625,6 +632,10 @@ export async function pauseListing(
         bookingsToHonour: data.bookingsToHonour,
         guestsToHonour: data.guestsToHonour,
         note: dedashText(data.note),
+        // Verbatim, through the same dash strip every API sentence goes
+        // through at this boundary — the copy rule cannot reach yuvoy-api's
+        // database, so it is applied where the text enters.
+        next: dedashText(data.next),
       },
     };
   } catch (err) {
@@ -661,7 +672,20 @@ export async function pauseListing(
 export interface ResumeState {
   message?: string;
   /** What the API says the listing is now. See `resumeListing` for `in_review`. */
-  done?: { state: "published" | "in_review" };
+  done?: {
+    state: "published" | "in_review";
+    /**
+     * The API's own sentence about what happens next, rendered verbatim.
+     *
+     * Suppressed until yuvoy-api#167, because it said "Travellers can see it
+     * and book it now" unconditionally — false for a listing resumed while the
+     * account or its documents stop sales. It is chosen by what is true now:
+     * back on sale; back on the listings but not bookable while something on
+     * the account stops sales; or, for a listing never approved, still waiting
+     * for its first check.
+     */
+    next?: string;
+  };
 }
 
 const resumeSchema = z.object({ id: z.string().min(1) });
@@ -686,12 +710,13 @@ function missingFields(details: unknown): string[] {
  *
  * ## Two answers, and neither is taken on the API's word alone
  *
- *   - `published` — back on sale. The API's `next` says "Travellers can see it
- *     and book it now", unconditionally, and that is not always true: "a
- *     listing resumed while your insurance is lapsed or your account is not
- *     live is `published` and still unsellable". So the screen says it is back
- *     on sale and that the listing's own label says whether anything on the
- *     account still stops sales — which the re-rendered row does.
+ *   - `published` — back on sale, IF nothing else stops it. The API's `next`
+ *     used to claim "Travellers can see it and book it now" unconditionally,
+ *     which is false for "a listing resumed while your insurance is lapsed or
+ *     your account is not live", so the screen suppressed it. yuvoy-api#167
+ *     made the sentence conditional on what is actually true, so it is printed
+ *     verbatim again — alongside the re-rendered row, whose own label still
+ *     says whether anything on the account stops sales.
  *   - `in_review` — a listing awaiting its FIRST approval "does not move".
  *     Idempotent and not an error, and not a sentence about being on sale.
  *
@@ -731,7 +756,10 @@ export async function resumeListing(
     // says more about the listing than a message could.
     revalidatePath("/services/activities");
     return {
-      done: { state: data.state === "in_review" ? "in_review" : "published" },
+      done: {
+        state: data.state === "in_review" ? "in_review" : "published",
+        next: dedashText(data.next),
+      },
     };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
