@@ -92,7 +92,16 @@ export interface OperatorIdentity {
    * `/o/undefined`.
    */
   slug: string | null;
-  /** OWNER or MANAGER. Capacity, earnings and call-off require it. */
+  /**
+   * What Yuvoy keeps on a booking, in basis points — 1500 is 15%.
+   *
+   * The business's own contracted rate when it has one, the standard rate when
+   * it has none. `null` when the API sent none: "absent where the service was
+   * not given a standard rate", which is not a rate of zero and must not
+   * render as one (yuvoy-operator#44).
+   */
+  commissionRateBps: number | null;
+  /** OWNER, ADMIN or MANAGER. Capacity, earnings and call-off require it. */
   canManage: boolean;
   /**
    * Whether this account can sell, and what is outstanding — or `null` when
@@ -166,6 +175,10 @@ export async function requireOperator(): Promise<{
         roles: data.roles ?? [],
         operatorId: data.operatorId ?? "",
         slug: data.slug?.trim() || null,
+        commissionRateBps:
+          typeof data.commissionRateBps === "number"
+            ? data.commissionRateBps
+            : null,
         canManage: data.canManage ?? false,
         account: standingOf(data.account),
       },

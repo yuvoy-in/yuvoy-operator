@@ -55,7 +55,8 @@ export interface CreateState {
     | "pricingUnit"
     | "durationMinutes"
     | "maxPartySize"
-    | "activityType";
+    | "activityType"
+    | "screenerKey";
   /** Set when the draft exists, so the screen can say what it is NOT. */
   created?: { id: string; title: string };
 }
@@ -141,6 +142,27 @@ const createSchema = z
       .trim()
       .pipe(z.string().regex(/^\d*$/, "A number of people, digits only."))
       .optional(),
+    /*
+      THE WAIVER — yuvoy-operator#44, yuvoy-api#180.
+
+      With a screener set, "a party that declares a condition is refused before
+      any seat is held or money taken". So this is a safety control, and the
+      one field on this form whose absence is a decision rather than a default.
+
+      Not an enum. A screener is a row, "added or retired on medical advice
+      rather than by a release", so the keys come from
+      `GET /catalog/vocabulary` and a key that is not current is a 400 naming
+      the ones that are. Validated as a non-empty string here and against the
+      server's own list there — the picker cannot offer a key the write would
+      refuse, because the same read decides both.
+
+      An empty string is always allowed and means none.
+    */
+    screenerKey: z
+      .string()
+      .trim()
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
   })
   .refine((v) => !v.unitPrice || v.pricingUnit !== undefined, {
     path: ["pricingUnit"],
@@ -200,6 +222,12 @@ export async function createListing(
         ...(parsed.data.maxPartySize
           ? { maxPartySize: Number(parsed.data.maxPartySize) }
           : {}),
+        // Omitted rather than sent empty when nobody chose one: an absent key
+        // and an empty string mean the same thing to the API, and the absent
+        // form is the one the contract describes.
+        ...(parsed.data.screenerKey
+          ? { screenerKey: parsed.data.screenerKey }
+          : {}),
       },
     });
     if (error) throw error;
@@ -238,6 +266,29 @@ export async function createListing(
         };
       }
       if (err.status === 400) {
+        /*
+          A waiver key that is no longer current — yuvoy-api#180. "A key that
+          is not current is a 400 whose `details.screenerKey` names the ones
+          that are." Reachable without the operator doing anything wrong: a
+          screener retired on medical advice between this page loading and the
+          form being sent.
+
+          Named on the FIELD, so the picker is what turns red rather than a
+          message under the button, and the operator's answer is to choose
+          again from a list that has just changed under them.
+        */
+        if (
+          err.details &&
+          typeof err.details === "object" &&
+          "screenerKey" in err.details
+        ) {
+          return {
+            field: "screenerKey",
+            message:
+              err.message ||
+              "That waiver is no longer offered. Reload the page and choose again.",
+          };
+        }
         /*
           The API's own sentence. The most likely 400 here is a destination
           belonging to another market — "one belonging to another market is
