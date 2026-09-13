@@ -89,7 +89,11 @@ export interface paths {
         put?: never;
         /**
          * Send a code to the owner's phone
-         * @description Elevates this session for ten minutes. The code goes to the **OWNER's** number whoever asks — a compromised MANAGER login must not be able to both request the elevation and receive the code that grants it.
+         * @description Elevates this session for ten minutes. The code goes to an **OWNER's** number whoever asks — a compromised MANAGER login must not be able to both request the elevation and receive the code that grants it.
+         *
+         *     An owner who asks is sent their own code, so every owner of a business with several can pass it (D31), the code being checked against the number of whoever asked. Anybody else's goes to the owner who joined first.
+         *
+         *     A business with no active owner, whose first person runs it (D15), has nobody to send it to. The code goes to no number, `sent` is `false`, and no session there can be elevated until an owner has joined. It used to go to the asker's own number instead, which made it a confirmation the asker sent to themselves.
          *
          *     Ten minutes is long enough to fill in bank details on a phone with a bad keyboard, and short enough that a session left open on a shared laptop at a dive shop is not still elevated after lunch.
          */
@@ -284,6 +288,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/credentials/{id}/upload-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start sending the file behind a document
+         * @description The document itself, not what it says. `POST /credentials` files the type, issuer and expiry; this signs a URL the browser sends the file straight to, in a private bucket. The file never passes through this API.
+         *
+         *     **Only a pending document takes a file.** Once somebody at Yuvoy has verified or rejected a document, a new file behind it would change the evidence under a decision nobody re-made, so this answers `409 document_locked`. File the document again to send a different one.
+         *
+         *     The size and the kind are signed into the URL, so the bucket itself refuses a file of any other length or content type. Send the file with `method` to `uploadUrl`, with every header in `headers` exactly as given; the browser sets `Content-Length` from the file. Then call `POST /credentials/{id}/upload-intents/{intentId}/complete`.
+         *
+         *     `uploadUrl` is **never stored server-side and never logged**: it is a credential for writing one file into a private bucket, and it works for fifteen minutes.
+         *
+         *     PDF, JPEG or PNG, up to 10 MB.
+         */
+        post: operations["createCredentialUploadIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/credentials/{id}/upload-intents/{intentId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the file once it has arrived
+         * @description The browser saying it finished is a reason to look, not a fact. This asks the bucket what arrived: that the file is there, that it carries the metadata only a URL minted here signs into it, that it is the size declared, and that its first bytes are the kind its label claims. Only then is it the file on record for the document, replacing whichever file was there before.
+         *
+         *     Called again after it succeeded, it answers the same thing again.
+         *
+         *     A file this refuses is closed, and the retention sweep deletes it from the bucket. Start a new upload to send another.
+         *
+         *     Nothing here verifies the document. It still waits for somebody at Yuvoy, who opens the file to decide.
+         */
+        post: operations["completeCredentialUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/credential-requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The documents a listing in a category needs
+         * @description What a listing in this category, and optionally this activity type, needs your business to hold before it can sell, in your own market, and whether you hold each one today. For the listing form, so it can name a missing document before the listing is sent rather than after it is approved and not selling.
+         *
+         *     Read from the same requirements checkout and the feed apply, so a document named here is one a listing in this category cannot sell without. With no `activityType` the answer is what every activity in the category needs between them, which is also what a listing with no activity type is held to.
+         *
+         *     `satisfied` means a verified copy is in date today. A pending, rejected or expired document is not satisfied.
+         *
+         *     The market comes from your session. There is no market parameter.
+         */
+        get: operations["getCredentialRequirements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/change-requests": {
         parameters: {
             query?: never;
@@ -312,7 +396,7 @@ export interface paths {
         put?: never;
         /**
          * Change where the money goes
-         * @description Three gates, not one: **OWNER only**, a code sent to the owner's phone (`step-up`), and then two 24-hour clocks before anything is live.
+         * @description Three gates, not one: **OWNER only**, a code sent to an owner's phone (`step-up`), and then two 24-hour clocks before anything is live.
          *
          *     The objection window runs **before** approval so the real owner — who is messaged the moment it is raised — can stop it. The cooling window runs **after**, so even an approved change is still catchable. An objection window closing with nobody objecting does *not* approve anything; it moves the request into a human review queue. Auto-approving on silence would make the whole design a delay rather than a control.
          *
@@ -341,6 +425,8 @@ export interface paths {
          * @description Works during the objection window **and** during cooling. A cooling change nobody can stop is just a slower mistake.
          *
          *     Deliberately **not** behind step-up. The person most likely to need this is the owner who just received a warning about a change they did not make, and making them pass another code first puts the emergency brake further away than the accelerator.
+         *
+         *     An OWNER or an ADMIN may stop one (D33), because stopping a change moves no money. Raising one stays with an owner.
          */
         post: operations["cancelChangeRequest"];
         delete?: never;
@@ -364,11 +450,13 @@ export interface paths {
         put?: never;
         /**
          * Invite somebody
-         * @description OWNER or ADMIN. `ADMIN`, `MANAGER` or `STAFF` — **OWNER cannot be invited**, because the owner is the person whose bank account this is, and that is not a thing one login should be able to hand to a phone number.
+         * @description OWNER or ADMIN. **Everybody joins as `STAFF`, except an owner** (D15). The role somebody should have is given once they have joined, with `PUT /team/{id}/role`, by an OWNER or an ADMIN.
          *
-         *     ADMIN may invite because the reason that role exists is an owner who is not on the island and cannot be the only person able to add somebody.
+         *     `OWNER` is the exception, and an ADMIN may invite an owner as well as an OWNER may. A business whose first person runs it has no owner until somebody invites one, or makes somebody already on the team its owner with `PUT /team/{id}/role` (D31).
          *
-         *     A number already belonging to any operator is refused with the same message as any other failure, so this endpoint cannot be used to find out which businesses are on Yuvoy — the same reason sign-in answers identically for known and unknown numbers.
+         *     An invitation for `ADMIN` or `MANAGER` is sent, not refused. The response says `role: STAFF` and carries a `note` saying so, because a portal built before D15 still offers those roles and the person inviting must be told what will actually happen. `role` may be left out, which is `STAFF`.
+         *
+         *     A number already on this team is refused with the same message as any other failure, and a number that works with another business is invited exactly as a new number would be, so this endpoint cannot be used to find out which businesses are on Yuvoy. The person holding that phone is asked to confirm they are leaving when they accept.
          *
          *     Re-inviting the same number replaces the open invitation rather than adding one, so a revoked invite is not undone by an older code still lying around.
          */
@@ -415,7 +503,9 @@ export interface paths {
          *
          *     Their sessions end, so the change is true immediately rather than whenever a fourteen-day session happens to lapse.
          *
-         *     `OWNER` cannot be given and an owner's role cannot be changed here. The owner is whoever the payout account belongs to; that moves deliberately, not from a login.
+         *     `OWNER` is given here too (D31): an OWNER or an ADMIN may make somebody already on the team an owner, rather than removing them and inviting them back. A new owner gains every owner power, including changing where the business is paid (`POST /change-requests/bank`, whose step-up code goes to their own phone). An ADMIN who makes somebody an owner cannot change that person's access afterwards.
+         *
+         *     An OWNER may change anybody's role but their own, another owner's included. An ADMIN may change anybody's but their own and an owner's, another admin's included. The business keeps at least one active OWNER or ADMIN, so a change that would take the last of them out of that count is refused.
          */
         put: operations["setOperatorUserRole"];
         post?: never;
@@ -469,6 +559,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/team/{id}/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Somebody else's notification switches
+         * @description OWNER or ADMIN, for anybody at the business, owners and other admins included. The owner decided it in those terms: an owner and an admin control everybody's switches, and each person controls their own. That is wider than the access routes beside it on purpose. Nothing here grants or removes access, and no switch exists that could silence a security warning.
+         *
+         *     Somebody at another business answers 404, exactly as an id that does not exist. Anybody reads their own at `GET /me/notifications`.
+         */
+        get: operations["getTeamMemberNotificationSwitches"];
+        /**
+         * Change somebody else's notification switches
+         * @description OWNER or ADMIN, for anybody at the business, owners included. Only the switches named change, and the answer carries all of them. Setting a switch to the value it already has records nothing, so `changedBy` stays the last person who actually changed it.
+         *
+         *     The person sees who changed it, and can change it back at `PUT /me/notifications`: each person keeps control of their own.
+         */
+        put: operations["setTeamMemberNotificationSwitches"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/team/{id}": {
         parameters: {
             query?: never;
@@ -483,7 +601,7 @@ export interface paths {
          * Remove somebody
          * @description Their sessions are revoked in the same transaction. Marking a user removed while leaving a 14-day session alive is the difference between "we removed them" and "we removed them a fortnight from now", and the reason somebody is removed in a hurry is usually that the fortnight matters.
          *
-         *     You cannot remove yourself, and you cannot remove the last owner — an account with no owner cannot approve a bank change, receive a step-up code, or invite anybody.
+         *     You cannot remove yourself, an ADMIN cannot remove an OWNER, and nobody can remove the last active OWNER or ADMIN: a business with neither has nobody who can invite, change a role or remove anybody (D15).
          */
         delete: operations["removeOperatorUser"];
         options?: never;
@@ -508,6 +626,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My notification switches
+         * @description Which messages about the business reach you. Every switch is on until somebody turns it off. Anybody may read and change their own; an OWNER or ADMIN may also change yours, at `PUT /team/{id}/notifications`, and `changedBy` says who did.
+         *
+         *     A switch that is off does not make a message vanish: it is recorded as not sent, with the reason. Some messages have no switch at all, and `alwaysSent` says which.
+         */
+        get: operations["getMyNotificationSwitches"];
+        /**
+         * Change my notification switches
+         * @description Only the switches named change, and the answer carries all of them. `on` is required on every switch named: a switch sent without it is refused rather than read as off.
+         */
+        put: operations["setMyNotificationSwitches"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bookings": {
         parameters: {
             query?: never;
@@ -518,6 +662,10 @@ export interface paths {
         /**
          * My bookings
          * @description Note the absence of an operator parameter. The tenant comes from the session.
+         *
+         *     **Soonest trip first, a page at a time.** Send no paging parameters and you get the first hundred, which is what this list always returned, and `complete` says whether that was all of them. To continue, pass `nextCursor` back as `cursor` with the same `state`, `from` and `to`. Stop when there is no `nextCursor`, not when a page comes back short.
+         *
+         *     **`from` and `to` are whole days in the market's own clock** (Asia/Kolkata in the Andamans), compared with the day the trip runs there, and both are inclusive. A trip at 04:00 on the 15th is on the 15th, although in UTC it leaves on the evening of the 14th.
          */
         get: operations["listOperatorBookings"];
         put?: never;
@@ -538,6 +686,8 @@ export interface paths {
         /**
          * One booking
          * @description Another operator's booking answers `404`, identically to one that does not exist.
+         *
+         *     The same booking, field for field, as its row on `GET /bookings`: `money`, `cash`, `cancellation`, `screening` and `questions` included, because the two read one projection.
          */
         get: operations["getOperatorBooking"];
         put?: never;
@@ -588,6 +738,84 @@ export interface paths {
          *     Reaches `converted` bookings and unexpired holds only. A lapsed hold is somebody who is not coming, and a declined request is somebody already told no.
          */
         post: operations["relayToSlot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookings/{id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The conversation with this booking's traveller
+         * @description This booking's conversation. Another operator's booking answers `404`, identically to one that does not exist.
+         *
+         *     **The most recent messages first, a page at a time, oldest first within a page.** Pass `nextCursor` back as `cursor` for the messages before a page; it is absent when the conversation begins on this page. A message that arrives while somebody scrolls is after the first page and never inside a later one, so fetch the first page again to see new messages.
+         *
+         *     Fetching marks nothing read. `unreadCount` is the traveller's messages nobody at the business has marked read; mark them with `markOperatorBookingMessagesRead`.
+         *
+         *     A message's text is removed a set time after the trip ends (90 days unless the service is configured otherwise). The message stays, with who wrote it and when, and carries `textRemovedAt` in place of `text`. Show it as a message whose text was removed, never as an empty one.
+         */
+        get: operations["getOperatorBookingMessages"];
+        put?: never;
+        /**
+         * Write to this booking's traveller
+         * @description Adds a message to this booking's conversation, signed with the name of whoever is signed in, and queues a notice for the traveller: each contact on the booking, once for this message, on WhatsApp or email as this service can send. The notice says the business wrote about their trip and links to their booking, and never carries the text. The traveller sees the business's name beside its messages, not the name of the person who wrote them.
+         *
+         *     Any role can write: whoever is holding the phone answers the question. The text is trimmed, keeps its line breaks and is at most 1000 characters.
+         *
+         *     **A message with a phone number, an email address or a link in it is refused** `400 invalid_input`, with `details.text` `contact details` and `details.contactDetail` saying which: `phone`, `email` or `link`. The rule is the traveller's too, and it is D-018 kept in the conversation: you do not see a traveller's number, and neither side can type one. Nothing is stored, and the refusal names the kind without repeating any of the text. A phone number is seven or more digits written close together, counted through the spaces, dashes, brackets and dots between them, except the digits of a date written like 14.09.2026 or 2026-09-14. A link starts `http://`, `https://` or `www.`, or is a word ending `.com`, `.in`, `.net`, `.org`, `.io`, `.co` or `.me`, so a full stop typed with no space before one of those words reads as a link too. An email address is a name, an `@` and a domain with a dot in it.
+         *
+         *     Writing stops when the booking is cancelled or declined, and a set time after the trip ends (seven days unless the service is configured otherwise). After that the conversation can still be read, and a message is refused `409 messages_closed` with `details.reason`.
+         */
+        post: operations["sendOperatorBookingMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookings/{id}/messages/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark this conversation read up to a message
+         * @description Moves the business's read marker to a message somebody at the business was shown, and so to everything before it, and answers what is still unread. One marker for the business, not one per person. Named by the message rather than "all of it, now", so a message that arrived after the screen was drawn stays unread, and a marker never moves back.
+         */
+        post: operations["markOperatorBookingMessagesRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/message-threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Conversations, most recently active first
+         * @description Every booking of this operator's with a conversation, the one with the latest message first, each with `unreadCount`. No message text.
+         *
+         *     **A page at a time, and one walk keeps its order.** The first page fixes the moment the walk began and every page of that walk is ordered as of that moment, so a conversation written in while you page is neither skipped nor shown twice; fetch the first page again to see it move to the top. Pass `nextCursor` back as `cursor`, and stop when there is none. Unread counts are as of each page.
+         */
+        get: operations["listOperatorMessageThreads"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -676,6 +904,8 @@ export interface paths {
          *     No phone numbers (D-018). `reference` is what matches a walking-up human to a row; the traveller has it in every message we send them.
          *
          *     `?format=csv` returns the same data as a file, deterministically ordered so two exports can be diffed — which is exactly what somebody does when the head count and the app disagree. The CSV ends with a `TOTAL` row, because making somebody add a column of numbers on a dock is how the count goes wrong.
+         *
+         *     The CSV's columns are `reference`, `name`, `guests`, `state`, `arrived`, `arrived_at`, `check` and `answers`. `answers` holds each question the listing asks now that the party answered, in the listing's order, as `question: answer` with `; ` between them, and is empty when there are none. A question not answered yet is left off, and so is an answer to a question the listing no longer asks; `questions` on the JSON manifest carries both. A cell holding a comma, a quote or a line break is quoted as CSV requires.
          */
         get: operations["getManifest"];
         put?: never;
@@ -710,6 +940,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bookings/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel one booking
+         * @description Cancels this one booking on a departure that still runs, refunds **in full** whatever the traveller paid online and frees their seats, in one transaction. The call-off rule for one party: the roles, the reason list and the full refund of `POST /slots/{id}/call-off`, without cancelling anybody else. The traveller's message is written in the same transaction, on a channel this service can send on; when none can reach them it is recorded as unsent.
+         *
+         *     A booking to be paid in cash on the day captured nothing online, so it is cancelled with nothing to refund, and the traveller is told there is nothing to refund. If you had already recorded taking its cash, the response carries `cashToGiveBackPaise` and a `note`: that money is with you, and it is yours to give back.
+         *
+         *     `confirmReference` must equal the booking's own reference; letter case and surrounding spaces are ignored. Not a boolean: this cannot be undone, and a checkbox is one mis-tap away from the wrong party.
+         *
+         *     Only a booking that is still on (`confirmed` or `paid_pending_ops`), on a departure that has not left, can be cancelled. Retrying after it worked answers `409 already_cancelled` and refunds nothing twice. Another business's booking answers `404` before its reference is compared. Requires OWNER, ADMIN or MANAGER, the roles that may call a departure off.
+         */
+        post: operations["cancelOperatorBooking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bookings/{id}/cash-collected": {
         parameters: {
             query?: never;
@@ -732,6 +988,30 @@ export interface paths {
          *     Our commission is owed on the **fare**, not on what you chose to take. A discount you gave is yours to have given.
          */
         post: operations["recordCashCollected"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookings/{id}/cash-returned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that you gave the cash back
+         * @description For a cancelled booking whose cash you had recorded taking with `POST /bookings/{id}/cash-collected`. We refund nothing on a booking paid in cash, because that money never reached us, so it is yours to give back. This records that you did: all of the cash you recorded taking, when, and who in your team recorded it. The booking then shows it as `cash.returnedAt` and `cash.returnedPaise`.
+         *
+         *     Nothing to send. It cannot be undone, and it is recorded once: a retry answers `409 cash_already_returned` and changes nothing. A booking that is not cancelled, was paid online, or has no cash recorded as taken answers `409 nothing_to_give_back`, with a message that says which.
+         *
+         *     Requires OWNER, ADMIN or MANAGER, the roles that may cancel a booking. A suspended business can still record it. Another business's booking answers `404`.
+         */
+        post: operations["recordCashReturned"];
         delete?: never;
         options?: never;
         head?: never;
@@ -795,11 +1075,11 @@ export interface paths {
         put?: never;
         /**
          * This departure cannot run
-         * @description Cancels the departure, cancels every booking on it, refunds all of them **in full**, releases the holds and tells everybody — in one transaction. Cancelling without the refunds would leave people who paid staring at a cancelled trip and their money gone.
+         * @description Cancels the departure, cancels every booking on it, refunds **in full** everybody who paid online, releases the holds and tells everybody, in one transaction. A booking to be paid in cash on the day has captured nothing, so it is cancelled with nothing to refund. Cancelling without the refunds would leave people who paid staring at a cancelled trip and their money gone.
          *
          *     Full refunds regardless of the cancellation policy. Those tiers price a traveller changing their mind; nobody changed their mind here, and applying a 50% tier to somebody whose trip was called off by weather is the fastest way to lose a market where every traveller talks to the next one at the same guesthouse.
          *
-         *     `confirmSlotId` must equal the departure's own id. Not a boolean: a checkbox is one mis-tap on a wet phone away from cancelling a full boat, and this is the only action in the portal that cannot be undone. Requires OWNER, ADMIN or MANAGER.
+         *     `confirmSlotId` must equal the departure's own id. Not a boolean: a checkbox is one mis-tap on a wet phone away from cancelling a full boat, and it cannot be undone. Requires OWNER, ADMIN or MANAGER.
          */
         post: operations["callOffDeparture"];
         delete?: never;
@@ -815,7 +1095,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** My departures */
+        /**
+         * My departures
+         * @description **Soonest first, a page at a time.** Send no paging parameters and you get the first two hundred, which is what this list always returned, and `complete` says whether that was all of them. To continue, pass `nextCursor` back as `cursor` with the same `from` and `to`. Stop when there is no `nextCursor`, not when a page comes back short.
+         *
+         *     **`from` and `to` are whole days in the market's own clock** (Asia/Kolkata in the Andamans), compared with the day the departure leaves there, and both are inclusive. A departure at 04:00 on the 15th is on the 15th, although in UTC it leaves on the evening of the 14th.
+         */
         get: operations["listOperatorSlots"];
         put?: never;
         /**
@@ -882,11 +1167,11 @@ export interface paths {
          *
          *     **Everyone booked is told, in the same transaction as the move**, using the `time_change` update they already receive. If the notice cannot be written the move does not happen: a departure that moved silently is worse than one that could not move.
          *
-         *     **And each of them may leave for free.** A traveller who booked 09:00 and cannot make 14:00 did not choose this, so the usual 48h/24h cancellation tiers do not apply to them — the refund is full, under `OPERATOR_MOVED_IT`.
+         *     **And each of them may leave for free.** A traveller who booked 09:00 and cannot make 14:00 did not choose this, so until the departure leaves they may cancel and get back everything they paid online, whatever the usual 48h/24h tiers say, recorded as `OPERATOR_MOVED_IT`. Each of them means everybody on the departure when it moves: every booking still on, and every hold still being paid for. Somebody who books after the move chose the new time and gets the usual terms, and a departure moved twice frees everybody who was on it at either move. A booking to be paid in cash on the day paid nothing online, so it cancels with nothing to refund.
          *
          *     Same day only: a move across midnight is not a later departure, it is a different one, and it would silently empty one day's calendar and fill another's. Add a departure on the other day instead.
          *
-         *     OWNER or MANAGER. Moving a departure spends money.
+         *     OWNER, ADMIN or MANAGER. Moving a departure spends money.
          */
         patch: operations["moveDeparture"];
         trace?: never;
@@ -898,7 +1183,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read closures back
+         * @description Closed dates, single closed departures, and what saving a weekly schedule closed (`PUT /experiences/{id}/schedule`), read back: what was closed, why, when, and which departures each closure holds. A calendar can show a closed day that has no departures on it, and say why a day was closed, which it could not while "closed" was only inferred from each departure's status.
+         *
+         *     **Every closure touching the range**, reopened ones included; those carry `reopenedAt`. A departure stays closed while any closure still in force holds it.
+         *
+         *     **Paged.** Ordered by first day, then by id. Pass `nextCursor` back as `cursor` to continue; its absence, with `complete: true`, is the end. Do not infer the end from a short page.
+         *
+         *     Any operator user may read it.
+         */
+        get: operations["listOperatorClosures"];
         put?: never;
         /**
          * Close dates to new bookings
@@ -906,9 +1201,61 @@ export interface paths {
          *
          *     An operator who assumes closing the calendar cancelled the bookings will simply not turn up, so clients must render `note` when `existingBookings > 0`.
          *
+         *     The departures it closes are recorded with it, including any that another closure had already closed, and `id` in the answer is the closure: `POST /blackouts/{id}/reopen` puts back exactly those departures, and `GET /blackouts` reads it back.
+         *
          *     Requires OWNER, ADMIN or MANAGER.
          */
         post: operations["addBlackout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/blackouts/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen a closure
+         * @description Puts back on sale what this closure took off, and nothing else. A departure it holds goes back to open only if it is still closed, has not left yet, and no other closure still in force holds it. **A called-off departure is never reopened**: its bookings were cancelled and everybody who paid online was refunded. Whether a reopened departure then sells is decided as for any departure, so read `onSale` on `GET /slots` rather than assuming it.
+         *
+         *     The same call reopens closed dates, one closed departure, and what saving a weekly schedule closed. The closure stays readable afterwards, with `reopenedAt`.
+         *
+         *     **A closure that has already begun is reopened too.** Its departures that have already left stay closed, because they did pass closed, and only the ones still to come go back, under the same three conditions. The record is kept: the closure keeps its `from` and `to`, and `departureIds` still lists every departure it held, including those that left while it was in force.
+         *
+         *     OWNER, ADMIN or MANAGER. A closure belonging to another operator answers **404**.
+         */
+        post: operations["reopenOperatorClosure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/slots/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close one departure to new bookings
+         * @description The departure-sized version of closing dates: this departure stops selling and the rest of its day does not. **Closing is not cancelling people.** The bookings on it still stand, and `note` says so when there are any.
+         *
+         *     It is a closure like a closed date: `GET /blackouts` reads it back with `departureId`, and `POST /blackouts/{id}/reopen` reopens it. Closing a departure that is already closed on its own answers with the closure that holds it rather than making a second one. A departure whose date is closed can still be closed on its own, and then stays closed when its date is reopened.
+         *
+         *     OWNER, ADMIN or MANAGER. A departure belonging to another operator answers **404**.
+         */
+        post: operations["closeOperatorDeparture"];
         delete?: never;
         options?: never;
         head?: never;
@@ -926,9 +1273,123 @@ export interface paths {
          * What I have earned
          * @description Summed from figures **frozen at capture**, so a commission change today cannot restate what was earned last week. `state` is `provisional` until a payout period is locked — say so in the UI, because nobody should plan against a number that can still move.
          *
+         *     **What it counts.** Bookings **made** in the window, by the moment each booking was made rather than the day its trip runs. `from` and `to` are whole days in UTC, and with neither the window is the thirty days up to now. It counts bookings that are confirmed, awaiting the operator (`paid_pending_ops`), completed or a no-show, trips not yet run included. `grossPaise` is what was captured by card, so a cash booking adds nothing to it while its commission is still counted in `commissionPaise`.
+         *
+         *     **It is not what a payout pays.** A payout week pays card trips marked complete or a no-show, and what you kept on cancelled card bookings, by the day of each departure, Monday to Sunday: read that from `GET /settlements/overview` and `GET /settlements`. `state` names a payout period only when one exists for exactly the dates this window resolves to (its last day is the day after `to`), and even then the figures are this count rather than that period's.
+         *
          *     Requires OWNER, ADMIN or MANAGER.
          */
         get: operations["getOperatorEarnings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settlements/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The next settlement, the pipeline, cash at the counter, and the season so far
+         * @description The top of the earnings screen, in one read.
+         *
+         *     **A payout week runs Monday to Sunday in your market's clock, and a booking belongs to the week its trip took place in**: the day of the departure, not the day it was paid for, marked or cancelled. A week can be locked for payment from the Monday after it, and three of our people lock, approve and send it.
+         *
+         *     **What a payout pays.** A card trip marked complete or a no-show is paid its fare less our commission and anything refunded: a traveller who did not come still paid for the seat you held. A cancelled card booking is paid what you kept of it, the fare less every refund, with no commission, because we take none on a booking that did not happen; one refunded in full pays nothing. A booking is paid with its own week when it has been marked or cancelled by the time that week is locked, and otherwise with the next week that is locked. Never twice, and never not at all.
+         *
+         *     `nextSettlement` is last week while nobody has locked it and it has bookings to pay, and this week otherwise. Its figures are what a lock of that week would record now, so they can still move until it is locked: a trip can be marked complete or a no-show, a booking cancelled, or money refunded.
+         *
+         *     `pipeline` is card bookings still to run, not yet marked complete or a no-show and neither cancelled nor declined, at what they come to after commission and refunds. It is **never** part of anything earned. A booking leaves the pipeline when its trip is marked complete or a no-show, which is when it becomes payable, or when it is cancelled or declined, so it is never in the pipeline and a settlement at once. Cash bookings are not in it: a cash fare is paid to you on the day and never passes through a settlement.
+         *
+         *     `paidAtCounter` is your cash bookings still to run, beside the pipeline and never in it: their fares, our commission on them, and what you keep. None of it is ever in a settlement, because that money is paid to you. A cash booking leaves it when its trip is marked complete or a no-show, or when it is cancelled or declined. What you owe us on cash you took for a trip marked complete is `GET /commission-owed`.
+         *
+         *     `seasonToDate` is every payout **sent** since `from`. Today a season is the financial year, from 1 April.
+         *
+         *     No gateway fee is deducted from any figure here, because no payout deducts one.
+         *
+         *     Requires OWNER, ADMIN or MANAGER.
+         */
+        get: operations["getSettlementOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Past settlements
+         * @description Your payout periods that have been locked, approved or sent, the most recent week first. A week locked and not yet sent is listed with its state, because its number is fixed; only a sent one has a statement.
+         *
+         *     **Paged.** Pass `nextCursor` back as `cursor` to continue; its absence, with `complete: true`, is the end. Do not infer the end from a short page.
+         *
+         *     Requires OWNER, ADMIN or MANAGER.
+         */
+        get: operations["listSettlements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settlements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One settlement, with the bookings it paid
+         * @description The lines are the bookings as they were frozen when the period was locked, in the order its statement lists them. `adjustmentsPaise` is on the settlement and on no line: it is a correction the lock added, such as the share of a refund issued after an earlier payout.
+         *
+         *     A cancelled card booking you kept money on is a line like any other. Its `commissionPaise` is 0, because we take no commission on a booking that did not happen, its `refundedPaise` is what went back to the traveller, and its `netPaise` is the rest, which is yours. A booking refunded in full has no line. A trip marked a no-show is a line like a trip marked complete.
+         *
+         *     Another business's settlement answers **404**, exactly as one that does not exist.
+         *
+         *     Requires OWNER, ADMIN or MANAGER.
+         */
+        get: operations["getSettlement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settlements/{id}/statement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The statement for a payout that has been sent
+         * @description A CSV with a row per booking (reference, trip date, guests, gross, commission, refunded and net, in rupees) and a TOTAL row. A cancelled booking you kept money on is a row with a commission of 0.00. It is the same file, byte for byte, that our finance team exports for this payout, and its sha256 is in the `X-Payout-Sha256` header, so you and we can each show we hold the same file. The TOTAL row's net includes any adjustment, which has no column of its own, so when there is one the rows' nets do not add up to it by exactly `adjustmentsPaise`.
+         *
+         *     Only for a payout that has been **sent**. A period locked or approved but not yet sent answers `409` `not_settled`. Another business's settlement answers **404**.
+         *
+         *     Requires OWNER, ADMIN or MANAGER.
+         */
+        get: operations["downloadSettlementStatement"];
         put?: never;
         post?: never;
         delete?: never;
@@ -979,8 +1440,114 @@ export interface paths {
          * @description Lands as a **draft** and reaches nobody. Sending it for review is a separate act (`POST /experiences/{id}/revisions`) and approval is what publishes it — a listing is a promise to a traveller, and the person making the promise is not the person who checks it.
          *
          *     `slug` is optional; one is proposed from the title if it is omitted. A listing without `unitPricePaise` can be saved but cannot be approved, which the response reports as `sellable: false`.
+         *
+         *     **Two listings may share a title.** Web addresses are unique across the whole catalog, so when the address is already taken, by this business or any other, the new listing is numbered instead of refused: `reef-dive`, then `reef-dive-2`, then `reef-dive-3`. That applies to a `slug` sent explicitly too, so the address a listing ends up with may differ from the one requested; read it back from the listing. An address never changes after creation, including when the title is later edited, because shared links and the sitemap depend on it.
          */
         post: operations["createOperatorExperience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/experiences/{id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One listing, its departures and its media, in a single answer
+         * @description Everything needed to work on one listing, in one request.
+         *
+         *     The pieces have always been separate — the listing here, departures on `/slots`, media on `/media` — and building a listing meant fetching the whole calendar and the whole media library to find the handful of rows that belong to it. On island 4G that is three requests and most of a business's data to render one screen.
+         *
+         *     `listing.publishBlockers` is what the listing is still missing before it can be published, so a form can mark the specific rows rather than saying only that something is wrong. `media` carries each item's own state and, for anything a reviewer refused, the reason.
+         *
+         *     This does not change who may do what. It is a read: the same listing, the same departures and the same media each endpoint already returns, scoped to one listing and fetched once.
+         */
+        get: operations["getListingWorkspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/experiences/{id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A listing's weekly schedule
+         * @description The weekdays and times this listing runs every week, and the closures that close days of the window its departures are made in. The same object is `schedule` on the listing.
+         *
+         *     **A listing with no schedule says so.** `repeatsWeekly` is false and `weekly` is empty. Nothing is inferred from the departures it has, so a run of Tuesdays added by date with `POST /slots` is not a schedule.
+         *
+         *     Any operator user may read it. A listing belonging to another operator answers **404**.
+         */
+        get: operations["getListingSchedule"];
+        /**
+         * Replace a listing's weekly schedule
+         * @description Sets, once, the weekdays and times this listing runs every week. Saving makes the listing's departures straight away, from now to the end of the day 45 days after today in the listing's own market. A daily job then makes each new day's departures, so 45 days of them keep coming with no end date.
+         *
+         *     **The body is the whole schedule.** A weekday and time left out is removed, and an empty `weekly` removes the schedule.
+         *
+         *     **Removing a weekday and time closes what this schedule made at it.** Every departure still to come that this schedule made at a weekday and time the save removes, and that has not been called off, is closed to new bookings, all in one closure: `departuresClosed` counts them and `closureId` is the closure, which `POST /blackouts/{id}/reopen` reopens and `GET /blackouts` reads back with the reason `SCHEDULE_CHANGED`. Removing the schedule removes every weekday and time, so it closes every departure still to come that the schedule made. Closing cancels nobody: the bookings on those departures stand.
+         *
+         *     **Nothing else a save does changes a departure that already exists.** A departure added with `POST /slots`, or one that has been moved with `PATCH /slots/{id}/time`, is never closed, even at a removed time. Changing a time's seats changes no departure already made; change their seats with `PATCH /slots/{id}`. Close one with `POST /slots/{id}/close` or whole dates with `POST /blackouts`, or call one off with `POST /slots/{id}/call-off`. Render `note`, which says what was closed and how to put it back, what still leaves at a removed time, and when departures already made keep their seats.
+         *
+         *     **Safe to press again.** A time that already has a departure is left alone, and so is a time a departure was moved away from, whether that departure is open, closed or called off. Saving the same schedule twice makes nothing new and closes nothing, and `created: 0` is not a failure.
+         *
+         *     **What each departure takes.** It leaves at its weekday and time in the market's clock, and its length, largest party and booking cutoff are the listing's own when the departure is made. On an instant-book listing `seats` are sold to Yuvoy. A listing that takes requests sells nothing in advance: `seats` is how many people each departure can take, and seats are granted one accepted request at a time.
+         *
+         *     **Which listings move forward.** Saving makes departures for this listing whatever its state, as `POST /slots` does, and `onSale` says whether they sell. The daily job makes departures only for a published listing, so a draft's window starts moving forward once it is published.
+         *
+         *     OWNER, ADMIN or MANAGER only. A listing belonging to another operator answers **404**.
+         */
+        put: operations["saveListingSchedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/experiences/{id}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The questions this listing asks travellers
+         * @description What a traveller is asked when booking this listing, in the order they are asked. Anybody on the team can read it.
+         *
+         *     Another business's listing answers `404`, identically to one that does not exist.
+         */
+        get: operations["getListingQuestions"];
+        /**
+         * Replace the questions this listing asks travellers
+         * @description Send the whole list, in the order it should be asked. It takes effect at once, with no review, whatever state the listing is in: the next traveller to open a published listing is asked exactly this list.
+         *
+         *     **Health questions do not belong here.** A listing that needs to know about a traveller's health asks through its screener (`screenerKey` on the listing), which records only that the party declared themselves clear and never what anybody said. Answers to these questions are stored unencrypted, shown to your team on the booking and the manifest, and shown to Yuvoy staff.
+         *
+         *     A question sent back with its `id` and the same `text`, `answerType` and `options` keeps that id and every answer to it; its place in the list and `required` can change. Changing its `text`, `answerType` or `options` makes it a new question with a new id: a traveller who answered the old wording keeps that answer, shown with the words they saw, and is asked the new one. A question left out is no longer asked, and answers already given to it stay on those bookings.
+         *
+         *     At most 10 questions. `text` up to 200 characters. A `choice` question has 2 to 10 options, each up to 60 characters and different from the others ignoring case; the other types have none. Unknown fields are refused. A refusal names every problem in `details`, keyed like `questions[0].text`.
+         *
+         *     `required` is enforced only on a checkout that sends answers: that checkout is refused until every required question the listing asks has an answer that fits. A checkout that sends no answers is not refused over it. Its booking shows the question as not answered yet, and the traveller can answer it from their booking link while the booking is going ahead and until its departure leaves.
+         *
+         *     Only an OWNER, ADMIN or MANAGER can change the list, the same roles that change a listing's price and meeting point.
+         */
+        put: operations["replaceListingQuestions"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1001,7 +1568,19 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Save a draft in place
+         * @description Writes listing fields straight onto a **draft**, and onto nothing else.
+         *
+         *     A listing is built a step at a time — what it is, how it sells, where to meet, what to bring — and each step has to be saveable on its own, or a reel stalling on island 4G takes the half-written listing with it. `POST /experiences/{id}/revisions` cannot hold that: it refuses an edit that leaves a mandatory field empty, and it sends a draft for review the moment an edit touches something we read.
+         *
+         *     So on a draft there is **no completeness check and no review**. Each field is still validated, and the answer is the listing as it now stands, with `publishBlockers` naming what is still missing so a form can mark those rows without asking again.
+         *
+         *     **Only a draft.** A submitted listing is what a reviewer is reading and a published one is what travellers are booking against, so both answer `409` here — change them through `POST /experiences/{id}/revisions`.
+         *
+         *     The body is the same closed set of fields a revision takes. OWNER, ADMIN or MANAGER only. Sending it to us is `POST /experiences/{id}/submit`.
+         */
+        patch: operations["saveListingDraft"];
         trace?: never;
     };
     "/experiences/{id}/revisions": {
@@ -1019,9 +1598,41 @@ export interface paths {
          *
          *     Bookings already made are unaffected either way — their terms were snapshotted at checkout. Clients should say so, because the obvious assumption is the opposite.
          *
-         *     Changes to price, safety notes, inclusions, requirements, duration or party size are *material* and need review before going live.
+         *     Title, summary, description, category, activity type, destination, inclusions, requirements, safety notes and the screener are read before they go live. Price and its unit, duration, party size, meeting point and booking mode are the operator's own and apply at once (D-032.3) — `applied` and `inReview` in the answer say which half each field landed in.
+         *
+         *     The fields to change. Any subset of `ListingEdit`, and **nothing else** — `additionalProperties` is now `false`.
+         *
+         *     It used to be `true`, and the body was stored verbatim while approval applied a closed list of nine keys that did not match it. A key outside that list was accepted, queued, approved and silently discarded: the operator was told yes and the listing still said the old thing. An unknown key is now a 400 at submit, naming every offending key at once, so a form with three bad fields is one round trip.
+         *
+         *     Every field is applied on approval. Fields marked *material* need re-review because they change what somebody is buying; fields marked *mandatory* must be present on the listing before it can be published, so a revision that leaves one empty is refused — at submit with a 400, and at approval with a 409.
          */
         post: operations["submitExperienceRevision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/experiences/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a draft for review
+         * @description The call that says "this is ready for somebody at Yuvoy to read".
+         *
+         *     Saving a draft with `PATCH /experiences/{id}` sends nothing to anybody; this does. The completeness check runs here, once, and a draft still missing something is refused with every missing field named — while the form is open, rather than days later through a rejection.
+         *
+         *     On success the listing is `in_review` and is in the admin review queue straight away. It is not on sale: a person puts it there.
+         *
+         *     A listing already `in_review` answers `200` with itself, so a double tap is neither an error nor a second place in the queue. OWNER, ADMIN or MANAGER only.
+         */
+        post: operations["submitListingDraft"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1060,6 +1671,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/story/photos/upload-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open an upload slot for a photograph of the operation
+         * @description Mint a slot, post the file straight to `uploadUrl`, then send the `imageId` to `POST /story/photos`. The API never proxies image bytes — that is an API that falls over on island 4G.
+         *
+         *     **Its own intent rather than the logo's.** Uploading the logo is for an OWNER, ADMIN or MANAGER, because a logo is the business's mark; the story is open to any operator user, so sharing the logo's intent would refuse the crew member who takes the photographs.
+         *
+         *     The slot is stamped with your operator id, and `POST /story/photos` refuses an image stamped with anybody else's. So an id from another business cannot be attached to your page, and neither can a slot that was minted and never filled.
+         */
+        post: operations["createStoryPhotoUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/story/photos": {
         parameters: {
             query?: never;
@@ -1073,7 +1708,9 @@ export interface paths {
          * Add a photograph of the operation
          * @description **The boat, the shop, the crew — not the experience.** Footage of the experience belongs on a listing reel; a gallery standing in for it is the failure a video-first feed exists to prevent.
          *
-         *     Upload the bytes through the existing image upload intent, then send the `imageId` here. The API never proxies image bytes, for the same reason the logo does not: that is an API that falls over on island 4G.
+         *     Upload the bytes through `POST /story/photos/upload-intents`, then send the `imageId` here. The API never proxies image bytes, for the same reason the logo does not: that is an API that falls over on island 4G.
+         *
+         *     **The image must be one you minted.** An id stamped for another business answers `404`, exactly as an id that does not exist — telling you it exists but is not yours would confirm that it exists. A slot that was minted and never filled answers `400`: storing it would put a permanent broken tile on the page whose whole job is looking trustworthy.
          *
          *     **Five maximum.** The position is chosen for you — the lowest free slot, so removing the third and adding another fills the hole rather than leaving a gap the gallery renders as a missing tile. Sending the same image twice returns the photograph you already have rather than an error.
          */
@@ -1115,7 +1752,7 @@ export interface paths {
         put?: never;
         /**
          * Put your own paused listing back on sale
-         * @description **Immediate. No queue, no admin.** The listing goes from `withdrawn` straight to `published` and travellers can book it again.
+         * @description **Immediate. No queue, no admin.** The listing goes from `withdrawn` straight to `published` — and, if nothing else is stopping sales, travellers can book it again. `next` says which.
          *
          *     This reverses the behaviour shipped earlier the same day, in which resuming joined an admin queue (D-032.4). A pause is "the boat is out of the water this fortnight" — a fact only you know. If coming back costs a wait, nobody pauses at all: they leave the listing selling and decline the bookings, which is worse for the traveller than the friction was ever worth.
          *
@@ -1125,7 +1762,7 @@ export interface paths {
          *
          *     Idempotent: resuming a listing already on sale is not an error. A listing still awaiting its FIRST approval answers `in_review` and does not move — resuming cannot skip a review that has never happened.
          *
-         *     OWNER or MANAGER — the person who can take a listing off sale is the person who puts it back.
+         *     OWNER, ADMIN or MANAGER: the person who can take a listing off sale is the person who puts it back.
          *
          *     `POST /experiences/{id}/relist` is the same operation under its older name and behaves identically. It is kept so a deployed portal does not break, and should not be used in new work.
          */
@@ -1174,6 +1811,8 @@ export interface paths {
          *     **Pausing cancels nothing and refunds nothing.** Everybody already booked still has their seat and still expects you at the meeting point. It stops NEW bookings, and that is all it does.
          *
          *     Put it back yourself with `POST /experiences/{id}/resume`.
+         *
+         *     OWNER, ADMIN or MANAGER only.
          */
         post: operations["pauseExperience"];
         delete?: never;
@@ -1203,7 +1842,7 @@ export interface paths {
          *
          *     Approving a copy edit still does NOT republish it, and that has not changed: an edit and "put this back on sale" are different acts, and only one of them is a decision about what travellers can see. What changed is who makes that decision for a listing that was already approved: you do.
          *
-         *     OWNER or MANAGER only.
+         *     OWNER, ADMIN or MANAGER only.
          */
         post: operations["withdrawOperatorExperience"];
         delete?: never;
@@ -1422,6 +2061,127 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description One payout week, Monday to Sunday in your market's clock, as a lock of it would record it now. */
+        SettlementWeek: {
+            /**
+             * Format: date
+             * @description The week's Monday.
+             */
+            periodStart: string;
+            /**
+             * Format: date
+             * @description The week's Sunday.
+             */
+            periodEnd: string;
+            /**
+             * Format: date
+             * @description The Monday after the week: the first day it can be locked for payment. Three of our people lock, approve and send it on that day or after it, and your bank decides when the transfer lands.
+             */
+            settlesFrom: string;
+            /** @description The card bookings it would pay: trips marked complete or a no-show, and cancelled bookings you kept money on. */
+            bookings: number;
+            grossPaise: number;
+            /** @description Our commission on those bookings. None is taken on a cancelled booking. */
+            commissionPaise: number;
+            refundsPaise: number;
+            /** @description Corrections the lock takes with it, usually below zero: your share of a refund issued after an earlier payout, taken off this one. */
+            adjustmentsPaise: number;
+            /** @description `grossPaise - commissionPaise - refundsPaise + adjustmentsPaise`, what the lock would record. A week with no bookings to pay is not locked, and its corrections wait for the next week that has some. A correction larger than what a week pays makes this below zero, and that week is not paid until somebody at Yuvoy decides how to recover it. */
+            netPaise: number;
+        };
+        /** @description Card bookings still to run: not yet marked complete or a no-show, and neither cancelled nor declined. At what they come to after commission and refunds, and never part of anything earned. */
+        SettlementPipeline: {
+            bookings: number;
+            grossPaise: number;
+            commissionPaise: number;
+            refundsPaise: number;
+            /** @description `grossPaise - commissionPaise - refundsPaise`. */
+            netPaise: number;
+        };
+        /** @description Your bookings to be paid in cash at the counter that are still to run: not yet marked complete or a no-show, and neither cancelled nor declined. Never part of a settlement, because the traveller pays you and that money never passes through us. */
+        PaidAtCounter: {
+            bookings: number;
+            /** @description The fares agreed when the bookings were made. */
+            farePaise: number;
+            /** @description Our commission on those fares, at the rate fixed on each booking when it was made. You owe it once a trip is marked complete and you have recorded its cash, and it is then in `GET /commission-owed`. */
+            commissionPaise: number;
+            /** @description What you keep: the cash you recorded taking, or the fare where you have not recorded any yet, less `commissionPaise`. Our commission is on the fare, so cash you took short of it comes out of what you keep. */
+            netPaise: number;
+        };
+        /** @description Every payout sent since `from`. */
+        SeasonToDate: {
+            /**
+             * Format: date
+             * @description The first day of the season. Today a season is the financial year, so this is 1 April.
+             */
+            from: string;
+            /** @description Payouts sent. */
+            settlements: number;
+            /** @description The bookings those payouts paid. */
+            bookings: number;
+            grossPaise: number;
+            commissionPaise: number;
+            refundsPaise: number;
+            adjustmentsPaise: number;
+            /** @description What those payouts sent. */
+            netPaise: number;
+        };
+        /** @description One of your payout periods that has been locked, approved or sent. */
+        Settlement: {
+            id: string;
+            /**
+             * Format: date
+             * @description The first day it covers, a Monday for a payout week.
+             */
+            periodStart: string;
+            /**
+             * Format: date
+             * @description The last day it covers, a Sunday for a payout week.
+             */
+            periodEnd: string;
+            /**
+             * @description `locked`: its number is fixed and waiting for a second person to agree it. `approved`: agreed, and waiting to be sent. `settled`: sent, with the bank's reference.
+             * @enum {string}
+             */
+            state: "locked" | "approved" | "settled";
+            bookings: number;
+            grossPaise: number;
+            commissionPaise: number;
+            refundsPaise: number;
+            adjustmentsPaise: number;
+            /** @description `grossPaise - commissionPaise - refundsPaise + adjustmentsPaise`, what was locked for payment. */
+            netPaise: number;
+            /**
+             * Format: date-time
+             * @description When its number was fixed.
+             */
+            lockedAt?: string;
+            /**
+             * Format: date-time
+             * @description When the transfer was recorded as made. Absent until it is settled.
+             */
+            settledAt?: string;
+            /** @description The bank's reference for the transfer. Absent until it is settled. */
+            reference?: string;
+        };
+        /** @description One booking a settlement paid, as it was frozen when the period was locked. */
+        SettlementLine: {
+            bookingId: string;
+            /** @description The booking reference. */
+            reference: string;
+            /**
+             * Format: date
+             * @description The day of its departure, in the market's clock.
+             */
+            tripDate: string;
+            guests: number;
+            grossPaise: number;
+            /** @description 0 on a cancelled booking, because we take no commission on a booking that did not happen. */
+            commissionPaise: number;
+            refundedPaise: number;
+            /** @description `grossPaise - commissionPaise - refundedPaise`. */
+            netPaise: number;
+        };
         /** @description One allowed value and the word a person uses for it. Both, always — `andaman/havelock` is an identifier and "Havelock (Swaraj Dweep)" is what an operator calls the place; a picker showing only the key asks somebody to recognise one. */
         VocabularyTerm: {
             key?: string;
@@ -1435,7 +2195,7 @@ export interface components {
          *     A different calculus from the traveller's `bookable`, which is deliberately reason-free: this is their own business. With one exception. `sales_paused` covers all five kill-switch scopes at once and is the only place the operator is told less than the whole truth — a kill switch is an emergency stop we pulled, and whether it is global, a market, an island or aimed at them personally is a supply judgment we do not publish on a self-serve screen.
          * @enum {string}
          */
-        NotOnSaleReason: "sales_paused" | "listing_draft" | "listing_in_review" | "listing_withdrawn" | "listing_unpriced" | "operator_not_selling" | "credential_missing" | "credential_expired" | "departure_closed" | "departure_past_cutoff" | "departure_seats_unconfirmed" | "departure_full";
+        NotOnSaleReason: "sales_paused" | "listing_draft" | "listing_in_review" | "listing_withdrawn" | "listing_unpriced" | "operator_not_selling" | "credential_missing" | "credential_expired" | "departure_closed" | "departure_called_off" | "departure_past_cutoff" | "departure_seats_unconfirmed" | "departure_full";
         /** @description One activity, the word a person uses for it, and the category it belongs to. A third field, so it is not `VocabularyTerm`: the parent matters, because a picker that offers "scuba" under "food and drink" is offering a 400 the database will hand back. */
         ActivityTypeTerm: {
             /** @example scuba */
@@ -1491,6 +2251,213 @@ export interface components {
             /** Format: date-time */
             submittedAt?: string;
         };
+        ListingEdit: {
+            /** @description *mandatory* */
+            title?: string;
+            /** @description *mandatory* */
+            summary?: string;
+            description?: string;
+            /**
+             * @description *material*, *mandatory*. The closed twelve-value taxonomy.
+             * @enum {string}
+             */
+            category?: "adventure" | "nature_wildlife" | "food_drink" | "arts_creativity" | "learning" | "culture_heritage" | "wellness" | "entertainment" | "community" | "sports" | "local_life" | "events";
+            /**
+             * @description *material*, *mandatory to publish*. What the listing actually is. Not an enum — the set grows by INSERT; the pairs are on `GET /catalog/vocabulary`, and the (activity, category) pair is enforced by a composite foreign key.
+             *
+             *     It is the one mandatory field the **submit** gate does not yet demand, because the portal has no picker for it and demanding it would answer every operator edit with a 400 they could not act on. Approval demands it.
+             * @example scuba
+             */
+            activityType?: string;
+            /** @description *material*, *mandatory*. A destination key in your own market. */
+            destination?: string;
+            /**
+             * @description *material*, *mandatory*. Where the day actually starts.
+             *
+             *     **This is the canonical name.** `meetingPointText` is accepted for one release and maps to the same field; sending both with different values is a 400. Approval used to apply `meetingPointText` while create and read both said `meetingPoint`, so a revision that changed only the meeting point was approved and changed nothing.
+             */
+            meetingPoint?: string;
+            /**
+             * @deprecated
+             * @description Deprecated spelling of `meetingPoint`. Send `meetingPoint`.
+             */
+            meetingPointText?: string;
+            meetingLandmark?: string;
+            /** @description *material*. Documented as material since the endpoint existed, and not actually applied until now. */
+            inclusions?: string[];
+            /** @description *material*. As for `inclusions`. */
+            requirements?: string[];
+            /** @description *material* */
+            safetyNotes?: string;
+            /**
+             * @description *material*. The health screener a traveller answers before paying, or an empty string for none. With one set, a reservation on the listing needs the lead traveller's declaration against its questions, and a party that declares a condition is refused before any seat is held or any money is taken.
+             *
+             *     Not an enum: a screener is a row, added or retired on medical advice rather than by a release, so the allowed keys are whatever is current (today only `diving_rstc`), listed as `screeners` on `GET /catalog/vocabulary`. A key that is not current is a 400 whose `details.screenerKey` names the ones that are.
+             *
+             *     Through `POST /experiences/{id}/revisions` it is read before it goes live, like `safetyNotes`. `PATCH /experiences/{id}` saves it on a draft in place.
+             * @example diving_rstc
+             */
+            screenerKey?: string;
+            /** @description *material*, *mandatory* */
+            durationMinutes?: number;
+            /** @description *material*, *mandatory* */
+            maxPartySize?: number;
+            /**
+             * Format: int64
+             * @description *material*, *mandatory*
+             */
+            unitPricePaise?: number;
+            /**
+             * @description *material*. How the listing sells, from the next departure onward.
+             *
+             *     **Departures that already exist keep the mode they were created with.** `experiences.bookingMode` seeds a NEW departure; every read that decides a booking — availability, checkout, confirmation, the feed — uses the departure's own mode. So a traveller mid-request is never moved onto a different contract than the one they asked under, and a switch to `allotment` shows up only as new departures are added.
+             *
+             *     A consequence worth planning for: switching to `allotment` while every future departure is `request` changes nothing a traveller sees until departures are created. Creating an allotment departure with no seats is refused outright, because `bookable_slots` requires remaining seats and the departure would silently never appear.
+             * @enum {string}
+             */
+            bookingMode?: "allotment" | "request";
+            /**
+             * @description *material*, *mandatory*. How `unitPricePaise` is charged. Travellers now see this beside the price, so changing it changes what a card claims.
+             * @enum {string}
+             */
+            pricingUnit?: "per_person" | "per_group";
+        };
+        ClosureReceipt: {
+            /** @description The closure. `POST /blackouts/{id}/reopen` puts back what it closed, and `GET /blackouts` reads it back. */
+            id: string;
+            closed: boolean;
+            /** @description Bookings and live holds on the departures this closure holds, which the operator still owes. A hold is somebody mid-checkout whose hold predates the closure and can still complete. */
+            existingBookings: number;
+            /** @description Present when `existingBookings` is above zero, and clients must render it verbatim. Closing cancels nobody, and an operator who assumes it did will not turn up. */
+            note?: string;
+        };
+        OperatorClosure: {
+            id: string;
+            /**
+             * Format: date
+             * @description The first market day closed. For `SCHEDULE_CHANGED`, the first day of the departures it holds.
+             */
+            from: string;
+            /**
+             * Format: date
+             * @description The last market day closed. For `SCHEDULE_CHANGED`, the last day of the departures it holds.
+             */
+            to: string;
+            /** @description Present when the closure covers one listing rather than every listing. */
+            experienceId?: string;
+            /** @description Present when the closure is of one departure, made with `POST /slots/{id}/close`. `from` and `to` are then that departure's own day. */
+            departureId?: string;
+            /**
+             * @description Why it was closed. The first six are given by whoever closed it. `SCHEDULE_CHANGED` is given only by `PUT /experiences/{id}/schedule`, to the closure of what the schedule had made at the weekdays and times a save removed: it holds exactly `departureIds`, and closes nothing else between `from` and `to`.
+             * @enum {string}
+             */
+            reasonCode: "WEATHER" | "MAINTENANCE" | "STAFF" | "PERSONAL" | "SEASONAL" | "OTHER" | "SCHEDULE_CHANGED";
+            /** @description Present when one was given. For `SCHEDULE_CHANGED`, the weekdays and times the schedule no longer has, like "Removed from the weekly schedule: Tuesdays at 09:00 and 17:30." */
+            note?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Present once the closure has been reopened. Its dates and departures stay as they were, so the record still says what was closed.
+             */
+            reopenedAt?: string;
+            /** @description The departures this closure holds closed, or held until it was reopened: every departure in its scope that was not called off when the closure was made, including any another closure had already closed. For a closure made before closures recorded their departures, these are the ones that were still closed when that record began, so a departure called off before then is not listed. */
+            departureIds: string[];
+        };
+        OperatorDeparture: {
+            id?: string;
+            experienceId?: string;
+            title?: string;
+            /** Format: date-time */
+            startsAt?: string;
+            timezone?: string;
+            seats?: number;
+            sold?: number;
+            remaining?: number;
+            /**
+             * @description Whether this departure holds seats (`allotment`) or waits on the operator to answer (`request`). The same enum the traveller catalog uses, because it is the same fact.
+             *
+             *     On the departure rather than the listing: a listing can carry both, and this screen is looking at departures. Without it the portal could only infer request mode indirectly, by noticing a row in the requests queue — an inference, and a wrong one for any departure nobody has asked about yet.
+             * @enum {string}
+             */
+            bookingMode?: "allotment" | "request";
+            status?: string;
+            /**
+             * @description Whether a traveller can actually buy this departure.
+             *
+             *     Read straight from the same view the traveller surfaces read, by a left join — never recomputed — so this screen and what is on sale cannot disagree.
+             *
+             *     **Per row, not per listing.** A certificate lapsing on Tuesday takes Wednesday's departure off sale and leaves Monday's selling, and one badge on the listing cannot say that.
+             */
+            onSale?: boolean;
+            notOnSaleReason?: components["schemas"]["NotOnSaleReason"];
+            /** @description A sentence to render verbatim. Present only when `onSale` is false. Render this when you meet a `notOnSaleReason` you do not recognise. */
+            notOnSaleDetail?: string;
+        };
+        OperatorMedia: {
+            id?: string;
+            /**
+             * @description Spelled as the traveller document spells it, so nothing has to translate between the two.
+             *
+             *     **Do not infer this from `durationSeconds`.** A clip that is still `uploaded` or `processing` has no duration either, so the first thing an operator sees after posting a reel would be that reel labelled a photograph.
+             * @enum {string}
+             */
+            kind?: "video" | "image";
+            /** @description Where the item is: `uploaded`, `processing`, `ready`, `attested`, `in_moderation`, `approved`, `published`, `rejected`, `quarantined`, `withdrawn` or `failed`. */
+            state?: string;
+            /**
+             * @description The picture to show for this row. For a photograph it is the image itself; for a clip it is the still.
+             *
+             *     **Absent on most clips today**, because a poster is only stored once the provider has produced one and an unpublished clip has no public URL. A row with no `posterUrl` still has a `kind` and a `state`, and has to render as something.
+             */
+            posterUrl?: string;
+            /** @description Absent on a photograph, and on a clip that is still arriving. */
+            durationSeconds?: number;
+            /**
+             * @description **The whole answer in one word — render this.**
+             *
+             *     `state` and `listing.state` are both still here and both still true, and since media can be approved, attached to a listing, and invisible all at once, deriving the situation from two enumerations client side gets it wrong in ways nobody notices for a month. This is computed server-side so there is one opinion about what the operator is looking at.
+             *
+             *     - `processing` — the host is still working on it.
+             *     - `needs_rights` — it arrived and nobody has attested to it. Nothing happens until they do; this is the step operators do not expect.
+             *     - `in_review` — with us, waiting on a person.
+             *     - `changes_needed` — a reviewer refused it, see `rejection`.
+             *     - `live` — a traveller can see it right now.
+             *     - `waiting_on_listing` — approved and attached, and the listing is not published yet. Nothing is wrong.
+             *     - `listing_withdrawn` — it was live and the listing came down. It returns when the listing does.
+             *     - `not_attached` — approved and on no listing at all. Only media uploaded before the listing was chosen at upload time can be in this state; attach it with `POST /media/{id}/publish`.
+             *     - `withdrawn` — the operator took it down.
+             *     - `failed` — it never became usable.
+             * @enum {string}
+             */
+            situation?: "processing" | "needs_rights" | "in_review" | "changes_needed" | "live" | "waiting_on_listing" | "listing_withdrawn" | "not_attached" | "withdrawn" | "failed";
+            /** Format: date-time */
+            createdAt?: string;
+            /**
+             * @description Why a reviewer refused it. A clip that disappears into "rejected" with no reason is a support conversation, and the codes are a closed set so a screen can render them rather than paraphrase.
+             *
+             *     `UNSAFE_PRACTICE_SHOWN` appears with state `quarantined`, not `rejected` — it is a signal about how the operator runs trips, not a note about the video.
+             */
+            rejection?: {
+                code?: string;
+                note?: string;
+            };
+            /** @description The listing this media belongs to — chosen at upload since D-031 C5, so it is present from the moment the upload completes rather than only after publication. Absent only for media that predates that, or that arrived through the concierge path. */
+            listing?: {
+                experienceId?: string;
+                title?: string;
+                /**
+                 * @description The PUBLICATION's state — whether this media is live on that listing. Unchanged in meaning and unchanged in name, deliberately: renaming it would break the published client.
+                 * @enum {string}
+                 */
+                state?: "draft" | "published" | "withdrawn";
+                /**
+                 * @description The LISTING's own state, which is a different question. "Approved, and waiting for a draft listing to go live" cannot be told from "approved and forgotten about" without it.
+                 * @enum {string}
+                 */
+                listingState?: "draft" | "in_review" | "published" | "withdrawn";
+            };
+        };
         OperatorExperience: {
             id?: string;
             slug?: string;
@@ -1511,6 +2478,7 @@ export interface components {
             destination?: string;
             /**
              * @description The one word to show. Derived from the publication state and the latest revision together, because neither answers "where is this" alone — a published listing with a submitted edit is live AND in review, and a draft whose revision was rejected is "we came back to you" rather than "draft".
+             *     A draft a reviewer sent back before it was ever on sale reads `changes_rejected` too, with `sentBack` saying why, and reads `in_review` again once you send it.
              *     `not_selling` is new in 0053 and is the one value a client cannot infer from `publicationState`: the listing IS published, and it is still absent from every feed, absent from search, and refusing checkout — because the operator is not selling, a kill switch is engaged, the listing has no price, or a credential their market and category require is missing, unverified or expired. Before 0053 a published listing genuinely sold whatever the operator's status said, so `live` was accurate; it no longer would be. The reason is not on this object deliberately — it belongs to the account, and `GET /operator/v1/me` carries the blockers that name it. Because requirements resolve per category, one listing can be `not_selling` while another of the same operator is `live`.
              * @enum {string}
              */
@@ -1531,6 +2499,11 @@ export interface components {
             inclusions?: string[];
             requirements?: string[];
             safetyNotes?: string;
+            /**
+             * @description The health screener a traveller answers before paying for this listing, or an empty string when it asks none. Always present. The allowed keys, and when a change is read before it goes live, are on `ListingEdit`.
+             * @example diving_rstc
+             */
+            screenerKey?: string;
             upcomingDepartures?: number;
             /**
              * @description The mandatory fields still empty on this listing, named in the same spelling the revision body uses. Empty means nothing is outstanding.
@@ -1553,11 +2526,72 @@ export interface components {
                 rejectionCode?: string;
                 rejectionNote?: string;
             };
+            /** @description Present while a reviewer has sent this listing back to you before it was ever on sale, and absent otherwise. It is a draft again: change it with `PATCH /experiences/{id}` and send it with `POST /experiences/{id}/submit`. Gone the moment you send it again. */
+            sentBack?: {
+                /** @description Why, from the same closed set as `review.rejectionCode`. */
+                rejectionCode: string;
+                /** @description What the reviewer wrote beside the code. Empty when they wrote nothing. */
+                rejectionNote: string;
+                /**
+                 * Format: date-time
+                 * @description When it was sent back.
+                 */
+                at: string;
+            };
+            schedule?: components["schemas"]["ListingSchedule"];
+        };
+        /** @description One departure of a weekly schedule. */
+        WeeklyDeparture: {
+            /** @description 0 is Sunday and 6 is Saturday. */
+            weekday: number;
+            /**
+             * @description When it leaves, on the 24-hour clock in the listing's own market, with both digits of the hour.
+             * @example 07:00
+             */
+            startTime: string;
+            /** @description How many people each departure takes. On an instant-book listing these seats are sold to Yuvoy. On a listing that takes requests nothing is sold in advance, and this is how many people the departure can take. */
+            seats: number;
+        };
+        /** @description A closure still in force that closes days of the schedule's window, or departures in it. It is the closure itself: `POST /blackouts/{id}/reopen` reopens it, and `GET /blackouts` reads it back in full, with the departures it holds. */
+        ScheduleException: {
+            id: string;
+            /**
+             * Format: date
+             * @description The first market day closed. For `SCHEDULE_CHANGED`, the first day of the departures it holds.
+             */
+            from: string;
+            /**
+             * Format: date
+             * @description The last market day closed. For `SCHEDULE_CHANGED`, the last day of the departures it holds.
+             */
+            to: string;
+            /**
+             * @description `SCHEDULE_CHANGED` is the closure a save of this schedule made of the departures it had made at weekdays and times the save removed. It closes only those departures, not whole days, and `note` names the weekdays and times.
+             * @enum {string}
+             */
+            reasonCode: "WEATHER" | "MAINTENANCE" | "STAFF" | "PERSONAL" | "SEASONAL" | "OTHER" | "SCHEDULE_CHANGED";
+            /** @description Present when one was given. */
+            note?: string;
+            /** @description Present when the closure covers this listing alone. Absent when it covers every listing the operator has. */
+            experienceId?: string;
+            /** @description Present when the closure is of one departure, made with `POST /slots/{id}/close`. */
+            departureId?: string;
+        };
+        /** @description A listing's standing weekly schedule, set once with `PUT /experiences/{id}/schedule`, from which departures keep being made `horizonDays` ahead. */
+        ListingSchedule: {
+            /** @description False when the listing has no weekly schedule. `weekly` is then empty, and nothing is inferred from the departures the listing has. */
+            repeatsWeekly: boolean;
+            /** @description Every weekday and time it runs, by weekday from Sunday, then by time. */
+            weekly: components["schemas"]["WeeklyDeparture"][];
+            /** @description Closures still in force that touch today or any of the next `horizonDays` days in the listing's market: closures of this listing, of one of its departures, or of every listing. Ordered by first day, and listed whether or not the listing repeats weekly. */
+            exceptions: components["schemas"]["ScheduleException"][];
+            /** @description How far ahead departures are made: from now to the end of the market day this many days after today. */
+            horizonDays: number;
         };
         Error: {
             error: {
                 /** @enum {string} */
-                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "departure_started" | "different_day" | "time_taken" | "not_withdrawn" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked";
+                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "account_suspended" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "departure_started" | "different_day" | "time_taken" | "not_withdrawn" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked" | "already_reopened" | "closure_started" | "already_cancelled" | "booking_ended" | "refund_already_raised" | "nothing_to_give_back" | "cash_already_returned" | "documents_unavailable" | "document_locked" | "upload_not_arrived" | "document_refused" | "upload_closed" | "not_settled" | "messages_closed" | "invitation_unavailable";
                 /** @description Human-readable; safe to show. */
                 message: string;
                 /** @description Field-level messages, keyed by field name. */
@@ -1585,6 +2619,80 @@ export interface components {
             intent?: string;
             /** @description How many people were actually told. */
             recipients?: number;
+        };
+        BookingMessage: {
+            /** @description Send it as `upTo` to mark this message and everything before it read. */
+            id: string;
+            /** @enum {string} */
+            from: "traveller" | "operator";
+            /** @description The name to show beside it: the name the traveller gave at checkout on theirs, and on the business's the name of the person on the team who wrote it, or the business's name if that person's account is gone. */
+            senderName: string;
+            /** @description What was written, trimmed, with its line breaks. Every message carries exactly one of `text` and `textRemovedAt`, and a message that was just sent always carries `text`. */
+            text?: string;
+            /**
+             * Format: date-time
+             * @description When the text was removed, a set time after the trip ended. Present only in place of `text`. Show the message as one whose text was removed, never as an empty message.
+             */
+            textRemovedAt?: string;
+            /** Format: date-time */
+            sentAt: string;
+        };
+        BookingMessageThread: {
+            /** @description Oldest first within the page. The first page is the most recent messages. */
+            messages: components["schemas"]["BookingMessage"][];
+            /** @description `true` when the conversation begins on this page. `false` always comes with a `nextCursor` for the messages before it. */
+            complete: boolean;
+            /** @description Absent when nothing came before this page. */
+            nextCursor?: string;
+            /** @description The traveller's messages nobody at the business has marked read. */
+            unreadCount: number;
+            /** @description Whether a message can be sent now. */
+            canWrite: boolean;
+            /**
+             * @description Present only when `canWrite` is `false`. `cancelled` and `declined`: the booking ended, and nothing reopens it. `window_closed`: the trip ended longer ago than messages stay open.
+             * @enum {string}
+             */
+            closedReason?: "cancelled" | "declined" | "window_closed";
+            /**
+             * Format: date-time
+             * @description When writing stops on its own, a set time after the trip ends. Absent on a cancelled or declined booking.
+             */
+            writableUntil?: string;
+        };
+        BookingMessageInput: {
+            /** @description The message. Trimmed, with its line breaks kept. */
+            text: string;
+        };
+        BookingMessageReadInput: {
+            /** @description The `id` of the last message somebody was shown. */
+            upTo: string;
+        };
+        BookingMessageReadReceipt: {
+            /** @description The traveller's messages still unread after this. */
+            unreadCount: number;
+        };
+        /** @description One conversation in the list. Never its text, never the traveller's name. */
+        MessageThreadSummary: {
+            bookingId: string;
+            reference: string;
+            experience: string;
+            slot: {
+                /** Format: date-time */
+                startsAt: string;
+                timezone: string;
+            };
+            /**
+             * Format: date-time
+             * @description When the latest message, as of this walk, was written.
+             */
+            lastMessageAt: string;
+            /**
+             * @description Who wrote that message.
+             * @enum {string}
+             */
+            lastFrom: "traveller" | "operator";
+            /** @description The traveller's messages nobody at the business has marked read. */
+            unreadCount: number;
         };
         OpenRequest: {
             id?: string;
@@ -1614,6 +2722,78 @@ export interface components {
              */
             holdExpiresAt?: string | null;
         };
+        /** @description One question a listing asks travellers. Its `text`, `answerType` and `options` never change once it exists: rewording a question gives it a new `id`, so every answer keeps the words it answered. */
+        ListingQuestion: {
+            id: string;
+            /** @description The question, as a traveller reads it. */
+            text: string;
+            /**
+             * @description `short_text` takes up to 300 characters of free text. `choice` takes exactly one of `options`. `yes_no` takes `yes` or `no`.
+             * @enum {string}
+             */
+            answerType: "short_text" | "choice" | "yes_no";
+            /** @description The choices, in the order shown. Present only on a `choice` question. */
+            options?: string[];
+            /** @description Whether you need an answer. A checkout that sends answers is refused until this question has one; a checkout that sends none is not, and its booking shows the question as not answered yet. */
+            required: boolean;
+        };
+        ListingQuestions: {
+            questions: components["schemas"]["ListingQuestion"][];
+        };
+        ListingQuestionsInput: {
+            /** @description Every question the listing should ask, in order. An empty list asks nothing. */
+            questions: {
+                /** @description A question this listing asks now, to keep it and its answers. Leave it out to add a new question. */
+                id?: string;
+                text: string;
+                /** @enum {string} */
+                answerType: "short_text" | "choice" | "yes_no";
+                /** @description Required on a `choice` question, and refused on the other types. */
+                options?: string[];
+                /** @default false */
+                required: boolean;
+            }[];
+        };
+        /**
+         * @description One question as it stands for one party: the words they were asked, and their answer if they gave one. The manifest, the bookings list and a single booking send the same list for the same party.
+         *
+         *     Every question the listing asks now comes first, in the listing's order, answered or not. After them comes any question this party answered that the listing no longer asks, with `current: false`, so an answer to a reworded question stays readable with the words it answered.
+         */
+        PartyQuestion: {
+            questionId: string;
+            /** @description The words this party was asked. A question's words never change once it exists, so on an answered question these are the words the answer answered. */
+            text: string;
+            /** @enum {string} */
+            answerType: "short_text" | "choice" | "yes_no";
+            /** @description Present only on a `choice` question. */
+            options?: string[];
+            required: boolean;
+            /** @description `false` when the listing no longer asks this question. Only an answered question appears with `current: false`. */
+            current: boolean;
+            /** @description `false` means not answered yet: a booking can be made without answers. */
+            answered: boolean;
+            /** @description Present when answered: `yes` or `no` for `yes_no`, one of `options` as the listing wrote it for `choice`, the traveller's own words for `short_text`. */
+            answer?: string;
+            /** Format: date-time */
+            answeredAt?: string;
+        };
+        /**
+         * @description Whether a party answered a listing's medical question. The manifest and the bookings list both send it, read from the same columns and rendered by the same function, so the two cannot answer differently about one party.
+         *
+         *     **Never carries what anybody disclosed.** A manifest is read on a jetty, out loud, in front of other customers. The instructor needs to know a party was screened, not what they said.
+         *
+         *     The interesting case is `needsAttention` on a party with `declared: false`. A booking is refused outright on a declared condition, so everybody booked declared clear. What can still go wrong is somebody arriving having never been asked.
+         */
+        PartyScreening: {
+            /** @description This party answered the screener. */
+            declared: boolean;
+            /** @description Their answer. Only meaningful when `declared`. */
+            clear: boolean;
+            /** @description The one thing to highlight. Computed server-side so a phone, a printout and the admin console cannot disagree about who to stop. */
+            needsAttention: boolean;
+            /** @description The screener version answered. Reported, not compared: the listing carries no version of its own, so a "the question changed" flag would have nothing behind it. */
+            answeredVersion?: number;
+        };
         Manifest: {
             slotId?: string;
             experience?: string;
@@ -1638,23 +2818,10 @@ export interface components {
                 arrived?: boolean;
                 /** Format: date-time */
                 arrivedAt?: string;
-                /**
-                 * @description **Present only on listings that ask a medical question.** Absent means the question does not apply — a snorkel trip carrying an empty screening object would invite a screen to render "not screened" against a party nobody was ever going to ask, and a false alarm on this signal teaches an instructor to skip the column.
-                 *
-                 *     **Never carries what anybody disclosed.** A manifest is read on a jetty, out loud, in front of other customers. The instructor needs to know a party was screened, not what they said.
-                 *
-                 *     The interesting case is `needsAttention` on a party with `declared: false`. A booking is refused outright on a declared condition, so everybody on this list declared clear — what can still go wrong is somebody arriving having never been asked.
-                 */
-                screening?: {
-                    /** @description This party answered the screener. */
-                    declared: boolean;
-                    /** @description Their answer. Only meaningful when `declared`. */
-                    clear: boolean;
-                    /** @description The one thing to highlight. Computed server-side so a phone, a printout and the admin console cannot disagree about who to stop. */
-                    needsAttention: boolean;
-                    /** @description The screener version answered. Reported, not compared: the listing carries no version of its own, so a "the question changed" flag would have nothing behind it. */
-                    answeredVersion?: number;
-                };
+                /** @description **Present only on listings that ask a medical question.** Absent means the question does not apply: a snorkel trip carrying an empty screening object would invite a screen to render "not screened" against a party nobody was ever going to ask, and a false alarm on this signal teaches an instructor to skip the column. */
+                screening?: components["schemas"]["PartyScreening"];
+                /** @description What the listing asks travellers and what this party answered. **Present only when there is something to show**: the listing asks a question, or this party answered one. These questions never ask about health, which stays with `screening`. */
+                questions?: components["schemas"]["PartyQuestion"][];
             }[];
             /** @description Computed server-side so three clients cannot disagree about them on a dock. `seatsSold` and `seatsSoldOffline` answer different questions and are deliberately separate. */
             totals?: {
@@ -1687,11 +2854,33 @@ export interface components {
             refundedPaise?: number;
             holdsReleased?: number;
         };
+        BookingCancelResult: {
+            bookingId: string;
+            reference: string;
+            /** @enum {string} */
+            state: "cancelled";
+            /** @enum {string} */
+            reasonCode: "weather" | "equipment" | "staffing" | "safety" | "insufficient_numbers";
+            /**
+             * Format: int64
+             * @description Queued back to the traveller: everything captured online, which is 0 for a booking to be paid in cash.
+             */
+            refundedPaise: number;
+            /** @description The party's guests, no longer counted against the departure. */
+            seatsReleased: number;
+            /**
+             * Format: int64
+             * @description **Present only when you had already recorded taking this booking's cash.** We refund nothing on it because we took nothing, so this is money you hold that belongs to the traveller. Once you have given it back, record that with `POST /bookings/{id}/cash-returned`.
+             */
+            cashToGiveBackPaise?: number;
+            /** @description Present with `cashToGiveBackPaise`, saying the same thing in words. */
+            note?: string;
+        };
         ChangeRequest: {
             id?: string;
             kind?: string;
             /**
-             * @description `objection_window` → the owner can still stop it and no human has looked. `pending` → the window closed without objection and it is awaiting review. `cooling` → approved but not yet live, and still stoppable. `applied` → live.
+             * @description `objection_window` → an owner or an admin can still stop it and no human has looked. `pending` → the window closed without objection and it is awaiting review. `cooling` → approved but not yet live, and still stoppable. `applied` → live.
              * @enum {string}
              */
             state?: "pending" | "objection_window" | "cooling" | "approved" | "rejected" | "withdrawn" | "applied";
@@ -1703,6 +2892,44 @@ export interface components {
             objectionUntil?: string | null;
             /** Format: date-time */
             coolingUntil?: string | null;
+        };
+        /** @description One person's notification switches, every one of them, in the order a screen shows them. A switch nobody has changed is on. */
+        NotificationSettings: {
+            userId: string;
+            name: string;
+            switches: components["schemas"]["NotificationSwitch"][];
+            /** @description What cannot be turned off, in one sentence, so a screen of switches is not read as everything this person will be told. It names kinds of message rather than what this reader receives: several go to the owner alone. */
+            alwaysSent: string;
+        };
+        NotificationSwitch: {
+            group: components["schemas"]["NotificationGroup"];
+            /** @example Guest cancellations */
+            label: string;
+            /** @description What the switch covers and who those messages go to. Every person sees every switch, so this is how a staff member can tell that a payout summary was never going to reach them. */
+            description: string;
+            on: boolean;
+            /**
+             * Format: date-time
+             * @description When somebody last changed it. Absent while nobody has.
+             */
+            changedAt?: string;
+            /** @description Who last changed it: the person themselves, or an OWNER or ADMIN of the business. Absent while nobody has, or once that person's own record is gone. */
+            changedBy?: {
+                id: string;
+                name: string;
+            };
+        };
+        /**
+         * @description One switch. A closed set, added to by contract change.
+         * @enum {string}
+         */
+        NotificationGroup: "new_bookings" | "guest_cancellations" | "todays_departures" | "settlement_summary" | "document_expiry";
+        NotificationSwitchChanges: {
+            /** @description The switches to change. Any not named are left as they are. */
+            switches: {
+                group: components["schemas"]["NotificationGroup"];
+                on: boolean;
+            }[];
         };
         TeamMember: {
             id?: string;
@@ -1736,11 +2963,35 @@ export interface components {
              * @example PAUSED
              */
             state: string;
-            /** @description Whether a traveller can book them right now. `LIVE` is the only status that means yes; everything else, `PAUSED` included, is a no with a different reason. */
+            /** @description Whether a traveller can book them right now. `LIVE` is the only status that means yes; everything else, `PAUSED` included, is a no with a different reason. A suspended business is never bookable, whatever its status reads. */
             bookable: boolean;
             /** @description Empty only when nothing is outstanding. */
             blocking: components["schemas"]["Blocker"][];
             credentials?: components["schemas"]["OperatorCredential"][];
+            /**
+             * @description Every document this business must hold to sell, met or not, so a screen can say "5 of 6" rather than guess the 6. It is the set the go-live check counts: what your market requires of every business, plus what the categories and activities you have published listings in require, so it can grow when a listing in a new category is approved.
+             *
+             *     `satisfied` means a verified copy is in date today, in your market's calendar. A document that is not satisfied always has a `CREDENTIAL_*` entry in `blocking` saying why. For a category you do not sell in yet, ask `GET /credential-requirements`.
+             */
+            requiredDocuments?: {
+                /** @enum {string} */
+                type: "directorate_registration" | "instructor_cert" | "oxygen" | "equipment" | "boat" | "insurance" | "bank" | "gst";
+                satisfied: boolean;
+            }[];
+            /** @description Present exactly while the business is suspended (D20), or while its status is `OFFBOARDED` or `DISQUALIFIED` (D44), and absent otherwise: what happened, since when, what our staff wrote, and what still works. The reason an admin recorded is not here. It is written for our audit trail and can name a third party. */
+            suspension?: {
+                /**
+                 * Format: date-time
+                 * @description When the suspension, or the closed status, began. Absent when no record shows the moment, rather than a guessed one.
+                 */
+                since?: string;
+                /** @description The owner's sentence for the status, which every refused write answers with too, so a banner and a tapped button never disagree: "Your account has been suspended. Please reach out to admin for help.", or "Your account has been closed. Please reach out to admin for help." for `OFFBOARDED`, or "Your account has been disqualified. Please reach out to admin for help." for `DISQUALIFIED`. */
+                message: string;
+                /** @description What our staff wrote to the business when they suspended it (D38), to show under `message`. Absent when they wrote nothing. It lasts as long as the suspension it was written for, and is gone once the status changes. Written by a person, so show it as plain text. */
+                adminMessage?: string;
+                /** @description What keeps working, as a sentence to show under the message: everything can still be read, the trips already booked can still be run or stopped with anything paid online refunded in full, and the team, a bank change and documents can still be dealt with. */
+                stillAllowed: string;
+            };
         };
         Blocker: {
             /**
@@ -1748,14 +2999,14 @@ export interface components {
              *
              *     **Render the whole list either way.** A missing logo and an unfinished registered address are real asks and belong on the screen; neither appears in the sellability predicate, which tests published, priced, operator LIVE, kill switches and credentials and nothing else.
              *
-             *     `bookable` above is now false only when something here has `gates: true`. It previously went false for ANY outstanding item, which told an operator with three listings selling in the feed that they could not be booked — so a client that hides this list on `bookable` will now hide it exactly when it is most useful. Gate the list on `blocking` being non-empty instead.
+             *     Apart from a status that is not `LIVE` and a suspension, each of which has an `OPERATOR_*` entry of its own, `bookable` above is false only when something here has `gates: true`. It previously went false for ANY outstanding item, which told an operator with three listings selling in the feed that they could not be booked — so a client that hides this list on `bookable` will now hide it exactly when it is most useful. Gate the list on `blocking` being non-empty instead.
              */
             gates: boolean;
             /**
              * @description A closed set, so a client branches on the code and never on the message — the same rule the error enum follows. `OTHER` exists so a reason can be added operationally without a contract change and without breaking a client: render `label` for anything you do not recognise, including `OTHER`.
              * @enum {string}
              */
-            code: "BUSINESS_DETAILS_INCOMPLETE" | "LOGO_MISSING" | "CREDENTIAL_MISSING" | "CREDENTIAL_UNVERIFIED" | "CREDENTIAL_EXPIRED" | "CREDENTIAL_REJECTED" | "AWAITING_REVIEW" | "OTHER";
+            code: "BUSINESS_DETAILS_INCOMPLETE" | "LOGO_MISSING" | "CREDENTIAL_MISSING" | "CREDENTIAL_UNVERIFIED" | "CREDENTIAL_EXPIRED" | "CREDENTIAL_REJECTED" | "AWAITING_REVIEW" | "OPERATOR_PAUSED" | "OPERATOR_SUSPENDED" | "OPERATOR_CLOSED" | "OTHER";
             /**
              * @description Human-readable and safe to show unmodified.
              * @example We still need your insurance certificate
@@ -1771,11 +3022,22 @@ export interface components {
         };
         /** @description A document Yuvoy holds, or is waiting for. */
         OperatorCredential: {
+            /** @description What an upload names, on `POST /credentials/{id}/upload-intents`. */
+            id: string;
             /**
              * @example directorate_registration
              * @example insurance
              */
             type: string;
+            /** @description Whether a file is on record for this document. Sent on every row, so a screen offers an upload or shows the file without inferring either from a field being absent. */
+            hasFile: boolean;
+            /** @description The file's name as it was on the operator's device. Present only when `hasFile` is true. */
+            filename?: string;
+            /**
+             * Format: int64
+             * @description Present only when `hasFile` is true.
+             */
+            sizeBytes?: number;
             /** @enum {string} */
             state: "pending" | "verified" | "rejected" | "expired";
             /** @description Whether the account can go LIVE without it. */
@@ -1828,11 +3090,20 @@ export interface components {
                 collectedAt?: string;
                 /** @description What you reported taking, which may be less than the fare if you gave them something off. */
                 collectedPaise?: number;
+                /**
+                 * Format: date-time
+                 * @description When you recorded giving this cash back, on a booking cancelled after you took it, with `POST /bookings/{id}/cash-returned`. Absent until then.
+                 */
+                returnedAt?: string;
+                /** @description What you recorded giving back, which is all of `collectedPaise`. Present with `returnedAt`. */
+                returnedPaise?: number;
             };
             /**
              * @description What this one booking contributed, so an operator asking "why is this two hundred rupees less than I expected" can answer it here rather than by messaging us.
              *
-             *     **These are the same frozen figures `/earnings` sums**, not a recomputation. Commission was frozen on this booking at capture, so a rate change today cannot restate what was earned last week, and this object cannot disagree with the total for arithmetic reasons.
+             *     **A cancelled or declined booking earns us nothing.** On one, `commissionPaise` is 0 and `netPaise` is `grossPaise - refundsPaise`, what was paid less what went back. On a cancelled card booking, a payout pays you that net when it is above zero: see `GET /settlements/overview`. `/earnings` leaves cancelled and declined bookings out altogether, so what follows about matching it is about bookings that are on.
+             *
+             *     **For a booking that is on, these are the same frozen figures `/earnings` sums**, not a recomputation. Commission was frozen on this booking at capture, so a rate change today cannot restate what was earned last week, and this object cannot disagree with the total for arithmetic reasons.
              *
              *     **It can disagree for a window reason, and that is deliberate.** `/earnings` selects on `created_at` — when the money moved — while this list selects on the slot's `startsAt`, which is when the trip runs. A booking made in March for a trip in April belongs to March's earnings and April's manifest. So summing a screenful of these will NOT reproduce an earnings total unless the two windows were asked the same question. Reconcile one booking against itself, not a page against a period.
              *
@@ -1846,7 +3117,7 @@ export interface components {
                 grossPaise: number;
                 /**
                  * Format: int64
-                 * @description Yuvoy's cut, frozen at capture against the rate in force then.
+                 * @description Yuvoy's cut, frozen at capture against the rate in force then. 0 on a cancelled or declined booking, which earns us nothing.
                  */
                 commissionPaise: number;
                 /**
@@ -1860,6 +3131,48 @@ export interface components {
                  */
                 netPaise: number;
             };
+            /**
+             * @description **Present only on a booking that was cancelled or declined**: when it ended, who ended it, and why. Absent on every other booking.
+             *
+             *     Read from what every path that ends a booking already records, never inferred: the traveller cancelling from their booking link, you cancelling one booking or calling the departure off, us calling it off (one departure, or every departure on a day), our team cancelling or declining the booking, and a payment that arrived after the seats were gone or the departure was off.
+             *
+             *     What went back to the traveller is `money.refundsPaise`, against `money.grossPaise` taken. It is not repeated here, so a booking has one refund figure.
+             *
+             *     Never a note our team wrote, and never anything about a traveller's health: those can carry things about a person that are not yours to read.
+             */
+            cancellation?: {
+                /**
+                 * Format: date-time
+                 * @description When it was cancelled or declined.
+                 */
+                at: string;
+                /**
+                 * @description Who ended it. `operator` is your own team and `yuvoy` is ours. `system` is a payment we could not honour when it arrived: the booking was declined as it was made, and anything taken was refunded in full. Absent only if no record says who.
+                 * @enum {string}
+                 */
+                by?: "traveller" | "operator" | "yuvoy" | "system";
+                /**
+                 * @description The reason recorded on the booking. A closed set, so a client can branch on it; if you meet a value you do not recognise, say the booking was cancelled, and by whom.
+                 *
+                 *     `SAFETY` covers any judgement that the trip was not safe for this party, including one about their health, which is never reported more precisely than that.
+                 * @enum {string}
+                 */
+                reasonCode?: "CUSTOMER_REQUEST" | "TRAVELLER_REQUEST" | "OPERATOR_CALLED_OFF" | "OPERATOR_MOVED_IT" | "OPERATOR_CANCELLED" | "OPERATOR_DISHONOUR" | "OPERATOR_UNREACHABLE" | "CREDENTIAL_LAPSE" | "OPERATOR_NOT_SELLABLE" | "CAPACITY_LOST" | "PAYMENT_FAILED" | "WEATHER" | "SAFETY" | "ADMIN_ERROR";
+                /** @description Present when it ended because its departure was called off, with the call-off's own reason: the same object as the manifest's `calledOff`. */
+                calledOff?: {
+                    /** @enum {string} */
+                    reasonCode: "weather" | "equipment" | "staffing" | "safety" | "insufficient_numbers";
+                };
+                /** @description Present when your own team cancelled this one booking with `POST /bookings/{id}/cancel`, with the reason given: the same list a call-off takes. */
+                operatorCancelled?: {
+                    /** @enum {string} */
+                    reasonCode: "weather" | "equipment" | "staffing" | "safety" | "insufficient_numbers";
+                };
+            };
+            /** @description This party's screening, exactly as `GET /slots/{id}/manifest` sends it for the same party. **Present only when the listing asks a medical question**, and never what anybody disclosed. */
+            screening?: components["schemas"]["PartyScreening"];
+            /** @description What the listing asks travellers and what this party answered, exactly as `GET /slots/{id}/manifest` sends it for the same party. **Present only when there is something to show**: the listing asks a question, or this party answered one. */
+            questions?: components["schemas"]["PartyQuestion"][];
         };
     };
     responses: {
@@ -1881,7 +3194,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Signed in, but this role may not do it. */
+        /** @description Signed in, but this role may not do it (`forbidden`). On a write it can also be `account_suspended`: the business is suspended, closed or disqualified, and this is not one of the writes it may still make. */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -1890,8 +3203,17 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The operator account itself cannot trade right now (suspended or offboarded). Distinct from a role refusal: the person is fine, the business relationship is not. */
+        /** @description The operator account itself has been offboarded in its account state, so it cannot sign in or use a session. Distinct from a role refusal: the person is fine, the business relationship is not. A suspended business is not refused here, and nor is one whose status is `OFFBOARDED` or `DISQUALIFIED`: each signs in, and its writes answer `account_suspended` instead. */
         AccountNotActive: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description `account_suspended`: the business is suspended (D20), or its status is `OFFBOARDED` or `DISQUALIFIED` (D44), and this write is not one it may still make. The message is "Your account has been suspended. Please reach out to admin for help.", or for those two statuses "Your account has been closed. Please reach out to admin for help." and "Your account has been disqualified. Please reach out to admin for help.", and is safe to show as it is. Reads still work, and so do attendance, cash collected, cash given back, both relays, writing in the conversation on a booking and marking it read, calling a departure off, cancelling a booking, declining a request, holding, restoring or removing somebody on the team, stopping a bank change, filing a document with its file, and signing out. */
+        AccountSuspended: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1937,8 +3259,15 @@ export interface operations {
                 "application/json": {
                     /** @description What travellers will see. */
                     businessName: string;
-                    /** @description The person signing up — the first OWNER. */
+                    /** @description The person signing up, and the business's first person: its OWNER, or its ADMIN when `relationship` is `run`. */
                     name: string;
+                    /**
+                     * @description Whether the person signing up owns the business or runs it for its owner (D15). `own` makes them its OWNER. `run` makes them its ADMIN, and the business has no owner until they invite one; changing where it is paid is an owner's alone, so that waits until then.
+                     *
+                     *     Optional. Absent means `own`, which is what every sign-up meant before the question was asked. Anything else is refused with `400`, before the number is looked at, so the refusal says nothing about whether the number has an account.
+                     * @enum {string}
+                     */
+                    relationship?: "own" | "run";
                     /**
                      * @description E.164. This is what they sign in with.
                      * @example +919000000000
@@ -2093,6 +3422,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -2124,6 +3454,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
         };
     };
     getOperatorLogo: {
@@ -2337,8 +3668,11 @@ export interface operations {
                     "application/json": {
                         sent?: boolean;
                         businessName?: string;
-                        /** @enum {string} */
-                        role?: "ADMIN" | "MANAGER" | "STAFF";
+                        /**
+                         * @description What accepting makes them. `STAFF` or `OWNER` on an invitation sent since D15; `ADMIN` or `MANAGER` only on one sent before it, which is honoured as it was sent.
+                         * @enum {string}
+                         */
+                        role?: "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
                         name?: string;
                         leavingBusiness?: string;
                         note?: string;
@@ -2348,7 +3682,11 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-            /** @description No invitation for that number. The message names the business and says to ask its owner or an admin to send one — render it, because it is the only useful next step. */
+            /**
+             * @description No invitation for that number. The message names the business and says to ask its owner or an admin to send one — render it, because it is the only useful next step.
+             *
+             *     `invitation_unavailable` when the number was invited but nobody can join the business right now (D43). No code is sent. The message names the business and says whom to ask, never why; render it too.
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2400,8 +3738,16 @@ export interface operations {
                     };
                 };
             };
-            400: components["responses"]["BadRequest"];
-            /** @description No invitation for that number. */
+            /** @description `invalid_input`. The number or the code is missing, or this number is the only owner or admin at the business it works with now, so accepting would leave nobody there who can run it (D15). The message says which, and what to do; render it. Deliberately not a `409`: every `409` here has meant `confirmation_required`, and confirming cannot help with this one. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No invitation for that number, or `invitation_unavailable`: the code was right, but nobody can join the business right now (D43). Nothing changed, and the invitation still works once the business can take people on again, for as long as it has left. The message names the business and says whom to ask, never why; render it. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2565,6 +3911,200 @@ export interface operations {
             };
         };
     };
+    createCredentialUploadIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The document's `id`, from `GET /me` or `POST /credentials`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The file's name on the operator's device. Kept to 200 characters; a longer one is shortened with its extension kept. */
+                    filename: string;
+                    /** @enum {string} */
+                    contentType: "application/pdf" | "image/jpeg" | "image/png";
+                    /**
+                     * Format: int64
+                     * @description The file's exact size in bytes, which the browser knows. Signed into the URL.
+                     */
+                    sizeBytes: number;
+                };
+            };
+        };
+        responses: {
+            /** @description A URL to send the file to. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Names this upload when completing it. */
+                        intentId: string;
+                        /** @description Signed for this one file. Never stored and never logged. */
+                        uploadUrl: string;
+                        /** @enum {string} */
+                        method: "PUT";
+                        /** @description Signed headers to send with the file exactly as given: `Content-Type` and the upload's `x-amz-meta-*` metadata. */
+                        headers: {
+                            [key: string]: string;
+                        };
+                        /** Format: date-time */
+                        expiresAt: string;
+                        /** Format: int64 */
+                        maxBytes: number;
+                        next: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `document_locked`: the document has already been verified or rejected, so the file behind it cannot change. File the document again to send a different one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `documents_unavailable`: the document store could not sign an upload just now. Try again. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `documents_unavailable`: no document store is configured on this service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    completeCredentialUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                intentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file is on record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        credentialId: string;
+                        hasFile: boolean;
+                        filename: string;
+                        /** Format: int64 */
+                        sizeBytes: number;
+                        /** @enum {string} */
+                        contentType: "application/pdf" | "image/jpeg" | "image/png";
+                        /** @description An earlier file on this document stopped being on record. */
+                        replacedPrevious: boolean;
+                        next: string;
+                    };
+                };
+            };
+            /** @description `document_refused`: the file that arrived is larger than 10 MB, is not the size declared, or is not a PDF, JPEG or PNG. `details.reason` says which: `too_large`, `size_mismatch` or `wrong_kind`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `upload_not_arrived`: the file has not reached the bucket yet, so send it first. `upload_closed`: this upload was refused or replaced, so start a new one. `document_locked`: the document was verified or rejected while the file was on its way. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `documents_unavailable`: the document store could not be asked just now. Try again. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `documents_unavailable`: no document store is configured on this service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCredentialRequirements: {
+        parameters: {
+            query: {
+                /** @description One of the category keys on `GET /catalog/vocabulary`. */
+                category: string;
+                /** @description An activity type key in that category, from `GET /catalog/vocabulary`. Omit it for the whole category. One that is not in the category is a 400 rather than an empty answer, which would read as needing nothing. */
+                activityType?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The documents, in type order. Empty means a listing in this category needs none in your market. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        category: string;
+                        /** @description Present when one was asked about. */
+                        activityType?: string;
+                        documents: {
+                            /** @enum {string} */
+                            type: "directorate_registration" | "instructor_cert" | "oxygen" | "equipment" | "boat" | "insurance" | "bank" | "gst";
+                            satisfied: boolean;
+                        }[];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listOperatorChangeRequests: {
         parameters: {
             query?: never;
@@ -2627,7 +4167,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            /** @description `step_up_required` — ask for a code first. Also returned to anyone who is not the OWNER. */
+            /** @description `step_up_required` — ask for a code first. Also returned to anyone who is not an OWNER. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2729,8 +4269,11 @@ export interface operations {
                 "application/json": {
                     phone: string;
                     name: string;
-                    /** @enum {string} */
-                    role: "ADMIN" | "MANAGER" | "STAFF";
+                    /**
+                     * @description What the person inviting would like them to be. `OWNER` joins as an owner. Anything else, or nothing, joins as `STAFF`.
+                     * @enum {string}
+                     */
+                    role?: "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
                 };
             };
         };
@@ -2744,6 +4287,13 @@ export interface operations {
                     "application/json": {
                         sent?: boolean;
                         /**
+                         * @description What accepting will make them.
+                         * @enum {string}
+                         */
+                        role?: "OWNER" | "STAFF";
+                        /** @description Present when `role` is not the role that was asked for, and says so: they join as staff, and their role can be changed once they have joined. Show it to the person inviting. */
+                        note?: string;
+                        /**
                          * @description The business's join link, returned so the inviter can pass it on themselves. The same URL for everybody this business adds, and the same one shown on `GET /team`.
                          *
                          *     We queue a message too, but on an island the person doing the inviting is usually standing next to the person being invited.
@@ -2754,7 +4304,15 @@ export interface operations {
                     };
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description `invalid_input`: the number is not in E.164. `invalid_role`: `role` is not a role on a team, and `details.allowed` lists the four. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             /** @description OWNER or ADMIN only. */
             403: {
@@ -2813,6 +4371,15 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            /** @description `invitation_unavailable`: the code was right, but nobody can join the business right now (D43). Nothing changed, and the invitation still works once the business can take people on again, for as long as it has left. The message says whom to ask, never why; render it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     setOperatorUserRole: {
@@ -2828,12 +4395,12 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @enum {string} */
-                    role: "ADMIN" | "MANAGER" | "STAFF";
+                    role: "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
                 };
             };
         };
         responses: {
-            /** @description Changed */
+            /** @description Changed, and signed out everywhere. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -2842,7 +4409,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            /** @description OWNER or ADMIN only, and an ADMIN cannot change an OWNER or another ADMIN. */
+            /** @description OWNER or ADMIN only, and an ADMIN cannot change an OWNER's role. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2852,7 +4419,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description `cannot_change_access` — including changing your own. */
+            /** @description `cannot_change_access`: your own role, a role that is not one of the four, or a change that would leave the business with no active OWNER or ADMIN. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2874,7 +4441,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Held */
+            /** @description Held, and signed out everywhere. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -2882,7 +4449,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            /** @description OWNER or ADMIN only, and an ADMIN cannot hold an OWNER or another ADMIN. */
+            /** @description OWNER or ADMIN only, and an ADMIN cannot hold an OWNER. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2900,7 +4467,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description `cannot_change_access` — your own access, or the last owner. */
+            /** @description `cannot_change_access`: your own access, or the last active OWNER or ADMIN. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2930,7 +4497,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            /** @description OWNER or ADMIN only, and an ADMIN cannot restore an OWNER or another ADMIN. */
+            /** @description OWNER or ADMIN only, and an ADMIN cannot restore an OWNER. A held owner was held by another owner, and undoing that is an owner's to do. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2959,6 +4526,85 @@ export interface operations {
             };
         };
     };
+    getTeamMemberNotificationSwitches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every switch this person has, on or off. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description OWNER or ADMIN only, or the account itself cannot act right now. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setTeamMemberNotificationSwitches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSwitchChanges"];
+            };
+        };
+        responses: {
+            /** @description Changed. Every switch this person has, as they now stand. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            /** @description No switch named, one named twice, one without `on`, or a name that is not a switch. The message lists the switches that exist. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description OWNER or ADMIN only, or the account itself cannot act right now. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     removeOperatorUser: {
         parameters: {
             query?: never;
@@ -2970,7 +4616,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Removed */
+            /** @description Removed, and signed out everywhere. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -2978,7 +4624,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            /** @description OWNER or ADMIN only. */
+            /** @description OWNER or ADMIN only, and an ADMIN cannot remove an OWNER. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2988,7 +4634,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description `cannot_remove` — yourself, or the last owner. */
+            /** @description `cannot_change_access`: yourself, or the last active OWNER or ADMIN. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3020,10 +4666,22 @@ export interface operations {
                         roles?: string[];
                         operatorId?: string;
                         /**
+                         * @description The business's own web address on the traveller app — `app.yuvoy.in/o/{slug}`. Sent so a link to the public page can be built rather than guessed; a guessed address is somebody else's business on the day it is wrong.
+                         *     Always present. `operators.slug` is not null and unique.
+                         */
+                        slug?: string;
+                        /**
                          * @description OWNER, ADMIN or MANAGER. Capacity, closed dates, earnings and listing edits require it — a staff member who can see today's manifest does not need the margin on it.
                          *     ADMIN holds it because the role exists for an owner who is off the island: one who could add a manager but not close a date would be a stand-in for nothing.
                          */
                         canManage?: boolean;
+                        /**
+                         * @description The share of the fare Yuvoy keeps on a booking this business makes now, in basis points: 1500 is 15%. Build a "you receive" preview from this rather than from a fixed figure. It is taken on the whole amount the traveller pays.
+                         *
+                         *     It is this business's own contracted rate when it has one, and the standard rate when it has none, worked out by the same rule that charges the booking. It is frozen onto each booking when the booking is made, at capture for a card payment and at confirmation for cash, so a later change never restates a booking already taken. `GET /commission-owed` reads each cash trip's commission as it was frozen then. Absent where the service was not given a standard rate.
+                         * @example 1500
+                         */
+                        commissionRateBps?: number;
                         /** @description Why this account can or cannot sell, and who has to move next. Absent means unknown — never "everything is fine". */
                         account?: components["schemas"]["AccountStanding"];
                     };
@@ -3033,12 +4691,83 @@ export interface operations {
             403: components["responses"]["AccountNotActive"];
         };
     };
+    getMyNotificationSwitches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every switch, in the order a screen shows them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountNotActive"];
+        };
+    };
+    setMyNotificationSwitches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSwitchChanges"];
+            };
+        };
+        responses: {
+            /** @description Changed. Every switch, as they now stand. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            /** @description No switch named, one named twice, one without `on`, or a name that is not a switch. The message lists the switches that exist. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The account itself cannot act right now. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listOperatorBookings: {
         parameters: {
             query?: {
                 state?: string;
+                /** @description The first day to include, in the market's clock. */
                 from?: string;
+                /** @description The last day to include, in the market's clock. */
                 to?: string;
+                /** @description Bookings per page. None, or a value that is not a whole number above zero, gets 100. More than 200 gets 200. */
+                limit?: number;
+                /** @description A previous response's `nextCursor`, sent with the same `state`, `from` and `to`. Opaque, so do not construct one. A cursor this list did not issue is a `400`. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -3053,10 +4782,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items?: components["schemas"]["OperatorBooking"][];
+                        items: components["schemas"]["OperatorBooking"][];
+                        /** @description Told rather than inferred. `true` means nothing comes after this page; `false` always comes with a `nextCursor`. */
+                        complete: boolean;
+                        /** @description Absent when there is nothing after this page. */
+                        nextCursor?: string;
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };
@@ -3179,6 +4913,157 @@ export interface operations {
             };
         };
     };
+    getOperatorBookingMessages: {
+        parameters: {
+            query?: {
+                /** @description Messages per page. None, or a value that is not a whole number above zero, gets 50. More than 200 gets 200. */
+                limit?: number;
+                /** @description A previous page's `nextCursor`. Opaque, so do not construct one. A cursor this conversation did not issue is a `400`. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingMessageThread"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    sendOperatorBookingMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookingMessageInput"];
+            };
+        };
+        responses: {
+            /** @description Written, and the traveller's notice is queued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingMessage"];
+                };
+            };
+            /** @description `invalid_input`, with `details.text` saying why: `required` (nothing written, or a body that is not JSON), `too long` (over 1000 characters), `unprintable` (characters no screen can show), or `contact details`, with `details.contactDetail` `phone`, `email` or `link`. Nothing was stored. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `messages_closed`: the conversation can be read and not written in. `details.reason` is `cancelled`, `declined` or `window_closed`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    markOperatorBookingMessagesRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookingMessageReadInput"];
+            };
+        };
+        responses: {
+            /** @description What is still unread. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingMessageReadReceipt"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such booking for this operator, or that message is not in its conversation. Deliberately indistinguishable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listOperatorMessageThreads: {
+        parameters: {
+            query?: {
+                /** @description Conversations per page. None, or a value that is not a whole number above zero, gets 50. More than 200 gets 200. */
+                limit?: number;
+                /** @description A previous page's `nextCursor`. Opaque, so do not construct one. A cursor this list did not issue is a `400`. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of this operator's conversations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        threads: components["schemas"]["MessageThreadSummary"][];
+                        /** @description Told rather than inferred. `true` means nothing comes after this page; `false` always comes with a `nextCursor`. */
+                        complete: boolean;
+                        /** @description Absent when there is nothing after this page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     listOpenRequests: {
         parameters: {
             query?: never;
@@ -3256,7 +5141,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @enum {string} */
+                    /**
+                     * @description One of four separate reason lists, one for each act: this one for declining a request; `POST /slots/{id}/call-off` for calling a departure off; `POST /blackouts` and `POST /slots/{id}/close` for closing dates or one departure; and `POST /experiences/{id}/pause` (or `/withdraw`) for pausing a listing. Each act accepts only its own list. This one is about one party's request: each code chooses the sentence that traveller is sent, which always says nothing was charged, and it is kept on the reservation so their status page can say why.
+                     * @enum {string}
+                     */
                     reasonCode: "no_capacity" | "weather" | "not_operating" | "party_too_large" | "unsafe_for_party" | "other";
                 };
             };
@@ -3366,6 +5254,71 @@ export interface operations {
             };
         };
     };
+    cancelOperatorBooking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description Why this party cannot go. The call-off's own list, because cancelling one party is the same act for one booking. It is recorded with the cancellation, shown on the booking as `cancellation.operatorCancelled.reasonCode`, and shown on the traveller's status page as why their booking is off.
+                     * @enum {string}
+                     */
+                    reasonCode: "weather" | "equipment" | "staffing" | "safety" | "insufficient_numbers";
+                    /** @description Kept on the record of the cancellation. Never rendered into a message, the same rule as the relay. */
+                    note?: string;
+                    /** @description The booking's own reference, typed back. */
+                    confirmReference: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Cancelled. The figures are what it cost. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingCancelResult"];
+                };
+            };
+            /** @description `invalid_reason_code`; `confirmation_required`, when there is no reference or it is not this booking's; or a note over 500 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Only an OWNER, ADMIN or MANAGER can cancel a booking. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `already_cancelled`: there is nothing left to cancel, and nothing was refunded twice. `booking_ended`: it was declined, completed or marked a no-show. `departure_started`: the departure has left. `refund_already_raised`: part of it has been refunded already, so it cannot be cancelled here; ask us to cancel it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     recordCashCollected: {
         parameters: {
             query?: never;
@@ -3407,6 +5360,58 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             /** @description `not_on_this_departure` — the booking is cancelled, declined or already settled, or the amount is more than the fare, or it was paid online and there is nothing to collect. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    recordCashReturned: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bookingId: string;
+                        reference: string;
+                        /**
+                         * Format: int64
+                         * @description All of the cash you recorded taking, now recorded as given back.
+                         */
+                        returnedPaise: number;
+                        /** Format: date-time */
+                        returnedAt: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Only an OWNER, ADMIN or MANAGER can record it (`forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `nothing_to_give_back`: the booking is not cancelled, was paid online, or has no cash recorded as taken; the message says which. `cash_already_returned`: giving the cash back is already recorded, so nothing changed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3481,6 +5486,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -3496,7 +5502,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @enum {string} */
+                    /**
+                     * @description One of four separate reason lists, one for each act: this one for calling a departure off; `POST /requests/{id}/decline` for declining a request; `POST /blackouts` and `POST /slots/{id}/close` for closing dates or one departure; and `POST /experiences/{id}/pause` (or `/withdraw`) for pausing a listing. Each act accepts only its own list. This one is about why the departure itself cannot run: it is recorded with the call-off and shown on each traveller's status page as why the trip is off.
+                     * @enum {string}
+                     */
                     reasonCode: "weather" | "equipment" | "staffing" | "safety" | "insufficient_numbers";
                     /** @description Shown on the travellers' status pages. Never rendered into a message — same rule as the relay. */
                     note?: string;
@@ -3540,8 +5549,14 @@ export interface operations {
     listOperatorSlots: {
         parameters: {
             query?: {
+                /** @description The first day to include, in the market's clock. */
                 from?: string;
+                /** @description The last day to include, in the market's clock. */
                 to?: string;
+                /** @description Departures per page. None, or a value that is not a whole number above zero, gets 200, which is also the most one page holds. */
+                limit?: number;
+                /** @description A previous response's `nextCursor`, sent with the same `from` and `to`. Opaque, so do not construct one. A cursor this list did not issue is a `400`. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -3556,39 +5571,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items?: {
-                            id?: string;
-                            experienceId?: string;
-                            title?: string;
-                            /** Format: date-time */
-                            startsAt?: string;
-                            timezone?: string;
-                            seats?: number;
-                            sold?: number;
-                            remaining?: number;
-                            /**
-                             * @description Whether this departure holds seats (`allotment`) or waits on the operator to answer (`request`). The same enum the traveller catalog uses, because it is the same fact.
-                             *
-                             *     On the departure rather than the listing: a listing can carry both, and this screen is looking at departures. Without it the portal could only infer request mode indirectly, by noticing a row in the requests queue — an inference, and a wrong one for any departure nobody has asked about yet.
-                             * @enum {string}
-                             */
-                            bookingMode?: "allotment" | "request";
-                            status?: string;
-                            /**
-                             * @description Whether a traveller can actually buy this departure.
-                             *
-                             *     Read straight from the same view the traveller surfaces read, by a left join — never recomputed — so this screen and what is on sale cannot disagree.
-                             *
-                             *     **Per row, not per listing.** A certificate lapsing on Tuesday takes Wednesday's departure off sale and leaves Monday's selling, and one badge on the listing cannot say that.
-                             */
-                            onSale?: boolean;
-                            notOnSaleReason?: components["schemas"]["NotOnSaleReason"];
-                            /** @description A sentence to render verbatim. Present only when `onSale` is false. Render this when you meet a `notOnSaleReason` you do not recognise. */
-                            notOnSaleDetail?: string;
-                        }[];
+                        items: components["schemas"]["OperatorDeparture"][];
+                        /** @description Told rather than inferred. `true` means nothing comes after this page; `false` always comes with a `nextCursor`. */
+                        complete: boolean;
+                        /** @description Absent when there is nothing after this page. */
+                        nextCursor?: string;
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };
@@ -3613,7 +5604,7 @@ export interface operations {
                     times: string[];
                     /** @description 0 is Sunday. Empty means every day in the range, which is what a one-off departure wants. */
                     weekdays?: number[];
-                    /** @description How many seats are sold to Yuvoy on each departure. */
+                    /** @description How many seats are sold to Yuvoy on each departure. For a listing that takes requests nothing is sold in advance: the larger of `seats` and `capacity` is how many people the departure can take, and seats are granted one accepted request at a time. */
                     seats: number;
                     /** @description What the boat physically holds. Defaults to `seats`; larger when the operator also sells at the jetty. */
                     capacity?: number;
@@ -3666,6 +5657,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Instant-book: the seats sold to Yuvoy, never below what is already sold. A departure that takes requests: how many people it can take, at least 1 and never below what has already been accepted. */
                     seats: number;
                 };
             };
@@ -3726,7 +5718,7 @@ export interface operations {
                         startsAt: string;
                         /** @description How many bookings were sent the new time. Zero is normal — an empty departure moves quietly. */
                         bookingsTold: number;
-                        /** @description Say this out loud. It names how many people were told and that they may now cancel for a full refund, which is the cost of the move an operator should see before repeating it. */
+                        /** @description Say this out loud. It names how many people were told and that, until the departure leaves, anybody booked on it now may cancel and get back everything they paid online, which is the cost of the move an operator should see before repeating it. */
                         note: string;
                     };
                 };
@@ -3746,6 +5738,42 @@ export interface operations {
             };
         };
     };
+    listOperatorClosures: {
+        parameters: {
+            query?: {
+                /** @description A market day. Only closures whose last day is on or after it. */
+                from?: string;
+                /** @description A market day. Only closures whose first day is on or before it. */
+                to?: string;
+                limit?: number;
+                /** @description From a previous response's `nextCursor`. Opaque; do not construct one. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Closures, in order of their first day. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["OperatorClosure"][];
+                        /** @description Told rather than inferred. `false` means there is more to read with `nextCursor`. */
+                        complete: boolean;
+                        /** @description Absent when there is nothing after this page. */
+                        nextCursor?: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     addBlackout: {
         parameters: {
             query?: never;
@@ -3762,30 +5790,118 @@ export interface operations {
                     from: string;
                     /** Format: date */
                     to: string;
-                    /** @enum {string} */
+                    /**
+                     * @description One of four separate reason lists, one for each act: this one for closing dates, and for closing one departure with `POST /slots/{id}/close`; `POST /requests/{id}/decline` for declining a request; `POST /slots/{id}/call-off` for calling a departure off; and `POST /experiences/{id}/pause` (or `/withdraw`) for pausing a listing. Each act accepts only its own list, and this one is written in capitals. It is kept with the closure and read back by `GET /blackouts`. No traveller is sent it, since closing cancels nobody.
+                     * @enum {string}
+                     */
                     reasonCode: "WEATHER" | "MAINTENANCE" | "STAFF" | "PERSONAL" | "SEASONAL" | "OTHER";
                     note?: string;
                 };
             };
         };
         responses: {
-            /** @description Dates closed. */
+            /** @description Dates closed. Nobody was cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosureReceipt"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    reopenOperatorClosure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reopened. The counts say what moved. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        closed?: boolean;
-                        /** @description Bookings and live holds the operator still owes. */
-                        existingBookings?: number;
-                        note?: string;
+                        id: string;
+                        /** Format: date-time */
+                        reopenedAt: string;
+                        /** @description Departures this put back to open. */
+                        departuresReopened: number;
+                        /** @description Departures still to come that stay closed, because another closure in force also holds them. */
+                        departuresStillClosed: number;
+                        /** @description Say this out loud. It gives both counts in words. */
+                        note: string;
                     };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `already_reopened`: this closure was reopened before. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    closeOperatorDeparture: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description The list `POST /blackouts` takes for closing dates. It is one of four separate reason lists, one for each act; the others are `POST /requests/{id}/decline` for declining a request, `POST /slots/{id}/call-off` for calling a departure off, and `POST /experiences/{id}/pause` (or `/withdraw`) for pausing a listing. Each act accepts only its own list.
+                     * @enum {string}
+                     */
+                    reasonCode: "WEATHER" | "MAINTENANCE" | "STAFF" | "PERSONAL" | "SEASONAL" | "OTHER";
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Closed to new bookings. Nobody was cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClosureReceipt"];
                 };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `already_called_off`: the departure is called off, so there is nothing to close. `departure_started`: it has already left. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getOperatorEarnings: {
@@ -3825,6 +5941,131 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    getSettlementOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The overview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        nextSettlement: components["schemas"]["SettlementWeek"];
+                        pipeline: components["schemas"]["SettlementPipeline"];
+                        paidAtCounter: components["schemas"]["PaidAtCounter"];
+                        seasonToDate: components["schemas"]["SeasonToDate"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listSettlements: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description From a previous response's `nextCursor`. Opaque; do not construct one. A cursor this list did not issue is a `400`. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settlements, the most recent week first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Settlement"][];
+                        /** @description Told rather than inferred. `false` means there is more to read with `nextCursor`. */
+                        complete: boolean;
+                        /** @description Absent when there is nothing after this page. */
+                        nextCursor?: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getSettlement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settlement and its bookings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settlement"] & {
+                        lines: components["schemas"]["SettlementLine"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    downloadSettlementStatement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The statement. */
+            200: {
+                headers: {
+                    /** @description sha256 of the body, the same as finance's export of this period. */
+                    "X-Payout-Sha256"?: string;
+                    /** @description An attachment named for the period it covers, like `yuvoy-statement-2026-09-07-to-2026-09-13.csv`. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `not_settled`: this payout has not been sent yet, so it has no statement. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getCatalogVocabulary: {
         parameters: {
             query?: never;
@@ -3858,6 +6099,19 @@ export interface operations {
                         activityTypes?: components["schemas"]["ActivityTypeTerm"][];
                         /** @description Active destinations in this market, in the order a picker should show them. Empty means we have not opened one yet, which is a state worth rendering rather than a failure. */
                         destinations?: components["schemas"]["VocabularyTerm"][];
+                        /**
+                         * @description The health screeners a listing's `screenerKey` may name: one entry for each screener that is not retired, in key order. The same read decides which keys a listing write accepts, so every key offered here is accepted and any other key is a 400. An empty `screenerKey` is always allowed and means none.
+                         *
+                         *     Show `label` to a person and send `key`. The key is an identifier, not display text.
+                         *
+                         *     Not an enum anywhere in this contract: a screener is a row, added or retired on medical advice rather than by a release. Empty means no screener can be chosen yet.
+                         */
+                        screeners?: {
+                            /** @example diving_rstc */
+                            key: string;
+                            /** @description The screener's name as a person reads it, from the newest version of it that is not retired. Never empty. */
+                            label: string;
+                        }[];
                     };
                 };
             };
@@ -3899,7 +6153,7 @@ export interface operations {
             content: {
                 "application/json": {
                     title: string;
-                    /** @description Optional. Proposed from the title if omitted. */
+                    /** @description Optional. Proposed from the title if omitted. Numbered (`-2`, `-3`) when already taken, never refused. */
                     slug?: string;
                     summary?: string;
                     description?: string;
@@ -3946,6 +6200,11 @@ export interface operations {
                     inclusions?: string[];
                     requirements?: string[];
                     safetyNotes?: string;
+                    /**
+                     * @description Optional. The health screener a traveller answers before paying, or empty for none. The allowed keys are described on `ListingEdit`, and one that is not current is a 400.
+                     * @example diving_rstc
+                     */
+                    screenerKey?: string;
                 };
             };
         };
@@ -3967,7 +6226,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
-            /** @description `conflict` — that slug is taken. */
+            /** @description `conflict`. No longer raised for a taken address, which is numbered instead. Kept only for the case where no free number could be claimed after repeated concurrent collisions; retrying succeeds. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3976,6 +6235,170 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getListingWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The listing and everything attached to it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        listing: components["schemas"]["OperatorExperience"];
+                        /** @description Its own departures only. Each carries whether a traveller can actually buy that one — a certificate lapsing on Tuesday takes Wednesday off sale and leaves Monday selling, which one badge on the listing cannot say. */
+                        departures: components["schemas"]["OperatorDeparture"][];
+                        /** @description The photographs and clips uploaded for this listing, each with its own state and, where one was refused, why. */
+                        media: components["schemas"]["OperatorMedia"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getListingSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The schedule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingSchedule"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveListingSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Every weekday and time the listing runs, each at most once. Empty removes the schedule. */
+                    weekly: components["schemas"]["WeeklyDeparture"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. What the schedule now is, and what saving made. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        schedule: components["schemas"]["ListingSchedule"];
+                        /** @description Departures this save made. Zero is a legitimate answer. */
+                        created: number;
+                        /** @description Departures still to come that this schedule had made at the weekdays and times this save removed, now closed to new bookings. Zero is a legitimate answer. */
+                        departuresClosed: number;
+                        /** @description The one closure holding them, present only when `departuresClosed` is above zero. `POST /blackouts/{id}/reopen` puts them back on sale. */
+                        closureId?: string;
+                        /** @description Sentences to render verbatim. They say what was added; when this save closed departures, how many, that the bookings on them stand, and to reopen the closure to put them back on sale; when departures added by hand or moved still leave at a removed time, that they were not changed; and when a time's seats changed, that departures already made keep theirs. */
+                        note: string;
+                        /** @description Whether this listing's departures sell: the listing's answer, as on `POST /slots`. Render `notOnSaleDetail` when this is false. */
+                        onSale: boolean;
+                        notOnSaleReason?: components["schemas"]["NotOnSaleReason"];
+                        /** @description A sentence to render verbatim. Present only when `onSale` is false. */
+                        notOnSaleDetail?: string;
+                    };
+                };
+            };
+            /** @description `invalid_input`: a field this body does not take, or entries whose weekday, start time or seats cannot be saved. Entry problems come in `details`, keyed by where each is, like `weekly[2].startTime`, and every entry is checked, so one answer names every bad row. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getListingQuestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The questions, in order. An empty list when the listing asks none. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingQuestions"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    replaceListingQuestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListingQuestionsInput"];
+            };
+        };
+        responses: {
+            /** @description The list as saved, with the id of every question, new ones included. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingQuestions"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getOperatorExperience: {
@@ -4002,6 +6425,53 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    saveListingDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListingEdit"];
+            };
+        };
+        responses: {
+            /** @description Saved. The draft as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorExperience"];
+                };
+            };
+            /** @description `invalid_input` — a field we do not know (`details.unknownFields`, with `details.allowed`), a value that field cannot hold, or a field a listing cannot be without sent empty: title, category, destination, duration, party size or pricing unit. A draft can change those; it cannot go without them. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `conflict` — the listing is no longer a draft. Change it through `POST /experiences/{id}/revisions`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     submitExperienceRevision: {
         parameters: {
             query?: never;
@@ -4013,68 +6483,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    /** @description *mandatory* */
-                    title?: string;
-                    /** @description *mandatory* */
-                    summary?: string;
-                    description?: string;
-                    /**
-                     * @description *material*, *mandatory*. The closed twelve-value taxonomy.
-                     * @enum {string}
-                     */
-                    category?: "adventure" | "nature_wildlife" | "food_drink" | "arts_creativity" | "learning" | "culture_heritage" | "wellness" | "entertainment" | "community" | "sports" | "local_life" | "events";
-                    /**
-                     * @description *material*, *mandatory to publish*. What the listing actually is. Not an enum — the set grows by INSERT; the pairs are on `GET /catalog/vocabulary`, and the (activity, category) pair is enforced by a composite foreign key.
-                     *
-                     *     It is the one mandatory field the **submit** gate does not yet demand, because the portal has no picker for it and demanding it would answer every operator edit with a 400 they could not act on. Approval demands it.
-                     * @example scuba
-                     */
-                    activityType?: string;
-                    /** @description *material*, *mandatory*. A destination key in your own market. */
-                    destination?: string;
-                    /**
-                     * @description *material*, *mandatory*. Where the day actually starts.
-                     *
-                     *     **This is the canonical name.** `meetingPointText` is accepted for one release and maps to the same field; sending both with different values is a 400. Approval used to apply `meetingPointText` while create and read both said `meetingPoint`, so a revision that changed only the meeting point was approved and changed nothing.
-                     */
-                    meetingPoint?: string;
-                    /**
-                     * @deprecated
-                     * @description Deprecated spelling of `meetingPoint`. Send `meetingPoint`.
-                     */
-                    meetingPointText?: string;
-                    meetingLandmark?: string;
-                    /** @description *material*. Documented as material since the endpoint existed, and not actually applied until now. */
-                    inclusions?: string[];
-                    /** @description *material*. As for `inclusions`. */
-                    requirements?: string[];
-                    /** @description *material* */
-                    safetyNotes?: string;
-                    /** @description *material*, *mandatory* */
-                    durationMinutes?: number;
-                    /** @description *material*, *mandatory* */
-                    maxPartySize?: number;
-                    /**
-                     * Format: int64
-                     * @description *material*, *mandatory*
-                     */
-                    unitPricePaise?: number;
-                    /**
-                     * @description *material*. How the listing sells, from the next departure onward.
-                     *
-                     *     **Departures that already exist keep the mode they were created with.** `experiences.bookingMode` seeds a NEW departure; every read that decides a booking — availability, checkout, confirmation, the feed — uses the departure's own mode. So a traveller mid-request is never moved onto a different contract than the one they asked under, and a switch to `allotment` shows up only as new departures are added.
-                     *
-                     *     A consequence worth planning for: switching to `allotment` while every future departure is `request` changes nothing a traveller sees until departures are created. Creating an allotment departure with no seats is refused outright, because `bookable_slots` requires remaining seats and the departure would silently never appear.
-                     * @enum {string}
-                     */
-                    bookingMode?: "allotment" | "request";
-                    /**
-                     * @description *material*, *mandatory*. How `unitPricePaise` is charged. Travellers now see this beside the price, so changing it changes what a card claims.
-                     * @enum {string}
-                     */
-                    pricingUnit?: "per_person" | "per_group";
-                };
+                "application/json": components["schemas"]["ListingEdit"];
             };
         };
         responses: {
@@ -4122,6 +6531,49 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    submitListingDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sent. The listing, now `in_review`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorExperience"];
+                };
+            };
+            /** @description `invalid_input` — the draft is not complete. `details.missing` names every mandatory field still empty, spelled as the draft body spells them. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `conflict` — the listing is not a draft: it is on sale, or it was taken off sale (use `POST /experiences/{id}/resume` for that). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getOperatorStory: {
@@ -4185,6 +6637,54 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
+        };
+    };
+    createStoryPhotoUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A slot to upload into. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        imageId: string;
+                        uploadUrl: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        maxBytes: number;
+                        next?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
+            /** @description The image host could not take an upload just now. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No image host is configured on this deployment. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     addOperatorPhoto: {
@@ -4217,6 +6717,8 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
+            404: components["responses"]["NotFound"];
             /** @description You already have five. Remove one first. */
             409: {
                 headers: {
@@ -4247,6 +6749,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4261,7 +6764,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Back on sale. */
+            /** @description Resumed. `state` and `next` say whether it is selling. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4270,7 +6773,7 @@ export interface operations {
                     "application/json": {
                         /** @enum {string} */
                         state: "published" | "in_review";
-                        /** @description Say this out loud, so an operator knows it is live and does not go looking for a queue to wait in. */
+                        /** @description Say this out loud. It is chosen by what is true — back on sale; back on the operator's listings but not bookable while something on the account stops sales; or, for a listing never approved (`state: in_review`), still waiting for its first check. It used to say "back on sale" in all three. */
                         next: string;
                     };
                 };
@@ -4349,7 +6852,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @enum {string} */
+                    /**
+                     * @description One of four separate reason lists, one for each act: this one for pausing a listing, the same here and on the other spelling; `POST /requests/{id}/decline` for declining a request; `POST /slots/{id}/call-off` for calling a departure off; and `POST /blackouts` and `POST /slots/{id}/close` for closing dates or one departure. Each act accepts only its own list. This one is about the listing rather than a date or a departure, and includes `price_wrong` and `details_wrong`. It is recorded in our audit log with the pause, and no traveller is sent it.
+                     * @enum {string}
+                     */
                     reasonCode: "seasonal_close" | "not_running" | "price_wrong" | "details_wrong" | "other";
                     note?: string;
                     /** @description Must equal the id in the path. Not a boolean: a checkbox is one mis-tap on a wet phone away from taking a live listing off sale. */
@@ -4372,6 +6878,7 @@ export interface operations {
                         guestsToHonour: number;
                         /** @description Present when `bookingsToHonour` is above zero, and clients must render it verbatim. An operator who assumes pausing cancelled the bookings will simply not turn up. */
                         note?: string;
+                        /** @description That resuming is the operator's own button and needs nobody at Yuvoy. It used to say "ask us to put it back … we check it before travellers see it again", which D-032.4 made false. */
                         next: string;
                     };
                 };
@@ -4394,7 +6901,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @enum {string} */
+                    /**
+                     * @description One of four separate reason lists, one for each act: this one for pausing a listing, the same here and on the other spelling; `POST /requests/{id}/decline` for declining a request; `POST /slots/{id}/call-off` for calling a departure off; and `POST /blackouts` and `POST /slots/{id}/close` for closing dates or one departure. Each act accepts only its own list. This one is about the listing rather than a date or a departure, and includes `price_wrong` and `details_wrong`. It is recorded in our audit log with the pause, and no traveller is sent it.
+                     * @enum {string}
+                     */
                     reasonCode: "seasonal_close" | "not_running" | "price_wrong" | "details_wrong" | "other";
                     note?: string;
                     /** @description Must equal the id in the path. Not a boolean: a checkbox is one mis-tap on a wet phone away from taking a live listing off sale, the same reason calling off a departure asks for the departure's id. */
@@ -4460,70 +6970,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items?: {
-                            id?: string;
-                            /**
-                             * @description Spelled as the traveller document spells it, so nothing has to translate between the two.
-                             *
-                             *     **Do not infer this from `durationSeconds`.** A clip that is still `uploaded` or `processing` has no duration either, so the first thing an operator sees after posting a reel would be that reel labelled a photograph.
-                             * @enum {string}
-                             */
-                            kind?: "video" | "image";
-                            /** @description Where the item is: `uploaded`, `processing`, `ready`, `attested`, `in_moderation`, `approved`, `published`, `rejected`, `quarantined`, `withdrawn` or `failed`. */
-                            state?: string;
-                            /**
-                             * @description The picture to show for this row. For a photograph it is the image itself; for a clip it is the still.
-                             *
-                             *     **Absent on most clips today**, because a poster is only stored once the provider has produced one and an unpublished clip has no public URL. A row with no `posterUrl` still has a `kind` and a `state`, and has to render as something.
-                             */
-                            posterUrl?: string;
-                            /** @description Absent on a photograph, and on a clip that is still arriving. */
-                            durationSeconds?: number;
-                            /**
-                             * @description **The whole answer in one word — render this.**
-                             *
-                             *     `state` and `listing.state` are both still here and both still true, and since media can be approved, attached to a listing, and invisible all at once, deriving the situation from two enumerations client side gets it wrong in ways nobody notices for a month. This is computed server-side so there is one opinion about what the operator is looking at.
-                             *
-                             *     - `processing` — the host is still working on it.
-                             *     - `needs_rights` — it arrived and nobody has attested to it. Nothing happens until they do; this is the step operators do not expect.
-                             *     - `in_review` — with us, waiting on a person.
-                             *     - `changes_needed` — a reviewer refused it, see `rejection`.
-                             *     - `live` — a traveller can see it right now.
-                             *     - `waiting_on_listing` — approved and attached, and the listing is not published yet. Nothing is wrong.
-                             *     - `listing_withdrawn` — it was live and the listing came down. It returns when the listing does.
-                             *     - `not_attached` — approved and on no listing at all. Only media uploaded before the listing was chosen at upload time can be in this state; attach it with `POST /media/{id}/publish`.
-                             *     - `withdrawn` — the operator took it down.
-                             *     - `failed` — it never became usable.
-                             * @enum {string}
-                             */
-                            situation?: "processing" | "needs_rights" | "in_review" | "changes_needed" | "live" | "waiting_on_listing" | "listing_withdrawn" | "not_attached" | "withdrawn" | "failed";
-                            /** Format: date-time */
-                            createdAt?: string;
-                            /**
-                             * @description Why a reviewer refused it. A clip that disappears into "rejected" with no reason is a support conversation, and the codes are a closed set so a screen can render them rather than paraphrase.
-                             *
-                             *     `UNSAFE_PRACTICE_SHOWN` appears with state `quarantined`, not `rejected` — it is a signal about how the operator runs trips, not a note about the video.
-                             */
-                            rejection?: {
-                                code?: string;
-                                note?: string;
-                            };
-                            /** @description The listing this media belongs to — chosen at upload since D-031 C5, so it is present from the moment the upload completes rather than only after publication. Absent only for media that predates that, or that arrived through the concierge path. */
-                            listing?: {
-                                experienceId?: string;
-                                title?: string;
-                                /**
-                                 * @description The PUBLICATION's state — whether this media is live on that listing. Unchanged in meaning and unchanged in name, deliberately: renaming it would break the published client.
-                                 * @enum {string}
-                                 */
-                                state?: "draft" | "published" | "withdrawn";
-                                /**
-                                 * @description The LISTING's own state, which is a different question. "Approved, and waiting for a draft listing to go live" cannot be told from "approved and forgotten about" without it.
-                                 * @enum {string}
-                                 */
-                                listingState?: "draft" | "in_review" | "published" | "withdrawn";
-                            };
-                        }[];
+                        items?: components["schemas"]["OperatorMedia"][];
                     };
                 };
             };
@@ -4754,6 +7201,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
             /** @description No such listing. Indistinguishable from one belonging to another operator, deliberately. */
             404: {
                 headers: {
@@ -4809,6 +7257,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4853,6 +7302,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4888,6 +7338,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4922,6 +7373,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
             /**
              * @description `hero_taken` — this listing already has a hero, and a listing shows one. Move the existing one to the gallery first, or attach this as a gallery item; `details.role` is `hero`.

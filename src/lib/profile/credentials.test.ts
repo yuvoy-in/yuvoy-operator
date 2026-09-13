@@ -9,6 +9,9 @@ import {
 import type { Blocker, OperatorCredential } from "@/lib/account/standing";
 
 const cred = (over: Partial<OperatorCredential>): OperatorCredential => ({
+  // Required since the 13 Sep contract. See the note in standing.test.ts.
+  id: "cred_insurance",
+  hasFile: false,
   type: "insurance",
   state: "pending",
   mandatory: true,
