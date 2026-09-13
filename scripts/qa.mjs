@@ -713,51 +713,20 @@ const NEEDS_MANAGE = [];
   finish();
 
   /*
-    GATED IN CODE, SILENT IN PROSE — yuvoy-operator#44.
+    THE EXEMPTION THAT CLOSED ITSELF — yuvoy-operator#44.
 
-    `POST /experiences/{id}/pause` and `/resume` are OWNER or MANAGER: the API
-    registers both behind `RequireOperatorRole(Owner, Manager)` in its
-    routes.go, exactly like `withdraw`, whose prose this parse reads. Their own
-    descriptions never say so in a phrase above — pause is "identical to
-    withdraw", resume says "OWNER or MANAGER — the person who…" — so without
-    this the parse files them under no role at all, and `/services` switching
-    from `withdraw` to `pause` reads as a route gating on a role nobody asked
-    for.
+    `POST /experiences/{id}/pause` and `/resume` were gated in the API's
+    routes.go and silent in their prose, so this parse filed them under no role
+    and `/services` switching from `withdraw` to `pause` read as a route gating
+    on a role nobody asked for. A `PROSE_GAPS` map carried both, with the
+    reason.
 
-    A Map with a reason per entry, like every other exemption in this file, and
-    each entry must still be a path the contract has: a stale one would quietly
-    cover whatever is written at that path next.
+    yuvoy-api#167 wrote the roles down: pause now ends "OWNER, ADMIN or MANAGER
+    only.", which this parse already recognises, and resume names them in its
+    403. Both entries were removed only after checking that this file still
+    passes without them — a stale exemption is worse than none, because it
+    quietly covers whatever is written at that path next.
   */
-  const PROSE_GAPS = new Map([
-    [
-      "POST /experiences/{id}/pause",
-      "RequireOperatorRole(Owner, Manager) in yuvoy-api routes.go; the description says only that it is identical to withdraw. Raised on yuvoy-operator#44.",
-    ],
-    [
-      "POST /experiences/{id}/resume",
-      "RequireOperatorRole(Owner, Manager) in yuvoy-api routes.go; its 'OWNER or MANAGER —' matches no phrase this parse recognises. Raised on yuvoy-operator#44.",
-    ],
-  ]);
-  for (const [operation, reason] of PROSE_GAPS) {
-    const [gapMethod, gapPath] = operation.split(" ");
-    if (!reason || reason.length < 40) {
-      problems.push(
-        `scripts/qa.mjs: PROSE_GAPS entry "${operation}" has no real reason.`,
-      );
-    }
-    if (!lines.includes(`  ${gapPath}:`)) {
-      problems.push(
-        `scripts/qa.mjs: PROSE_GAPS names ${operation}, which the contract no ` +
-          `longer has. A stale entry covers whatever is written at that path next.`,
-      );
-      continue;
-    }
-    if (
-      !NEEDS_MANAGE.some((e) => e.method === gapMethod && e.path === gapPath)
-    ) {
-      NEEDS_MANAGE.push({ method: gapMethod, path: gapPath });
-    }
-  }
 }
 
 /*

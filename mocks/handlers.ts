@@ -1354,7 +1354,14 @@ const pauseHandler = (path: string) =>
             note: "This listing is off sale — nobody new can book it. The 3 bookings you have already taken are unchanged. You still need to run those departures, or call each one off yourself.",
           }
         : {}),
-      next: "Ask us to put it back whenever you are ready — there is a button for it on the listing. We check it before travellers see it again.",
+      /*
+        The API's sentence, as yuvoy-api#167 rewrote it. It used to say "ask us
+        to put it back … we check it before travellers see it again", which
+        D-032.4 had made false — resuming is the operator's own button and is
+        immediate — and the portal suppressed it for that reason. Both the
+        wording and the suppression are gone.
+      */
+      next: "Put it back on sale yourself whenever you are ready. There is a button for it on this listing, and it takes effect at once.",
     });
   });
 
@@ -1369,8 +1376,13 @@ const pauseHandler = (path: string) =>
  *   - a mandatory field still empty → `400` naming it in `details.missing`,
  *     "so you find out while the form is open".
  *
- * `next` is the API's unconditional "travellers can book it now", which is
- * false for a listing whose account cannot sell — kept, and not rendered.
+ * `next` is CHOSEN BY WHAT IS TRUE since yuvoy-api#167. It used to be an
+ * unconditional "travellers can book it now", which is false for a listing
+ * whose account cannot sell, and the portal suppressed it for that reason.
+ *
+ * The three sentences are modelled rather than collapsed into one, because the
+ * portal now prints whichever arrives verbatim: a mock that always sent the
+ * happy one would let the screen ship a claim it never makes.
  */
 const resumeHandler = (path: string) =>
   http.post(url(path), async ({ request, params }) => {
@@ -1387,10 +1399,24 @@ const resumeHandler = (path: string) =>
     const listing = mockExperiences.find((e) => e.id === String(params.id));
     if (!listing) return envelope("not_found", "no such listing", 404);
 
-    const next = "It is back on sale. Travellers can see it and book it now.";
     const state = listing.publicationState ?? "draft";
+
+    /*
+      Which of the three is true. `sellable === false` is the case the old
+      unconditional sentence lied about: a listing that is published and still
+      unsellable, because something on the account stops sales — a lapsed
+      insurance document, a standing that is not LIVE. Eligibility is
+      re-derived on every read, so publishing never settles it.
+    */
+    const sentenceFor = (now: string) =>
+      now === "in_review"
+        ? "It is back on your listings. This one is still waiting for its first check, so travellers cannot see it yet."
+        : listing.sellable === false
+          ? "It is back on your listings. Something on your account is stopping sales, so travellers cannot book it yet. Business says what."
+          : "It is back on sale. Travellers can see it and book it now.";
+
     if (state === "published" || state === "in_review") {
-      return HttpResponse.json({ state, next });
+      return HttpResponse.json({ state, next: sentenceFor(state) });
     }
     if (state !== "withdrawn") {
       return envelope("not_withdrawn", "this listing is not off sale", 409);
@@ -1411,7 +1437,10 @@ const resumeHandler = (path: string) =>
 
     listing.publicationState = "published";
     listing.status = "live";
-    return HttpResponse.json({ state: "published", next });
+    return HttpResponse.json({
+      state: "published",
+      next: sentenceFor("published"),
+    });
   });
 
 export const handlers = [
