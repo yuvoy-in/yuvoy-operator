@@ -47,6 +47,23 @@ export function ArrowRightIcon(props: IconProps) {
   );
 }
 
+/**
+ * Leaves this site. On the "Preview your operator page" link, which opens the
+ * traveller app in a new tab — yuvoy-operator#41.
+ *
+ * The mark is what tells somebody a tap is about to leave the portal, which
+ * `target="_blank"` otherwise does silently.
+ */
+export function ExternalIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+    </Icon>
+  );
+}
+
 export function ChevronRightIcon(props: IconProps) {
   return (
     <Icon {...props}>

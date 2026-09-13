@@ -1440,6 +1440,52 @@ for (const f of files) {
   }
 }
 
+/* ------ 15. the story's photographs use the story's own upload slot ------ */
+
+/**
+ * `/logo/upload-intents` called from anywhere but the logo.
+ *
+ * Story photographs minted through the logo's intent, on the issue's original
+ * instruction to "upload the bytes through the existing image upload intent".
+ * It was corrected on yuvoy-operator#41: that slot is OWNER and MANAGER only,
+ * because a logo is the business's mark, while the story is editable by every
+ * operator role. So a STAFF member could write their story, choose a
+ * photograph, and be refused a 403 after picking the file.
+ *
+ * `POST /story/photos/upload-intents` is the open one.
+ *
+ * A test cannot catch a revert of this cheaply: the mock's role gate proves
+ * the two endpoints differ, and the Server Action's own test would need a
+ * session. The mistake is one string in one file, so it is checked as one
+ * string in one file — which also fails in the diff, where somebody can still
+ * see why.
+ */
+
+{
+  const LOGO_INTENT = "/logo/upload-intents";
+  for (const f of files) {
+    if (!code(f).includes(LOGO_INTENT)) continue;
+    // The logo's own screen is the one caller that should have it.
+    if (/src[/\\]app[/\\]logo[/\\]/.test(f)) continue;
+    /*
+      And a test may NAME it, which is not calling it. `mock-roles.test.ts`
+      drives this endpoint as a staff member precisely to prove it is gated —
+      the assertion that gives the rest of this check its meaning. A guard that
+      refused the test proving the rule is a guard nobody can satisfy.
+    */
+    if (/\.test\.tsx?$/.test(f)) continue;
+
+    problems.push(
+      `${rel(f)}: calls ${LOGO_INTENT}, which is OWNER and MANAGER only ` +
+        `because a logo is the business's mark. A story photograph must use ` +
+        `POST /story/photos/upload-intents, which is open to every operator ` +
+        `role — the same set that may edit the story. Using the logo's slot ` +
+        `let a staff member write their story and then be refused a 403 ` +
+        `after choosing a file (yuvoy-operator#41).`,
+    );
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);

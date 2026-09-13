@@ -82,6 +82,16 @@ export interface OperatorIdentity {
   name: string;
   roles: string[];
   operatorId: string;
+  /**
+   * The business's own address on the traveller app — yuvoy-operator#41.
+   *
+   * `operators.slug` is `not null unique`, so the contract marks it required
+   * and the API always sends it. Typed nullable here anyway: required in a
+   * pinned contract is a promise about master, not about the deployed API, and
+   * the one screen that reads it renders nothing rather than a link to
+   * `/o/undefined`.
+   */
+  slug: string | null;
   /** OWNER or MANAGER. Capacity, earnings and call-off require it. */
   canManage: boolean;
   /**
@@ -155,6 +165,7 @@ export async function requireOperator(): Promise<{
         name: data.name ?? "",
         roles: data.roles ?? [],
         operatorId: data.operatorId ?? "",
+        slug: data.slug?.trim() || null,
         canManage: data.canManage ?? false,
         account: standingOf(data.account),
       },

@@ -4,24 +4,39 @@ import {
   ABOUT_MIN,
   aboutIssue,
   aboutSize,
-  countsFaster,
   languagesIssue,
   parseLanguages,
   toStory,
 } from "./story";
 
 describe("how long `about` is — yuvoy-operator#41", () => {
-  it("measures what the API measures: bytes of the trimmed text", () => {
+  it("measures what the API measures: CHARACTERS of the trimmed text", () => {
+    /*
+      It measured bytes, because `SaveStory` checked Go's `len`, which is bytes
+      of UTF-8. The rule was wrong on both sides and landed on exactly the
+      wrong people: every letter of Bengali or Devanagari is three bytes, so a
+      business writing in one got about 200 characters rather than 600.
+
+      The API counts `utf8.RuneCountInString` now, which is what the database
+      constraint always measured. These three are the cases that told the two
+      apart, and they now agree with the letters typed.
+    */
     expect(aboutSize("  Two boats.  ")).toBe(10);
-    // The apostrophe a phone types for ' is three bytes.
-    expect(aboutSize("We’re")).toBe(7);
-    // Devanagari: three bytes a letter.
-    expect(aboutSize("नमस्ते")).toBe(18);
+    // The apostrophe a phone types for ' was three bytes and is one character.
+    expect(aboutSize("We’re")).toBe(5);
+    // Devanagari: six code points, eighteen bytes.
+    expect(aboutSize("नमस्ते")).toBe(6);
   });
 
-  it("says when the count will run ahead of the typing", () => {
-    expect(countsFaster("Two boats and a crew")).toBe(false);
-    expect(countsFaster("We’re out by seven")).toBe(true);
+  it("counts code points, not UTF-16 units", () => {
+    /*
+      `"🐠".length` is 2: a string's `.length` counts UTF-16 code units, and
+      anything outside the basic plane is a surrogate pair. A business that put
+      an emoji in its story would be charged double for it, and the count would
+      disagree with the API for the second time in the same field.
+    */
+    expect(aboutSize("🐠")).toBe(1);
+    expect("🐠".length).toBe(2);
   });
 
   it("allows empty, which clears it", () => {
@@ -42,11 +57,20 @@ describe("how long `about` is — yuvoy-operator#41", () => {
     );
   });
 
-  it("refuses what the API would refuse, even when it looks short enough", () => {
-    // 598 letters, two of them curly apostrophes: 602 bytes.
+  it("no longer refuses a paragraph the API would accept", () => {
+    /*
+      The inverse of the old assertion, and the reason this changed. 598
+      characters with two curly apostrophes is 602 BYTES: the portal refused it
+      while the API and the database were happy. Written in Bengali the same
+      paragraph was refused at a third of the length.
+    */
     const text = "a".repeat(596) + "’’";
     expect([...text]).toHaveLength(598);
-    expect(aboutIssue(text)).not.toBeNull();
+    expect(aboutIssue(text)).toBeNull();
+
+    // A Bengali paragraph of 600 characters is ~1800 bytes and is fine.
+    expect(aboutIssue("আ".repeat(ABOUT_MAX))).toBeNull();
+    expect(aboutIssue("আ".repeat(ABOUT_MAX + 1))).not.toBeNull();
   });
 });
 

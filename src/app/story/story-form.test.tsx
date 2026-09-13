@@ -35,14 +35,23 @@ describe("writing the story — yuvoy-operator#41", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
-  it("counts the way the API counts, and says why that runs ahead of the typing", () => {
+  it("counts the way the API counts, which is now the letters typed", () => {
+    /*
+      It counted BYTES, because the API did — so this same sentence read "42 of
+      600" for forty characters, and the screen carried a line excusing it.
+      Both are gone: the API counts characters (yuvoy-operator#41), and a count
+      that disagrees with the letters on screen is the one thing a counter must
+      never do.
+    */
     render(<StoryForm about="" languages={[]} />);
-    // Forty letters; the apostrophe a phone types is three bytes, so 42.
+    const text = "We’re out past the reef by seven, daily.";
+    expect([...text]).toHaveLength(40);
+
     fireEvent.change(screen.getByLabelText("About your business"), {
-      target: { value: "We’re out past the reef by seven, daily." },
+      target: { value: text },
     });
-    expect(screen.getByText("42 of 600")).toBeInTheDocument();
-    expect(screen.getByText(/counts faster than you type/)).toBeInTheDocument();
+    expect(screen.getByText("40 of 600")).toBeInTheDocument();
+    expect(screen.queryByText(/counts faster than you type/)).toBeNull();
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
