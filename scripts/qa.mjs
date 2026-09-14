@@ -1609,6 +1609,113 @@ for (const f of files) {
   }
 }
 
+/* ------- a branched error code must be one the contract declares --------- */
+
+/**
+ * `err.code === "..."` against a code the pinned contract does not declare.
+ *
+ * This portal branches on error-code string literals and nothing checked any of
+ * them (operator#64). `OperatorApiError.code` is a bare `string`, so there is no
+ * mirror to go stale and nothing for the typechecker to narrow: a misspelled
+ * literal is a branch that silently never runs, and the symptom is the generic
+ * failure copy on a refusal that had a true sentence behind it.
+ *
+ * The sibling on the app side was worse, because there a mirror DID exist and
+ * had fallen behind: three codes the API had started returning rendered as
+ * "Something went wrong" with a retry that could never succeed (yuvoy-app#53).
+ * Nothing here is wrong today. This is the guard that keeps it that way.
+ *
+ * ## One direction only, and that is the load-bearing part
+ *
+ * Contract to client is NOT checked. A code in the client that the contract no
+ * longer declares is legitimate and sometimes required: the API stops
+ * RETURNING a code long before the enum drops it, and this repo already keeps
+ * such branches deliberately so exhaustive handling in a deployed client still
+ * typechecks. Flagging those would train somebody to delete handling the portal
+ * still needs.
+ *
+ * ## Why the enum and not the whole file
+ *
+ * The issue's own evidence grepped the contract for each code, which passes on
+ * a code that appears only in PROSE. Several do. This parses the `enum:` under
+ * the error envelope's `code`, so what is checked is a declaration.
+ *
+ * ## Two things the pattern has to exclude, both found while writing it
+ *
+ *   - **`typeof x === "string"`.** It matches `.code === "string"` in
+ *     `errors.ts`'s own type guard, and `string` is not an error code.
+ *   - **A field called `code` on something that is not an error.**
+ *     `WITHDRAW_REASONS` entries carry one, and `people_in_it_objected` is a
+ *     takedown reason from a different enum entirely. It lives in a test, which
+ *     `files` already excludes, but the receiver is matched as `err.code` rather
+ *     than any `.code` so that a future production use cannot be flagged as a
+ *     bad error code.
+ *
+ * A whole-identifier match also matters: `-o` on `code === "…"` happily matches
+ * the tail of `reasonCode === "…"`, which is how the issue's own list came to
+ * carry a takedown reason among the error codes.
+ */
+
+{
+  const contract = readFileSync(
+    join(ROOT, "contracts/operator-openapi.yaml"),
+    "utf8",
+  );
+
+  /*
+    The enum under the error envelope's `code`. Anchored on the indentation the
+    document uses for that property so a `code:` elsewhere cannot be picked up.
+  */
+  const anchor =
+    "\n            code:\n              type: string\n              enum:\n";
+  const at = contract.indexOf(anchor);
+
+  if (at < 0) {
+    problems.push(
+      `contracts/operator-openapi.yaml: the error envelope's code enum was not ` +
+        `found. The branched-code check cannot run, which means it is silently ` +
+        `passing.`,
+    );
+  } else {
+    const rest = contract.slice(at + 1);
+    const end = rest.search(/\n {12}[a-z]/);
+    const block = end < 0 ? rest : rest.slice(0, end);
+    const declared = new Set(
+      [...block.matchAll(/^\s+- ([a-z_]+)$/gm)].map((m) => m[1]),
+    );
+
+    if (declared.size < 20) {
+      problems.push(
+        `scripts/qa.mjs: only ${declared.size} error codes parsed out of the ` +
+          `contract. The enum has dozens, so the parse is broken and the ` +
+          `branched-code check is passing over almost nothing.`,
+      );
+    }
+
+    for (const f of files) {
+      if (/\.test\.tsx?$/.test(f)) continue;
+      const s = code(f);
+      /*
+        `err.code`, with the whole identifier matched. Not any `.code`, and not
+        a bare `code`: see the two exclusions above.
+      */
+      for (const m of s.matchAll(
+        /(?<![A-Za-z0-9$_.])err\.code\s*===\s*"([a-z_]+)"/g,
+      )) {
+        if (!declared.has(m[1])) {
+          problems.push(
+            `${rel(f)}: branches on error code "${m[1]}", which the pinned ` +
+              `contract does not declare. A code the API never sends is a ` +
+              `branch that never runs, and the traveller or operator gets the ` +
+              `generic failure copy over a refusal that had a true sentence ` +
+              `behind it (operator#64).`,
+          );
+        }
+      }
+    }
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);
