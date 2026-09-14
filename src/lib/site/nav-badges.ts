@@ -1,7 +1,11 @@
 import "server-only";
 import { readMe, readSessionToken } from "@/lib/auth/session";
 import { listOpenRequests } from "@/lib/day/requests";
-import { standingOf } from "@/lib/account/standing";
+import {
+  standingOf,
+  suspensionOf,
+  type Suspension,
+} from "@/lib/account/standing";
 import { countBadges } from "./badge-counts";
 import type { NavBadges } from "./nav";
 
@@ -34,21 +38,47 @@ import type { NavBadges } from "./nav";
  * nudge to open it.
  */
 export async function navBadges(): Promise<NavBadges> {
+  return (await chromeData()).badges;
+}
+
+/**
+ * Everything the chassis needs from the server, from the one `GET /me` the
+ * badges already cost.
+ *
+ * The suspension banner rides here rather than making a second call
+ * (yuvoy-operator#50). It has to appear on EVERY signed-in screen, so the
+ * layout is the only place it can be drawn once, and the layout already reads
+ * `/me` for the badges. A separate read would double the request on every
+ * page to learn something the first response already carried.
+ *
+ * The same rule as the badges holds: a failure costs the banner, never the
+ * page. An operator whose `/me` did not answer sees the portal they always
+ * saw, which is the right failure. The wrong one is a blank page over a field
+ * nobody could read.
+ */
+export async function chromeData(): Promise<{
+  badges: NavBadges;
+  suspension: NonNullable<Suspension> | null;
+}> {
   let token: string | null;
   try {
     token = await readSessionToken();
   } catch {
-    return {};
+    return { badges: {}, suspension: null };
   }
-  if (!token) return {};
+  if (!token) return { badges: {}, suspension: null };
 
   const [me, requests] = await Promise.allSettled([
     readMe(token),
     listOpenRequests(token),
   ]);
 
-  return countBadges({
-    account: me.status === "fulfilled" ? standingOf(me.value.account) : null,
-    requests: requests.status === "fulfilled" ? requests.value : undefined,
-  });
+  const account = me.status === "fulfilled" ? me.value.account : undefined;
+  return {
+    badges: countBadges({
+      account: account ? standingOf(account) : null,
+      requests: requests.status === "fulfilled" ? requests.value : undefined,
+    }),
+    suspension: suspensionOf(account),
+  };
 }

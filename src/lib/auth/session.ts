@@ -7,7 +7,12 @@ import { signInPathFor } from "@/lib/auth/return-to";
 import { SESSION_PATH_HEADER } from "@/proxy";
 
 import { classifyMeFailure } from "@/lib/account/status";
-import { standingOf, type Standing } from "@/lib/account/standing";
+import {
+  standingOf,
+  suspensionOf,
+  type Standing,
+  type Suspension,
+} from "@/lib/account/standing";
 
 /**
  * The operator session: reading it, and deciding what it means.
@@ -113,6 +118,17 @@ export interface OperatorIdentity {
    * treated an absent block as approval is exactly the bug this replaced.
    */
   account: Standing | null;
+  /**
+   * Present exactly while the business is suspended, closed or disqualified
+   * (yuvoy-operator#50), and absent otherwise.
+   *
+   * Carried on the identity beside `canManage` and for the same reason: every
+   * screen that draws a write control already has this object, so deciding
+   * whether to draw one costs no second read. A suspended business may still
+   * make some writes and not others, so this is not a blanket "read only":
+   * see `WRITES_ALLOWED_WHILE_SUSPENDED`.
+   */
+  suspension: NonNullable<Suspension> | null;
 }
 
 /**
@@ -181,6 +197,7 @@ export async function requireOperator(): Promise<{
             : null,
         canManage: data.canManage ?? false,
         account: standingOf(data.account),
+        suspension: suspensionOf(data.account),
       },
     };
   } catch (err) {
@@ -206,9 +223,17 @@ export async function requireOperator(): Promise<{
     }
 
     /*
-      403 `account_not_active` — suspended or offboarded. The contract draws
-      the line deliberately: the PERSON is fine, the business relationship is
-      not, so the session is NOT cleared and they are not sent to sign in.
+      403 `account_not_active` — an OFFBOARDED account, which cannot hold a
+      session. The contract draws the line deliberately: the PERSON is fine,
+      the business relationship is not, so the session is NOT cleared and they
+      are not sent to sign in.
+
+      It no longer covers a suspended business (yuvoy-operator#50). One of
+      those signs in normally, gets a 200 here, and carries
+      `account.suspension`, so it reaches the portal rather than this branch.
+      That separation is the point: a suspended operator still has trips to run
+      that travellers have paid for, and redirecting them to a single dead-end
+      page would strand those travellers.
 
       It used to throw here, on the stated grounds that the error boundary
       would say what was actually true. There was no error boundary. In

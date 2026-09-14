@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { fraunces, satoshi } from "@/lib/fonts";
 import { AppShell } from "@/components/chrome/app-shell";
-import { navBadges } from "@/lib/site/nav-badges";
+import { chromeData } from "@/lib/site/nav-badges";
+import { SuspensionBanner } from "@/components/account/suspension-banner";
 import { THEME_COLOR } from "@/lib/site/theme";
 import "./globals.css";
 
@@ -44,7 +45,7 @@ export default async function RootLayout({
     browser is never allowed to call. `navBadges` cannot throw: a signed-out
     door, a dead session or a dropped connection costs a badge, never a page.
   */
-  const badges = await navBadges();
+  const { badges, suspension } = await chromeData();
 
   return (
     <html lang="en" className={`${fraunces.variable} ${satoshi.variable}`}>
@@ -55,7 +56,12 @@ export default async function RootLayout({
         >
           Skip to content
         </a>
-        <AppShell badges={badges}>{children}</AppShell>
+        <AppShell
+          badges={badges}
+          banner={<SuspensionBanner suspension={suspension} />}
+        >
+          {children}
+        </AppShell>
       </body>
     </html>
   );

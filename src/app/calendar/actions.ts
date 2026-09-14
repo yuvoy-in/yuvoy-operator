@@ -20,6 +20,7 @@ import {
 } from "@/lib/day/departures";
 import { marketDays } from "@/lib/format/market-time";
 import { dedash, dedashText } from "@/lib/format/dedash";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * The four capacity writes.
@@ -98,6 +99,10 @@ export async function setCapacity(
     }
     if (err instanceof OperatorApiError) {
       if (err.status === 409) return { slotId, message: dedash(err.message) };
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { slotId, message: refusal };
       if (err.status === 403) {
         return {
           slotId,
@@ -191,6 +196,10 @@ export async function addBlackout(
       return { message: "No signal. Nothing was closed." };
     }
     if (err instanceof OperatorApiError) {
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
           message:
@@ -461,6 +470,10 @@ export async function addDepartures(
       return { message: "No signal. Nothing was added." };
     }
     if (err instanceof OperatorApiError) {
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
           message:

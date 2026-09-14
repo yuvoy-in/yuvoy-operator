@@ -32,6 +32,7 @@ import {
   LIVE_OUTSTANDING_ID,
   PROSPECT_ID,
   SUSPENDED_ID,
+  ACCOUNT_SUSPENDED,
   REQUESTS,
   SLOTS,
   TEAM,
@@ -984,6 +985,32 @@ function uploadIntent(id: string, uploadId: string, sizeBytes: number) {
   );
 }
 
+/**
+ * A write a suspended business may not make - yuvoy-operator#50.
+ *
+ * Called by the handlers for the writes that are NOT on the allowed list. The
+ * list itself lives in `src/lib/account/standing.ts`; this is the other side
+ * of it, and the two disagreeing is exactly the bug the portal would ship: a
+ * button drawn for a write the API refuses, or a button withheld for one it
+ * would have taken.
+ *
+ * The message is the API's own, and it is the SAME sentence `GET /me` carries
+ * in `account.suspension.message`. The contract requires that: "every refused
+ * write answers with [it] too, so a banner and a tapped button never
+ * disagree."
+ */
+function requireWritable(request: Request) {
+  const user = sessionUser(request);
+  if (user?.id === SUSPENDED_ID) {
+    return envelope(
+      "account_suspended",
+      ACCOUNT_SUSPENDED.suspension.message,
+      403,
+    );
+  }
+  return null;
+}
+
 /** Every authenticated route answers 401 the same way. */
 function requireSession(request: Request) {
   const user = sessionUser(request);
@@ -995,18 +1022,23 @@ function requireSession(request: Request) {
     );
   }
   /*
-    A suspended business answers 403 on EVERY endpoint, not only `/me`. The
-    session is valid and the person is fine — the contract is explicit that
-    those are different things — so this is deliberately not a 401, and
-    clearing their cookie would tell them the wrong story entirely.
+    A SUSPENDED BUSINESS IS NO LONGER REFUSED HERE - yuvoy-operator#50.
+
+    It used to answer `403 account_not_active` on every endpoint including
+    `/me`, which is what the API did then. The contract has since separated the
+    two: "a suspended business is not refused here, and nor is one whose status
+    is `OFFBOARDED` or `DISQUALIFIED`: each signs in, and its writes answer
+    `account_suspended` instead."
+
+    So this identity now signs in, reads everything, and meets
+    `account_suspended` only on the writes it may not make. `requireWritable`
+    below is what says which, and the reason the distinction matters is that a
+    suspended operator still has departures to run that travellers have paid
+    for: refusing them everywhere would strand those travellers.
+
+    `account_not_active` is left for an OFFBOARDED account, which cannot hold a
+    session at all and which no identity here stands in for.
   */
-  if (user.id === SUSPENDED_ID) {
-    return envelope(
-      "account_not_active",
-      "This account cannot trade right now.",
-      403,
-    );
-  }
   /*
     Not an account state: the server having a bad minute. Kept distinct so the
     portal can be checked for the one confusion that matters — a dropped
@@ -1326,6 +1358,8 @@ const pauseHandler = (path: string) =>
   http.post(url(path), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
     if (!canManage(sessionUser(request)!)) {
       return envelope(
         "forbidden",
@@ -1432,6 +1466,8 @@ const resumeHandler = (path: string) =>
   http.post(url(path), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
     if (!canManage(sessionUser(request)!)) {
       return envelope(
         "forbidden",
@@ -1611,28 +1647,30 @@ export const handlers = [
       tested against.
     */
     const account =
-      me.id === PROSPECT_ID || signups.some((sme) => sme.id === me.id)
-        ? /*
+      me.id === SUSPENDED_ID
+        ? ACCOUNT_SUSPENDED
+        : me.id === PROSPECT_ID || signups.some((sme) => sme.id === me.id)
+          ? /*
             A brand-new account is PROSPECT and cannot be booked — that is the
             whole safety property of self-signup, and a mock that handed one
             ACCOUNT_LIVE would let this portal ship the congratulation the API
             never earns.
           */
-          ACCOUNT_PROSPECT
-        : me.id === AWAITING_ID
-          ? ACCOUNT_AWAITING
-          : me.id === LIVE_OUTSTANDING_ID
-            ? /*
+            ACCOUNT_PROSPECT
+          : me.id === AWAITING_ID
+            ? ACCOUNT_AWAITING
+            : me.id === LIVE_OUTSTANDING_ID
+              ? /*
                 Live, selling, and still owing us the logo and the registered
                 address — yuvoy-operator#38. Branched BEFORE the
                 `OTHER_MEMBERS` fallthrough, which hands back no account block
                 at all, because this identity exists to render a screen rather
                 than to hide one.
               */
-              ACCOUNT_LIVE_OUTSTANDING
-            : OTHER_MEMBERS.some((o) => o.id === me.id)
-              ? undefined
-              : ACCOUNT_LIVE;
+                ACCOUNT_LIVE_OUTSTANDING
+              : OTHER_MEMBERS.some((o) => o.id === me.id)
+                ? undefined
+                : ACCOUNT_LIVE;
 
     return HttpResponse.json({
       id: me.id,
@@ -1693,6 +1731,8 @@ export const handlers = [
   http.post(url("/team"), async ({ request }) => {
     const failed = requireInviter(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json()) as {
       phone?: string;
@@ -2462,6 +2502,8 @@ export const handlers = [
   http.post(url("/experiences"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json()) as Record<string, unknown>;
     const title = String(body.title ?? "").trim();
@@ -3025,6 +3067,8 @@ export const handlers = [
   http.post(url("/slots"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
     const me = sessionUser(request)!;
     if (!canManage(me)) {
       return envelope("forbidden", "STAFF cannot add departures.", 403);
@@ -3393,6 +3437,8 @@ export const handlers = [
   http.post(url("/requests/:id/accept"), async ({ request, params }) => {
     const failed = requireManager(request, "STAFF cannot commit seats.");
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const id = String(params.id);
     const open = REQUESTS.find((r) => r.id === id);
@@ -3579,6 +3625,15 @@ export const handlers = [
     const failed = requireOwner(request);
     if (failed) return failed;
 
+    /*
+      Raising a change is refused while suspended; stopping one is not
+      (yuvoy-operator#50). After the role gate, for the reason the role gate is
+      first: somebody who may not do this at all should be refused for who they
+      are rather than for the state of the business.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
+
     if (!steppedUp) {
       return envelope("step_up_required", "Ask for a code first.", 403);
     }
@@ -3689,6 +3744,8 @@ export const handlers = [
   http.patch(url("/slots/:id"), async ({ request, params }) => {
     const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const id = String(params.id);
     const slot = SLOTS.find((s) => s.id === id);
@@ -3729,6 +3786,8 @@ export const handlers = [
   http.post(url("/blackouts"), async ({ request }) => {
     const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json()) as {
       from?: string;
@@ -3802,6 +3861,8 @@ export const handlers = [
   http.post(url("/slots/:id/offline-sales"), async ({ request, params }) => {
     const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const id = String(params.id);
     const slot = SLOTS.find((s) => s.id === id);

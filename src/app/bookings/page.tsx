@@ -265,7 +265,15 @@ export default async function BookingsPage() {
             */
             <RequestQueue
               requests={requests}
+              /*
+                Accepting is refused while suspended and declining is not
+                (yuvoy-operator#50): a suspended business can always let a
+                traveller go and can never take one on. The row draws Decline
+                either way and drops Accept, rather than going read-only and
+                leaving a traveller waiting on an answer that cannot come.
+              */
               canAnswer={me.canManage}
+              canAccept={!me.suspension}
               at={at}
               today={today}
               tomorrow={tomorrow}

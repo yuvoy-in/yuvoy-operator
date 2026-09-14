@@ -111,15 +111,33 @@ export default async function CapacityPage() {
         have look like. Both forms are collapsed until pressed, so the days are
         still the first thing on the screen.
       */}
-      {me.canManage ? (
+      {/*
+        NOTHING on this screen survives a suspension - yuvoy-operator#50.
+        Seats, closed dates, reopening, moving a departure and counter sales
+        are none of them on the list a suspended business may still write, so
+        the whole write surface goes rather than each control answering the
+        suspension sentence one tap at a time. The banner above already says
+        why, and the days themselves still read.
+      */}
+      {me.canManage && !me.suspension ? (
         <div className="mt-8">
           <DepartureForm listings={listings} today={today} />
         </div>
       ) : null}
 
-      <div className="mt-8">
-        <BlackoutForm today={today} />
-      </div>
+      {/*
+        Closing dates is `POST /blackouts`, which is not on the list a
+        suspended business may still write (yuvoy-operator#50).
+
+        Worth noting for #45, which reworks this screen: this form is drawn for
+        every role, including STAFF, who the API refuses. That gap predates
+        this change and is left alone here rather than fixed in passing.
+      */}
+      {me.suspension ? null : (
+        <div className="mt-8">
+          <BlackoutForm today={today} />
+        </div>
+      )}
 
       <section className="mt-12" aria-labelledby="fortnight">
         <h2 id="fortnight" className="font-display text-3xl">
@@ -146,7 +164,7 @@ export default async function CapacityPage() {
                 label={dayCaption(day, today, tomorrow)}
                 departures={departuresOn(slots, day)}
                 guests={guests ? (guests.get(day) ?? 0) : null}
-                canManage={me.canManage}
+                canManage={me.canManage && !me.suspension}
               />
             ))}
           </div>

@@ -57,7 +57,12 @@ export default async function TeamPage() {
     person able to add somebody — gating the form on OWNER left them looking at
     a screen that told them nothing they could act on.
   */
-  const canInvite = canManageAccess(me.roles);
+  /*
+    Inviting is refused while suspended; holding, restoring and removing are
+    not (yuvoy-operator#50). A suspended business can still take somebody's
+    access away and cannot hand new access out.
+  */
+  const canInvite = canManageAccess(me.roles) && !me.suspension;
   const { people, invitations } = splitTeam(team.people);
 
   return (

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * The logo — yuvoy-operator#35 §2, #33.
@@ -102,6 +103,10 @@ function failure(err: unknown): { message: string; unavailable?: boolean } {
     return { message: "No signal. Nothing was changed." };
   }
   if (err instanceof OperatorApiError) {
+    // A suspended business is refused with 403 too, and the role
+    // sentence would be the wrong one. See `suspendedMessage`.
+    const refusal = suspendedMessage(err);
+    if (refusal) return { message: refusal };
     if (err.status === 403) {
       return { message: "Your role cannot change the logo." };
     }

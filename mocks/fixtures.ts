@@ -1125,6 +1125,42 @@ export const ACCOUNT_LIVE_OUTSTANDING = {
 };
 
 export const SUSPENDED_ID = "usr_suspended";
+
+/**
+ * A suspended business, as `GET /me` now answers it - yuvoy-operator#50.
+ *
+ * Live-shaped in every other respect, because that is the point: it signs in,
+ * reads everything and runs the trips it has already sold. `bookable` is false
+ * and `OPERATOR_SUSPENDED` sits in `blocking` like any other reason, with the
+ * detail in `suspension`.
+ *
+ * The three sentences are the API's own, from the contract's description of
+ * the field. `adminMessage` is included because it is the one a person wrote
+ * and the one a screen is most likely to drop.
+ */
+export const ACCOUNT_SUSPENDED = {
+  state: "SUSPENDED",
+  bookable: false,
+  blocking: [
+    {
+      code: "OPERATOR_SUSPENDED",
+      label: "Your account has been suspended",
+      waitingOn: "yuvoy",
+      gates: true,
+      since: todayAt("09:00", -3),
+    },
+  ],
+  credentials: ACCOUNT_LIVE.credentials,
+  suspension: {
+    since: todayAt("09:00", -3),
+    message:
+      "Your account has been suspended. Please reach out to admin for help.",
+    adminMessage:
+      "We have had three complaints about missed pickups this month. Call us before your next departure.",
+    stillAllowed:
+      "You can still read everything, run or stop the trips already booked with anything paid online refunded in full, and deal with your team, a bank change and your documents.",
+  },
+};
 export const PROSPECT_ID = "usr_prospect";
 export const AWAITING_ID = "usr_awaiting";
 /** Live and selling, with the logo and the registered address outstanding. */

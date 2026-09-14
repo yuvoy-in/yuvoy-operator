@@ -12,6 +12,7 @@ import {
   type PauseReason,
 } from "@/lib/services/listings";
 import { dedashText } from "@/lib/format/dedash";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * O7 — an operator writes their own listing, and proposes changes to it.
@@ -314,6 +315,10 @@ export async function createListing(
         */
         return { message: err.message || "Check the details and try again." };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
           message: "This account cannot add listings yet. Message us.",
@@ -550,6 +555,10 @@ export async function submitRevision(
         return { message: "That listing is not on this account any more." };
       }
       if (err.status === 400 && err.message) return { message: err.message };
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return { message: "You cannot change listings on this account." };
       }
@@ -723,6 +732,10 @@ export async function pauseListing(
           "Somebody is paying for this listing right now. Try again in a few minutes. Nothing changed.",
         );
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return again(refusal);
       if (err.status === 403) {
         return again(
           "Your role cannot pause a listing. An owner, admin or manager has to.",
@@ -848,6 +861,10 @@ export async function resumeListing(
             "It is not paused, so there is nothing to resume. Refresh to see where it is.",
         };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
           message:

@@ -12,6 +12,7 @@ import {
   type RightsType,
   type WithdrawReason,
 } from "@/lib/media/rights";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * O8's three writes. The fourth step — the bytes — does not happen here.
@@ -163,6 +164,10 @@ export async function createUploadIntent(
             "An upload is already going for this business, started somewhere else. Yours will go once that one finishes or times out.",
         };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return { message: "Your role cannot upload footage." };
       }
@@ -601,6 +606,10 @@ export async function createPhotoIntent(
       return { message: "No signal. Nothing was started." };
     }
     if (err instanceof OperatorApiError) {
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return { message: "Your role cannot upload photographs." };
       }
