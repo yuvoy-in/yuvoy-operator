@@ -1,13 +1,5 @@
 // @vitest-environment node
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { server } from "../../../mocks/server";
 import { __resetOperatorMocks } from "../../../mocks/handlers";
 import { apiBaseUrl } from "@/lib/api/server-client";
@@ -72,7 +64,15 @@ const GATED: Array<[string, string, unknown?]> = [
     "/slots/slot_any/call-off",
     { reasonCode: "WEATHER", confirmSlotId: "slot_any" },
   ],
-  ["GET", "/earnings?from=2030-01-01&to=2030-01-31"],
+  /*
+    `GET /earnings` is gone with the month picker (yuvoy-operator#47 item 8).
+    The settlement family replaces it and carries the same refusal: every one
+    of them "Requires OWNER, ADMIN or MANAGER".
+  */
+  ["GET", "/settlements/overview"],
+  ["GET", "/settlements"],
+  ["GET", "/settlements/stl_sent"],
+  ["GET", "/settlements/stl_sent/statement"],
   /*
     The logo's mark is the business's — yuvoy-operator#41. Gated here because
     story photographs used to ride this intent, and the correction is only
@@ -120,35 +120,22 @@ describe("manage-only endpoints refuse STAFF with the contract's 403", () => {
     const owner = await signIn(OWNER);
     // The positive control. A mock that answered 403 to everybody would pass
     // every case above while proving nothing about roles.
-    const res = await call(
-      owner,
-      "GET",
-      "/earnings?from=2030-01-01&to=2030-01-31",
-    );
+    const res = await call(owner, "GET", "/settlements/overview");
     expect(res.status).toBe(200);
   });
 });
 
 describe("the mock's calendar and its patience", () => {
-  it("does not call this month settled at 05:30 IST on its last day", async () => {
-    // A bare date parsed as UTC midnight is 05:30 IST — the hour at which
-    // "This month" used to flip to "Paid" with the month still running.
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-09-30T00:00:00Z"));
-    try {
-      const owner = await signIn(OWNER);
-      const res = await call(
-        owner,
-        "GET",
-        "/earnings?from=2026-09-01&to=2026-09-30",
-      );
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { state: string };
-      expect(body.state).not.toBe("settled");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+  /*
+    The month-boundary test went with the month picker it was about
+    (yuvoy-operator#47 item 8). It existed because a bare date parsed as UTC
+    midnight is 05:30 IST, so "This month" flipped to "Paid" while the month was
+    still running. There is no month picker now, and a payout week is the unit.
+
+    The class of bug is still guarded, one layer down: `settlements.test.ts`
+    asserts every week label is read in the market's day, which is the same
+    mistake in the place it can still be made.
+  */
 
   it("answers the sixth wrong code with a 429, not the same 401", async () => {
     for (let i = 0; i < 5; i++) {

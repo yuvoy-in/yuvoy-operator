@@ -612,20 +612,83 @@ export const REQUESTS: MockRequest[] = [
 ];
 
 /**
- * Earnings, and a bank change that holds the payout.
+ * Past payout weeks, one of each state (yuvoy-operator#47).
  *
- * The figures reconcile on purpose — gross − commission − refunds = net — so
- * that the screen's own reconciliation check is exercised on a case that
- * passes rather than only on one that fails.
+ * `EARNINGS` and its month-shaped figures are gone with `GET /earnings`: a
+ * calendar month was never the unit money moves in.
+ *
+ * The three states are here because they are three different promises to an
+ * operator, and only one of them means money has actually moved. The oldest
+ * week is NEGATIVE: a correction larger than what the week pays, which the
+ * contract says leaves that week unpaid "until somebody at Yuvoy decides how to
+ * recover it". A fixture with no negative week would let a screen render an
+ * absolute value and pass.
  */
-export const EARNINGS = {
-  bookings: 12,
+export const SETTLEMENT_SENT = {
+  id: "stl_sent",
+  periodStart: "2026-08-31",
+  periodEnd: "2026-09-06",
+  state: "settled" as const,
+  bookings: 5,
+  /*
+    Deliberately NOT the same net as `nextSettlement` in the overview. The first
+    version of this fixture paid an identical ₹40,150, which made an e2e
+    assertion on that figure ambiguous and, worse, described a world where two
+    different weeks paid the same amount to the paise. A fixture should not be
+    a coincidence.
+  */
   grossPaise: 5_400_000,
-  commissionPaise: 810_000,
-  refundsPaise: 450_000,
-  netPaise: 4_140_000,
-  state: "provisional" as const,
+  commissionPaise: 540_000,
+  refundsPaise: 900_000,
+  adjustmentsPaise: -125_000,
+  netPaise: 3_835_000,
+  lockedAt: "2026-09-07T04:00:00Z",
+  settledAt: "2026-09-08T06:30:00Z",
+  reference: "UTR2026090812345",
 };
+
+export const SETTLEMENT_APPROVED = {
+  id: "stl_approved",
+  periodStart: "2026-08-24",
+  periodEnd: "2026-08-30",
+  state: "approved" as const,
+  bookings: 4,
+  grossPaise: 3_600_000,
+  commissionPaise: 540_000,
+  refundsPaise: 0,
+  adjustmentsPaise: 0,
+  netPaise: 3_060_000,
+  lockedAt: "2026-08-31T04:00:00Z",
+};
+
+export const SETTLEMENT_OWED_BACK = {
+  id: "stl_owed_back",
+  periodStart: "2026-08-17",
+  periodEnd: "2026-08-23",
+  state: "locked" as const,
+  bookings: 1,
+  grossPaise: 450_000,
+  commissionPaise: 67_500,
+  refundsPaise: 0,
+  adjustmentsPaise: -600_000,
+  netPaise: -217_500,
+  lockedAt: "2026-08-24T04:00:00Z",
+};
+
+/**
+ * The statement, as the API sends it.
+ *
+ * A TOTAL row whose net INCLUDES the adjustment, which has no column: that is
+ * the contract's own description and the reason the rows do not add up to the
+ * total. The second row is a cancelled booking the operator kept money on, so
+ * its commission is 0.00, because we take none on a booking that did not
+ * happen.
+ */
+export const STATEMENT_CSV = `reference,trip_date,guests,gross,commission,refunded,net
+YV-7KJ2MQ,2026-09-02,2,36000.00,5400.00,0.00,30600.00
+YV-9PL4XR,2026-09-04,1,18000.00,0.00,9000.00,9000.00
+TOTAL,,3,54000.00,5400.00,9000.00,38350.00
+`;
 
 /**
  * What is owed on cash already taken — yuvoy-operator#40 §2.

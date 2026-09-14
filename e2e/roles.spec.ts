@@ -188,16 +188,24 @@ test("earnings refuses a staff login before the request, not after", async ({
     error boundary, and said "That did not load — try again": false, and
     unactionable, because nothing went wrong and retrying will never work.
   */
+  /*
+    The sentence changed with yuvoy-operator#47 item 8. The rule did not: say it
+    first rather than let somebody meet a refusal they cannot read.
+  */
   await expect(
-    page.getByText("Earnings are for an owner, an admin or a manager"),
+    page.getByText(
+      "Only owners, admins and managers can see what the business is paid",
+    ),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "That did not load" }),
   ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
 
-  // And no figures leaked past the gate on the way to refusing.
-  await expect(page.getByText("Gross")).toHaveCount(0);
+  // And no figures leaked past the gate on the way to refusing. "Fares" is
+  // the label the new screen uses where "Gross" was.
+  await expect(page.getByText("Fares")).toHaveCount(0);
+  await expect(page.getByText("Next settlement")).toHaveCount(0);
 });
 
 test("the staff earnings refusal has no accessibility violations", async ({

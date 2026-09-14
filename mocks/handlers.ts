@@ -1,6 +1,5 @@
 import { http, HttpResponse } from "msw";
 import { apiBaseUrl } from "../src/lib/api/server-client";
-import { marketDate } from "../src/lib/format/market-time";
 import {
   MOCK_TUS_PORT,
   mockPhotoArrived,
@@ -25,7 +24,10 @@ import {
   JOIN_TOKEN,
   JOIN_URL,
   LEAVING_PHONE,
-  EARNINGS,
+  SETTLEMENT_SENT,
+  SETTLEMENT_APPROVED,
+  SETTLEMENT_OWED_BACK,
+  STATEMENT_CSV,
   FAILING_ID,
   OPERATOR,
   OTHER_MEMBERS,
@@ -943,6 +945,26 @@ function profileResponse() {
   if (!profile.address.region) missing.push("region");
   if (!profile.address.postalCode) missing.push("postalCode");
   return { ...profile, missing };
+}
+
+/**
+ * sha256 of a string, as lowercase hex.
+ *
+ * Computed rather than hardcoded, so the statement fixture cannot drift out of
+ * agreement with its own header and make the portal's integrity check look
+ * broken when the CSV is edited (yuvoy-operator#47 item 7).
+ *
+ * `crypto.subtle` rather than `node:crypto`: these handlers run in the browser
+ * worker as well as in Node, and importing a Node builtin here would pull
+ * `node:crypto` into the client graph, which is the failure `pnpm qa`'s
+ * client-import walk exists to catch.
+ */
+async function sha256Hex(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function envelope(code: string, message: string, status: number) {
@@ -3495,33 +3517,157 @@ export const handlers = [
 
   /* -------------------------------------------------------------- money - */
 
-  http.get(url("/earnings"), async ({ request }) => {
+  /*
+    SETTLEMENTS — yuvoy-operator#47.
+
+    `GET /earnings` and its month picker are gone: a calendar month was never
+    the unit money moves in, so every figure it derived was one no transfer ever
+    matched. These four fixtures are shaped to exercise the cases that are
+    easy to get wrong rather than the happy one.
+
+    `nextSettlement` carries a CORRECTION, because a settlement whose
+    adjustment is zero never shows the row that explains why the rows do not add
+    up to the total.
+
+    `pipeline` and `paidAtCounter` are non-zero and deliberately NOT summable
+    into anything: the contract says the pipeline "is never part of anything
+    earned", and a fixture of zeros would let a screen add them in and still
+    look right.
+  */
+  http.get(url("/settlements/overview"), async ({ request }) => {
     const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
 
-    const u = new URL(request.url);
-    const from = u.searchParams.get("from") ?? undefined;
-    const to = u.searchParams.get("to") ?? undefined;
-
-    /*
-      Last month is settled; this month is still provisional. Two states from
-      one endpoint, so the screen's "this can still move" warning is exercised
-      on the case where it matters and absent on the case where it does not.
-    */
-    /*
-      "Over" in the market's calendar, by date string, never `new Date(to)`:
-      that parses a bare date as UTC midnight, which arrives at 05:30 IST — so
-      from half past five on the last morning of every month "This month"
-      rendered as "Paid. The money has left our side" while the month was
-      still running, and the earnings e2e went red for the rest of the day.
-      The same class of bug the day screen had (369267c), one file over.
-    */
-    const isPast = Boolean(from && to && to < marketDate(new Date()));
     return HttpResponse.json({
-      from,
-      to,
-      ...EARNINGS,
-      state: isPast ? "settled" : EARNINGS.state,
+      nextSettlement: {
+        periodStart: "2026-09-07",
+        periodEnd: "2026-09-13",
+        settlesFrom: "2026-09-14",
+        bookings: 6,
+        grossPaise: 5400000,
+        commissionPaise: 810000,
+        refundsPaise: 450000,
+        adjustmentsPaise: -125000,
+        netPaise: 4015000,
+      },
+      pipeline: {
+        bookings: 4,
+        grossPaise: 3600000,
+        commissionPaise: 540000,
+        refundsPaise: 0,
+        netPaise: 3060000,
+      },
+      paidAtCounter: {
+        bookings: 3,
+        farePaise: 2700000,
+        commissionPaise: 405000,
+        netPaise: 2295000,
+      },
+      seasonToDate: {
+        from: "2026-04-01",
+        settlements: 18,
+        bookings: 214,
+        grossPaise: 192600000,
+        commissionPaise: 28890000,
+        refundsPaise: 7200000,
+        adjustmentsPaise: -340000,
+        netPaise: 156170000,
+      },
+    });
+  }),
+
+  /*
+    Past weeks, one of each state, most recent first.
+
+    `complete: true` and no cursor: paging is exercised by the unit tests rather
+    than by a fixture that would make every e2e read two pages.
+
+    The oldest week is NEGATIVE. A correction larger than what a week pays makes
+    the net below zero, and the contract says that week "is not paid until
+    somebody at Yuvoy decides how to recover it". A fixture without one would
+    let a screen render an absolute value and pass.
+  */
+  http.get(url("/settlements"), async ({ request }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    return HttpResponse.json({
+      items: [SETTLEMENT_SENT, SETTLEMENT_APPROVED, SETTLEMENT_OWED_BACK],
+      complete: true,
+      nextCursor: null,
+    });
+  }),
+
+  http.get(url("/settlements/:id"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    const found = [
+      SETTLEMENT_SENT,
+      SETTLEMENT_APPROVED,
+      SETTLEMENT_OWED_BACK,
+    ].find((x) => x.id === params.id);
+    if (!found) return envelope("not_found", "No such settlement.", 404);
+
+    return HttpResponse.json({
+      ...found,
+      /*
+        Two lines, and their nets deliberately do NOT add up to the
+        settlement's: the difference is exactly `adjustmentsPaise`, which is on
+        the settlement and on no line. That gap is the thing the screen has to
+        explain, so the fixture has to contain it.
+
+        The second line is a cancelled booking the operator kept money on: a
+        commission of 0, because we take none on a booking that did not happen.
+      */
+      lines: [
+        {
+          bookingId: "bk_stl_1",
+          reference: "YV-7KJ2MQ",
+          tripDate: "2026-09-09",
+          guests: 2,
+          grossPaise: 3600000,
+          commissionPaise: 540000,
+          refundedPaise: 0,
+          netPaise: 3060000,
+        },
+        {
+          bookingId: "bk_stl_2",
+          reference: "YV-9PL4XR",
+          tripDate: "2026-09-11",
+          guests: 1,
+          grossPaise: 1800000,
+          commissionPaise: 0,
+          refundedPaise: 900000,
+          netPaise: 900000,
+        },
+      ],
+    });
+  }),
+
+  /*
+    The statement, with the header that lets an operator prove they hold the
+    same file we do. The sha256 is COMPUTED from the body rather than
+    hardcoded, so the fixture cannot drift out of agreement with itself and
+    silently make the integrity check look broken.
+  */
+  http.get(url("/settlements/:id/statement"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    if (params.id !== SETTLEMENT_SENT.id) {
+      return envelope("not_settled", "This payout has not been sent yet.", 409);
+    }
+
+    const csv = STATEMENT_CSV;
+    const digest = await sha256Hex(csv);
+    return new HttpResponse(csv, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv",
+        "X-Payout-Sha256": digest,
+        "Content-Disposition": `attachment; filename="yuvoy-statement-${SETTLEMENT_SENT.periodStart}-to-${SETTLEMENT_SENT.periodEnd}.csv"`,
+      },
     });
   }),
 

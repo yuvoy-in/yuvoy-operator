@@ -1,8 +1,9 @@
 import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
 import { marketDate } from "@/lib/format/market-time";
-import type { ChangeRequest, Earnings, EarningsState } from "./earnings";
+import type { ChangeRequest } from "./earnings";
 import { toCommission, type Commission } from "./commission";
+import type { Settlement } from "./settlements";
 import {
   byDeparture,
   toBookingCash,
@@ -10,28 +11,6 @@ import {
   type BookingCash,
   type BookingLine,
 } from "./bookings";
-
-export async function getEarnings(
-  token: string,
-  from: string,
-  to: string,
-): Promise<Earnings> {
-  const { data, error } = await operatorApi(token).GET("/earnings", {
-    params: { query: { from, to } },
-  });
-  if (error) throw error;
-
-  return {
-    from: data.from,
-    to: data.to,
-    bookings: data.bookings ?? 0,
-    grossPaise: data.grossPaise ?? 0,
-    commissionPaise: data.commissionPaise ?? 0,
-    refundsPaise: data.refundsPaise ?? 0,
-    netPaise: data.netPaise ?? 0,
-    state: (data.state ?? "provisional") as EarningsState,
-  };
-}
 
 /**
  * Change requests, only so the earnings screen can say a payout is held.
@@ -148,4 +127,74 @@ export async function getCommissionOwed(token: string): Promise<Commission> {
   const { data, error } = await operatorApi(token).GET("/commission-owed", {});
   if (error) throw error;
   return toCommission(data);
+}
+
+/* ---------------------------------------------------- settlements (op#47) -- */
+
+/**
+ * The whole top of the earnings screen, in one read.
+ *
+ * HARD-failing, unlike `getEarnings` above it was replacing nothing: this IS
+ * the screen. There is nothing else on it to keep up, and four money figures
+ * that quietly render as zero because a request failed is the one wrong answer
+ * that must never appear. An operator who reads "₹0 next settlement" concludes
+ * we owe them nothing.
+ */
+export async function getSettlementOverview(token: string) {
+  const { data, error } = await operatorApi(token).GET(
+    "/settlements/overview",
+    {},
+  );
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Past payout weeks, most recent first.
+ *
+ * SOFT-failing, and the distinction from the overview above is deliberate: the
+ * history is a section, so `null` is "we could not load it" and the screen says
+ * so while the figures above stay up. A list that could not load must not take
+ * the numbers down with it.
+ *
+ * `complete` is read rather than the page's length. The contract says so in as
+ * many words: "Told rather than inferred. Do not infer the end from a short
+ * page."
+ */
+export async function listSettlements(
+  token: string,
+  cursor?: string,
+): Promise<{
+  items: Settlement[];
+  complete: boolean;
+  nextCursor: string | null;
+} | null> {
+  try {
+    const { data, error } = await operatorApi(token).GET("/settlements", {
+      params: { query: { limit: 50, ...(cursor ? { cursor } : {}) } },
+    });
+    if (error) throw error;
+    return {
+      items: data.items ?? [],
+      complete: data.complete ?? true,
+      nextCursor: data.nextCursor ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One payout week with the bookings it paid.
+ *
+ * Hard-failing: a settlement detail with no lines is a blank page pretending to
+ * be a statement. `404` reaches the caller as an `OperatorApiError` so the
+ * route can answer with the not-found screen, which is what the issue asks for.
+ */
+export async function getSettlement(token: string, id: string) {
+  const { data, error } = await operatorApi(token).GET("/settlements/{id}", {
+    params: { path: { id } },
+  });
+  if (error) throw error;
+  return data;
 }
