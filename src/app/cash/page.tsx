@@ -73,8 +73,9 @@ export default async function CashPage() {
           Cash you&rsquo;ve collected
         </h1>
         <p className="text-forest/80 mt-4 text-base">
-          This one is for whoever handles the money. Ask an owner or a manager
-          at your business. Your sign-in works, it just does not open this.
+          This one is for whoever handles the money. Ask an owner, an admin or a
+          manager at your business. Your sign-in works, it just does not open
+          this.
         </p>
       </Screen>
     );

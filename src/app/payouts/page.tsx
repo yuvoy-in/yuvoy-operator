@@ -45,7 +45,14 @@ export default async function PayoutsPage() {
     something the server allows; `pnpm qa` reads both rules out of the contract
     and now says so.
   */
-  const canRaise = me.roles.includes("OWNER");
+  /*
+    Raising a bank change is refused while suspended and stopping one is not
+    (yuvoy-operator#50): the money already in flight can still be redirected
+    back, and no new destination can be proposed.
+  */
+  const canRaise = me.roles.includes("OWNER") && !me.suspension;
+  // Stopping a bank change is allowed while suspended; raising one is not
+  // (yuvoy-operator#50).
   const canStop = canManageAccess(me.roles);
 
   return (

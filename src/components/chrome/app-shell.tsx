@@ -40,9 +40,24 @@ import { Wordmark } from "@/components/ui/wordmark";
 export function AppShell({
   children,
   badges,
+  banner,
 }: {
   children: ReactNode;
   badges?: NavBadges;
+  /**
+   * The suspension banner, rendered by the server layout and placed here
+   * (yuvoy-operator#50). It sits above `children` inside `main`, so it is the
+   * first thing on every signed-in screen and it survives a screen below it
+   * being restructured.
+   *
+   * Passed in rather than read here for the reason `badges` is: this is a
+   * client component and the data comes from `/operator/v1`, which a browser
+   * is never allowed to call.
+   *
+   * Not drawn on a bare route. A sign-in door has no session, so it has no
+   * business telling anybody about an account.
+   */
+  banner?: ReactNode;
 }) {
   const bare = isBareRoute(usePathname());
 
@@ -65,6 +80,7 @@ export function AppShell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <main id="main" className="flex min-w-0 flex-1 flex-col">
+          {bare ? null : banner}
           {children}
         </main>
         <TabBar badges={badges} />

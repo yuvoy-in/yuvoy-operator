@@ -123,7 +123,7 @@ export default async function BookingPage({
               Yuvoy, so there is no payout on this booking.
             </p>
             {/*
-              `/cash` is OWNER or MANAGER, like earnings, so a staff login is
+              `/cash` is OWNER, ADMIN or MANAGER, like earnings, so a staff login is
               not sent to a screen that turns it away.
             */}
             {me.canManage ? (

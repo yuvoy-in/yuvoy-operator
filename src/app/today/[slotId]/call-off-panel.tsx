@@ -77,7 +77,7 @@ export function CallOffPanel({
   if (!canManage) {
     return (
       <p className="text-forest/70 mt-10 text-sm">
-        Calling off a departure needs an owner or a manager.
+        Calling off a departure needs an owner, an admin or a manager.
       </p>
     );
   }

@@ -598,7 +598,7 @@ for (const f of walk(APP)) {
 /* ------- 11. an OWNER-only endpoint is never gated on `canManage` -------- */
 
 /**
- * `canManage` is **OWNER or MANAGER**. Four endpoints are OWNER *only*.
+ * `canManage` is **OWNER, ADMIN or MANAGER**. Four endpoints are OWNER *only*.
  *
  * The two sets are one word apart and the mistake is invisible: gate the team
  * screen on `canManage` and a manager gets an invite form that 403s — having
@@ -615,9 +615,12 @@ for (const f of walk(APP)) {
  *
  *   - **OWNER only** — a 403 whose description names OWNER. Four endpoints:
  *     both team writes, the bank change, and the brake.
- *   - **OWNER or MANAGER** (`canManage`) — an operation that says "Requires
- *     OWNER or MANAGER", or "OWNER or MANAGER only", or whose 403 says
- *     "STAFF cannot …".
+ *   - **`canManage`** (OWNER, ADMIN or MANAGER) — an operation that says
+ *     "Requires OWNER, ADMIN or MANAGER", or the older "Requires OWNER or
+ *     MANAGER" and "OWNER or MANAGER only", or whose 403 says "STAFF
+ *     cannot …". The older spellings are still matched on purpose: they are
+ *     what the contract said, and a parser that forgot them would silently
+ *     re-bucket an endpoint the day one reappeared.
  *
  * The third phrasing was added when `POST /slots` landed saying "OWNER or
  * MANAGER only." and this parser recognised none of it — so the one new write
@@ -977,7 +980,8 @@ for (const page of pages) {
 
   if (manageCalls.length && !gatesOnManage && !gatesOnOwner) {
     problems.push(
-      `${rel(segment)}: reaches ${manageCalls.join(", ")} (OWNER or MANAGER in ` +
+      `${rel(segment)}: reaches ${manageCalls.join(", ")} (OWNER, ADMIN or ` +
+        `MANAGER in ` +
         `the contract) but nothing in this route checks \`canManage\`. A staff ` +
         `login meets a 403 it cannot act on — and if the read itself is ` +
         `refused, an error boundary saying "try again" about a refusal that ` +
@@ -1452,6 +1456,156 @@ for (const f of files) {
         `let a staff member write their story and then be refused a 403 ` +
         `after choosing a file (yuvoy-operator#41).`,
     );
+  }
+}
+
+/* ---- 16. a zod schema field the safeParse object never supplies --------- */
+
+/**
+ * A field declared on a schema, spread into a request body, and never read off
+ * the form.
+ *
+ * yuvoy-operator#60, and it was live on operators.yuvoy.in. `createListing`
+ * declared `screenerKey` on its schema and spread it into
+ * `POST /experiences`, and the object handed to `safeParse` listed eight other
+ * fields and not that one. So `parsed.data.screenerKey` was permanently
+ * `undefined`, the key was never sent, and every listing created through the
+ * form was saved with no screener whatever the operator picked. A listing with
+ * a screener refuses a party that declares a condition before a seat is held,
+ * so the failure was a safety gate silently switched off.
+ *
+ * Nothing caught it. It typechecks, because an optional field being absent is
+ * exactly what the type allows. It lints. The e2e asserted the picker rendered
+ * and stopped there, and it could not have gone further: this portal writes
+ * through Server Actions, so the request never reaches a browser for Playwright
+ * to read.
+ *
+ * The rule: every top-level key of a `z.object({...})` must appear as a key in
+ * the object literal passed to that schema's `safeParse`/`parse`. Only literals
+ * are compared; `schema.safeParse(values)` with a variable is skipped, because
+ * nothing here can say what `values` holds.
+ *
+ * Blocks are matched by counting brackets while skipping string literals, not
+ * by a regex. A regex was tried first and was wrong: `[^}]*` stops at the `}`
+ * inside `.transform(() => undefined)` and at any brace inside a string.
+ */
+{
+  /** The balanced block starting at the opening bracket at `open`. */
+  const blockAt = (src, open) => {
+    const pairs = { "{": "}", "(": ")", "[": "]" };
+    const want = pairs[src[open]];
+    if (!want) return null;
+    let depth = 0;
+    let quote = null;
+    for (let i = open; i < src.length; i++) {
+      const c = src[i];
+      if (quote) {
+        if (c === "\\") i++;
+        else if (c === quote) quote = null;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === "`") {
+        quote = c;
+        continue;
+      }
+      if (c === "{" || c === "(" || c === "[") depth++;
+      else if (c === "}" || c === ")" || c === "]") {
+        depth--;
+        if (depth === 0) return src.slice(open + 1, i);
+      }
+    }
+    return null;
+  };
+
+  /** Top-level `key:` names inside one object body. */
+  const topKeys = (body) => {
+    const out = [];
+    let depth = 0;
+    let quote = null;
+    let token = "";
+    for (let i = 0; i < body.length; i++) {
+      const c = body[i];
+      if (quote) {
+        if (c === "\\") i++;
+        else if (c === quote) quote = null;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === "`") {
+        quote = c;
+        token = "";
+        continue;
+      }
+      if (c === "{" || c === "(" || c === "[") {
+        depth++;
+        token = "";
+        continue;
+      }
+      if (c === "}" || c === ")" || c === "]") {
+        depth--;
+        token = "";
+        continue;
+      }
+      if (depth !== 0) continue;
+      if (c === ":") {
+        const name = token.trim();
+        if (/^[A-Za-z_$][\w$]*$/.test(name)) out.push(name);
+        token = "";
+        continue;
+      }
+      if (c === "," || c === "\n") {
+        token = "";
+        continue;
+      }
+      token += c;
+    }
+    return out;
+  };
+
+  for (const f of files) {
+    if (/\.test\.tsx?$/.test(f)) continue;
+    const s = code(f);
+
+    // Every `const NAME = z.object({` in this module, and its declared keys.
+    const declared = new Map();
+    for (const m of s.matchAll(
+      /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*z\s*\.object\s*\(/g,
+    )) {
+      const open = s.indexOf("{", m.index + m[0].length - 1);
+      if (open < 0) continue;
+      const body = blockAt(s, open);
+      if (body === null) continue;
+      declared.set(m[1], topKeys(body));
+    }
+    if (declared.size === 0) continue;
+
+    for (const m of s.matchAll(
+      /\b([A-Za-z_$][\w$]*)\s*\.\s*(safeParse|parse)\s*\(/g,
+    )) {
+      const keys = declared.get(m[1]);
+      if (!keys || keys.length === 0) continue;
+
+      // The argument must be an object LITERAL to be comparable.
+      let i = m.index + m[0].length;
+      while (i < s.length && /\s/.test(s[i])) i++;
+      if (s[i] !== "{") continue;
+      const body = blockAt(s, i);
+      if (body === null) continue;
+
+      const supplied = new Set(topKeys(body));
+      const missing = keys.filter((k) => !supplied.has(k));
+      if (missing.length === 0) continue;
+
+      problems.push(
+        `${rel(f)}: ${m[1]} declares ${missing.map((k) => `\`${k}\``).join(", ")} ` +
+          `but the object passed to ${m[1]}.${m[2]}() never supplies ` +
+          `${missing.length === 1 ? "it" : "them"}. An optional field missing ` +
+          `from the parsed object is permanently undefined, so anything the ` +
+          `request body spreads from it is never sent, and it typechecks. ` +
+          `This is yuvoy-operator#60: the waiver an operator picked was ` +
+          `dropped on the floor and every new listing was saved with no ` +
+          `screener.`,
+      );
+    }
   }
 }
 

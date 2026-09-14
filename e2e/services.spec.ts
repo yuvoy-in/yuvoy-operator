@@ -349,6 +349,87 @@ test("a listing can be given a health check, from the API's own list", async ({
   ).toBeVisible();
 });
 
+test("the waiver picked on the form is what the listing is saved with", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#60, and it was live. `createListing` declared `screenerKey`
+    on its schema and spread it into the request body, and the object handed to
+    `safeParse` never supplied it, so the key was permanently `undefined` and
+    every listing created here was saved with no screener whatever was picked.
+
+    ## Why this does not assert the request body, which is what the issue asked
+
+    It cannot, in this portal. `POST /experiences` is made by a Server Action
+    inside the Next server, so no request crosses the browser for Playwright to
+    intercept, and nothing renders a saved `screenerKey` back for the page to
+    show. The issue's own test plan assumes a client-side SPA.
+
+    What replaced it is stronger rather than weaker: `pnpm qa` check 16 fails
+    ANY zod schema field the `safeParse` object does not supply, in any module,
+    which is the defect class rather than this one instance. It was proven by
+    reverting the fix and watching it go red, and this test covers the journey
+    as far as a browser can see it: the picker carries the API's own keys, a
+    save with one chosen goes through, and the listing lands.
+  */
+  const suffix = Math.random().toString(36).slice(2, 7);
+  const title = `Reef dive ${suffix}`;
+
+  await signIn(page);
+  await page.goto("/services/activities");
+  await page.getByRole("button", { name: "Add a listing" }).click();
+
+  await page.getByLabel("What is it called").fill(title);
+  await page.getByLabel("What kind of thing it is").selectOption("adventure");
+  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
+  await page.getByLabel("Price", { exact: true }).fill("4500");
+  await page.getByRole("radio", { name: /Per person/ }).check();
+
+  // The key is the API's, from the vocabulary, not a literal typed here.
+  const picker = page.getByLabel("Health check before booking");
+  await picker.selectOption("diving_rstc");
+  await expect(picker).toHaveValue("diving_rstc");
+
+  await page.getByRole("button", { name: "Save as a draft" }).click();
+
+  // Saved rather than refused. A key the API does not know answers 400 with
+  // `details.screenerKey`, so a listing landing at all says the key was one it
+  // accepted.
+  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
+  const row = page.locator("li").filter({ hasText: title });
+  await expect(row.getByText("Draft", { exact: true })).toBeVisible();
+});
+
+test("leaving the waiver at None saves a listing with no health check", async ({
+  page,
+}) => {
+  /*
+    The other half, and the reason the fix reads `""` rather than defaulting:
+    "None" is a real answer that most listings give, and it must send no
+    `screenerKey` key at all rather than an empty one.
+  */
+  const suffix = Math.random().toString(36).slice(2, 7);
+  const title = `Sunset sail ${suffix}`;
+
+  await signIn(page);
+  await page.goto("/services/activities");
+  await page.getByRole("button", { name: "Add a listing" }).click();
+
+  await page.getByLabel("What is it called").fill(title);
+  await page
+    .getByLabel("What kind of thing it is")
+    .selectOption("nature_wildlife");
+  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
+  await page.getByLabel("Price", { exact: true }).fill("2200");
+  await page.getByRole("radio", { name: /For the group/ }).check();
+
+  // Untouched, and that is the point: the default is None.
+  await expect(page.getByLabel("Health check before booking")).toHaveValue("");
+
+  await page.getByRole("button", { name: "Save as a draft" }).click();
+  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
+});
+
 test("a first listing sent back says so, and says it is a draft again", async ({
   page,
 }) => {
@@ -692,14 +773,22 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
   /*
     The API's `next`, rendered VERBATIM again — yuvoy-operator#44.
 
-    It was suppressed, and rightly: the sentence said "ask us to put it back …
+    It was suppressed, and rightly: the sentence said "ask us to put it back ...
     we check it before travellers see it again", which D-032.4 had made false.
     yuvoy-api#167 rewrote it, so the server's words are printed. Asserted on
     the server's exact phrasing rather than a paraphrase, because a portal that
     quietly substituted its own would pass a looser check.
+
+    The phrase moved once more and this assertion moved with it
+    (yuvoy-operator#61). The old matcher, "Put it back on sale yourself
+    whenever you are ready", is not what `withdrawnNext` says in
+    `internal/handler/operator_listing_copy.go` and had not been for a while.
+    It kept passing because the mock carried the same stale words, which is the
+    whole defect: a test and a mock agreeing with each other and with nothing
+    in production.
   */
   await expect(
-    row.getByText(/Put it back on sale yourself whenever you are ready/),
+    row.getByText(/Resume on the listing puts it back straight away/),
   ).toBeVisible();
   // And still nothing that sends the operator to wait for us.
   await expect(row.getByText(/we check it before travellers/i)).toHaveCount(0);

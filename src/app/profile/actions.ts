@@ -16,6 +16,7 @@ import {
   type CredentialType,
 } from "@/lib/profile/credentials";
 import { marketDate } from "@/lib/format/market-time";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * O6's writes — the business behind the account, and the documents we hold.
@@ -138,6 +139,10 @@ export async function saveDetails(
         };
       }
       if (err.status === 400 && err.message) return { message: err.message };
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return { message: "You cannot change the business details." };
       }

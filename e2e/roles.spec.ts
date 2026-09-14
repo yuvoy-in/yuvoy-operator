@@ -137,7 +137,9 @@ test("a staff phone that forces the button through is refused by the action itse
 
   await expect(
     page.getByRole("alert").filter({ hasText: "Your role cannot answer" }),
-  ).toHaveText("Your role cannot answer requests. An owner or manager has to.");
+  ).toHaveText(
+    "Your role cannot answer requests. An owner, admin or manager has to.",
+  );
 
   // And nothing was granted: the request is still in the queue.
   await expect(
@@ -170,7 +172,7 @@ test("a staff login sees capacity and is told it cannot change it", async ({
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Seats, closed dates and counter sales need an owner or a manager.",
+      "Seats, closed dates and counter sales need an owner, an admin or a manager.",
     ),
   ).toBeVisible();
 });
@@ -187,7 +189,7 @@ test("earnings refuses a staff login before the request, not after", async ({
     unactionable, because nothing went wrong and retrying will never work.
   */
   await expect(
-    page.getByText("Earnings are for an owner or a manager"),
+    page.getByText("Earnings are for an owner, an admin or a manager"),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "That did not load" }),

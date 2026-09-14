@@ -20,11 +20,12 @@ import {
 } from "@/lib/day/departures";
 import { marketDays } from "@/lib/format/market-time";
 import { dedash, dedashText } from "@/lib/format/dedash";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * The four capacity writes.
  *
- * All four are OWNER or MANAGER, and all four refuse in ways that matter
+ * All four are OWNER, ADMIN or MANAGER, and all four refuse in ways that matter
  * more than they succeed — which is why every branch here says what actually
  * happened rather than "try again".
  */
@@ -43,7 +44,7 @@ export interface CapacityState {
  * below it, for the day the two disagree.
  */
 const ROLE_REFUSAL =
-  "Seats, closed dates and counter sales need an owner or a manager. Nothing was changed.";
+  "Seats, closed dates and counter sales need an owner, an admin or a manager. Nothing was changed.";
 
 const seatsSchema = z.object({
   slotId: z.string().min(1),
@@ -98,11 +99,15 @@ export async function setCapacity(
     }
     if (err instanceof OperatorApiError) {
       if (err.status === 409) return { slotId, message: dedash(err.message) };
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { slotId, message: refusal };
       if (err.status === 403) {
         return {
           slotId,
           message:
-            "Your role cannot change capacity. An owner or manager has to.",
+            "Your role cannot change capacity. An owner, admin or manager has to.",
         };
       }
       if (err.isNotFound) {
@@ -191,9 +196,14 @@ export async function addBlackout(
       return { message: "No signal. Nothing was closed." };
     }
     if (err instanceof OperatorApiError) {
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
-          message: "Your role cannot close dates. An owner or manager has to.",
+          message:
+            "Your role cannot close dates. An owner, admin or manager has to.",
         };
       }
       if (err.status === 400) return { message: err.message };
@@ -460,10 +470,14 @@ export async function addDepartures(
       return { message: "No signal. Nothing was added." };
     }
     if (err instanceof OperatorApiError) {
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
           message:
-            "Your role cannot add departures. An owner or manager has to.",
+            "Your role cannot add departures. An owner, admin or manager has to.",
         };
       }
       if (err.isNotFound) {

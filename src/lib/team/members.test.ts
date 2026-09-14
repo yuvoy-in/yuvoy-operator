@@ -156,7 +156,7 @@ describe("who may be removed", () => {
 
   it("offers nothing at all to a MANAGER", () => {
     /*
-      `canManage` is "OWNER or MANAGER" and gates capacity, earnings and
+      `canManage` is "OWNER, ADMIN or MANAGER" and gates capacity, earnings and
       listing edits — never this. A manager who could remove people could hand
       out access to a business that is not theirs.
     */

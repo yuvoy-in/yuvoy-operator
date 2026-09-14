@@ -32,6 +32,7 @@ import {
   LIVE_OUTSTANDING_ID,
   PROSPECT_ID,
   SUSPENDED_ID,
+  ACCOUNT_SUSPENDED,
   REQUESTS,
   SLOTS,
   TEAM,
@@ -97,7 +98,7 @@ function sessionUser(request: Request): MockTeamMember | null {
   );
 }
 
-/** OWNER or MANAGER, exactly as `GET /me` defines it. */
+/** OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it. */
 const canManage = (member: MockTeamMember) =>
   member.roles.includes("OWNER") || member.roles.includes("MANAGER");
 
@@ -221,6 +222,13 @@ type MockExperience = {
   safetyNotes?: string;
   activityType?: string;
   activityTypeLabel?: string;
+  /*
+    The waiver, kept rather than discarded - yuvoy-operator#60. The create
+    handler took the whole body and stored none of this, so `GET /experiences/
+    {id}` answered without a `screenerKey` whether or not one was sent, and a
+    test could not tell the fixed form from the broken one.
+  */
+  screenerKey?: string;
   /*
     The mandatory fields still empty — yuvoy-operator#30 §3. Computed rather
     than stored, so a fixture cannot claim a listing is ready while missing
@@ -977,6 +985,32 @@ function uploadIntent(id: string, uploadId: string, sizeBytes: number) {
   );
 }
 
+/**
+ * A write a suspended business may not make - yuvoy-operator#50.
+ *
+ * Called by the handlers for the writes that are NOT on the allowed list. The
+ * list itself lives in `src/lib/account/standing.ts`; this is the other side
+ * of it, and the two disagreeing is exactly the bug the portal would ship: a
+ * button drawn for a write the API refuses, or a button withheld for one it
+ * would have taken.
+ *
+ * The message is the API's own, and it is the SAME sentence `GET /me` carries
+ * in `account.suspension.message`. The contract requires that: "every refused
+ * write answers with [it] too, so a banner and a tapped button never
+ * disagree."
+ */
+function requireWritable(request: Request) {
+  const user = sessionUser(request);
+  if (user?.id === SUSPENDED_ID) {
+    return envelope(
+      "account_suspended",
+      ACCOUNT_SUSPENDED.suspension.message,
+      403,
+    );
+  }
+  return null;
+}
+
 /** Every authenticated route answers 401 the same way. */
 function requireSession(request: Request) {
   const user = sessionUser(request);
@@ -988,18 +1022,23 @@ function requireSession(request: Request) {
     );
   }
   /*
-    A suspended business answers 403 on EVERY endpoint, not only `/me`. The
-    session is valid and the person is fine — the contract is explicit that
-    those are different things — so this is deliberately not a 401, and
-    clearing their cookie would tell them the wrong story entirely.
+    A SUSPENDED BUSINESS IS NO LONGER REFUSED HERE - yuvoy-operator#50.
+
+    It used to answer `403 account_not_active` on every endpoint including
+    `/me`, which is what the API did then. The contract has since separated the
+    two: "a suspended business is not refused here, and nor is one whose status
+    is `OFFBOARDED` or `DISQUALIFIED`: each signs in, and its writes answer
+    `account_suspended` instead."
+
+    So this identity now signs in, reads everything, and meets
+    `account_suspended` only on the writes it may not make. `requireWritable`
+    below is what says which, and the reason the distinction matters is that a
+    suspended operator still has departures to run that travellers have paid
+    for: refusing them everywhere would strand those travellers.
+
+    `account_not_active` is left for an OFFBOARDED account, which cannot hold a
+    session at all and which no identity here stands in for.
   */
-  if (user.id === SUSPENDED_ID) {
-    return envelope(
-      "account_not_active",
-      "This account cannot trade right now.",
-      403,
-    );
-  }
   /*
     Not an account state: the server having a bad minute. Kept distinct so the
     portal can be checked for the one confusion that matters — a dropped
@@ -1028,7 +1067,8 @@ function publicMember(member: MockTeamMember) {
 /**
  * OWNER only, and deliberately not `canManage`.
  *
- * `canManage` is "OWNER or MANAGER" and gates capacity, closed dates, earnings
+ * `canManage` is "OWNER, ADMIN or MANAGER" and gates capacity, closed dates,
+ * earnings
  * and listing edits. Both team writes are 403 "OWNER only" — a manager who
  * could add a staff account could hand out access to a business that is not
  * theirs.
@@ -1132,11 +1172,12 @@ function requireAccessManager(request: Request, targetId: string) {
 }
 
 /**
- * OWNER or MANAGER — `canManage`, exactly as `GET /me` defines it.
+ * OWNER, ADMIN or MANAGER: `canManage`, exactly as `GET /me` defines it.
  *
  * Every write that commits seats or money is gated on it in the contract:
  * accept and decline ("STAFF cannot commit seats / answer requests"), seats,
- * closed dates, counter sales and call-off ("Requires OWNER or MANAGER"), and
+ * closed dates, counter sales and call-off ("Requires OWNER, ADMIN or
+ * MANAGER"), and
  * the earnings read. For its first month this mock refused none of them, so
  * the 403 branch every action renders had never once executed — a suite that
  * passes against a mock kinder than the API proves nothing about the refusal.
@@ -1317,10 +1358,12 @@ const pauseHandler = (path: string) =>
   http.post(url(path), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
     if (!canManage(sessionUser(request)!)) {
       return envelope(
         "forbidden",
-        "only an owner or manager can take a listing off sale",
+        "only an owner, admin or manager can take a listing off sale",
         403,
       );
     }
@@ -1378,17 +1421,25 @@ const pauseHandler = (path: string) =>
       guestsToHonour: bookingsToHonour * 2,
       ...(bookingsToHonour > 0
         ? {
-            note: "This listing is off sale — nobody new can book it. The 3 bookings you have already taken are unchanged. You still need to run those departures, or call each one off yourself.",
+            note: "This listing is off sale: nobody new can book it. The 3 bookings you have already taken are unchanged. You still need to run those departures, or call each one off yourself.",
           }
         : {}),
       /*
-        The API's sentence, as yuvoy-api#167 rewrote it. It used to say "ask us
-        to put it back … we check it before travellers see it again", which
-        D-032.4 had made false — resuming is the operator's own button and is
-        immediate — and the portal suppressed it for that reason. Both the
-        wording and the suppression are gone.
+        The API's sentence, word for word, from `withdrawnNext` in
+        yuvoy-api's `internal/handler/operator_listing_copy.go`.
+
+        It used to say "ask us to put it back ... we check it before travellers
+        see it again", which D-032.4 made false: resuming is the operator's own
+        button and is immediate. The portal suppressed it for that reason and
+        both the wording and the suppression are gone.
+
+        The mock then drifted a second time: it carried a sentence with the
+        right meaning and the wrong words, so the e2e passed against a mock
+        that disagreed with production (yuvoy-operator#61). Nothing was wrong
+        on screen, because the portal prints `next` verbatim, which is exactly
+        what made the drift invisible.
       */
-      next: "Put it back on sale yourself whenever you are ready. There is a button for it on this listing, and it takes effect at once.",
+      next: "It is off sale. Resume on the listing puts it back straight away. Nobody at Yuvoy needs to check it first.",
     });
   });
 
@@ -1415,10 +1466,12 @@ const resumeHandler = (path: string) =>
   http.post(url(path), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
     if (!canManage(sessionUser(request)!)) {
       return envelope(
         "forbidden",
-        "only an owner or manager can put a listing back on sale",
+        "only an owner, admin or manager can put a listing back on sale",
         403,
       );
     }
@@ -1437,9 +1490,9 @@ const resumeHandler = (path: string) =>
     */
     const sentenceFor = (now: string) =>
       now === "in_review"
-        ? "It is back on your listings. This one is still waiting for its first check, so travellers cannot see it yet."
+        ? "It has not been approved yet, so it is still with us. It goes on sale once a person has checked it."
         : listing.sellable === false
-          ? "It is back on your listings. Something on your account is stopping sales, so travellers cannot book it yet. Business says what."
+          ? "It is back on your listings, but travellers cannot book it yet. Something on your account is stopping sales. The Business screen says what."
           : "It is back on sale. Travellers can see it and book it now.";
 
     if (state === "published" || state === "in_review") {
@@ -1594,28 +1647,30 @@ export const handlers = [
       tested against.
     */
     const account =
-      me.id === PROSPECT_ID || signups.some((sme) => sme.id === me.id)
-        ? /*
+      me.id === SUSPENDED_ID
+        ? ACCOUNT_SUSPENDED
+        : me.id === PROSPECT_ID || signups.some((sme) => sme.id === me.id)
+          ? /*
             A brand-new account is PROSPECT and cannot be booked — that is the
             whole safety property of self-signup, and a mock that handed one
             ACCOUNT_LIVE would let this portal ship the congratulation the API
             never earns.
           */
-          ACCOUNT_PROSPECT
-        : me.id === AWAITING_ID
-          ? ACCOUNT_AWAITING
-          : me.id === LIVE_OUTSTANDING_ID
-            ? /*
+            ACCOUNT_PROSPECT
+          : me.id === AWAITING_ID
+            ? ACCOUNT_AWAITING
+            : me.id === LIVE_OUTSTANDING_ID
+              ? /*
                 Live, selling, and still owing us the logo and the registered
                 address — yuvoy-operator#38. Branched BEFORE the
                 `OTHER_MEMBERS` fallthrough, which hands back no account block
                 at all, because this identity exists to render a screen rather
                 than to hide one.
               */
-              ACCOUNT_LIVE_OUTSTANDING
-            : OTHER_MEMBERS.some((o) => o.id === me.id)
-              ? undefined
-              : ACCOUNT_LIVE;
+                ACCOUNT_LIVE_OUTSTANDING
+              : OTHER_MEMBERS.some((o) => o.id === me.id)
+                ? undefined
+                : ACCOUNT_LIVE;
 
     return HttpResponse.json({
       id: me.id,
@@ -1676,6 +1731,8 @@ export const handlers = [
   http.post(url("/team"), async ({ request }) => {
     const failed = requireInviter(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json()) as {
       phone?: string;
@@ -2121,7 +2178,7 @@ export const handlers = [
     if (failed) return failed;
     const denied = requireManager(
       request,
-      "Only an owner or a manager can change the logo.",
+      "Only an owner, admin or manager can change the logo.",
     );
     if (denied) return denied;
 
@@ -2445,6 +2502,8 @@ export const handlers = [
   http.post(url("/experiences"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json()) as Record<string, unknown>;
     const title = String(body.title ?? "").trim();
@@ -2510,6 +2569,12 @@ export const handlers = [
         ? (body.requirements as string[])
         : undefined,
       safetyNotes: body.safetyNotes ? String(body.safetyNotes) : undefined,
+      /*
+        Absent and empty are one thing, as they are to the API: "an absent key
+        and an empty string mean the same thing", so an omitted key stores
+        undefined rather than "".
+      */
+      screenerKey: body.screenerKey ? String(body.screenerKey) : undefined,
       upcomingDepartures: 0,
       // "A listing without `unitPricePaise` can be saved but cannot be
       // approved, which the response reports as `sellable: false`."
@@ -3002,6 +3067,8 @@ export const handlers = [
   http.post(url("/slots"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
     const me = sessionUser(request)!;
     if (!canManage(me)) {
       return envelope("forbidden", "STAFF cannot add departures.", 403);
@@ -3370,6 +3437,8 @@ export const handlers = [
   http.post(url("/requests/:id/accept"), async ({ request, params }) => {
     const failed = requireManager(request, "STAFF cannot commit seats.");
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const id = String(params.id);
     const open = REQUESTS.find((r) => r.id === id);
@@ -3427,7 +3496,7 @@ export const handlers = [
   /* -------------------------------------------------------------- money - */
 
   http.get(url("/earnings"), async ({ request }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
 
     const u = new URL(request.url);
@@ -3470,7 +3539,7 @@ export const handlers = [
     and a sentence rather than a table of ₹0.
   */
   http.get(url("/commission-owed"), async ({ request }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
 
     /*
@@ -3555,6 +3624,15 @@ export const handlers = [
     */
     const failed = requireOwner(request);
     if (failed) return failed;
+
+    /*
+      Raising a change is refused while suspended; stopping one is not
+      (yuvoy-operator#50). After the role gate, for the reason the role gate is
+      first: somebody who may not do this at all should be refused for who they
+      are rather than for the state of the business.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     if (!steppedUp) {
       return envelope("step_up_required", "Ask for a code first.", 403);
@@ -3664,8 +3742,10 @@ export const handlers = [
   /* ------------------------------------------------------------ capacity - */
 
   http.patch(url("/slots/:id"), async ({ request, params }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const id = String(params.id);
     const slot = SLOTS.find((s) => s.id === id);
@@ -3704,8 +3784,10 @@ export const handlers = [
   }),
 
   http.post(url("/blackouts"), async ({ request }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json()) as {
       from?: string;
@@ -3777,8 +3859,10 @@ export const handlers = [
   }),
 
   http.post(url("/slots/:id/offline-sales"), async ({ request, params }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const id = String(params.id);
     const slot = SLOTS.find((s) => s.id === id);

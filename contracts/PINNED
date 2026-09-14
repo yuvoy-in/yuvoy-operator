@@ -112,7 +112,65 @@ path=contracts/operator-openapi.yaml
 #
 # `git ls-remote` was the check for this ref, not `gh api .../commits/master`,
 # which served a five-minute-stale SHA twice on 8 Sep and cost a retracted
-# issue.
-ref=4c9e49f2845152a8798573429410a50920013e94
+# issue.#
+# ---
+#
+# 14 Sep 2026. Forward from 4c9e49f2 to 80668e7f, which is two commits past the
+# `f489ed6` the round's index (op#48 item 2) asks for. PURELY ADDITIVE to
+# everything this portal reads.
+#
+# The diff was read for REMOVALS before pinning, because that is the half that
+# breaks a deployed portal. There are 54 removed lines and not one of them is a
+# capability going away:
+#   - No path, no `operationId` and no schema disappears. Checked by set
+#     difference over the whole document, not by reading the diff.
+#   - Three `required:` lines change and all three WIDEN a RESPONSE, which a
+#     client reading them as optional cannot notice: `/bookings` gains
+#     `counts`, the listing workspace gains `questions`, `/story` gains
+#     `stats`.
+#   - One `"400": { $ref: ... }` shorthand on `/bookings` becomes a full inline
+#     description with an example. Same status, more detail.
+#   - `OperatorRequest.experience` is not removed; it gains a description and a
+#     sibling `experienceId`.
+#   - The rest are prose rewrites. Two are worth naming because they change
+#     WORDS the portal must match: the `403` on `POST /bookings/{id}/cancel`
+#     and on `POST /bookings/{id}/cash-returned` moved from "Only an OWNER,
+#     ADMIN or MANAGER can ..." to "STAFF cannot ...". Same permission, said
+#     from the refused party's side (yuvoy-api#184).
+#
+# Consumed by a named issue:
+#   - `view`, `q`, `experienceId` and `counts` on `GET /bookings` (op#57). The
+#     pills, the counts behind them and one search box all read these; none
+#     existed on the old pin.
+#   - `stats` on `GET /story`, and the whole of `GET /reviews` with its
+#     `summary`, `averageRating`, `count` and per-tag breakdown (op#58). The
+#     `/reviews` path is the one new path in this bump.
+#   - `questions` on the listing workspace, and `meetingLandmark` (op#58).
+#   - The STAFF refusal sentences above (op#48 item 3). Every portal sentence
+#     that names only owners and managers is wrong: `me.canManage` is OWNER,
+#     ADMIN or MANAGER, and the API lets an ADMIN do everything a MANAGER does.
+#
+# Read but NOT taken at face value:
+#   - `required:` on any response. Consumed as OPTIONAL regardless of what the
+#     document says, because a pinned contract states what an API WILL send,
+#     never what the deployed one does send today (yuvoy-api#126). `counts`,
+#     `questions` and `stats` each degrade to the old behaviour when absent.
+#   - `POST /experiences/{id}/submit` now names the act the old document called
+#     `POST /experiences/{id}/revisions`. Both are declared. The builder in
+#     op#58 is what consumes either, and it will check the live API before
+#     choosing, not this file.
+#
+# Deliberately NOT consumed:
+#   - Everything the round's index lists under "Do not build": admin review
+#     screens, traveller booking, move-offer expiry and payout operations.
+#   - A guest waiver preview. The contract still carries each screener's
+#     `label` only, not its questions, so there is nothing to preview.
+#
+# `git ls-remote` was the check for this ref, not `gh api .../commits/master`,
+# which served a five-minute-stale SHA twice on 8 Sep and cost a retracted
+# issue. It was re-read immediately before pinning, because api master moves
+# several times a day.
+
+ref=80668e7f1fd4740529a5f5d88787236508b6a014
 branch=master
-pinned_on=2026-09-13
+pinned_on=2026-09-14

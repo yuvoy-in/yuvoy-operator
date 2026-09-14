@@ -10,12 +10,12 @@ import { OperatorApiError } from "@/lib/api/errors";
  *
  * ## What the contract actually publishes, and what it does not
  *
- * `GET /me` returns `id`, `name`, `roles`, `operatorId` and `canManage`. That
- * is the whole of it. There is **no account state, no approval stage and no
- * list of what is outstanding** anywhere in the operator document — the only
- * account-level signal it carries is a `403 account_not_active`, which the
- * contract glosses as "suspended or offboarded … the person is fine, the
- * business relationship is not".
+ * `GET /me` returns `id`, `name`, `roles`, `operatorId` and `canManage`, and
+ * now an `account` block. The account-level signals are that block and a
+ * `403 account_not_active`, and since yuvoy-operator#50 they mean different
+ * things: `account_not_active` is an OFFBOARDED account that cannot hold a
+ * session, and a suspended, closed or disqualified BUSINESS signs in normally
+ * and carries `account.suspension` instead.
  *
  * So this file draws the line exactly where the API draws it: an operator
  * learns whether they can trade, and nothing is invented about *why* or *what
@@ -28,7 +28,21 @@ export type AccountStatus =
   | "active"
   /** 401 — no session, or one that is no longer valid. */
   | "signed-out"
-  /** 403 `account_not_active` — suspended or offboarded. */
+  /**
+   * 403 `account_not_active` — the ACCOUNT was offboarded, so it cannot sign
+   * in or hold a session at all.
+   *
+   * No longer "suspended or offboarded" (yuvoy-operator#50). The contract
+   * separated them: "a suspended business is not refused here, and nor is one
+   * whose status is `OFFBOARDED` or `DISQUALIFIED`: each signs in, and its
+   * writes answer `account_suspended` instead." A suspended business gets a
+   * `200` from `GET /me` and is read from `account.suspension`.
+   *
+   * Keeping the old gloss would send a suspended operator to a dead end, and
+   * they are exactly the operator who must not hit one: the trips they have
+   * already sold still have to be run or called off, and travellers have paid
+   * for them.
+   */
   | "not-active"
   /** Anything else: a 500, a timeout, no signal. Not an account state. */
   | "unknown";
@@ -46,6 +60,13 @@ export function classifyMeFailure(
       minute.
     */
     if (err.code === "account_not_active") return "not-active";
+    /*
+      A suspended business must never reach here. Its `GET /me` answers 200, so
+      the only way a `403 account_suspended` could arrive on this path is a
+      deployment where the two have not separated yet. It is deliberately NOT
+      mapped to "not-active": that would resurrect the dead end this issue
+      removed. It falls to "unknown", which says less and claims nothing.
+    */
   }
   return "unknown";
 }

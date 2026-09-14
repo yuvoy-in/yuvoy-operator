@@ -12,6 +12,7 @@ import {
   languagesIssue,
   parseLanguages,
 } from "@/lib/story/story";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * Your story's writes — yuvoy-operator#41.
@@ -224,6 +225,10 @@ function photoFailure(err: unknown): {
     return { message: "No signal. Nothing was added. Try again." };
   }
   if (err instanceof OperatorApiError) {
+    // A suspended business is refused with 403 too, and the role
+    // sentence would be the wrong one. See `suspendedMessage`.
+    const refusal = suspendedMessage(err);
+    if (refusal) return { message: refusal };
     if (err.status === 403) {
       return { message: "Your role cannot add photographs." };
     }
