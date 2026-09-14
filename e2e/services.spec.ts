@@ -773,14 +773,22 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
   /*
     The API's `next`, rendered VERBATIM again — yuvoy-operator#44.
 
-    It was suppressed, and rightly: the sentence said "ask us to put it back …
+    It was suppressed, and rightly: the sentence said "ask us to put it back ...
     we check it before travellers see it again", which D-032.4 had made false.
     yuvoy-api#167 rewrote it, so the server's words are printed. Asserted on
     the server's exact phrasing rather than a paraphrase, because a portal that
     quietly substituted its own would pass a looser check.
+
+    The phrase moved once more and this assertion moved with it
+    (yuvoy-operator#61). The old matcher, "Put it back on sale yourself
+    whenever you are ready", is not what `withdrawnNext` says in
+    `internal/handler/operator_listing_copy.go` and had not been for a while.
+    It kept passing because the mock carried the same stale words, which is the
+    whole defect: a test and a mock agreeing with each other and with nothing
+    in production.
   */
   await expect(
-    row.getByText(/Put it back on sale yourself whenever you are ready/),
+    row.getByText(/Resume on the listing puts it back straight away/),
   ).toBeVisible();
   // And still nothing that sends the operator to wait for us.
   await expect(row.getByText(/we check it before travellers/i)).toHaveCount(0);

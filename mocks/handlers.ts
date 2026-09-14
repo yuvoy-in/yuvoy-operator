@@ -1385,17 +1385,25 @@ const pauseHandler = (path: string) =>
       guestsToHonour: bookingsToHonour * 2,
       ...(bookingsToHonour > 0
         ? {
-            note: "This listing is off sale — nobody new can book it. The 3 bookings you have already taken are unchanged. You still need to run those departures, or call each one off yourself.",
+            note: "This listing is off sale: nobody new can book it. The 3 bookings you have already taken are unchanged. You still need to run those departures, or call each one off yourself.",
           }
         : {}),
       /*
-        The API's sentence, as yuvoy-api#167 rewrote it. It used to say "ask us
-        to put it back … we check it before travellers see it again", which
-        D-032.4 had made false — resuming is the operator's own button and is
-        immediate — and the portal suppressed it for that reason. Both the
-        wording and the suppression are gone.
+        The API's sentence, word for word, from `withdrawnNext` in
+        yuvoy-api's `internal/handler/operator_listing_copy.go`.
+
+        It used to say "ask us to put it back ... we check it before travellers
+        see it again", which D-032.4 made false: resuming is the operator's own
+        button and is immediate. The portal suppressed it for that reason and
+        both the wording and the suppression are gone.
+
+        The mock then drifted a second time: it carried a sentence with the
+        right meaning and the wrong words, so the e2e passed against a mock
+        that disagreed with production (yuvoy-operator#61). Nothing was wrong
+        on screen, because the portal prints `next` verbatim, which is exactly
+        what made the drift invisible.
       */
-      next: "Put it back on sale yourself whenever you are ready. There is a button for it on this listing, and it takes effect at once.",
+      next: "It is off sale. Resume on the listing puts it back straight away. Nobody at Yuvoy needs to check it first.",
     });
   });
 
@@ -1444,9 +1452,9 @@ const resumeHandler = (path: string) =>
     */
     const sentenceFor = (now: string) =>
       now === "in_review"
-        ? "It is back on your listings. This one is still waiting for its first check, so travellers cannot see it yet."
+        ? "It has not been approved yet, so it is still with us. It goes on sale once a person has checked it."
         : listing.sellable === false
-          ? "It is back on your listings. Something on your account is stopping sales, so travellers cannot book it yet. Business says what."
+          ? "It is back on your listings, but travellers cannot book it yet. Something on your account is stopping sales. The Business screen says what."
           : "It is back on sale. Travellers can see it and book it now.";
 
     if (state === "published" || state === "in_review") {
