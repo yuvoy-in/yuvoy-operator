@@ -188,6 +188,22 @@ export async function createListing(
     activityType: String(form.get("activityType") ?? ""),
     durationMinutes: String(form.get("durationMinutes") ?? ""),
     maxPartySize: String(form.get("maxPartySize") ?? ""),
+    /*
+      yuvoy-operator#60. The schema declared `screenerKey` and the request body
+      spread it, and this object never supplied it, so `parsed.data.screenerKey`
+      was always undefined and every listing created through this form was saved
+      with no screener whatever the operator picked.
+
+      A listing with a screener refuses a party that declares a condition before
+      any seat is held or money taken. So a diving listing went live without that
+      check while the operator believed they had switched it on, which is the
+      reason this is a one-line fix shipping ahead of the builder that replaces
+      the form.
+
+      `""` stays `""` here and is falsy at the spread below, which is what "None"
+      has to mean: the key is omitted rather than sent empty.
+    */
+    screenerKey: String(form.get("screenerKey") ?? ""),
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];

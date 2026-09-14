@@ -222,6 +222,13 @@ type MockExperience = {
   activityType?: string;
   activityTypeLabel?: string;
   /*
+    The waiver, kept rather than discarded - yuvoy-operator#60. The create
+    handler took the whole body and stored none of this, so `GET /experiences/
+    {id}` answered without a `screenerKey` whether or not one was sent, and a
+    test could not tell the fixed form from the broken one.
+  */
+  screenerKey?: string;
+  /*
     The mandatory fields still empty — yuvoy-operator#30 §3. Computed rather
     than stored, so a fixture cannot claim a listing is ready while missing
     something the API would refuse.
@@ -2510,6 +2517,12 @@ export const handlers = [
         ? (body.requirements as string[])
         : undefined,
       safetyNotes: body.safetyNotes ? String(body.safetyNotes) : undefined,
+      /*
+        Absent and empty are one thing, as they are to the API: "an absent key
+        and an empty string mean the same thing", so an omitted key stores
+        undefined rather than "".
+      */
+      screenerKey: body.screenerKey ? String(body.screenerKey) : undefined,
       upcomingDepartures: 0,
       // "A listing without `unitPricePaise` can be saved but cannot be
       // approved, which the response reports as `sellable: false`."
