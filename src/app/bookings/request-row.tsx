@@ -90,7 +90,7 @@ export function RequestRow({
   today: string;
   tomorrow: string;
   /**
-   * OWNER or MANAGER. The contract refuses the write, not the read:
+   * OWNER, ADMIN or MANAGER. The contract refuses the write, not the read:
    * `POST /requests/{id}/accept` is 403 "STAFF cannot commit seats".
    *
    * The buttons are disabled rather than left live. The page already says so

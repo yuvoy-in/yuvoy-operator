@@ -13,7 +13,8 @@ import { ASSIGNABLE_ROLES, type AssignableRole } from "@/lib/team/access";
  * file's job is to surface each refusal rather than to second-guess it.
  *
  * Note which gate is used: explicit roles, never `canManage`. `canManage` is
- * "OWNER or MANAGER" and it is the gate for capacity, closed dates, earnings
+ * "OWNER, ADMIN or MANAGER" and it is the gate for capacity, closed dates,
+ * earnings
  * and listing edits — not for this. A manager who could add a staff account
  * could hand out access to a business that is not theirs, and `pnpm qa` fails
  * a segment that calls one of these endpoints and decides on `canManage`.

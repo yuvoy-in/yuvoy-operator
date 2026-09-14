@@ -78,7 +78,7 @@ describe("what each role is told it can do", () => {
     /*
       This copy was WRONG for four days and wrong in the worst direction. It
       said an admin "cannot remove anybody … cannot change seats or see
-      earnings", on the strength of `canManage` being "OWNER or MANAGER".
+      earnings", on the strength of `canManage` then excluding ADMIN.
 
       `canManage` is now "OWNER, ADMIN or MANAGER" — "ADMIN holds it because
       the role exists for an owner who is off the island: one who could add a

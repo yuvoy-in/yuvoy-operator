@@ -45,7 +45,7 @@ export default async function TeamPage() {
   /*
     OWNER, not `canManage`.
 
-    `canManage` is "OWNER or MANAGER" and gates capacity, closed dates,
+    `canManage` is "OWNER, ADMIN or MANAGER" and gates capacity, closed dates,
     earnings and listing edits. `POST /team` and `DELETE /team/{id}` are both
     403 "OWNER only", and gating this screen on `canManage` would offer a
     manager an invite form that fails — while teaching them, wrongly, that they

@@ -90,7 +90,7 @@ export default async function CapacityPage() {
       </p>
 
       {/*
-        Capacity, blackouts and counter sales are all OWNER or MANAGER. A
+        Capacity, blackouts and counter sales are all OWNER, ADMIN or MANAGER. A
         staff member can see the numbers and cannot change them, and being
         told that first beats typing one and reading a 403.
       */}
@@ -98,7 +98,7 @@ export default async function CapacityPage() {
         <div className="mt-6">
           <Problem
             title="You can see these, but not change them"
-            body="Seats, closed dates and counter sales need an owner or a manager."
+            body="Seats, closed dates and counter sales need an owner, an admin or a manager."
           />
         </div>
       ) : null}

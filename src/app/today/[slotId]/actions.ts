@@ -281,7 +281,7 @@ export async function callOffDeparture(
   if (!me.canManage) {
     return {
       message:
-        "Calling off a departure needs an owner or a manager. Nothing was cancelled.",
+        "Calling off a departure needs an owner, an admin or a manager. Nothing was cancelled.",
     };
   }
 
@@ -323,7 +323,7 @@ export async function callOffDeparture(
         // STAFF cannot call off a departure.
         return {
           message:
-            "Your role cannot call off a departure. An owner or manager has to.",
+            "Your role cannot call off a departure. An owner, admin or manager has to.",
         };
       }
       if (err.isNotFound)

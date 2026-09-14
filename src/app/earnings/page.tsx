@@ -58,7 +58,8 @@ export default async function EarningsPage({
   /*
     Refused before the request, not after it.
 
-    `GET /earnings` is "Requires OWNER or MANAGER" and answers 403 to a staff
+    `GET /earnings` is "Requires OWNER, ADMIN or MANAGER" and answers 403 to a
+    staff
     login, and this page used to make the call anyway. The throw landed on the
     error boundary, which says "That did not load — try again" — false, and
     unactionable: retrying will never work, because nothing went wrong.
@@ -77,8 +78,8 @@ export default async function EarningsPage({
         </h1>
         <div className="mt-6">
           <Problem
-            title="Earnings are for an owner or a manager"
-            body="A staff login runs the day (today's manifest, who has arrived) and does not carry what the business is owed. Ask an owner or a manager if you need the figure."
+            title="Earnings are for an owner, an admin or a manager"
+            body="A staff login runs the day (today's manifest, who has arrived) and does not carry what the business is owed. Ask an owner, an admin or a manager if you need the figure."
           />
         </div>
       </Screen>

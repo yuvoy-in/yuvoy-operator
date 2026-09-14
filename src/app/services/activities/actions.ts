@@ -673,7 +673,7 @@ export async function pauseListing(
   const { token, me } = await requireOperator();
   if (!me.canManage) {
     return again(
-      "Your role cannot pause a listing. An owner or manager has to.",
+      "Your role cannot pause a listing. An owner, admin or manager has to.",
     );
   }
 
@@ -725,7 +725,7 @@ export async function pauseListing(
       }
       if (err.status === 403) {
         return again(
-          "Your role cannot pause a listing. An owner or manager has to.",
+          "Your role cannot pause a listing. An owner, admin or manager has to.",
         );
       }
       if (err.isNotFound) {
@@ -808,7 +808,8 @@ export async function resumeListing(
   const { token, me } = await requireOperator();
   if (!me.canManage) {
     return {
-      message: "Your role cannot resume a listing. An owner or manager has to.",
+      message:
+        "Your role cannot resume a listing. An owner, admin or manager has to.",
     };
   }
 
@@ -850,7 +851,7 @@ export async function resumeListing(
       if (err.status === 403) {
         return {
           message:
-            "Your role cannot resume a listing. An owner or manager has to.",
+            "Your role cannot resume a listing. An owner, admin or manager has to.",
         };
       }
       if (err.isNotFound) {

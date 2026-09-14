@@ -97,7 +97,7 @@ function sessionUser(request: Request): MockTeamMember | null {
   );
 }
 
-/** OWNER or MANAGER, exactly as `GET /me` defines it. */
+/** OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it. */
 const canManage = (member: MockTeamMember) =>
   member.roles.includes("OWNER") || member.roles.includes("MANAGER");
 
@@ -1035,7 +1035,8 @@ function publicMember(member: MockTeamMember) {
 /**
  * OWNER only, and deliberately not `canManage`.
  *
- * `canManage` is "OWNER or MANAGER" and gates capacity, closed dates, earnings
+ * `canManage` is "OWNER, ADMIN or MANAGER" and gates capacity, closed dates,
+ * earnings
  * and listing edits. Both team writes are 403 "OWNER only" — a manager who
  * could add a staff account could hand out access to a business that is not
  * theirs.
@@ -1139,11 +1140,12 @@ function requireAccessManager(request: Request, targetId: string) {
 }
 
 /**
- * OWNER or MANAGER — `canManage`, exactly as `GET /me` defines it.
+ * OWNER, ADMIN or MANAGER: `canManage`, exactly as `GET /me` defines it.
  *
  * Every write that commits seats or money is gated on it in the contract:
  * accept and decline ("STAFF cannot commit seats / answer requests"), seats,
- * closed dates, counter sales and call-off ("Requires OWNER or MANAGER"), and
+ * closed dates, counter sales and call-off ("Requires OWNER, ADMIN or
+ * MANAGER"), and
  * the earnings read. For its first month this mock refused none of them, so
  * the 403 branch every action renders had never once executed — a suite that
  * passes against a mock kinder than the API proves nothing about the refusal.
@@ -1327,7 +1329,7 @@ const pauseHandler = (path: string) =>
     if (!canManage(sessionUser(request)!)) {
       return envelope(
         "forbidden",
-        "only an owner or manager can take a listing off sale",
+        "only an owner, admin or manager can take a listing off sale",
         403,
       );
     }
@@ -1433,7 +1435,7 @@ const resumeHandler = (path: string) =>
     if (!canManage(sessionUser(request)!)) {
       return envelope(
         "forbidden",
-        "only an owner or manager can put a listing back on sale",
+        "only an owner, admin or manager can put a listing back on sale",
         403,
       );
     }
@@ -2136,7 +2138,7 @@ export const handlers = [
     if (failed) return failed;
     const denied = requireManager(
       request,
-      "Only an owner or a manager can change the logo.",
+      "Only an owner, admin or manager can change the logo.",
     );
     if (denied) return denied;
 
@@ -3448,7 +3450,7 @@ export const handlers = [
   /* -------------------------------------------------------------- money - */
 
   http.get(url("/earnings"), async ({ request }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
 
     const u = new URL(request.url);
@@ -3491,7 +3493,7 @@ export const handlers = [
     and a sentence rather than a table of ₹0.
   */
   http.get(url("/commission-owed"), async ({ request }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
 
     /*
@@ -3685,7 +3687,7 @@ export const handlers = [
   /* ------------------------------------------------------------ capacity - */
 
   http.patch(url("/slots/:id"), async ({ request, params }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
 
     const id = String(params.id);
@@ -3725,7 +3727,7 @@ export const handlers = [
   }),
 
   http.post(url("/blackouts"), async ({ request }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
 
     const body = (await request.json()) as {
@@ -3798,7 +3800,7 @@ export const handlers = [
   }),
 
   http.post(url("/slots/:id/offline-sales"), async ({ request, params }) => {
-    const failed = requireManager(request, "Requires OWNER or MANAGER.");
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
 
     const id = String(params.id);

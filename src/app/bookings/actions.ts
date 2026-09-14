@@ -45,7 +45,7 @@ const acceptSchema = z.object({ requestId: z.string().min(1) });
  * A disabled button is a courtesy; a Server Action is a public POST endpoint.
  */
 const ROLE_REFUSAL =
-  "Your role cannot answer requests. An owner or manager has to.";
+  "Your role cannot answer requests. An owner, admin or manager has to.";
 
 /*
   The enum is derived from DECLINE_REASONS rather than retyped, so the form,

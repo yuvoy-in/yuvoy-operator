@@ -598,7 +598,7 @@ for (const f of walk(APP)) {
 /* ------- 11. an OWNER-only endpoint is never gated on `canManage` -------- */
 
 /**
- * `canManage` is **OWNER or MANAGER**. Four endpoints are OWNER *only*.
+ * `canManage` is **OWNER, ADMIN or MANAGER**. Four endpoints are OWNER *only*.
  *
  * The two sets are one word apart and the mistake is invisible: gate the team
  * screen on `canManage` and a manager gets an invite form that 403s — having
@@ -615,9 +615,12 @@ for (const f of walk(APP)) {
  *
  *   - **OWNER only** — a 403 whose description names OWNER. Four endpoints:
  *     both team writes, the bank change, and the brake.
- *   - **OWNER or MANAGER** (`canManage`) — an operation that says "Requires
- *     OWNER or MANAGER", or "OWNER or MANAGER only", or whose 403 says
- *     "STAFF cannot …".
+ *   - **`canManage`** (OWNER, ADMIN or MANAGER) — an operation that says
+ *     "Requires OWNER, ADMIN or MANAGER", or the older "Requires OWNER or
+ *     MANAGER" and "OWNER or MANAGER only", or whose 403 says "STAFF
+ *     cannot …". The older spellings are still matched on purpose: they are
+ *     what the contract said, and a parser that forgot them would silently
+ *     re-bucket an endpoint the day one reappeared.
  *
  * The third phrasing was added when `POST /slots` landed saying "OWNER or
  * MANAGER only." and this parser recognised none of it — so the one new write
@@ -977,7 +980,8 @@ for (const page of pages) {
 
   if (manageCalls.length && !gatesOnManage && !gatesOnOwner) {
     problems.push(
-      `${rel(segment)}: reaches ${manageCalls.join(", ")} (OWNER or MANAGER in ` +
+      `${rel(segment)}: reaches ${manageCalls.join(", ")} (OWNER, ADMIN or ` +
+        `MANAGER in ` +
         `the contract) but nothing in this route checks \`canManage\`. A staff ` +
         `login meets a 403 it cannot act on — and if the read itself is ` +
         `refused, an error boundary saying "try again" about a refusal that ` +
@@ -1563,7 +1567,9 @@ for (const f of files) {
 
     // Every `const NAME = z.object({` in this module, and its declared keys.
     const declared = new Map();
-    for (const m of s.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*z\s*\.object\s*\(/g)) {
+    for (const m of s.matchAll(
+      /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*z\s*\.object\s*\(/g,
+    )) {
       const open = s.indexOf("{", m.index + m[0].length - 1);
       if (open < 0) continue;
       const body = blockAt(s, open);
@@ -1572,7 +1578,9 @@ for (const f of files) {
     }
     if (declared.size === 0) continue;
 
-    for (const m of s.matchAll(/\b([A-Za-z_$][\w$]*)\s*\.\s*(safeParse|parse)\s*\(/g)) {
+    for (const m of s.matchAll(
+      /\b([A-Za-z_$][\w$]*)\s*\.\s*(safeParse|parse)\s*\(/g,
+    )) {
       const keys = declared.get(m[1]);
       if (!keys || keys.length === 0) continue;
 
