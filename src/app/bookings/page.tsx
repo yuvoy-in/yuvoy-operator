@@ -186,7 +186,7 @@ export default async function BookingsPage() {
         <div className="mt-6">
           <Problem
             title="You can see these, but not answer them"
-            body="Granting seats needs an owner or a manager. Pass it on rather than letting the clock run out."
+            body="Granting seats needs an owner, an admin or a manager. Pass it on rather than letting the clock run out."
           />
         </div>
       ) : null}
@@ -265,7 +265,15 @@ export default async function BookingsPage() {
             */
             <RequestQueue
               requests={requests}
+              /*
+                Accepting is refused while suspended and declining is not
+                (yuvoy-operator#50): a suspended business can always let a
+                traveller go and can never take one on. The row draws Decline
+                either way and drops Accept, rather than going read-only and
+                leaving a traveller waiting on an answer that cannot come.
+              */
               canAnswer={me.canManage}
+              canAccept={!me.suspension}
               at={at}
               today={today}
               tomorrow={tomorrow}

@@ -7,13 +7,15 @@ import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { INVITABLE_ROLES, type InvitableRole } from "@/lib/team/roles";
 import { ASSIGNABLE_ROLES, type AssignableRole } from "@/lib/team/access";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * O5's writes. Every one of them is **OWNER or ADMIN** on the server, and this
  * file's job is to surface each refusal rather than to second-guess it.
  *
  * Note which gate is used: explicit roles, never `canManage`. `canManage` is
- * "OWNER or MANAGER" and it is the gate for capacity, closed dates, earnings
+ * "OWNER, ADMIN or MANAGER" and it is the gate for capacity, closed dates,
+ * earnings
  * and listing edits — not for this. A manager who could add a staff account
  * could hand out access to a business that is not theirs, and `pnpm qa` fails
  * a segment that calls one of these endpoints and decides on `canManage`.
@@ -172,6 +174,10 @@ export async function inviteMember(
             "We could not send that invitation. Check the number, and note that an owner cannot be invited. The first one is set up by Yuvoy.",
         };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
           message:
@@ -240,6 +246,10 @@ export async function removeMember(
             "That cannot be removed. It is either you, or the last owner. Refresh to see who is on the account now.",
         };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return { message: "Only the owner can remove people." };
       }
@@ -292,6 +302,10 @@ function accessFailure(err: unknown, verb: string): AccessState {
           "That cannot be changed. It is either your own access, or the last owner. Refresh to see who is on the account now.",
       };
     }
+    // A suspended business is refused with 403 too, and the role
+    // sentence would be the wrong one. See `suspendedMessage`.
+    const refusal = suspendedMessage(err);
+    if (refusal) return { message: refusal };
     if (err.status === 403) {
       return {
         message: "You cannot change this person's access. An owner can.",

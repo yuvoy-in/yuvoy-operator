@@ -154,14 +154,22 @@ export default async function ActivitiesPage() {
         </Panel>
       ) : null}
 
+      {/*
+        No new listing while suspended - yuvoy-operator#50. Creating one is
+        putting new inventory up for sale, which is exactly what a suspension
+        stops; the listings already here still read, and the ones already sold
+        can still be run.
+      */}
       <div className="mt-6">
-        <NewListingForm
-          vocabulary={vocabulary}
-          categories={categories}
-          destinations={destinations}
-          market={marketName(vocabulary)}
-          commissionRateBps={me.commissionRateBps}
-        />
+        {me.suspension ? null : (
+          <NewListingForm
+            vocabulary={vocabulary}
+            categories={categories}
+            destinations={destinations}
+            market={marketName(vocabulary)}
+            commissionRateBps={me.commissionRateBps}
+          />
+        )}
       </div>
 
       <section className="mt-10" aria-labelledby="your-activities">
@@ -185,6 +193,7 @@ export default async function ActivitiesPage() {
                 key={listing.id}
                 listing={listing}
                 vocabulary={vocabulary}
+                suspended={Boolean(me.suspension)}
                 hasFootage={
                   listing.id !== undefined && attached.has(listing.id)
                 }

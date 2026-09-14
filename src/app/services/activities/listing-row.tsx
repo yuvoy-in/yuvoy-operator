@@ -36,6 +36,7 @@ export function ListingRow({
   listing,
   hasFootage,
   vocabulary,
+  suspended,
 }: {
   listing: OperatorExperience;
   /**
@@ -53,6 +54,17 @@ export function ListingRow({
    * is then hidden rather than shown empty.
    */
   vocabulary: Vocabulary | null;
+  /**
+   * Whether the business is suspended, closed or disqualified
+   * (yuvoy-operator#50).
+   *
+   * Pause and resume are not on the list of writes a suspended business may
+   * still make, so the control is not drawn. A suspended listing is already
+   * off sale for a reason nobody here can lift, and a Pause that answers the
+   * suspension sentence teaches an operator the portal does not know its own
+   * state.
+   */
+  suspended?: boolean;
 }) {
   const [state, act, pending] = useActionState<RevisionState, FormData>(
     submitRevision,
@@ -625,7 +637,7 @@ export function ListingRow({
         bookings, and it should not sit a thumb's width from "Propose a
         change".
       */}
-      {listing.id ? (
+      {listing.id && !suspended ? (
         <PauseResume
           experienceId={listing.id}
           title={listing.title ?? "this listing"}

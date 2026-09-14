@@ -78,6 +78,7 @@ export function GrantedReceipt({ receipt }: { receipt: Receipt }) {
 export function RequestRow({
   request,
   canAnswer,
+  canAccept,
   onGranted,
   at,
   today,
@@ -90,7 +91,7 @@ export function RequestRow({
   today: string;
   tomorrow: string;
   /**
-   * OWNER or MANAGER. The contract refuses the write, not the read:
+   * OWNER, ADMIN or MANAGER. The contract refuses the write, not the read:
    * `POST /requests/{id}/accept` is 403 "STAFF cannot commit seats".
    *
    * The buttons are disabled rather than left live. The page already says so
@@ -104,6 +105,19 @@ export function RequestRow({
    * public POST endpoint, and roles change between a render and a tap.
    */
   canAnswer: boolean;
+  /**
+   * Whether Accept is DRAWN at all - yuvoy-operator#50.
+   *
+   * Suspension only, never role. The two are deliberately different: a STAFF
+   * login keeps a DISABLED Accept, because "a banner and a working button
+   * disagree, and the one that gets believed is the button", and because the
+   * action re-reads the role at the moment of the tap and a test removes the
+   * attribute to prove it. A suspended business loses the button instead,
+   * because it is not a role problem and a greyed control would read as one.
+   *
+   * So `canAnswer` still decides `disabled` and this decides existence.
+   */
+  canAccept: boolean;
   /**
    * Hands the receipt up to `RequestQueue` the moment an accept lands. This
    * row is inside the server-rendered list and the next refresh removes it;
@@ -240,14 +254,16 @@ export function RequestRow({
       ) : (
         <form action={act} className="mt-4 flex gap-2">
           <input type="hidden" name="requestId" value={request.id ?? ""} />
-          <Button
-            type="submit"
-            disabled={pending || !grantable}
-            block={false}
-            className="flex-1"
-          >
-            {pending ? "Working…" : "Accept"}
-          </Button>
+          {canAccept ? (
+            <Button
+              type="submit"
+              disabled={pending || !grantable}
+              block={false}
+              className="flex-1"
+            >
+              {pending ? "Working…" : "Accept"}
+            </Button>
+          ) : null}
           <Button
             onClick={() => setDeclining(true)}
             disabled={pending || !canAnswer}

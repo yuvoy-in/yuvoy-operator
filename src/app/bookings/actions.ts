@@ -6,6 +6,7 @@ import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { DECLINE_REASONS, type DeclineReason } from "@/lib/day/request-types";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * Answering a request — the two writes on O9.
@@ -45,7 +46,7 @@ const acceptSchema = z.object({ requestId: z.string().min(1) });
  * A disabled button is a courtesy; a Server Action is a public POST endpoint.
  */
 const ROLE_REFUSAL =
-  "Your role cannot answer requests. An owner or manager has to.";
+  "Your role cannot answer requests. An owner, admin or manager has to.";
 
 /*
   The enum is derived from DECLINE_REASONS rather than retyped, so the form,
@@ -99,6 +100,10 @@ function explain(err: unknown, verb: string): string {
     if (err.code === "operator_not_sellable") {
       return "We cannot take bookings for you right now. This request is still open. Check Business for what is outstanding, then answer it.";
     }
+    // A suspended business is refused with 403 too, and the role
+    // sentence would be the wrong one. See `suspendedMessage`.
+    const refusal = suspendedMessage(err);
+    if (refusal) return refusal;
     if (err.status === 403) {
       // The contract is specific: STAFF may not commit seats.
       return ROLE_REFUSAL;

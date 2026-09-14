@@ -12,6 +12,7 @@ import {
   type PauseReason,
 } from "@/lib/services/listings";
 import { dedashText } from "@/lib/format/dedash";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * O7 — an operator writes their own listing, and proposes changes to it.
@@ -188,6 +189,22 @@ export async function createListing(
     activityType: String(form.get("activityType") ?? ""),
     durationMinutes: String(form.get("durationMinutes") ?? ""),
     maxPartySize: String(form.get("maxPartySize") ?? ""),
+    /*
+      yuvoy-operator#60. The schema declared `screenerKey` and the request body
+      spread it, and this object never supplied it, so `parsed.data.screenerKey`
+      was always undefined and every listing created through this form was saved
+      with no screener whatever the operator picked.
+
+      A listing with a screener refuses a party that declares a condition before
+      any seat is held or money taken. So a diving listing went live without that
+      check while the operator believed they had switched it on, which is the
+      reason this is a one-line fix shipping ahead of the builder that replaces
+      the form.
+
+      `""` stays `""` here and is falsy at the spread below, which is what "None"
+      has to mean: the key is omitted rather than sent empty.
+    */
+    screenerKey: String(form.get("screenerKey") ?? ""),
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -298,6 +315,10 @@ export async function createListing(
         */
         return { message: err.message || "Check the details and try again." };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
           message: "This account cannot add listings yet. Message us.",
@@ -534,6 +555,10 @@ export async function submitRevision(
         return { message: "That listing is not on this account any more." };
       }
       if (err.status === 400 && err.message) return { message: err.message };
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return { message: "You cannot change listings on this account." };
       }
@@ -657,7 +682,7 @@ export async function pauseListing(
   const { token, me } = await requireOperator();
   if (!me.canManage) {
     return again(
-      "Your role cannot pause a listing. An owner or manager has to.",
+      "Your role cannot pause a listing. An owner, admin or manager has to.",
     );
   }
 
@@ -707,9 +732,13 @@ export async function pauseListing(
           "Somebody is paying for this listing right now. Try again in a few minutes. Nothing changed.",
         );
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return again(refusal);
       if (err.status === 403) {
         return again(
-          "Your role cannot pause a listing. An owner or manager has to.",
+          "Your role cannot pause a listing. An owner, admin or manager has to.",
         );
       }
       if (err.isNotFound) {
@@ -792,7 +821,8 @@ export async function resumeListing(
   const { token, me } = await requireOperator();
   if (!me.canManage) {
     return {
-      message: "Your role cannot resume a listing. An owner or manager has to.",
+      message:
+        "Your role cannot resume a listing. An owner, admin or manager has to.",
     };
   }
 
@@ -831,10 +861,14 @@ export async function resumeListing(
             "It is not paused, so there is nothing to resume. Refresh to see where it is.",
         };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
           message:
-            "Your role cannot resume a listing. An owner or manager has to.",
+            "Your role cannot resume a listing. An owner, admin or manager has to.",
         };
       }
       if (err.isNotFound) {

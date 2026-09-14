@@ -6,6 +6,7 @@ import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { bankProblem } from "@/lib/account/bank";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * O4's three writes: ask for a code, use it, change the account — plus the
@@ -173,6 +174,10 @@ export async function changeBank(
           message: "Ask for a new code and try again.",
         };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
           message:
@@ -229,6 +234,10 @@ export async function cancelChange(
             "It has already gone through. This could not be stopped. Call us now on +91 81216 57657.",
         };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return { message: "Only the owner can stop a bank change." };
       }

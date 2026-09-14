@@ -13,6 +13,7 @@ import {
   type CallOffReason,
   type RelayIntent,
 } from "@/lib/day/relay-types";
+import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
  * O10's one write: ticking somebody off, or saying how it ended.
@@ -193,6 +194,10 @@ export async function sendRelay(
       return { message: "No signal. Nothing was sent." };
     }
     if (err instanceof OperatorApiError) {
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         return { message: "Your role cannot message travellers." };
       }
@@ -281,7 +286,7 @@ export async function callOffDeparture(
   if (!me.canManage) {
     return {
       message:
-        "Calling off a departure needs an owner or a manager. Nothing was cancelled.",
+        "Calling off a departure needs an owner, an admin or a manager. Nothing was cancelled.",
     };
   }
 
@@ -319,11 +324,15 @@ export async function callOffDeparture(
           message: "Already called off. Everybody on it has been told.",
         };
       }
+      // A suspended business is refused with 403 too, and the role
+      // sentence would be the wrong one. See `suspendedMessage`.
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.status === 403) {
         // STAFF cannot call off a departure.
         return {
           message:
-            "Your role cannot call off a departure. An owner or manager has to.",
+            "Your role cannot call off a departure. An owner, admin or manager has to.",
         };
       }
       if (err.isNotFound)

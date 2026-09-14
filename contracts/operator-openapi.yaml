@@ -898,6 +898,14 @@ paths:
         `409 document_locked`. File the document again to send a different one.
 
 
+        Our staff can put a file behind a verified document that has none
+        (D56): the file we already hold for it. Only a verified document with no
+        file on record takes a file that way, and it never replaces one. It
+        changes neither the document's state nor when it was verified. The
+        document then reads `hasFile: true`, with the name and size of the file
+        we attached.
+
+
         The size and the kind are signed into the URL, so the bucket itself
         refuses a file of any other length or content type. Send the file with
         `method` to `uploadUrl`, with every header in `headers` exactly as
@@ -1828,9 +1836,69 @@ paths:
         (Asia/Kolkata in the Andamans), compared with the day the trip runs
         there, and both are inclusive. A trip at 04:00 on the 15th is on the
         15th, although in UTC it leaves on the evening of the 14th.
+
+
+        **Views, search and a listing filter, all answered here.** `view`,
+        `q` and `experienceId` combine with each other and with `state`,
+        `from` and `to`. Every booking is in exactly one view, decided in
+        this order, first match wins:
+
+
+        | Booking | View |
+
+        | --- | --- |
+
+        | `cancelled` or `declined` (a cancelled booking, a departure you called off, a payment we could not honour and refunded) | `cancelled` |
+
+        | `completed` or `no_show` | `past` |
+
+        | any other state, on a trip day before today in the market's clock (the trip is over and nobody marked it) | `past` |
+
+        | any other state, on a trip today or later (`paid_pending_ops`, `confirmed`) | `upcoming` |
+
+
+        A trip earlier today stays upcoming until the market's day ends or it
+        is marked. `upcoming` runs soonest trip first; `past` and `cancelled`
+        run most recent trip first. Open requests are not bookings and are in
+        no view: they come from `GET /requests`, and `counts.requests` counts
+        them. A request that was declined or ran out of time never became a
+        booking, so it is on neither list.
+
+
+        **`counts` are totals, not the size of this page.** They honour `q`,
+        `experienceId`, `from` and `to`, and ignore `view`, `state`, `limit`
+        and `cursor`, so the pills stay put while you switch between them.
       operationId: listOperatorBookings
       parameters:
         - { name: state, in: query, schema: { type: string } }
+        - name: view
+          in: query
+          description: >-
+            `upcoming`, `past` or `cancelled`, as the table above defines them.
+            None is every booking, soonest trip first, as this list always was.
+            Anything else is a `400` with `details.view`.
+          schema: { type: string, enum: [upcoming, past, cancelled] }
+        - name: q
+          in: query
+          description: >-
+            A traveller's name or a booking reference. Spaces at either end are
+            ignored and case does not matter. A name matches on any part of it
+            (`men` finds Asha Menon). A reference matches with or without its
+            `YV-`, and on any part of the code after it, so `5DT6`, `yv-5dt6`
+            and `YV-5DT6RKVQ` all find YV-5DT6RKVQ. `%` and `_` match
+            themselves. Empty is no search. A request has no reference, so
+            `counts.requests` matches it by name alone. At most 60 characters;
+            more is a `400` with `details.q`.
+          schema: { type: string, maxLength: 60 }
+          example: YV-5DT6RKVQ
+        - name: experienceId
+          in: query
+          description: >-
+            One of your listings, by the `id` from `GET /experiences`. Rows
+            carry the same value as `experienceId`. A listing that is not yours
+            narrows to nothing. Not a uuid is a `400` with
+            `details.experienceId`.
+          schema: { type: string, format: uuid }
         - name: from
           in: query
           description: The first day to include, in the market's clock.
@@ -1849,8 +1917,9 @@ paths:
           in: query
           description: >-
             A previous response's `nextCursor`, sent with the same `state`,
-            `from` and `to`. Opaque, so do not construct one. A cursor this list
-            did not issue is a `400`.
+            `view`, `q`, `experienceId`, `from` and `to`. Opaque, so do not
+            construct one. A cursor this list did not issue is a `400`, and so is
+            a cursor from one view sent with another.
           schema: { type: string }
       responses:
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -1860,7 +1929,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, complete]
+                required: [items, complete, counts]
                 properties:
                   items:
                     type: array
@@ -1873,7 +1942,40 @@ paths:
                   nextCursor:
                     type: string
                     description: Absent when there is nothing after this page.
-        "400": { $ref: "#/components/responses/BadRequest" }
+                  counts:
+                    type: object
+                    description: >-
+                      How many sit behind each pill, under the same `q`,
+                      `experienceId`, `from` and `to`, whatever `view`, `state`
+                      or page was asked for. Always present, zeroes included.
+                      `upcoming`, `past` and `cancelled` add up to every booking
+                      the search found.
+                    required: [requests, upcoming, past, cancelled]
+                    properties:
+                      requests:
+                        type: integer
+                        minimum: 0
+                        description: >-
+                          Open requests still waiting on your answer, the ones
+                          `GET /requests` lists, on a trip day inside `from` and
+                          `to`.
+                      upcoming: { type: integer, minimum: 0 }
+                      past: { type: integer, minimum: 0 }
+                      cancelled: { type: integer, minimum: 0 }
+                    example: { requests: 2, upcoming: 14, past: 120, cancelled: 6 }
+        "400":
+          description: >-
+            Something in the request needs fixing. `details` names the field:
+            `view`, `q`, `experienceId`, `from`, `to` or `cursor`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error:
+                  code: invalid_input
+                  message: view must be upcoming, past or cancelled
+                  details: { view: must be upcoming, past or cancelled }
+                  requestId: e9170e70-9db2-4892-92b7-8c62b5a2485a
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /bookings/{id}:
@@ -2367,8 +2469,9 @@ paths:
         order, as `question: answer` with `; ` between them, and is empty when
         there are none. A question not answered yet is left off, and so is an
         answer to a question the listing no longer asks; `questions` on the
-        JSON manifest carries both. A cell holding a comma, a quote or a line
-        break is quoted as CSV requires.
+        JSON manifest carries both. Once answers are deleted, 90 days after the
+        trip as `PartyQuestion` describes, `answers` is empty. A cell holding a
+        comma, a quote or a line break is quoted as CSV requires.
       operationId: getManifest
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -2515,7 +2618,7 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403":
-          description: Only an OWNER, ADMIN or MANAGER can cancel a booking.
+          description: STAFF cannot cancel a booking.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2650,7 +2753,7 @@ paths:
                   returnedAt: { type: string, format: date-time }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403":
-          description: Only an OWNER, ADMIN or MANAGER can record it (`forbidden`).
+          description: STAFF cannot record giving the cash back (`forbidden`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3773,10 +3876,13 @@ paths:
       tags: [listings]
       summary: Write a new listing
       description: >
-        Lands as a **draft** and reaches nobody. Sending it for review is a
-        separate act (`POST /experiences/{id}/revisions`) and approval is what
-        publishes it — a listing is a promise to a traveller, and the person
+        Lands as a **draft** and reaches nobody. Save further steps onto the
+        draft with `PATCH /experiences/{id}`. Sending it for review is a
+        separate act, `POST /experiences/{id}/submit`, and approval is what
+        publishes it. A listing is a promise to a traveller, and the person
         making the promise is not the person who checks it.
+        `POST /experiences/{id}/revisions` is for changing a listing once it
+        has been sent to us or is on sale.
 
 
         `slug` is optional; one is proposed from the title if it is omitted.
@@ -3920,7 +4026,7 @@ paths:
   /experiences/{id}/workspace:
     get:
       tags: [listings]
-      summary: One listing, its departures and its media, in a single answer
+      summary: One listing, its departures, media and questions, in a single answer
       description: >-
         Everything needed to work on one listing, in one request.
 
@@ -3938,8 +4044,17 @@ paths:
         anything a reviewer refused, the reason.
 
 
+        `departures` are the ones still to come: those that have not yet left,
+        soonest first, up to 200. A departure that has already left is not
+        here; `GET /slots` with a date range reads those.
+
+
+        `questions` is what the listing asks travellers, exactly as
+        `GET /experiences/{id}/questions` returns it.
+
+
         This does not change who may do what. It is a read: the same listing,
-        the same departures and the same media each endpoint already returns,
+        departures, media and questions each endpoint already returns,
         scoped to one listing and fetched once.
       operationId: getListingWorkspace
       parameters:
@@ -3951,17 +4066,27 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [listing, departures, media]
+                required: [listing, departures, media, questions]
                 properties:
                   listing: { $ref: "#/components/schemas/OperatorExperience" }
                   departures:
                     type: array
+                    maxItems: 200
                     description: >-
-                      Its own departures only. Each carries whether a traveller
-                      can actually buy that one — a certificate lapsing on
-                      Tuesday takes Wednesday off sale and leaves Monday
-                      selling, which one badge on the listing cannot say.
+                      Its own departures that have not yet left, soonest first,
+                      up to 200. Each carries whether a traveller can actually
+                      buy that one. A certificate lapsing on Tuesday takes
+                      Wednesday off sale and leaves Monday selling, which one
+                      badge on the listing cannot say.
                     items: { $ref: "#/components/schemas/OperatorDeparture" }
+                  questions:
+                    type: array
+                    maxItems: 10
+                    description: >-
+                      The questions the listing asks travellers, in the order
+                      they are asked, and empty when it asks none. The same
+                      list `GET /experiences/{id}/questions` returns.
+                    items: { $ref: "#/components/schemas/ListingQuestion" }
                   media:
                     type: array
                     description: >-
@@ -4141,7 +4266,8 @@ paths:
       summary: The questions this listing asks travellers
       description: >-
         What a traveller is asked when booking this listing, in the order they
-        are asked. Anybody on the team can read it.
+        are asked. Anybody on the team can read it. It is the list as last
+        saved, by your team or by our staff.
 
 
         Another business's listing answers `404`, identically to one that does
@@ -4200,6 +4326,12 @@ paths:
 
         Only an OWNER, ADMIN or MANAGER can change the list, the same roles
         that change a listing's price and meeting point.
+
+
+        Our staff can replace the list too, with
+        `PUT /admin/v1/experiences/{id}/questions` (D47): the same body under
+        the same rules, taking effect at once as yours does. Their change is
+        recorded in our audit log as made by our staff.
       operationId: replaceListingQuestions
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -4279,11 +4411,13 @@ paths:
               schema: { $ref: "#/components/schemas/OperatorExperience" }
         "400":
           description: >-
-            `invalid_input` — a field we do not know (`details.unknownFields`,
-            with `details.allowed`), a value that field cannot hold, or a field a
-            listing cannot be without sent empty: title, category, destination,
-            duration, party size or pricing unit. A draft can change those; it
-            cannot go without them.
+            `invalid_input`: a field we do not know (`details.unknownFields`,
+            with `details.allowed`), a value that field cannot hold, a
+            `destination` that is not in your own market (refused as
+            `POST /experiences` refuses it), or a field a listing cannot be
+            without sent empty: title, category, destination, duration, party
+            size or pricing unit. A draft can change those; it cannot go
+            without them.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -4386,6 +4520,12 @@ paths:
             `details.missing` names the mandatory fields still empty after this
             edit is applied. Refused here, while the form is still open, rather
             than two days later through a rejection.
+
+
+            `activityType` and `pricingUnit` are not yet enforced here and are
+            never named in `details.missing`. Both are still required before
+            the listing can be published, and approval refuses it until both
+            are set.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -4407,6 +4547,17 @@ paths:
         form is open, rather than days later through a rejection.
 
 
+        **Two mandatory fields are not yet enforced here: `activityType` and
+        `pricingUnit`.** A draft missing either is still sent, and
+        `publishBlockers` goes on naming it. Both are required before the
+        listing can be published: approval refuses it until they are set.
+
+
+        The destination has to be in your own market, as it does on
+        `POST /experiences`. A draft whose destination is in another market is
+        refused.
+
+
         On success the listing is `in_review` and is in the admin review queue
         straight away. It is not on sale: a person puts it there.
 
@@ -4425,9 +4576,11 @@ paths:
               schema: { $ref: "#/components/schemas/OperatorExperience" }
         "400":
           description: >-
-            `invalid_input` — the draft is not complete. `details.missing` names
-            every mandatory field still empty, spelled as the draft body spells
-            them.
+            `invalid_input`, for one of two reasons. The draft is not complete:
+            `details.missing` names every mandatory field still empty, spelled
+            as the draft body spells them, apart from `activityType` and
+            `pricingUnit`, which are not yet enforced here. Or its destination
+            is not in your market, which has no `details`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -4466,8 +4619,46 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [about, languages, photos, reviewed]
+                required: [about, languages, photos, reviewed, stats]
                 properties:
+                  stats:
+                    type: object
+                    description: >-
+                      The three numbers at the top of your profile. Always
+                      present, zeroes included.
+                    required: [listings, tripsRun, rating]
+                    properties:
+                      listings:
+                        type: integer
+                        minimum: 0
+                        description: >-
+                          Listings a traveller can buy right now: published, and
+                          passing every check a sale needs today (your account
+                          is live and not paused, the listing has a price, your
+                          required documents are verified and in date, and
+                          nothing has been switched off). The same listings your
+                          listings screen calls `live` or
+                          `live_changes_in_review`. A draft, a listing waiting
+                          on us, a withdrawn one, or a published one that cannot
+                          sell is not counted.
+                      tripsRun:
+                        type: integer
+                        minimum: 0
+                        description: >-
+                          Departures that have started, were not called off or
+                          cancelled, and carried at least one booking marked
+                          `completed`.
+                      rating:
+                        type: object
+                        description: >-
+                          Over the same published reviews `GET /reviews` lists.
+                        required: [average, count]
+                        properties:
+                          average:
+                            type: [number, "null"]
+                            description: To one decimal. Null when `count` is 0.
+                          count: { type: integer, minimum: 0 }
+                    example: { listings: 3, tripsRun: 212, rating: { average: 4.8, count: 97 } }
                   about: { type: string }
                   languages:
                     type: array
@@ -4531,6 +4722,133 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/AccountSuspended" }
+
+  /reviews:
+    get:
+      tags: [account]
+      summary: What travellers said, newest first
+      description: >-
+        Reviews of your trips that Yuvoy has published. A review is shown to
+        nobody, you included, until a person here has read it, so one waiting
+        for that or one we withheld is in neither `items` nor `summary`.
+
+
+        Any member of your team may read this. The traveller is a first name
+        and nothing else: never a phone number or an email address.
+
+
+        `summary` covers every published review under the same `experienceId`,
+        not only this page. Pass `nextCursor` back as `cursor` with the same
+        `experienceId`, and stop when there is none.
+      operationId: listOperatorReviews
+      parameters:
+        - name: experienceId
+          in: query
+          description: >-
+            One of your listings, by its `id` from `GET /experiences`. A listing
+            that is not yours narrows to nothing. Not a uuid is a `400` with
+            `details.experienceId`.
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          description: >-
+            Reviews per page. None, or a value that is not a whole number above
+            zero, gets 50. More than 200 gets 200.
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          description: >-
+            A previous response's `nextCursor`. Opaque, so do not construct one.
+            A cursor this list did not issue is a `400`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: One page of your published reviews, and their summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [summary, items, complete]
+                properties:
+                  summary:
+                    type: object
+                    required: [averageRating, count, tags]
+                    properties:
+                      averageRating:
+                        type: [number, "null"]
+                        description: To one decimal. Null when `count` is 0.
+                      count: { type: integer, minimum: 0 }
+                      tags:
+                        type: object
+                        description: >-
+                          How many published reviews chose each tag. Every tag is
+                          present, zeroes included.
+                        required: [guide, safety, value, organisation, punctuality, equipment]
+                        properties:
+                          guide: { type: integer, minimum: 0 }
+                          safety: { type: integer, minimum: 0 }
+                          value: { type: integer, minimum: 0 }
+                          organisation: { type: integer, minimum: 0 }
+                          punctuality: { type: integer, minimum: 0 }
+                          equipment: { type: integer, minimum: 0 }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, rating, comment, tags, experienceId, experienceTitle, travellerName, tripDate, createdAt]
+                      properties:
+                        id: { type: string }
+                        rating: { type: integer, minimum: 1, maximum: 5 }
+                        comment:
+                          type: [string, "null"]
+                          description: Null when they tapped stars and wrote nothing.
+                        tags:
+                          type: array
+                          description: What they said was good. Empty when they chose none.
+                          items:
+                            type: string
+                            enum: [guide, safety, value, organisation, punctuality, equipment]
+                        experienceId: { type: string, format: uuid }
+                        experienceTitle: { type: string }
+                        travellerName:
+                          type: [string, "null"]
+                          description: >-
+                            The first word of the name they booked under. Null
+                            when they gave none.
+                        tripDate:
+                          type: string
+                          format: date
+                          description: The day the trip ran, in the market's own calendar.
+                        createdAt:
+                          type: string
+                          format: date-time
+                          description: When the traveller wrote it.
+                  complete:
+                    type: boolean
+                    description: >-
+                      Told rather than inferred. `true` means nothing comes after
+                      this page; `false` always comes with a `nextCursor`.
+                  nextCursor:
+                    type: string
+                    description: Absent when there is nothing after this page.
+              example:
+                summary:
+                  averageRating: 4.5
+                  count: 2
+                  tags: { guide: 2, safety: 1, value: 0, organisation: 0, punctuality: 0, equipment: 0 }
+                items:
+                  - id: 8d1f6f0e-3c1a-4d4b-9a51-6c1e2f0b7a10
+                    rating: 5
+                    comment: Calm water and a patient instructor.
+                    tags: [guide, safety]
+                    experienceId: 0f8fad5b-d9cb-469f-a165-70867728950e
+                    experienceTitle: Try-dive at Nemo Reef
+                    travellerName: Asha
+                    tripDate: "2026-09-10"
+                    createdAt: "2026-09-11T06:12:00Z"
+                complete: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /story/photos/upload-intents:
     post:
@@ -5269,10 +5587,6 @@ paths:
 
                     A listing that is not yours answers **404**, the same as one
                     that does not exist.
-
-
-                    A listing that is not yours answers **404**, the same as one
-                    that does not exist.
                 role:
                   type: string
                   enum: [hero, gallery]
@@ -5328,10 +5642,12 @@ paths:
         "403": { $ref: "#/components/responses/AccountSuspended" }
         "400":
           description: >-
-            No `sizeBytes`, no `experienceId`, or a file larger than we accept.
-            Refused before an upload URL exists rather than after bytes have
-            moved, and no intent is created — a refusal that burned the
-            operator's one concurrent slot would lock them out of retrying.
+            No `sizeBytes`, a `role` other than `hero` or `gallery`, or a file
+            larger than we accept. A missing `experienceId` is not refused: it
+            is optional for now, as described on the field. Refused before an
+            upload URL exists rather than after bytes have moved, and no intent
+            is created. A refusal that burned the operator's one concurrent
+            slot would lock them out of retrying.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -6003,10 +6319,10 @@ components:
             is enforced by a composite foreign key.
 
 
-            It is the one mandatory field the **submit** gate does not
-            yet demand, because the portal has no picker for it and
-            demanding it would answer every operator edit with a 400 they
-            could not act on. Approval demands it.
+            It is one of the two mandatory fields the **submit** gate does
+            not yet demand, with `pricingUnit`. Neither
+            `POST /experiences/{id}/submit` nor a revision is refused over
+            it. Approval and the admin publish demand both.
           examples: ["scuba"]
         destination:
           type: string
@@ -6089,9 +6405,15 @@ components:
           type: string
           enum: [per_person, per_group]
           description: >-
-            *material*, *mandatory*. How `unitPricePaise` is charged.
-            Travellers now see this beside the price, so changing it
-            changes what a card claims.
+            *material*, *mandatory to publish*. How `unitPricePaise` is
+            charged. Travellers now see this beside the price, so changing
+            it changes what a card claims.
+
+
+            Like `activityType`, the **submit** gate does not yet demand
+            it: neither `POST /experiences/{id}/submit` nor a revision is
+            refused over an unstated basis. Approval and the admin publish
+            refuse the listing until it is stated.
     ClosureReceipt:
       type: object
       required: [id, closed, existingBookings]
@@ -6426,6 +6748,13 @@ components:
         unitPricePaise: { type: integer, format: int64, nullable: true }
         pricingUnit: { type: string }
         meetingPoint: { type: string }
+        meetingLandmark:
+          type: string
+          description: >-
+            What to look for at the meeting point, as saved with
+            `PATCH /experiences/{id}` or a revision. Always present, and an
+            empty string when none was written.
+          examples: ["Blue gate beside the fuel pump"]
         inclusions: { type: array, items: { type: string } }
         requirements: { type: array, items: { type: string } }
         safetyNotes: { type: string }
@@ -6462,9 +6791,12 @@ components:
 
             Sending a revision that leaves one of these empty is a 400, and
             approving one is a 409, so mark the specific rows on the form rather
-            than letting somebody find out on send. `activityType` is the one the
-            submit gate does not yet enforce — it is still required before the
-            listing can be published.
+            than letting somebody find out on send. `activityType` and
+            `pricingUnit` are the two the submit gate does not yet enforce:
+            `POST /experiences/{id}/submit` and
+            `POST /experiences/{id}/revisions` do not refuse a listing over
+            either. Both are still required before the listing can be
+            published, and approval refuses it until both are set.
         sellable:
           type: boolean
           description: >-
@@ -6992,7 +7324,15 @@ components:
       properties:
         id: { type: string }
         slotId: { type: string }
-        experience: { type: string }
+        experienceId:
+          type: string
+          description: >-
+            The listing this request is for, always present. The same id the
+            listings endpoints use, so a listing filter applies to requests as
+            it does to bookings.
+        experience:
+          type: string
+          description: The listing's title.
         guests: { type: integer }
         startsAt: { type: string, format: date-time }
         timezone: { type: string }
@@ -7107,6 +7447,14 @@ components:
         answered or not. After them comes any question this party answered that
         the listing no longer asks, with `current: false`, so an answer to a
         reworded question stays readable with the words it answered.
+
+
+        Answers are kept for 90 days after the departure ends, and then deleted,
+        unless a legal hold names the booking (D46). The questions and the rest
+        of the booking stay. Afterwards every question the listing still asks
+        reads `answered: false`, with no `answer` or `answeredAt`, exactly as a
+        question never answered reads, and a question the listing no longer asks
+        is not sent at all, because only an answer kept it in the list.
       required: [questionId, text, answerType, required, current, answered]
       properties:
         questionId: { type: string }
@@ -7129,7 +7477,7 @@ components:
             answered question appears with `current: false`.
         answered:
           type: boolean
-          description: "`false` means not answered yet: a booking can be made without answers."
+          description: "`false` means no answer is on record: not answered yet, since a booking can be made without answers, or deleted 90 days after the trip."
         answer:
           type: string
           description: >-
@@ -7220,7 +7568,9 @@ components:
                   What the listing asks travellers and what this party answered.
                   **Present only when there is something to show**: the listing
                   asks a question, or this party answered one. These questions
-                  never ask about health, which stays with `screening`.
+                  never ask about health, which stays with `screening`. Answers
+                  are deleted 90 days after the trip, as `PartyQuestion`
+                  describes.
         totals:
           type: object
           description: >-
@@ -7364,7 +7714,8 @@ components:
       type: string
       description: One switch. A closed set, added to by contract change.
       enum:
-        # New bookings, and seat requests that need an answer.
+        # New bookings, seat requests that need an answer, and messages a
+        # traveller writes in a booking's conversation.
         - new_bookings
         # A traveller cancelled a booking they made.
         - guest_cancellations
@@ -7597,10 +7948,12 @@ components:
           description: >-
             Whether a file is on record for this document. Sent on every row, so
             a screen offers an upload or shows the file without inferring either
-            from a field being absent.
+            from a field being absent. It can be `true` on a document your team
+            never sent a file for: our staff can attach the file we already hold
+            to a verified document that has none (D56).
         filename:
           type: string
-          description: The file's name as it was on the operator's device. Present only when `hasFile` is true.
+          description: The file's name as it was on the device it was sent from, which is our staff's when we attached it. Present only when `hasFile` is true.
         sizeBytes:
           type: integer
           format: int64
@@ -7627,6 +7980,12 @@ components:
         state: { type: string }
         guests: { type: integer }
         experience: { type: string }
+        experienceId:
+          type: string
+          format: uuid
+          description: >-
+            The listing, the same `id` `GET /experiences` returns, so a listing
+            filter built from that list lines up with these rows.
         slot:
           type: object
           properties:
@@ -7871,4 +8230,5 @@ components:
             What the listing asks travellers and what this party answered,
             exactly as `GET /slots/{id}/manifest` sends it for the same party.
             **Present only when there is something to show**: the listing asks a
-            question, or this party answered one.
+            question, or this party answered one. Answers are deleted 90 days
+            after the trip, as `PartyQuestion` describes.

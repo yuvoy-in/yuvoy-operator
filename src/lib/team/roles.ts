@@ -47,7 +47,7 @@ export function isInvitableRole(v: string): v is InvitableRole {
  * ## The correction, 6 September 2026
  *
  * This file used to say "**ADMIN does not nest with MANAGER**", on the grounds
- * that `canManage` was "OWNER or MANAGER" and therefore excluded ADMIN. That
+ * that `canManage` then excluded ADMIN. That
  * was true when it was written and **is no longer**: `canManage` is now
  * "OWNER, ADMIN or MANAGER", and the contract gives the reason — "ADMIN holds
  * it because the role exists for an owner who is off the island: one who could

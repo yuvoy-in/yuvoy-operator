@@ -303,6 +303,8 @@ export interface paths {
          *
          *     **Only a pending document takes a file.** Once somebody at Yuvoy has verified or rejected a document, a new file behind it would change the evidence under a decision nobody re-made, so this answers `409 document_locked`. File the document again to send a different one.
          *
+         *     Our staff can put a file behind a verified document that has none (D56): the file we already hold for it. Only a verified document with no file on record takes a file that way, and it never replaces one. It changes neither the document's state nor when it was verified. The document then reads `hasFile: true`, with the name and size of the file we attached.
+         *
          *     The size and the kind are signed into the URL, so the bucket itself refuses a file of any other length or content type. Send the file with `method` to `uploadUrl`, with every header in `headers` exactly as given; the browser sets `Content-Length` from the file. Then call `POST /credentials/{id}/upload-intents/{intentId}/complete`.
          *
          *     `uploadUrl` is **never stored server-side and never logged**: it is a credential for writing one file into a private bucket, and it works for fifteen minutes.
@@ -666,6 +668,19 @@ export interface paths {
          *     **Soonest trip first, a page at a time.** Send no paging parameters and you get the first hundred, which is what this list always returned, and `complete` says whether that was all of them. To continue, pass `nextCursor` back as `cursor` with the same `state`, `from` and `to`. Stop when there is no `nextCursor`, not when a page comes back short.
          *
          *     **`from` and `to` are whole days in the market's own clock** (Asia/Kolkata in the Andamans), compared with the day the trip runs there, and both are inclusive. A trip at 04:00 on the 15th is on the 15th, although in UTC it leaves on the evening of the 14th.
+         *
+         *     **Views, search and a listing filter, all answered here.** `view`, `q` and `experienceId` combine with each other and with `state`, `from` and `to`. Every booking is in exactly one view, decided in this order, first match wins:
+         *
+         *     | Booking | View |
+         *     | --- | --- |
+         *     | `cancelled` or `declined` (a cancelled booking, a departure you called off, a payment we could not honour and refunded) | `cancelled` |
+         *     | `completed` or `no_show` | `past` |
+         *     | any other state, on a trip day before today in the market's clock (the trip is over and nobody marked it) | `past` |
+         *     | any other state, on a trip today or later (`paid_pending_ops`, `confirmed`) | `upcoming` |
+         *
+         *     A trip earlier today stays upcoming until the market's day ends or it is marked. `upcoming` runs soonest trip first; `past` and `cancelled` run most recent trip first. Open requests are not bookings and are in no view: they come from `GET /requests`, and `counts.requests` counts them. A request that was declined or ran out of time never became a booking, so it is on neither list.
+         *
+         *     **`counts` are totals, not the size of this page.** They honour `q`, `experienceId`, `from` and `to`, and ignore `view`, `state`, `limit` and `cursor`, so the pills stay put while you switch between them.
          */
         get: operations["listOperatorBookings"];
         put?: never;
@@ -905,7 +920,7 @@ export interface paths {
          *
          *     `?format=csv` returns the same data as a file, deterministically ordered so two exports can be diffed — which is exactly what somebody does when the head count and the app disagree. The CSV ends with a `TOTAL` row, because making somebody add a column of numbers on a dock is how the count goes wrong.
          *
-         *     The CSV's columns are `reference`, `name`, `guests`, `state`, `arrived`, `arrived_at`, `check` and `answers`. `answers` holds each question the listing asks now that the party answered, in the listing's order, as `question: answer` with `; ` between them, and is empty when there are none. A question not answered yet is left off, and so is an answer to a question the listing no longer asks; `questions` on the JSON manifest carries both. A cell holding a comma, a quote or a line break is quoted as CSV requires.
+         *     The CSV's columns are `reference`, `name`, `guests`, `state`, `arrived`, `arrived_at`, `check` and `answers`. `answers` holds each question the listing asks now that the party answered, in the listing's order, as `question: answer` with `; ` between them, and is empty when there are none. A question not answered yet is left off, and so is an answer to a question the listing no longer asks; `questions` on the JSON manifest carries both. Once answers are deleted, 90 days after the trip as `PartyQuestion` describes, `answers` is empty. A cell holding a comma, a quote or a line break is quoted as CSV requires.
          */
         get: operations["getManifest"];
         put?: never;
@@ -1437,7 +1452,7 @@ export interface paths {
         put?: never;
         /**
          * Write a new listing
-         * @description Lands as a **draft** and reaches nobody. Sending it for review is a separate act (`POST /experiences/{id}/revisions`) and approval is what publishes it — a listing is a promise to a traveller, and the person making the promise is not the person who checks it.
+         * @description Lands as a **draft** and reaches nobody. Save further steps onto the draft with `PATCH /experiences/{id}`. Sending it for review is a separate act, `POST /experiences/{id}/submit`, and approval is what publishes it. A listing is a promise to a traveller, and the person making the promise is not the person who checks it. `POST /experiences/{id}/revisions` is for changing a listing once it has been sent to us or is on sale.
          *
          *     `slug` is optional; one is proposed from the title if it is omitted. A listing without `unitPricePaise` can be saved but cannot be approved, which the response reports as `sellable: false`.
          *
@@ -1458,14 +1473,18 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * One listing, its departures and its media, in a single answer
+         * One listing, its departures, media and questions, in a single answer
          * @description Everything needed to work on one listing, in one request.
          *
          *     The pieces have always been separate — the listing here, departures on `/slots`, media on `/media` — and building a listing meant fetching the whole calendar and the whole media library to find the handful of rows that belong to it. On island 4G that is three requests and most of a business's data to render one screen.
          *
          *     `listing.publishBlockers` is what the listing is still missing before it can be published, so a form can mark the specific rows rather than saying only that something is wrong. `media` carries each item's own state and, for anything a reviewer refused, the reason.
          *
-         *     This does not change who may do what. It is a read: the same listing, the same departures and the same media each endpoint already returns, scoped to one listing and fetched once.
+         *     `departures` are the ones still to come: those that have not yet left, soonest first, up to 200. A departure that has already left is not here; `GET /slots` with a date range reads those.
+         *
+         *     `questions` is what the listing asks travellers, exactly as `GET /experiences/{id}/questions` returns it.
+         *
+         *     This does not change who may do what. It is a read: the same listing, departures, media and questions each endpoint already returns, scoped to one listing and fetched once.
          */
         get: operations["getListingWorkspace"];
         put?: never;
@@ -1527,7 +1546,7 @@ export interface paths {
         };
         /**
          * The questions this listing asks travellers
-         * @description What a traveller is asked when booking this listing, in the order they are asked. Anybody on the team can read it.
+         * @description What a traveller is asked when booking this listing, in the order they are asked. Anybody on the team can read it. It is the list as last saved, by your team or by our staff.
          *
          *     Another business's listing answers `404`, identically to one that does not exist.
          */
@@ -1545,6 +1564,8 @@ export interface paths {
          *     `required` is enforced only on a checkout that sends answers: that checkout is refused until every required question the listing asks has an answer that fits. A checkout that sends no answers is not refused over it. Its booking shows the question as not answered yet, and the traveller can answer it from their booking link while the booking is going ahead and until its departure leaves.
          *
          *     Only an OWNER, ADMIN or MANAGER can change the list, the same roles that change a listing's price and meeting point.
+         *
+         *     Our staff can replace the list too, with `PUT /admin/v1/experiences/{id}/questions` (D47): the same body under the same rules, taking effect at once as yours does. Their change is recorded in our audit log as made by our staff.
          */
         put: operations["replaceListingQuestions"];
         post?: never;
@@ -1628,6 +1649,10 @@ export interface paths {
          *
          *     Saving a draft with `PATCH /experiences/{id}` sends nothing to anybody; this does. The completeness check runs here, once, and a draft still missing something is refused with every missing field named — while the form is open, rather than days later through a rejection.
          *
+         *     **Two mandatory fields are not yet enforced here: `activityType` and `pricingUnit`.** A draft missing either is still sent, and `publishBlockers` goes on naming it. Both are required before the listing can be published: approval refuses it until they are set.
+         *
+         *     The destination has to be in your own market, as it does on `POST /experiences`. A draft whose destination is in another market is refused.
+         *
          *     On success the listing is `in_review` and is in the admin review queue straight away. It is not on sale: a person puts it there.
          *
          *     A listing already `in_review` answers `200` with itself, so a double tap is neither an error nor a second place in the queue. OWNER, ADMIN or MANAGER only.
@@ -1664,6 +1689,30 @@ export interface paths {
          *     Not behind step-up and not OWNER-only. Nothing here takes money, moves money, or puts anything on sale.
          */
         put: operations["saveOperatorStory"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What travellers said, newest first
+         * @description Reviews of your trips that Yuvoy has published. A review is shown to nobody, you included, until a person here has read it, so one waiting for that or one we withheld is in neither `items` nor `summary`.
+         *
+         *     Any member of your team may read this. The traveller is a first name and nothing else: never a phone number or an email address.
+         *
+         *     `summary` covers every published review under the same `experienceId`, not only this page. Pass `nextCursor` back as `cursor` with the same `experienceId`, and stop when there is none.
+         */
+        get: operations["listOperatorReviews"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2265,7 +2314,7 @@ export interface components {
             /**
              * @description *material*, *mandatory to publish*. What the listing actually is. Not an enum — the set grows by INSERT; the pairs are on `GET /catalog/vocabulary`, and the (activity, category) pair is enforced by a composite foreign key.
              *
-             *     It is the one mandatory field the **submit** gate does not yet demand, because the portal has no picker for it and demanding it would answer every operator edit with a 400 they could not act on. Approval demands it.
+             *     It is one of the two mandatory fields the **submit** gate does not yet demand, with `pricingUnit`. Neither `POST /experiences/{id}/submit` nor a revision is refused over it. Approval and the admin publish demand both.
              * @example scuba
              */
             activityType?: string;
@@ -2317,7 +2366,9 @@ export interface components {
              */
             bookingMode?: "allotment" | "request";
             /**
-             * @description *material*, *mandatory*. How `unitPricePaise` is charged. Travellers now see this beside the price, so changing it changes what a card claims.
+             * @description *material*, *mandatory to publish*. How `unitPricePaise` is charged. Travellers now see this beside the price, so changing it changes what a card claims.
+             *
+             *     Like `activityType`, the **submit** gate does not yet demand it: neither `POST /experiences/{id}/submit` nor a revision is refused over an unstated basis. Approval and the admin publish refuse the listing until it is stated.
              * @enum {string}
              */
             pricingUnit?: "per_person" | "per_group";
@@ -2496,6 +2547,11 @@ export interface components {
             unitPricePaise?: number | null;
             pricingUnit?: string;
             meetingPoint?: string;
+            /**
+             * @description What to look for at the meeting point, as saved with `PATCH /experiences/{id}` or a revision. Always present, and an empty string when none was written.
+             * @example Blue gate beside the fuel pump
+             */
+            meetingLandmark?: string;
             inclusions?: string[];
             requirements?: string[];
             safetyNotes?: string;
@@ -2512,7 +2568,7 @@ export interface components {
              *
              *     `pricingUnit` appears here for a listing whose basis nobody ever stated. The column is NOT NULL, so the value alone cannot tell the two apart; the database records separately whether a caller named it, and an unstated basis blocks publication rather than printing a guessed phrase beside the price.
              *
-             *     Sending a revision that leaves one of these empty is a 400, and approving one is a 409, so mark the specific rows on the form rather than letting somebody find out on send. `activityType` is the one the submit gate does not yet enforce — it is still required before the listing can be published.
+             *     Sending a revision that leaves one of these empty is a 400, and approving one is a 409, so mark the specific rows on the form rather than letting somebody find out on send. `activityType` and `pricingUnit` are the two the submit gate does not yet enforce: `POST /experiences/{id}/submit` and `POST /experiences/{id}/revisions` do not refuse a listing over either. Both are still required before the listing can be published, and approval refuses it until both are set.
              */
             publishBlockers?: string[];
             /** @description False when there is no price. Such a listing saves but cannot be approved, and an operator should learn that while writing it rather than after waiting for a review. `publishBlockers` is the fuller answer and names every outstanding field, price included. */
@@ -2697,6 +2753,9 @@ export interface components {
         OpenRequest: {
             id?: string;
             slotId?: string;
+            /** @description The listing this request is for, always present. The same id the listings endpoints use, so a listing filter applies to requests as it does to bookings. */
+            experienceId?: string;
+            /** @description The listing's title. */
             experience?: string;
             guests?: number;
             /** Format: date-time */
@@ -2758,6 +2817,8 @@ export interface components {
          * @description One question as it stands for one party: the words they were asked, and their answer if they gave one. The manifest, the bookings list and a single booking send the same list for the same party.
          *
          *     Every question the listing asks now comes first, in the listing's order, answered or not. After them comes any question this party answered that the listing no longer asks, with `current: false`, so an answer to a reworded question stays readable with the words it answered.
+         *
+         *     Answers are kept for 90 days after the departure ends, and then deleted, unless a legal hold names the booking (D46). The questions and the rest of the booking stay. Afterwards every question the listing still asks reads `answered: false`, with no `answer` or `answeredAt`, exactly as a question never answered reads, and a question the listing no longer asks is not sent at all, because only an answer kept it in the list.
          */
         PartyQuestion: {
             questionId: string;
@@ -2770,7 +2831,7 @@ export interface components {
             required: boolean;
             /** @description `false` when the listing no longer asks this question. Only an answered question appears with `current: false`. */
             current: boolean;
-            /** @description `false` means not answered yet: a booking can be made without answers. */
+            /** @description `false` means no answer is on record: not answered yet, since a booking can be made without answers, or deleted 90 days after the trip. */
             answered: boolean;
             /** @description Present when answered: `yes` or `no` for `yes_no`, one of `options` as the listing wrote it for `choice`, the traveller's own words for `short_text`. */
             answer?: string;
@@ -2820,7 +2881,7 @@ export interface components {
                 arrivedAt?: string;
                 /** @description **Present only on listings that ask a medical question.** Absent means the question does not apply: a snorkel trip carrying an empty screening object would invite a screen to render "not screened" against a party nobody was ever going to ask, and a false alarm on this signal teaches an instructor to skip the column. */
                 screening?: components["schemas"]["PartyScreening"];
-                /** @description What the listing asks travellers and what this party answered. **Present only when there is something to show**: the listing asks a question, or this party answered one. These questions never ask about health, which stays with `screening`. */
+                /** @description What the listing asks travellers and what this party answered. **Present only when there is something to show**: the listing asks a question, or this party answered one. These questions never ask about health, which stays with `screening`. Answers are deleted 90 days after the trip, as `PartyQuestion` describes. */
                 questions?: components["schemas"]["PartyQuestion"][];
             }[];
             /** @description Computed server-side so three clients cannot disagree about them on a dock. `seatsSold` and `seatsSoldOffline` answer different questions and are deliberately separate. */
@@ -3029,9 +3090,9 @@ export interface components {
              * @example insurance
              */
             type: string;
-            /** @description Whether a file is on record for this document. Sent on every row, so a screen offers an upload or shows the file without inferring either from a field being absent. */
+            /** @description Whether a file is on record for this document. Sent on every row, so a screen offers an upload or shows the file without inferring either from a field being absent. It can be `true` on a document your team never sent a file for: our staff can attach the file we already hold to a verified document that has none (D56). */
             hasFile: boolean;
-            /** @description The file's name as it was on the operator's device. Present only when `hasFile` is true. */
+            /** @description The file's name as it was on the device it was sent from, which is our staff's when we attached it. Present only when `hasFile` is true. */
             filename?: string;
             /**
              * Format: int64
@@ -3057,6 +3118,11 @@ export interface components {
             state?: string;
             guests?: number;
             experience?: string;
+            /**
+             * Format: uuid
+             * @description The listing, the same `id` `GET /experiences` returns, so a listing filter built from that list lines up with these rows.
+             */
+            experienceId?: string;
             slot?: {
                 /** Format: date-time */
                 startsAt?: string;
@@ -3171,7 +3237,7 @@ export interface components {
             };
             /** @description This party's screening, exactly as `GET /slots/{id}/manifest` sends it for the same party. **Present only when the listing asks a medical question**, and never what anybody disclosed. */
             screening?: components["schemas"]["PartyScreening"];
-            /** @description What the listing asks travellers and what this party answered, exactly as `GET /slots/{id}/manifest` sends it for the same party. **Present only when there is something to show**: the listing asks a question, or this party answered one. */
+            /** @description What the listing asks travellers and what this party answered, exactly as `GET /slots/{id}/manifest` sends it for the same party. **Present only when there is something to show**: the listing asks a question, or this party answered one. Answers are deleted 90 days after the trip, as `PartyQuestion` describes. */
             questions?: components["schemas"]["PartyQuestion"][];
         };
     };
@@ -4760,13 +4826,22 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string;
+                /** @description `upcoming`, `past` or `cancelled`, as the table above defines them. None is every booking, soonest trip first, as this list always was. Anything else is a `400` with `details.view`. */
+                view?: "upcoming" | "past" | "cancelled";
+                /**
+                 * @description A traveller's name or a booking reference. Spaces at either end are ignored and case does not matter. A name matches on any part of it (`men` finds Asha Menon). A reference matches with or without its `YV-`, and on any part of the code after it, so `5DT6`, `yv-5dt6` and `YV-5DT6RKVQ` all find YV-5DT6RKVQ. `%` and `_` match themselves. Empty is no search. A request has no reference, so `counts.requests` matches it by name alone. At most 60 characters; more is a `400` with `details.q`.
+                 * @example YV-5DT6RKVQ
+                 */
+                q?: string;
+                /** @description One of your listings, by the `id` from `GET /experiences`. Rows carry the same value as `experienceId`. A listing that is not yours narrows to nothing. Not a uuid is a `400` with `details.experienceId`. */
+                experienceId?: string;
                 /** @description The first day to include, in the market's clock. */
                 from?: string;
                 /** @description The last day to include, in the market's clock. */
                 to?: string;
                 /** @description Bookings per page. None, or a value that is not a whole number above zero, gets 100. More than 200 gets 200. */
                 limit?: number;
-                /** @description A previous response's `nextCursor`, sent with the same `state`, `from` and `to`. Opaque, so do not construct one. A cursor this list did not issue is a `400`. */
+                /** @description A previous response's `nextCursor`, sent with the same `state`, `view`, `q`, `experienceId`, `from` and `to`. Opaque, so do not construct one. A cursor this list did not issue is a `400`, and so is a cursor from one view sent with another. */
                 cursor?: string;
             };
             header?: never;
@@ -4787,10 +4862,47 @@ export interface operations {
                         complete: boolean;
                         /** @description Absent when there is nothing after this page. */
                         nextCursor?: string;
+                        /**
+                         * @description How many sit behind each pill, under the same `q`, `experienceId`, `from` and `to`, whatever `view`, `state` or page was asked for. Always present, zeroes included. `upcoming`, `past` and `cancelled` add up to every booking the search found.
+                         * @example {
+                         *       "requests": 2,
+                         *       "upcoming": 14,
+                         *       "past": 120,
+                         *       "cancelled": 6
+                         *     }
+                         */
+                        counts: {
+                            /** @description Open requests still waiting on your answer, the ones `GET /requests` lists, on a trip day inside `from` and `to`. */
+                            requests: number;
+                            upcoming: number;
+                            past: number;
+                            cancelled: number;
+                        };
                     };
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Something in the request needs fixing. `details` names the field: `view`, `q`, `experienceId`, `from`, `to` or `cursor`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "invalid_input",
+                     *         "message": "view must be upcoming, past or cancelled",
+                     *         "details": {
+                     *           "view": "must be upcoming",
+                     *           "past or cancelled": null
+                     *         },
+                     *         "requestId": "e9170e70-9db2-4892-92b7-8c62b5a2485a"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };
@@ -5298,7 +5410,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            /** @description Only an OWNER, ADMIN or MANAGER can cancel a booking. */
+            /** @description STAFF cannot cancel a booking. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5401,7 +5513,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            /** @description Only an OWNER, ADMIN or MANAGER can record it (`forbidden`). */
+            /** @description STAFF cannot record giving the cash back (`forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6256,8 +6368,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         listing: components["schemas"]["OperatorExperience"];
-                        /** @description Its own departures only. Each carries whether a traveller can actually buy that one — a certificate lapsing on Tuesday takes Wednesday off sale and leaves Monday selling, which one badge on the listing cannot say. */
+                        /** @description Its own departures that have not yet left, soonest first, up to 200. Each carries whether a traveller can actually buy that one. A certificate lapsing on Tuesday takes Wednesday off sale and leaves Monday selling, which one badge on the listing cannot say. */
                         departures: components["schemas"]["OperatorDeparture"][];
+                        /** @description The questions the listing asks travellers, in the order they are asked, and empty when it asks none. The same list `GET /experiences/{id}/questions` returns. */
+                        questions: components["schemas"]["ListingQuestion"][];
                         /** @description The photographs and clips uploaded for this listing, each with its own state and, where one was refused, why. */
                         media: components["schemas"]["OperatorMedia"][];
                     };
@@ -6449,7 +6563,7 @@ export interface operations {
                     "application/json": components["schemas"]["OperatorExperience"];
                 };
             };
-            /** @description `invalid_input` — a field we do not know (`details.unknownFields`, with `details.allowed`), a value that field cannot hold, or a field a listing cannot be without sent empty: title, category, destination, duration, party size or pricing unit. A draft can change those; it cannot go without them. */
+            /** @description `invalid_input`: a field we do not know (`details.unknownFields`, with `details.allowed`), a value that field cannot hold, a `destination` that is not in your own market (refused as `POST /experiences` refuses it), or a field a listing cannot be without sent empty: title, category, destination, duration, party size or pricing unit. A draft can change those; it cannot go without them. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6519,6 +6633,8 @@ export interface operations {
              *     A key we do not know how to change: `details.unknownFields` lists every one, and `details.allowed` lists the whole editable set.
              *
              *     A revision that would leave the listing unpublishable: `details.missing` names the mandatory fields still empty after this edit is applied. Refused here, while the form is still open, rather than two days later through a rejection.
+             *
+             *     `activityType` and `pricingUnit` are not yet enforced here and are never named in `details.missing`. Both are still required before the listing can be published, and approval refuses it until both are set.
              */
             400: {
                 headers: {
@@ -6553,7 +6669,7 @@ export interface operations {
                     "application/json": components["schemas"]["OperatorExperience"];
                 };
             };
-            /** @description `invalid_input` — the draft is not complete. `details.missing` names every mandatory field still empty, spelled as the draft body spells them. */
+            /** @description `invalid_input`, for one of two reasons. The draft is not complete: `details.missing` names every mandatory field still empty, spelled as the draft body spells them, apart from `activityType` and `pricingUnit`, which are not yet enforced here. Or its destination is not in your market, which has no `details`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6592,6 +6708,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /**
+                         * @description The three numbers at the top of your profile. Always present, zeroes included.
+                         * @example {
+                         *       "listings": 3,
+                         *       "tripsRun": 212,
+                         *       "rating": {
+                         *         "average": 4.8,
+                         *         "count": 97
+                         *       }
+                         *     }
+                         */
+                        stats: {
+                            /** @description Listings a traveller can buy right now: published, and passing every check a sale needs today (your account is live and not paused, the listing has a price, your required documents are verified and in date, and nothing has been switched off). The same listings your listings screen calls `live` or `live_changes_in_review`. A draft, a listing waiting on us, a withdrawn one, or a published one that cannot sell is not counted. */
+                            listings: number;
+                            /** @description Departures that have started, were not called off or cancelled, and carried at least one booking marked `completed`. */
+                            tripsRun: number;
+                            /** @description Over the same published reviews `GET /reviews` lists. */
+                            rating: {
+                                /** @description To one decimal. Null when `count` is 0. */
+                                average: number | null;
+                                count: number;
+                            };
+                        };
                         about: string;
                         languages: string[];
                         photos: {
@@ -6638,6 +6777,110 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["AccountSuspended"];
+        };
+    };
+    listOperatorReviews: {
+        parameters: {
+            query?: {
+                /** @description One of your listings, by its `id` from `GET /experiences`. A listing that is not yours narrows to nothing. Not a uuid is a `400` with `details.experienceId`. */
+                experienceId?: string;
+                /** @description Reviews per page. None, or a value that is not a whole number above zero, gets 50. More than 200 gets 200. */
+                limit?: number;
+                /** @description A previous response's `nextCursor`. Opaque, so do not construct one. A cursor this list did not issue is a `400`. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of your published reviews, and their summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "summary": {
+                     *         "averageRating": 4.5,
+                     *         "count": 2,
+                     *         "tags": {
+                     *           "guide": 2,
+                     *           "safety": 1,
+                     *           "value": 0,
+                     *           "organisation": 0,
+                     *           "punctuality": 0,
+                     *           "equipment": 0
+                     *         }
+                     *       },
+                     *       "items": [
+                     *         {
+                     *           "id": "8d1f6f0e-3c1a-4d4b-9a51-6c1e2f0b7a10",
+                     *           "rating": 5,
+                     *           "comment": "Calm water and a patient instructor.",
+                     *           "tags": [
+                     *             "guide",
+                     *             "safety"
+                     *           ],
+                     *           "experienceId": "0f8fad5b-d9cb-469f-a165-70867728950e",
+                     *           "experienceTitle": "Try-dive at Nemo Reef",
+                     *           "travellerName": "Asha",
+                     *           "tripDate": "2026-09-10",
+                     *           "createdAt": "2026-09-11T06:12:00Z"
+                     *         }
+                     *       ],
+                     *       "complete": true
+                     *     }
+                     */
+                    "application/json": {
+                        summary: {
+                            /** @description To one decimal. Null when `count` is 0. */
+                            averageRating: number | null;
+                            count: number;
+                            /** @description How many published reviews chose each tag. Every tag is present, zeroes included. */
+                            tags: {
+                                guide: number;
+                                safety: number;
+                                value: number;
+                                organisation: number;
+                                punctuality: number;
+                                equipment: number;
+                            };
+                        };
+                        items: {
+                            id: string;
+                            rating: number;
+                            /** @description Null when they tapped stars and wrote nothing. */
+                            comment: string | null;
+                            /** @description What they said was good. Empty when they chose none. */
+                            tags: ("guide" | "safety" | "value" | "organisation" | "punctuality" | "equipment")[];
+                            /** Format: uuid */
+                            experienceId: string;
+                            experienceTitle: string;
+                            /** @description The first word of the name they booked under. Null when they gave none. */
+                            travellerName: string | null;
+                            /**
+                             * Format: date
+                             * @description The day the trip ran, in the market's own calendar.
+                             */
+                            tripDate: string;
+                            /**
+                             * Format: date-time
+                             * @description When the traveller wrote it.
+                             */
+                            createdAt: string;
+                        }[];
+                        /** @description Told rather than inferred. `true` means nothing comes after this page; `false` always comes with a `nextCursor`. */
+                        complete: boolean;
+                        /** @description Absent when there is nothing after this page. */
+                        nextCursor?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
         };
     };
     createStoryPhotoUpload: {
@@ -7142,8 +7385,6 @@ export interface operations {
                      *     **Optional for now, and it will become required.** D-031 C5 asks for it at upload, but the shipped portal uploads a clip with no target and attaches it after approval, so requiring it today would stop every reel upload in production the moment this deployed. Send it and it is honoured in full; omit it and the clip behaves as it does today, with the moderation queue saying plainly that no listing was chosen. `POST /media/photo-intents` requires it from the start, because nothing calls that endpoint yet and there is no deployed client to break. Raised as `yuvoy-operator#31`.
                      *
                      *     A listing that is not yours answers **404**, the same as one that does not exist.
-                     *
-                     *     A listing that is not yours answers **404**, the same as one that does not exist.
                      */
                     experienceId?: string;
                     /**
@@ -7191,7 +7432,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description No `sizeBytes`, no `experienceId`, or a file larger than we accept. Refused before an upload URL exists rather than after bytes have moved, and no intent is created — a refusal that burned the operator's one concurrent slot would lock them out of retrying. */
+            /** @description No `sizeBytes`, a `role` other than `hero` or `gallery`, or a file larger than we accept. A missing `experienceId` is not refused: it is optional for now, as described on the field. Refused before an upload URL exists rather than after bytes have moved, and no intent is created. A refusal that burned the operator's one concurrent slot would lock them out of retrying. */
             400: {
                 headers: {
                     [name: string]: unknown;

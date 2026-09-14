@@ -512,3 +512,78 @@ export function headline(standing: Standing): { title: string; body: string } {
     body: "Nothing is waiting on you. It is with us, and you do not need to chase it.",
   };
 }
+
+/* ------------------------------------------- a suspended business (#50) -- */
+
+export type Suspension = components["schemas"]["AccountStanding"]["suspension"];
+
+/**
+ * A business that is suspended, closed or disqualified.
+ *
+ * `account.suspension` is "present exactly while the business is suspended
+ * (D20), or while its status is `OFFBOARDED` or `DISQUALIFIED` (D44), and
+ * absent otherwise". So presence IS the state, and nothing here derives it
+ * from `state`, which the module comment above already refuses to branch on.
+ *
+ * ## It is not the same thing as `account_not_active`
+ *
+ * It used to be. `GET /me` answered `403 account_not_active` for a suspended
+ * business, so the portal had one idea covering two situations. The contract
+ * now separates them: "a suspended business is not refused here, and nor is
+ * one whose status is `OFFBOARDED` or `DISQUALIFIED`: each signs in, and its
+ * writes answer `account_suspended` instead." `account_not_active` is left
+ * meaning only an offboarded ACCOUNT, which cannot sign in at all.
+ *
+ * The difference matters on screen. A suspended operator can still sign in,
+ * still read everything, and still run the trips already booked. Sending them
+ * to a dead end would strand travellers who have paid.
+ *
+ * `message` is required by the contract, so a block without one is not a
+ * suspension this build can render: an empty banner is worse than none,
+ * because it reads as a fault in the portal rather than a state of the
+ * business.
+ */
+export function suspensionOf(
+  account: AccountStanding | undefined,
+): NonNullable<Suspension> | null {
+  const block = account?.suspension;
+  if (!block || typeof block.message !== "string" || !block.message.trim()) {
+    return null;
+  }
+  return block;
+}
+
+/**
+ * The writes a suspended business may still make.
+ *
+ * Named by endpoint rather than by screen, because that is how the API decides
+ * it and a screen-shaped list would drift the first time a button moved. The
+ * shape of it: everything can still be read, the trips already booked can
+ * still be run or stopped, and the team, a bank change and documents can still
+ * be dealt with. Everything that would take NEW money or put new inventory on
+ * sale is refused.
+ *
+ * `POST /bookings/{id}/cancel` and `POST /requests/{id}/decline` are on the
+ * list and their opposites are not, which is the whole principle: a suspended
+ * business can always let a traveller go, and can never take one on.
+ */
+export const WRITES_ALLOWED_WHILE_SUSPENDED = [
+  "POST /bookings/{id}/attendance",
+  "POST /bookings/{id}/cash-collected",
+  "POST /bookings/{id}/cash-returned",
+  "POST /bookings/{id}/relay",
+  "POST /slots/{id}/relay",
+  "POST /bookings/{id}/messages",
+  "POST /bookings/{id}/messages/read",
+  "POST /slots/{id}/call-off",
+  "POST /bookings/{id}/cancel",
+  "POST /requests/{id}/decline",
+  "POST /team/{id}/hold",
+  "POST /team/{id}/restore",
+  "DELETE /team/{id}",
+  "POST /change-requests/{id}/cancel",
+  "POST /credentials",
+  "POST /credentials/{id}/upload-intents",
+  "POST /credentials/{id}/upload-intents/{intentId}/complete",
+  "DELETE /auth/session",
+] as const;

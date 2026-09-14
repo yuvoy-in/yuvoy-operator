@@ -29,12 +29,15 @@ import { GrantedReceipt, RequestRow, type Receipt } from "./request-row";
 export function RequestQueue({
   requests,
   canAnswer,
+  canAccept,
   at,
   today,
   tomorrow,
 }: {
   requests: OpenRequest[];
   canAnswer: boolean;
+  /** Accepting is refused while suspended; declining is not (#50). */
+  canAccept: boolean;
   /** When the page rendered, on the server's clock. Each row's age reads it. */
   at: number;
   today: string;
@@ -73,6 +76,7 @@ export function RequestQueue({
           key={request.id}
           request={request}
           canAnswer={canAnswer}
+          canAccept={canAccept}
           onGranted={onGranted}
           at={at}
           today={today}

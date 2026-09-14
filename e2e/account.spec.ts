@@ -329,48 +329,88 @@ test("a live account gets no banner on the day screen", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("an account on hold is told what it is, and is not signed out", async ({
+test("a suspended business signs in, and every screen says why", async ({
   page,
 }) => {
-  await signIn(page, SUSPENDED);
-
-  // Every authenticated page sends them here, so sign-in lands here too.
-  await page.waitForURL("**/account");
-  await expect(
-    page.getByRole("heading", { name: "Your account cannot take bookings" }),
-  ).toBeVisible();
-
   /*
-    "The person is fine, the business relationship is not." Signing them out
-    would say the opposite, so the session survives and the screen talks about
-    the account rather than about them.
+    yuvoy-operator#50, and this test used to assert the opposite.
+
+    A suspended business was refused `403 account_not_active` on every endpoint
+    and bounced to /account from everywhere. The contract separated the two:
+    "a suspended business is not refused here ... each signs in, and its writes
+    answer `account_suspended` instead." `account_not_active` now means only an
+    OFFBOARDED account, which cannot hold a session at all.
+
+    The separation is not a nicety. A suspended operator still has departures
+    that travellers have paid for, and those have to be run or called off. The
+    old dead end stranded them.
   */
-  await expect(
-    page.getByText("Your sign-in works.", { exact: false }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-
-  // A person, not a form. This screen does not know why, and says so.
-  await expect(page.getByText("+91 81216 57657")).toBeVisible();
-  await expect(
-    page.getByText(/If you have travellers booked on departures today/),
-  ).toBeVisible();
-});
-
-test("every screen sends an account on hold to the same place", async ({
-  page,
-}) => {
   await signIn(page, SUSPENDED);
-  await page.waitForURL("**/account");
+  await page.waitForURL("**/today");
 
-  // Not a special case on one route: `requireOperator()` is where it is known.
-  for (const path of ["/today", "/team", "/earnings", "/calendar"]) {
+  // The banner is the API's three sentences, in order, on the first screen.
+  const banner = page.getByRole("alert").filter({ hasText: "suspended" });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText(
+    "Your account has been suspended. Please reach out to admin for help.",
+  );
+  // What a person at Yuvoy wrote, shown as plain text.
+  await expect(banner).toContainText("three complaints about missed pickups");
+  // And the half that stops somebody assuming the season is over.
+  await expect(banner).toContainText("run or stop the trips already booked");
+
+  // On every screen, not one: it changes what every control on the page means.
+  for (const path of ["/bookings", "/calendar", "/account"]) {
     await page.goto(path);
-    await page.waitForURL("**/account");
     await expect(
-      page.getByRole("heading", { name: "Your account cannot take bookings" }),
+      page.getByRole("alert").filter({ hasText: "suspended" }).first(),
     ).toBeVisible();
   }
+});
+
+test("a suspended business keeps the writes the API still allows", async ({
+  page,
+}) => {
+  /*
+    The table in yuvoy-operator#50: everything can still be read, the trips
+    already booked can still be run or stopped, and the team, a bank change and
+    documents can still be dealt with. The principle underneath it is that a
+    suspended business can always let a traveller GO and can never take one ON.
+  */
+  await signIn(page, SUSPENDED);
+  await page.waitForURL("**/today");
+
+  // Pause is not drawn. Putting a listing back on sale is taking travellers on.
+  await page.goto("/services/activities");
+  await expect(
+    page.getByRole("button", { name: "Pause", exact: true }),
+  ).toHaveCount(0);
+  // Nor is a new listing, which is new inventory.
+  await expect(
+    page.getByRole("button", { name: /Add a listing|New listing/i }),
+  ).toHaveCount(0);
+
+  // Seats, closed dates and counter sales are all gone from the calendar.
+  await page.goto("/calendar");
+  await expect(
+    page.getByRole("button", { name: /Add a departure|Close/i }),
+  ).toHaveCount(0);
+
+  /*
+    The team is still manageable. Holding somebody is taking access AWAY, which
+    a suspended business may always do; inviting is handing it out, which it
+    may not.
+  */
+  await page.goto("/team");
+  await expect(
+    page.getByRole("button", { name: "Send the invitation" }),
+  ).toHaveCount(0);
+
+  // And the day still runs: the manifest and its attendance are untouched.
+  await page.goto("/today");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "suspended" }),
+  ).toBeVisible();
 });
 
 test("a server having a bad minute is not an account state", async ({
@@ -424,10 +464,20 @@ test("/account has no accessibility violations, on hold or not", async ({
     .analyze();
   expect(active.violations).toEqual([]);
 
+  /*
+    A suspended business lands on the day like anybody else since
+    yuvoy-operator#50, so /account is navigated to rather than arrived at. The
+    banner is on this screen too, and it is the new thing axe has to be happy
+    about: an `alert` carrying three paragraphs, above everything.
+  */
   await page.context().clearCookies();
   await signIn(page, SUSPENDED);
-  await page.waitForURL("**/account");
+  await page.waitForURL("**/today");
+  await page.goto("/account");
   await page.waitForLoadState("networkidle");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "suspended" }).first(),
+  ).toBeVisible();
 
   const held = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
