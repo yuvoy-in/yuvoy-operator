@@ -114,7 +114,7 @@ export function BookingList({
                     href={`/bookings/${booking.id}`}
                     className={panelClass(
                       "raised",
-                      "ease-interaction hover:bg-cream flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
+                      "ease-interaction hover:bg-paper flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
                     )}
                   >
                     <span className="flex min-w-0 items-baseline gap-3">

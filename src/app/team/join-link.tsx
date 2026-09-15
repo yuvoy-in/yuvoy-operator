@@ -102,7 +102,7 @@ export function JoinLink({
         than truncation for the same reason: a link with an ellipsis in it is a
         link nobody can retype.
       */}
-      <p className="rounded-control border-cream-line bg-cream text-forest mt-3 border p-3 font-mono text-sm break-all select-all">
+      <p className="rounded-control border-paper-line bg-paper text-forest mt-3 border p-3 font-mono text-sm break-all select-all">
         {url}
       </p>
 

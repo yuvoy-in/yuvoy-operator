@@ -219,7 +219,7 @@ export default async function HomePage({
                   href={`/today/${slot.id}`}
                   className={panelClass(
                     "raised",
-                    "ease-interaction hover:bg-cream flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
+                    "ease-interaction hover:bg-paper flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
                   )}
                 >
                   <span className="flex min-w-0 items-baseline gap-3">
@@ -274,7 +274,7 @@ export default async function HomePage({
                     href={`/today/listing/${id}`}
                     className={panelClass(
                       "raised",
-                      "ease-interaction hover:bg-cream flex items-center gap-3 px-4 py-3 transition-colors duration-200",
+                      "ease-interaction hover:bg-paper flex items-center gap-3 px-4 py-3 transition-colors duration-200",
                     )}
                   >
                     {/*
@@ -292,7 +292,7 @@ export default async function HomePage({
                     ) : (
                       <span
                         aria-hidden
-                        className="rounded-control bg-cream-deep size-12 shrink-0"
+                        className="rounded-control bg-paper-deep size-12 shrink-0"
                       />
                     )}
                     <span className="min-w-0 flex-1">
@@ -336,7 +336,7 @@ function marketDayOfSlot(startsAt: string, timeZone: string): string {
 function stripClass(tone: "alert" | "raised"): string {
   return panelClass(
     tone,
-    "ease-interaction hover:bg-cream mt-3 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
+    "ease-interaction hover:bg-paper mt-3 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
   );
 }
 

@@ -66,7 +66,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
         never paraphrased in JSX — the two must be the same bytes or the
         attestation is a claim about words nobody saw.
       */}
-      <blockquote className="rounded-card border-cream-line bg-cream-deep border p-5 text-sm whitespace-pre-line">
+      <blockquote className="rounded-card border-paper-line bg-paper-deep border p-5 text-sm whitespace-pre-line">
         {RIGHTS_STATEMENT}
       </blockquote>
 

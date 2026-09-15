@@ -83,7 +83,7 @@ export function ReelSheet({
           className="rounded-card mx-auto max-h-64 w-auto object-contain"
         />
       ) : (
-        <div className="rounded-card border-cream-line bg-forest/5 flex min-h-32 items-center justify-center border border-dashed p-6">
+        <div className="rounded-card border-paper-line bg-forest/5 flex min-h-32 items-center justify-center border border-dashed p-6">
           {/*
             Why there is no picture, not a grey rectangle somebody has to
             interpret. Most clips have none: a poster is only stored once the

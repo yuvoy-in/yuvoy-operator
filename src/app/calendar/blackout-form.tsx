@@ -169,7 +169,7 @@ function BlackoutRound({
               min={today}
               defaultValue={today}
               required
-              className={inputClass("bg-cream mt-2 px-3")}
+              className={inputClass("bg-paper mt-2 px-3")}
             />
           </div>
           <div className="flex-1">
@@ -183,7 +183,7 @@ function BlackoutRound({
               min={today}
               defaultValue={today}
               required
-              className={inputClass("bg-cream mt-2 px-3")}
+              className={inputClass("bg-paper mt-2 px-3")}
             />
           </div>
         </div>
@@ -216,7 +216,7 @@ function BlackoutRound({
           name="note"
           rows={2}
           maxLength={500}
-          className={textareaClass("bg-cream mt-2")}
+          className={textareaClass("bg-paper mt-2")}
         />
       </div>
 

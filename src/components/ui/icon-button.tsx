@@ -6,16 +6,16 @@ import { cn } from "@/lib/cn";
  * A circular control holding one icon. The name is REQUIRED: an icon is
  * decorative and the disc is what a screen reader announces.
  *
- *   chrome — the forest disc that floats over cream
+ *   chrome — the forest disc that floats over paper
  *   onDark — a translucent disc on the stage, where a forest disc would vanish
  */
-type Variant = "chrome" | "onDark" | "onCream";
+type Variant = "chrome" | "onDark" | "onPaper";
 
 const VARIANT: Record<Variant, string> = {
-  chrome: "app-chrome ring-1 ring-cream/12 hover:bg-forest/90",
-  onDark: "bg-cream/10 text-cream ring-1 ring-cream/12 hover:bg-cream/15",
-  onCream:
-    "border border-cream-line bg-cream-deep text-forest hover:border-forest/40",
+  chrome: "app-chrome ring-1 ring-paper/12 hover:bg-forest/90",
+  onDark: "bg-paper/10 text-paper ring-1 ring-paper/12 hover:bg-paper/15",
+  onPaper:
+    "border border-paper-line bg-paper-deep text-forest hover:border-forest/40",
 };
 
 const BASE =

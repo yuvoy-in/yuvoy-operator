@@ -83,7 +83,7 @@ export function CashCollect({
         }
       : cash;
     return (
-      <div className="border-cream-line mt-4 border-t pt-3">
+      <div className="border-paper-line mt-4 border-t pt-3">
         <p role="status" className="text-sm font-bold">
           {describeCash(shown, timezone)}
         </p>
@@ -103,7 +103,7 @@ export function CashCollect({
   if (!TAKES_CASH.has(key)) {
     if (key !== "completed") return null;
     return (
-      <div className="border-cream-line mt-4 border-t pt-3">
+      <div className="border-paper-line mt-4 border-t pt-3">
         <p className="text-sm font-bold">{describeCash(cash, timezone)}</p>
         <p className="text-forest/80 mt-1 text-sm">
           This trip was marked completed before the cash was recorded, and it
@@ -117,7 +117,7 @@ export function CashCollect({
   const amountId = `cash-${bookingId}`;
 
   return (
-    <div className="border-cream-line mt-4 border-t pt-3">
+    <div className="border-paper-line mt-4 border-t pt-3">
       <p className="text-sm font-bold">{describeCash(cash, timezone)}</p>
 
       {less ? (
@@ -148,7 +148,7 @@ export function CashCollect({
             defaultValue={result.typed ?? ""}
             onChange={(event) => setTyped(event.target.value)}
             aria-describedby={`${amountId}-gap`}
-            className={inputClass("bg-cream mt-2 text-lg")}
+            className={inputClass("bg-paper mt-2 text-lg")}
           />
           <p
             id={`${amountId}-gap`}

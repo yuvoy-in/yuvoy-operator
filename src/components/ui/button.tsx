@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
  * waiting, and a mis-tap here marks the wrong person off a manifest.
  *
  *   primary   — the forest fill, for the one action a screen is for
- *   secondary — a raised cream-deep pill, for the other choice
+ *   secondary — a raised paper-deep pill, for the other choice
  *   outline   — a hairline pill, for a quieter action
  *   danger    — the accent hairline. Not red-as-decoration: the destructive
  *               actions here (calling off a departure, stopping a bank
@@ -23,9 +23,9 @@ export type ButtonVariant = "primary" | "secondary" | "outline" | "danger";
 export type ButtonSize = "dock" | "md" | "sm";
 
 const VARIANT: Record<ButtonVariant, string> = {
-  primary: "bg-forest text-cream hover:bg-forest/90",
+  primary: "bg-forest text-paper hover:bg-forest/90",
   secondary:
-    "border border-cream-line bg-cream-deep text-forest hover:border-forest/40",
+    "border border-paper-line bg-paper-deep text-forest hover:border-forest/40",
   outline: "border border-forest/25 text-forest hover:border-forest",
   danger: "border-2 border-terra-deep text-terra-deep hover:bg-terra-deep/5",
 };

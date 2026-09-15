@@ -93,20 +93,69 @@ describe("palette", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("keeps THEME_COLOR and the no-CSS boundary on the forest token", () => {
+  /**
+   * The lockup drawn for a dark surface, against the canvas token.
+   *
+   * This portal has no brand generator at all: `public/brand` is a hand-copy
+   * of yuvoy-web's delivered art, and that art is drawn in `cream` and will
+   * stay that way. So the regression is a single careless copy away, and it is
+   * a quiet one — the drawing is right, the geometry is right, and only the
+   * colour is a year out of date.
+   *
+   * It matters because a cream lockup beside white chrome text measures
+   * 1.15:1: the "two whites" version of the failure v2.1 fixed when it merged
+   * the two darks, which reads as a dirty logo rather than as a bug.
+   */
+  it("draws the dark-surface lockup in the canvas token", () => {
     const css = readFileSync(join(SRC, "app/globals.css"), "utf8");
-    const forest = /--color-forest:\s*(#[0-9a-fA-F]{6})/.exec(css)?.[1];
+    const paper = /--color-paper:\s*(#[0-9a-fA-F]{6})/.exec(css)?.[1];
+    expect(paper, "--color-paper").toBeDefined();
+
+    const mark = join(process.cwd(), "public/brand/yuvoy-lockup-on-dark.svg");
+    const svg = readFileSync(mark, "utf8").toLowerCase();
+    expect(svg, "the lockup does not use the canvas token").toContain(paper!);
+    expect(svg, "the lockup is still drawn in the retired cream").not.toContain(
+      "#f4efe4",
+    );
+  });
+
+  it("keeps THEME_COLOR and the no-CSS boundary on the real tokens", () => {
+    /*
+      Both sides are READ from the @theme block, neither is typed here.
+
+      The boundary's literals exist because a failed root layout may never have
+      brought the stylesheet, so they are the one place a colour is written out
+      by hand — which makes them the one place a colour can silently stop
+      matching the token it stands in for. This test was half-written that way
+      itself: it compared against a hard-coded light hex, so v2.9 renaming
+      `cream` to `paper` would have kept it green while the boundary painted a
+      colour the portal no longer uses anywhere.
+    */
+    const css = readFileSync(join(SRC, "app/globals.css"), "utf8");
+    const token = (name: string) =>
+      new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})`).exec(css)?.[1];
+    const forest = token("forest");
+    const paper = token("paper");
+    expect(forest, "--color-forest").toBeDefined();
+    expect(paper, "--color-paper").toBeDefined();
+
     const theme = readFileSync(join(SRC, "lib/site/theme.ts"), "utf8");
     expect(/THEME_COLOR = "(#[0-9a-fA-F]{6})"/.exec(theme)?.[1]).toBe(forest);
+
     const boundary = read(join(SRC, "app/global-error.tsx"));
-    for (const hex of boundary.match(/#[0-9a-fA-F]{6}/g) ?? []) {
-      expect([forest, "#f4efe4"]).toContain(hex.toLowerCase());
+    const used = boundary.match(/#[0-9a-fA-F]{6}/g) ?? [];
+    expect(
+      used.length,
+      "the boundary stopped stating its colours",
+    ).toBeGreaterThan(0);
+    for (const hex of used) {
+      expect([forest, paper]).toContain(hex.toLowerCase());
     }
   });
 
   it("never puts text below the documented opacity floor", () => {
     const offenders = FILES.filter((f) =>
-      /text-forest\/(0|5|10|15|20|25|30|35|40|45|50|55|60|65)\b|text-cream\/(0|5|10|15|20|25|30|35|40|45|50|55)\b/.test(
+      /text-forest\/(0|5|10|15|20|25|30|35|40|45|50|55|60|65)\b|text-paper\/(0|5|10|15|20|25|30|35|40|45|50|55)\b/.test(
         read(f),
       ),
     ).map(rel);

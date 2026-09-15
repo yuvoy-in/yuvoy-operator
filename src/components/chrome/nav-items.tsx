@@ -37,7 +37,7 @@ const ICONS: Record<NavIcon, ComponentType<{ className?: string }>> = {
 /**
  * The floating tab bar (phone) and the rail (desktop) render the same
  * registry in two orientations. In the bar the active destination opens into
- * a cream pill carrying its name; the other four are discs holding only
+ * a paper pill carrying its name; the other four are discs holding only
  * their glyph, named for a screen reader.
  *
  * ## Five stops, and the width that buys
@@ -55,7 +55,7 @@ const ICONS: Record<NavIcon, ComponentType<{ className?: string }>> = {
  * beside the name. The bubble itself is `aria-hidden` and the number is said
  * in words as the link's name instead — "Bookings, 3 waiting on your answer" —
  * so a screen reader hears what the number is OF rather than a bare digit after
- * a label. Cream on forest and forest on cream: 11.44:1 either way.
+ * a label. Paper on forest and forest on paper: 13.11:1 either way.
  */
 export function NavList({
   orientation,
@@ -101,11 +101,11 @@ export function NavList({
                 "ease-interaction flex h-12 items-center rounded-full transition-[background-color,color] duration-200",
                 bar
                   ? active
-                    ? "bg-cream text-forest gap-2 pr-4 pl-3.5"
-                    : "text-cream/70 hover:text-cream w-12 justify-center"
+                    ? "bg-paper text-forest gap-2 pr-4 pl-3.5"
+                    : "text-paper/70 hover:text-paper w-12 justify-center"
                   : active
-                    ? "bg-cream text-forest gap-3 px-4"
-                    : "text-cream/70 hover:bg-cream/8 hover:text-cream gap-3 px-4",
+                    ? "bg-paper text-forest gap-3 px-4"
+                    : "text-paper/70 hover:bg-paper/8 hover:text-paper gap-3 px-4",
               )}
             >
               <span className="relative inline-flex">
@@ -113,7 +113,7 @@ export function NavList({
                 {count !== null && bar && !active ? (
                   <Count
                     n={count}
-                    onCream={false}
+                    onPaper={false}
                     className="absolute -top-2 -right-2.5"
                   />
                 ) : null}
@@ -130,7 +130,7 @@ export function NavList({
               {count !== null && (active || !bar) ? (
                 <Count
                   n={count}
-                  onCream={active}
+                  onPaper={active}
                   className={bar ? undefined : "ml-auto"}
                 />
               ) : null}
@@ -145,12 +145,12 @@ export function NavList({
 /** One count. Decorative: the link says the number in words. */
 function Count({
   n,
-  onCream,
+  onPaper,
   className,
 }: {
   n: number;
-  /** On the open pill, which is cream; everywhere else the chrome is forest. */
-  onCream: boolean;
+  /** On the open pill, which is paper; everywhere else the chrome is forest. */
+  onPaper: boolean;
   className?: string;
 }) {
   return (
@@ -158,9 +158,9 @@ function Count({
       aria-hidden="true"
       className={cn(
         "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] leading-none font-bold tabular-nums",
-        onCream
-          ? "bg-forest text-cream"
-          : "bg-cream text-forest ring-forest ring-2",
+        onPaper
+          ? "bg-forest text-paper"
+          : "bg-paper text-forest ring-forest ring-2",
         className,
       )}
     >

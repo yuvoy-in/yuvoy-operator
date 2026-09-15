@@ -38,7 +38,7 @@ export default function JoinPage() {
 
       <JoinForm />
 
-      <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
+      <p className="border-paper-line text-forest/70 mt-10 border-t pt-6 text-sm">
         Already accepted?{" "}
         <Link
           href="/sign-in"

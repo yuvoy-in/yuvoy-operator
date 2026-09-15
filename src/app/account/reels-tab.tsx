@@ -119,7 +119,7 @@ export function ReelsTab({
                     className="rounded-card aspect-[9/16] w-full object-cover"
                   />
                 ) : (
-                  <span className="rounded-card border-cream-line bg-cream-deep flex aspect-[9/16] w-full items-center justify-center border border-dashed p-2">
+                  <span className="rounded-card border-paper-line bg-paper-deep flex aspect-[9/16] w-full items-center justify-center border border-dashed p-2">
                     <span className="text-forest text-center text-[0.65rem] leading-tight">
                       {missing?.line ?? ""}
                     </span>

@@ -114,7 +114,7 @@ export default async function SettlementPage({
           becomes the reason somebody messages us.
         */}
         {showsAdjustments(settlement.adjustmentsPaise) ? (
-          <div className="border-cream-line mt-5 border-t pt-4">
+          <div className="border-paper-line mt-5 border-t pt-4">
             <dl className="space-y-2 text-sm">
               <Row
                 label="Correction"
@@ -136,7 +136,7 @@ export default async function SettlementPage({
           been sent.
         */}
         {settlement.state === "settled" && settlement.reference ? (
-          <div className="border-cream-line mt-5 border-t pt-4">
+          <div className="border-paper-line mt-5 border-t pt-4">
             <dl className="space-y-2 text-sm">
               <Row label="Bank reference" value={settlement.reference} plain />
             </dl>

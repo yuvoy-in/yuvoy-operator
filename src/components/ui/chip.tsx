@@ -8,16 +8,16 @@ import { cn } from "@/lib/cn";
  *   accent   — something that needs answering: a clock running out, a hold
  *   selected — the chosen one of a set (the day, the month)
  *
- * On a cream sheet the accent tone is `terra-deep` on `cream-deep` (4.77:1).
+ * On a paper sheet the accent tone is `terra-deep` on `paper-deep` (5.49:1).
  * There is no dark-surface chip in the portal; nothing sits on the stage but
  * chrome.
  */
 export type ChipTone = "neutral" | "accent" | "selected";
 
 const TONE: Record<ChipTone, string> = {
-  neutral: "border-cream-line bg-cream-deep text-forest",
-  accent: "border-terra-deep/30 bg-cream-deep text-terra-deep",
-  selected: "border-forest bg-forest text-cream",
+  neutral: "border-paper-line bg-paper-deep text-forest",
+  accent: "border-terra-deep/30 bg-paper-deep text-terra-deep",
+  selected: "border-forest bg-forest text-paper",
 };
 
 export function Chip({

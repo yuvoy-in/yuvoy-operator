@@ -68,7 +68,7 @@ export function MediaStep({
         </div>
       </section>
 
-      <div className="border-cream-line mt-6 flex items-center gap-4 border-t pt-4">
+      <div className="border-paper-line mt-6 flex items-center gap-4 border-t pt-4">
         <Link
           href={next}
           className="text-forest tap-target text-sm font-bold underline underline-offset-4"

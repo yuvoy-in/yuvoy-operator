@@ -49,8 +49,8 @@ export function Stepper({
                   className={cn(
                     "rounded-control tap-target inline-flex items-center px-3 py-1.5 text-sm transition-colors duration-200",
                     open
-                      ? "bg-forest text-cream"
-                      : "border-cream-line text-forest/75 hover:bg-cream-deep border",
+                      ? "bg-forest text-paper"
+                      : "border-paper-line text-forest/75 hover:bg-paper-deep border",
                   )}
                 >
                   {body}
@@ -62,14 +62,14 @@ export function Stepper({
                     "rounded-control inline-flex items-center px-3 py-1.5 text-sm",
                     /*
                       Not `text-forest/40`. The palette's opacity floor exists
-                      because anything under it fails AA on cream, and "this
+                      because anything under it fails AA on paper, and "this
                       step is not reachable yet" is not worth an unreadable
                       label. It is a span rather than a link, which is the
                       difference that matters.
                     */
                     open
-                      ? "bg-forest text-cream"
-                      : "border-cream-line text-forest/75 border",
+                      ? "bg-forest text-paper"
+                      : "border-paper-line text-forest/75 border",
                   )}
                 >
                   {body}

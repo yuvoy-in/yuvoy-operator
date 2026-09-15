@@ -397,8 +397,8 @@ function DepartureRound({
                     "rounded-control relative flex h-11 min-w-14 cursor-pointer items-center justify-center border px-3 text-sm " +
                     "has-[:focus-visible]:ring-forest has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-2 " +
                     (on
-                      ? "border-forest bg-forest text-cream"
-                      : "border-cream-line bg-cream text-forest")
+                      ? "border-forest bg-forest text-paper"
+                      : "border-paper-line bg-paper text-forest")
                   }
                 >
                   {/*
@@ -459,7 +459,7 @@ function DepartureRound({
 
       {/* ------------------------------------------------- more options -- */}
       {more ? (
-        <div className="border-cream-line mt-4 space-y-4 border-t pt-4">
+        <div className="border-paper-line mt-4 space-y-4 border-t pt-4">
           <div>
             <label htmlFor="capacity" className="label text-forest/75">
               What the boat holds (optional)

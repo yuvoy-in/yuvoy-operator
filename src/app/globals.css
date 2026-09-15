@@ -16,20 +16,33 @@
   to a token — breaks structurally rather than stylistically.
 
   v2.7 (2026-09-02): the portal shares the app's rounded chassis — the forest
-  stage, the cream sheet, the floating bar, pills and discs — so the block
+  stage, the paper sheet, the floating bar, pills and discs — so the block
   below carries the radius scale too. The utility layer is still trimmed: the
   feed scrim and the media ground are traveller-app machinery with no
   operator screen behind them, and `dock-target` is the portal's own.
+
+  v2.9 (2026-09-15, product-directed): THE PORTAL IS WHITE. `cream` is renamed
+  `paper` and the surface trio is re-cut on a pure-white canvas — #F4EFE4 →
+  #FFFFFF, #ECE5D6 → #F7F5F1, #E5DCC9 → #EDEAE4. The SEPARATION was preserved,
+  not the hue (1.09:1 canvas-to-raised, 1.20:1 canvas-to-hairline, the steps
+  the cream trio had), so no card, input or divider on any screen changes
+  weight. `yuvoy-web` keeps `cream`; this portal and the traveller app moved
+  together in one change, which is exactly what `pnpm tokens:check` is for.
+
+  Every pairing gained contrast, because only the light end moved: against a
+  fixed ground the ratio scales by 1.05 / (L_cream + 0.05) = 1.1467. The full
+  rationale is in yuvoy-app's copy of this block and in its
+  docs/DESIGN_SYSTEM.md §v2.9, which stays the canonical record.
 */
 
 @theme {
   /* ---------------------------------------------------------------- color */
-  --color-cream: #f4efe4; /* canvas — editorial surfaces */
-  --color-cream-deep: #ece5d6; /* raised surface on cream — cards, inputs */
-  --color-cream-line: #e5dcc9; /* hairline borders on cream */
-  --color-forest: #16362e; /* primary ink AND every chrome surface (11.44:1) */
-  --color-terra: #be7149; /* accent — decoration + LARGE display text (3.24:1 on cream) */
-  --color-terra-deep: #985028; /* text-capable accent (5.21:1); never a CTA fill */
+  --color-paper: #ffffff; /* canvas — editorial surfaces */
+  --color-paper-deep: #f7f5f1; /* raised surface on paper — cards, inputs (1.09:1 off the canvas) */
+  --color-paper-line: #edeae4; /* hairline borders on paper (1.20:1 off the canvas) */
+  --color-forest: #16362e; /* primary ink AND every chrome surface (13.11:1) */
+  --color-terra: #be7149; /* accent — decoration + LARGE display text (3.72:1 on paper) */
+  --color-terra-deep: #985028; /* text-capable accent (5.98:1); never a CTA fill */
   --color-terra-soft: #d89772; /* accent text on forest (5.36:1) / abyss (7.86:1) */
 
   /*
@@ -39,7 +52,7 @@
     It is a ground and an object's colour, never a surface: it carries no
     section, no chrome, and no body text of its own. `palette.test.ts` pins
     both usages — the moment a section takes it, the site has two darks again.
-    Not pure #000, which sits harder than anything else and rims against cream.
+    Not pure #000, which sits harder than anything else and rims against paper.
   */
   --color-abyss: #0a100e;
 
@@ -111,13 +124,13 @@
   }
 
   body {
-    @apply bg-forest text-cream font-sans antialiased;
+    @apply bg-forest text-paper font-sans antialiased;
     text-rendering: optimizeLegibility;
     overflow-x: clip;
   }
 
   ::selection {
-    @apply bg-terra-deep text-cream;
+    @apply bg-terra-deep text-paper;
   }
 
   a:focus-visible {
@@ -128,7 +141,7 @@
 
   /*
     Focus rings follow the surface. The shell is the dark stage (`on-dark`),
-    where terra-soft is the legible ring; a cream sheet nested inside it
+    where terra-soft is the legible ring; a paper sheet nested inside it
     (`sheet`) switches back to terra-deep. Declared here, once, so no
     component carries its own focus colour.
   */
@@ -166,9 +179,9 @@
 
 /**
  * Wide-tracked uppercase label — the brand's editorial voice, in the text
- * face. On cream use `text-terra-deep` or `text-forest/75`; on forest use
- * `text-terra-soft` or `text-cream/70`. Never `text-terra` on cream at this
- * size (3.24:1, fails AA) — though on `abyss` it measures 5.17:1 and passes.
+ * face. On paper use `text-terra-deep` or `text-forest/75`; on forest use
+ * `text-terra-soft` or `text-paper/70`. Never `text-terra` on paper at this
+ * size (3.72:1, fails AA) — though on `abyss` it measures 5.17:1 and passes.
  */
 @utility label {
   @apply font-sans text-xs font-medium uppercase;
@@ -253,12 +266,12 @@
 
 /**
  * The chrome surfaces — the floating tab bar, the rail, the discs that float
- * over the stage. `forest`, separated from a cream sheet by contrast and from
- * the stage by a `cream/12` hairline ring.
+ * over the stage. `forest`, separated from a paper sheet by contrast and from
+ * the stage by a `paper/12` hairline ring.
  */
 @utility app-chrome {
   background-color: var(--color-forest);
-  color: var(--color-cream);
+  color: var(--color-paper);
 }
 
 /**
@@ -268,16 +281,16 @@
  */
 @utility stage {
   background-color: var(--color-forest);
-  color: var(--color-cream);
+  color: var(--color-paper);
 }
 
 /**
- * The content sheet: cream, rounded at the top, rising over the stage. It is
+ * The content sheet: paper, rounded at the top, rising over the stage. It is
  * the reading surface, so it resets the ink and the focus ring (see the base
- * layer) — everything measured on cream still holds here, unchanged.
+ * layer) — everything measured on paper still holds here, unchanged.
  */
 @utility sheet {
-  background-color: var(--color-cream);
+  background-color: var(--color-paper);
   color: var(--color-forest);
 }
 

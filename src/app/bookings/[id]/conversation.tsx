@@ -246,8 +246,8 @@ function Bubble({ message }: { message: ThreadMessage }) {
         className={cn(
           "rounded-card max-w-[85%] border px-4 py-3",
           mine
-            ? "border-forest/15 bg-cream"
-            : "border-cream-line bg-cream-deep",
+            ? "border-forest/15 bg-paper"
+            : "border-paper-line bg-paper-deep",
         )}
       >
         <p className="text-forest/75 text-xs">

@@ -201,7 +201,7 @@ export function PauseResume({
           {PAUSE_REASONS.map((reason) => (
             <label
               key={reason.code}
-              className="border-cream-line rounded-control flex min-h-14 cursor-pointer items-center gap-3 border p-3"
+              className="border-paper-line rounded-control flex min-h-14 cursor-pointer items-center gap-3 border p-3"
             >
               <input
                 type="radio"
@@ -328,7 +328,7 @@ function ResumeControl({
   }
 
   return (
-    <form action={action} className="border-cream-line mt-4 border-t pt-4">
+    <form action={action} className="border-paper-line mt-4 border-t pt-4">
       <input type="hidden" name="id" value={experienceId} />
       <p className="text-sm font-bold">Put {title} back on sale?</p>
       <p className="text-forest/80 mt-1.5 text-sm">

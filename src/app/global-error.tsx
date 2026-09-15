@@ -9,7 +9,7 @@ import "./globals.css";
  * screen in this portal that cannot assume the stylesheet arrived, because a
  * layout that failed is exactly the thing that would have brought it. The
  * token classes are here for the ordinary case; the inline colours are the
- * literal values behind `--color-cream` and `--color-forest`, written out on
+ * literal values behind `--color-paper` and `--color-forest`, written out on
  * purpose so that a page with no CSS at all is still legible in bright sun.
  *
  * That is the only place in this repo where a colour is not a token, and the
@@ -19,8 +19,8 @@ export default function GlobalError({ reset }: { reset: () => void }) {
   return (
     <html lang="en">
       <body
-        className="bg-cream text-forest"
-        style={{ background: "#f4efe4", color: "#16362e" }}
+        className="bg-paper text-forest"
+        style={{ background: "#ffffff", color: "#16362e" }}
       >
         <main
           style={{
@@ -47,7 +47,7 @@ export default function GlobalError({ reset }: { reset: () => void }) {
               width: "100%",
               padding: "0 1.25rem",
               background: "#16362e",
-              color: "#f4efe4",
+              color: "#ffffff",
               border: 0,
               borderRadius: "9999px",
               fontWeight: 700,

@@ -54,7 +54,7 @@ well-meaning commit from showing one the day it does.
 ## The chassis (v2.7, shared with the traveller app)
 
 The portal draws the same rounded chassis as `yuvoy-app`: a forest **stage**, a
-cream **sheet** rising out of it, a floating **bar** with five destinations
+paper **sheet** rising out of it, a floating **bar** with five destinations
 (Today · Bookings · Calendar · Listings · Business), and pills and discs at the
 portal's own 56px `dock-target`. Bookings counts the requests waiting on an
 answer and Business counts what is waiting on the operator; a count that could
