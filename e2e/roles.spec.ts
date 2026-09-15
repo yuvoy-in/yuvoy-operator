@@ -135,11 +135,15 @@ test("a staff phone that forces the button through is refused by the action itse
   await accept.evaluate((button) => button.removeAttribute("disabled"));
   await accept.click();
 
+  /*
+    Reworded on 15 September (yuvoy-operator#43 item 6). It read "Your role
+    cannot answer requests. An owner, admin or manager has to." — two sentences
+    to say one thing, and the first of them addresses somebody by their role
+    rather than saying who to ask.
+  */
   await expect(
-    page.getByRole("alert").filter({ hasText: "Your role cannot answer" }),
-  ).toHaveText(
-    "Your role cannot answer requests. An owner, admin or manager has to.",
-  );
+    page.getByRole("alert").filter({ hasText: "can answer requests" }),
+  ).toHaveText("Only owners, admins and managers can answer requests.");
 
   // And nothing was granted: the request is still in the queue.
   await expect(

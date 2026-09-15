@@ -180,6 +180,23 @@ let team: MockTeamMember[] = TEAM.map((m) => ({ ...m }));
  * subject is who can get into your business.
  */
 let signups: MockTeamMember[] = [];
+/**
+ * Bookings this team cancelled, by id — yuvoy-operator#43 item 4.
+ *
+ * Kept as state rather than baked into a fixture, because the whole point of
+ * the endpoint is that the second call answers `409 already_cancelled` and
+ * refunds nothing twice. A mock that cancelled statelessly would let the portal
+ * ship a retry that refunds again.
+ */
+let cancelled: Record<
+  string,
+  { at: string; reasonCode: string; refundedPaise: number }
+> = {};
+/** Cash handed back, by booking id. Recorded once, and it cannot be undone. */
+let cashReturned: Record<
+  string,
+  { returnedAt: string; returnedPaise: number }
+> = {};
 /** Conversations, by booking. Written to by `POST /bookings/{id}/messages`. */
 let threads: MockThread[] = seedThreads();
 function seedThreads(): MockThread[] {
@@ -1026,6 +1043,8 @@ export function __resetOperatorMocks() {
   team = TEAM.map((m) => ({ ...m }));
   signups = [];
   threads = seedThreads();
+  cancelled = {};
+  cashReturned = {};
   uploadIntents = {};
   mediaAssets = seedMediaAssets();
   profile = seedProfile();
@@ -1437,9 +1456,36 @@ function partyOf(
  * API never does, and which would have let a screen branch on it.
  */
 function bookingStateOf(p: MockParty): string {
+  /*
+    A cancellation wins over everything, including a recorded collection: the
+    booking is off, and the cash being in the till is what `cash-returned`
+    exists for rather than a reason to call it confirmed.
+  */
+  if (cancelled[p.bookingId]) return "cancelled";
   const outcome = attendance[p.bookingId]?.outcome;
   if (outcome && outcome !== "arrived") return outcome;
   return cashTaken[p.bookingId] ? "confirmed" : p.state;
+}
+
+/**
+ * A booking's `cancellation`, as the API sends it — present only on one that
+ * ended.
+ *
+ * `operatorCancelled` is set because this team did it through the portal, which
+ * is the only way a booking gets cancelled in this mock. `CALLED_OFF_PARTIES`
+ * covers the other shape: a departure called off takes its bookings with it.
+ */
+function bookingCancellationOf(p: MockParty) {
+  const ours = cancelled[p.bookingId];
+  if (ours) {
+    return {
+      at: ours.at,
+      by: "operator",
+      reasonCode: "OPERATOR_CANCELLED",
+      operatorCancelled: { reasonCode: ours.reasonCode },
+    };
+  }
+  return p.cancellation;
 }
 
 /** A booking's `cash` — present only on a cash booking, as the API sends it. */
@@ -1454,6 +1500,14 @@ function bookingCashOf(p: MockParty) {
         collectedPaise: taken.collectedPaise,
       }
     : { ...p.cash };
+}
+
+/** What was recorded as taken, which is all of what goes back. */
+function cashReturnOf(p: MockParty) {
+  const back = cashReturned[p.bookingId];
+  return back
+    ? { returnedAt: back.returnedAt, returnedPaise: back.returnedPaise }
+    : {};
 }
 
 /**
@@ -3834,6 +3888,201 @@ export const handlers = [
     });
   }),
 
+  /*
+    Cancelling ONE booking — yuvoy-operator#43 item 4.
+
+    Every refusal is modelled, because each one is a different sentence on the
+    screen and none of them would ever render against a permissive mock: the
+    reference typed back, the role, the departure that has left, the booking
+    that already ended, and the retry that must not refund twice.
+  */
+  http.post(url("/bookings/:id/cancel"), async ({ request, params }) => {
+    const failed = requireManager(request, "STAFF cannot cancel a booking.");
+    if (failed) return failed;
+    /*
+      NOT `requireWritable`. A suspended business must still be able to tell a
+      traveller their trip is off (#50), and refusing here would strand the
+      traveller rather than the operator.
+    */
+
+    const id = String(params.id);
+    let found: { party: MockParty; slot: MockSlot } | null = null;
+    for (const slot of SLOTS) {
+      const party = slot.parties.find((p) => p.bookingId === id);
+      if (party) found = { party, slot };
+    }
+    // "Another business's booking answers `404` BEFORE its reference is
+    // compared" — so a wrong id can never be used to learn a reference.
+    if (!found) return envelope("not_found", "No such booking.", 404);
+
+    const body = (await request.json()) as {
+      reasonCode?: string;
+      note?: string;
+      confirmReference?: string;
+    };
+
+    if (
+      ![
+        "weather",
+        "equipment",
+        "staffing",
+        "safety",
+        "insufficient_numbers",
+      ].includes(body.reasonCode ?? "")
+    ) {
+      return envelope(
+        "invalid_reason_code",
+        "Pick a reason from the list.",
+        400,
+      );
+    }
+    if ((body.note ?? "").length > 500) {
+      return envelope(
+        "invalid_input",
+        "That note is longer than 500 characters.",
+        400,
+      );
+    }
+
+    /*
+      "Letter case and surrounding spaces are ignored." Modelled, because the
+      alternative is a portal that uppercases on the client to be safe and a
+      real API that did not need it.
+    */
+    const typed = (body.confirmReference ?? "").trim().toUpperCase();
+    if (typed !== found.party.reference.toUpperCase()) {
+      return envelope(
+        "confirmation_required",
+        "That is not this booking's reference.",
+        400,
+      );
+    }
+
+    if (cancelled[id]) {
+      return envelope(
+        "already_cancelled",
+        "This booking is already cancelled.",
+        409,
+      );
+    }
+
+    const state = bookingStateOf(found.party);
+    if (state !== "confirmed" && state !== "paid_pending_ops") {
+      return envelope(
+        "booking_ended",
+        "This booking was declined, completed or marked a no-show.",
+        409,
+      );
+    }
+    if (Date.parse(found.slot.startsAt) <= Date.now()) {
+      return envelope("departure_started", "That departure has left.", 409);
+    }
+
+    /*
+      A cash booking captured nothing online, so nothing is refunded and the
+      response says the money is with the business. That sentence is the only
+      thing standing between an operator and a traveller who was never handed
+      their cash back.
+    */
+    const money = bookingMoney(found.party);
+    const refundedPaise = found.party.cash ? 0 : (money?.grossPaise ?? 0);
+    const held = cashTaken[id];
+
+    cancelled[id] = {
+      at: new Date().toISOString(),
+      reasonCode: body.reasonCode!,
+      refundedPaise,
+    };
+
+    return HttpResponse.json({
+      bookingId: id,
+      reference: found.party.reference,
+      state: "cancelled",
+      reasonCode: body.reasonCode,
+      refundedPaise,
+      seatsReleased: found.party.guests,
+      ...(held
+        ? {
+            cashToGiveBackPaise: held.collectedPaise,
+            note: "You have this traveller's cash. Give it back to them, then record it here.",
+          }
+        : {}),
+    });
+  }),
+
+  http.post(url("/bookings/:id/cash-returned"), async ({ request, params }) => {
+    const failed = requireManager(
+      request,
+      "STAFF cannot record giving the cash back.",
+    );
+    if (failed) return failed;
+
+    const id = String(params.id);
+    let party: MockParty | null = null;
+    for (const slot of SLOTS) {
+      const hit = slot.parties.find((p) => p.bookingId === id);
+      if (hit) party = hit;
+    }
+    if (!party) return envelope("not_found", "No such booking.", 404);
+
+    if (cashReturned[id]) {
+      /*
+        "A retry answers `409 cash_already_returned` and changes nothing." The
+        common way to arrive here is a second tap on one bar of signal, and a
+        mock that recorded twice would let the portal ship a screen that says a
+        traveller was handed money twice.
+      */
+      return envelope(
+        "cash_already_returned",
+        "You already recorded giving this cash back.",
+        409,
+      );
+    }
+
+    /*
+      Read through the same two functions `GET /bookings/{id}` reads through,
+      not from the portal's own write log.
+
+      This checked `cancelled[id]` and `cashTaken[id]` at first, which only know
+      about what happened through the portal in this process. A booking that
+      arrives already cancelled with its cash already taken — the fixture for a
+      called-off departure, and the only shape this endpoint exists for — was
+      therefore answered "this booking is not cancelled".
+    */
+    const effectiveCash = bookingCashOf(party);
+    const takenPaise = effectiveCash?.collected
+      ? (effectiveCash.collectedPaise ?? effectiveCash.collectPaise)
+      : undefined;
+
+    if (
+      bookingStateOf(party) !== "cancelled" ||
+      !party.cash ||
+      takenPaise === undefined
+    ) {
+      // Three cases, one code, and "the message says which".
+      return envelope(
+        "nothing_to_give_back",
+        !party.cash
+          ? "This booking was paid online, so there is nothing of yours to give back."
+          : bookingStateOf(party) !== "cancelled"
+            ? "This booking is not cancelled."
+            : "No cash is recorded as taken on this booking.",
+        409,
+      );
+    }
+
+    const record = {
+      returnedAt: new Date().toISOString(),
+      returnedPaise: takenPaise,
+    };
+    cashReturned[id] = record;
+    return HttpResponse.json({
+      bookingId: id,
+      reference: party.reference,
+      ...record,
+    });
+  }),
+
   http.get(url("/bookings/:id"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
@@ -3855,7 +4104,16 @@ export const handlers = [
             new Date(slot.startsAt).getTime() - 3 * 86_400_000,
           ).toISOString(),
           money: bookingMoney(party),
-          ...(party.cash ? { cash: bookingCashOf(party) } : {}),
+          ...(party.cash
+            ? {
+                cash: { ...bookingCashOf(party), ...cashReturnOf(party) },
+              }
+            : {}),
+          ...(bookingCancellationOf(party)
+            ? { cancellation: bookingCancellationOf(party) }
+            : {}),
+          ...(party.screening ? { screening: party.screening } : {}),
+          ...(party.questions ? { questions: party.questions } : {}),
         });
       }
     }

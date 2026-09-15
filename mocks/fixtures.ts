@@ -101,6 +101,42 @@ export interface MockParty {
     answeredVersion?: number;
   };
   /**
+   * What the listing asks and what this party answered.
+   *
+   * Optional exactly as in the contract: "present only when there is something
+   * to show". A listing with no questions carries none, and the screen must
+   * draw nothing rather than an empty heading.
+   *
+   * These "never ask about health, which stays with `screening`" — the two are
+   * deliberately separate, and this one may be read out on a jetty.
+   */
+  questions?: {
+    questionId: string;
+    text: string;
+    answerType: "short_text" | "choice" | "yes_no";
+    required: boolean;
+    current: boolean;
+    answered: boolean;
+    answer?: string;
+    answeredAt?: string;
+  }[];
+  /**
+   * Why this booking ended, on a party that arrives already cancelled.
+   *
+   * Separate from the cancellations a test makes through the portal, which the
+   * handler keeps in its own state: this is for the shapes a test cannot
+   * produce, chiefly a departure called off and a traveller who cancelled from
+   * their own link. Both are lines the screen has to be right about and neither
+   * has a button in this portal.
+   */
+  cancellation?: {
+    at: string;
+    by?: "traveller" | "operator" | "yuvoy" | "system";
+    reasonCode?: string;
+    calledOff?: { reasonCode: string };
+    operatorCancelled?: { reasonCode: string };
+  };
+  /**
    * Paid at the counter — yuvoy-operator#40 §1.
    *
    * On the BOOKING, never on the manifest party: `Manifest.parties[]` carries
@@ -187,6 +223,35 @@ export const SLOTS: MockSlot[] = [
         state: "confirmed",
         arrived: false,
         screening: { declared: true, clear: true, needsAttention: false },
+        /*
+          Answered, and one of them to a question the listing NO LONGER asks.
+          `current: false` only ever appears on an answered question, and it is
+          kept "so an answer to a reworded question stays readable with the
+          words it answered" — the one case where a screen must show a question
+          that is not on the listing in front of it.
+        */
+        questions: [
+          {
+            questionId: "q_shoe",
+            text: "What shoe size are you?",
+            answerType: "short_text",
+            required: true,
+            current: true,
+            answered: true,
+            answer: "44",
+            answeredAt: todayAt("19:10", -3),
+          },
+          {
+            questionId: "q_swim_old",
+            text: "Can you swim 200m unaided?",
+            answerType: "yes_no",
+            required: false,
+            current: false,
+            answered: true,
+            answer: "yes",
+            answeredAt: todayAt("19:11", -3),
+          },
+        ],
       },
       {
         bookingId: "bkg_2",
@@ -216,6 +281,22 @@ export const SLOTS: MockSlot[] = [
         state: "confirmed",
         arrived: false,
         screening: { declared: false, clear: false, needsAttention: false },
+        /*
+          Asked and NOT answered, which is the case the copy exists for: a
+          question with nothing under it reads as an answer somebody gave. It is
+          also what a booking looks like 90 days after the trip, when the answer
+          is deleted and the question reads `answered: false` again.
+        */
+        questions: [
+          {
+            questionId: "q_shoe",
+            text: "What shoe size are you?",
+            answerType: "short_text",
+            required: true,
+            current: true,
+            answered: false,
+          },
+        ],
       },
       // A live hold: mid-checkout, no bookingId, may still walk up — and no
       // screening object at all, on a departure where everybody else has one.
@@ -417,6 +498,38 @@ export const SLOTS: MockSlot[] = [
         state: "confirmed",
         arrived: false,
       },
+      /*
+        Two bookings that exist only to be CANCELLED, one per Playwright
+        project — yuvoy-operator#43 item 4.
+
+        Cancelling is one-way, so a booking two projects both cancel is a race
+        in the fixture, and the second project reports a product failure that is
+        not there. The first attempt at this reused the two cash parties above,
+        which `cash.spec.ts` claims by name for its collection walkthroughs; a
+        cancelled booking has no Cash taken button, so that suite went red.
+
+        Cash rather than card, because the confirmation's money sentence is the
+        opposite one and it is the one that can promise a traveller a refund
+        that was never taken: "nothing is refunded online."
+      */
+      {
+        bookingId: "bkg_cancel_a",
+        reference: "YV-CANCEL1A",
+        name: "Ritu Bhalla",
+        guests: 2,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 900_000, collected: false },
+      },
+      {
+        bookingId: "bkg_cancel_b",
+        reference: "YV-CANCEL2B",
+        name: "Jonas Weber",
+        guests: 2,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 900_000, collected: false },
+      },
     ],
   },
   {
@@ -432,7 +545,76 @@ export const SLOTS: MockSlot[] = [
     meetingPoint: "Beach 5 slipway",
     seatsSoldOffline: 0,
     calledOff: { reasonCode: "weather" },
-    parties: [],
+    parties: [
+      {
+        /*
+          A CARD booking the call-off took with it — yuvoy-operator#43 item 1.
+
+          The line an operator reads most often after something goes wrong, and
+          nothing in the portal can produce it: a call-off cancels every booking
+          on the departure, so this shape only exists as a fixture. The money is
+          the other half of the acceptance: commission is 0 on a cancelled
+          booking and the net is gross less refunds, which is what a payout will
+          pay on it.
+        */
+        bookingId: "bkg_calledoff_card",
+        reference: "YV-CALL0FF1",
+        name: "Ishaan Roy",
+        guests: 2,
+        state: "cancelled",
+        arrived: false,
+        cancellation: {
+          at: todayAt("07:40"),
+          by: "operator",
+          reasonCode: "OPERATOR_CALLED_OFF",
+          calledOff: { reasonCode: "weather" },
+        },
+      },
+      {
+        /*
+          Cancelled, and its CASH is still in the till. The one path where we
+          refunded nothing because nothing reached us, so the money the business
+          is holding belongs to somebody else until they record handing it back
+          (item 5). Nothing else in these fixtures reaches that state.
+        */
+        bookingId: "bkg_calledoff_cash",
+        reference: "YV-CALL0FF2",
+        name: "Farah Sheikh",
+        guests: 1,
+        state: "cancelled",
+        arrived: false,
+        cash: {
+          collectPaise: 450_000,
+          collected: true,
+          collectedAt: todayAt("07:05"),
+          collectedPaise: 450_000,
+        },
+        cancellation: {
+          at: todayAt("07:40"),
+          by: "operator",
+          reasonCode: "OPERATOR_CALLED_OFF",
+          calledOff: { reasonCode: "weather" },
+        },
+      },
+      {
+        /*
+          The traveller cancelled it themselves, from their own booking link.
+          The most common cancellation there is, and the one an operator will
+          otherwise assume WE did.
+        */
+        bookingId: "bkg_traveller_left",
+        reference: "YV-LEFT2R4T",
+        name: "Bruno Costa",
+        guests: 1,
+        state: "cancelled",
+        arrived: false,
+        cancellation: {
+          at: todayAt("18:20", -1),
+          by: "traveller",
+          reasonCode: "CUSTOMER_REQUEST",
+        },
+      },
+    ],
   },
   /*
     Two days of their own, twelve and thirteen out, for closing a day —

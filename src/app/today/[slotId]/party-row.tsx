@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { markAttendance, type AttendanceState } from "./actions";
 import { isHolding, type PartyForClient } from "@/lib/day/types";
 import type { ScreeningSignal } from "@/lib/day/screening";
+import { answerFor, toQuestions } from "@/lib/bookings/ending";
 import type { BookingCash } from "@/lib/money/bookings";
 import { cn } from "@/lib/cn";
 import { RelayPanel } from "./relay-panel";
@@ -66,6 +67,15 @@ export function PartyRow({
     {},
   );
 
+  /*
+    Narrowed here rather than on the server, because this row already receives
+    the whole party: `toQuestions` drops a question with no words and reads an
+    absent `current` as `true`, which is the same treatment the booking screen
+    gives them. One function, so the two surfaces cannot disagree about what a
+    question is.
+  */
+  const answers = toQuestions(party.questions);
+
   const holding = isHolding(party);
   const arrived = Boolean(party.arrived);
   const settled = party.state === "completed" || party.state === "no_show";
@@ -127,6 +137,36 @@ export function PartyRow({
         <p className="text-forest/80 mt-3 text-sm font-bold">
           No screening answer recorded. Ask them before boarding.
         </p>
+      ) : null}
+
+      {/*
+        What the listing asked, and what this party said — yuvoy-operator#43
+        item 3.
+
+        Behind a disclosure, and that is the one design decision here. A
+        manifest is a scanning surface: eleven parties, two questions each, and
+        the attendance buttons are what somebody is reaching for at 06:30. Laid
+        out flat, the answers push the controls off the screen and get skipped
+        by everybody. One tap opens the party being asked about.
+
+        These questions "never ask about health, which stays with `screening`",
+        so unlike the screener there is nothing here that must not be read out
+        on a jetty.
+      */}
+      {answers.length > 0 ? (
+        <details className="border-cream-line mt-3 border-t pt-3">
+          <summary className="label text-forest/75 tap-target cursor-pointer">
+            What they answered
+          </summary>
+          <dl className="mt-2 space-y-2 text-sm">
+            {answers.map((question) => (
+              <div key={question.questionId}>
+                <dt className="text-forest/75">{question.text}</dt>
+                <dd className="font-bold">{answerFor(question)}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
       ) : null}
 
       {holding ? (
