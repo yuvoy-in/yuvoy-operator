@@ -174,9 +174,15 @@ test("a staff login sees capacity and is told it cannot change it", async ({
   await expect(
     page.getByText("You can see these, but not change them"),
   ).toBeVisible();
+  /*
+    Reworded on 15 September (yuvoy-operator#45 item 7). Three sentences on this
+    screen opened "Your role cannot ...", which addresses the reader by their
+    role rather than saying who to ask; they are one `canManage` gate, so they
+    are one sentence now and the banner uses it too.
+  */
   await expect(
     page.getByText(
-      "Seats, closed dates and counter sales need an owner, an admin or a manager.",
+      "Only owners, admins and managers can change seats, close dates or record counter sales.",
     ),
   ).toBeVisible();
 });

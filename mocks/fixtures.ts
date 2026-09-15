@@ -649,6 +649,95 @@ export const SLOTS: MockSlot[] = [
       },
     ],
   },
+  /*
+    Two more days of their own, seven and eight out, for STOPPING ONE
+    DEPARTURE and putting it back — yuvoy-operator#45 items 2 and 4.
+
+    Separate from the closing fixtures above for the same reason those are
+    separate from each other: closing is read back now, so a departure two
+    projects both close is a race in the fixture. Each carries one confirmed
+    booking, so the receipt's "the bookings already on it still stand" is
+    exercised rather than the empty case.
+
+    TWO departures on each day, deliberately. Stopping one has to leave the
+    other selling — "this departure stops selling and the rest of its day does
+    not" — and a day with one departure cannot tell that apart from closing the
+    whole day.
+  */
+  {
+    id: "slot_stop_a1",
+    experienceId: "exp_snorkel",
+    title: "Lagoon kayak (stop fixture A)",
+    startsAt: todayAt("08:00", 7),
+    timezone: TZ,
+    seats: 6,
+    sold: 2,
+    remaining: 4,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_stop_a",
+        reference: "YV-ST0P1A2B",
+        name: "Leela Nair",
+        guests: 2,
+        state: "confirmed",
+        arrived: false,
+      },
+    ],
+  },
+  {
+    id: "slot_stop_a2",
+    experienceId: "exp_snorkel",
+    title: "Sunset paddle (stop fixture A)",
+    startsAt: todayAt("16:30", 7),
+    timezone: TZ,
+    seats: 6,
+    sold: 0,
+    remaining: 6,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [],
+  },
+  {
+    id: "slot_stop_b1",
+    experienceId: "exp_snorkel",
+    title: "Lagoon kayak (stop fixture B)",
+    startsAt: todayAt("08:00", 8),
+    timezone: TZ,
+    seats: 6,
+    sold: 2,
+    remaining: 4,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_stop_b",
+        reference: "YV-ST0P3C4D",
+        name: "Arjun Pillai",
+        guests: 2,
+        state: "confirmed",
+        arrived: false,
+      },
+    ],
+  },
+  {
+    id: "slot_stop_b2",
+    experienceId: "exp_snorkel",
+    title: "Sunset paddle (stop fixture B)",
+    startsAt: todayAt("16:30", 8),
+    timezone: TZ,
+    seats: 6,
+    sold: 0,
+    remaining: 6,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [],
+  },
   {
     id: "slot_closing_b",
     experienceId: "exp_snorkel",

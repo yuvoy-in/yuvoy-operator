@@ -2,9 +2,14 @@
 
 import { useState } from "react";
 import { CLOSING_SENTENCE, alreadyConfirmedSentence } from "@/lib/day/calendar";
+import { closureLine, type Closure } from "@/lib/day/closures";
+import { marketTime } from "@/lib/format/market-time";
+import type { OperatorSlot } from "@/lib/day/types";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { panelClass } from "@/components/ui/panel";
 import { BlackoutForm } from "./blackout-form";
+import { ReopenClosure } from "./reopen-closure";
+import { CloseDeparture } from "./close-departure";
 
 /**
  * Manage one day — yuvoy-operator#45. "Manage expands closure controls in
@@ -21,25 +26,47 @@ import { BlackoutForm } from "./blackout-form";
  * rows. When the list may have been cut short the sentence is said without a
  * number rather than with a smaller one — see `confirmedGuestsByDay`.
  *
- * ## What is not here, said rather than left out
+ * ## What is here now, and was not
  *
- * - **Closing one start time.** `POST /blackouts` closes whole days. Setting a
- *   departure's seats to what is sold stops its sales without stranding
- *   anyone, so the panel points there.
- * - **Reopening.** No endpoint removes a closure, so no button pretends to.
- * - **Calling a departure off.** A heavier act — it cancels and refunds
- *   everyone on it — and it stays on the departure, behind its typed id.
+ * - **Reopening**, one button per closure in force that touches the day. There
+ *   was no endpoint for it, and now there is: `POST /blackouts/{id}/reopen`
+ *   "puts back on sale what this closure took off, and nothing else."
+ * - **Stop selling one departure.** `POST /slots/{id}/close`. The panel used to
+ *   tell an operator to set that departure's seats to what was sold, which
+ *   worked and read as a trick: it also made the departure look full to
+ *   anybody reading the row afterwards.
+ *
+ * ## What is still not here
+ *
+ * **Calling a departure off.** A heavier act — it cancels and refunds everyone
+ * on it — and it stays on the departure, behind its typed id. Moving a
+ * departure's time and the weekly schedule are on the listing hub (#56).
  */
 export function DayManage({
   day,
   label,
   guests,
   closed,
+  closures,
+  departures,
 }: {
   day: string;
   label: string;
   guests: number | null;
   closed: boolean;
+  /**
+   * Closures in force touching this day, widest first: the whole day, then one
+   * listing, then one departure.
+   *
+   * Widest first because reopening the narrowest while the widest still holds
+   * changes nothing an operator can see, and a list in the other order invites
+   * exactly that. The API says so in its own answer: `departuresStillClosed` is
+   * "departures still to come that stay closed, because another closure in
+   * force also holds them."
+   */
+  closures: readonly Closure[];
+  /** The day's departures, so each can be stopped on its own. */
+  departures: readonly OperatorSlot[];
 }) {
   const [open, setOpen] = useState(false);
   const panelId = `manage-${day}`;
@@ -75,15 +102,72 @@ export function DayManage({
             Open Bookings
           </ButtonLink>
 
-          <p className="text-forest/70 mt-4 text-sm">
-            To stop selling one departure only, set its seats to what is already
-            sold. It is in the list below. Calling a departure off is a heavier
-            act: it cancels it and refunds everyone on it, and it is done from
-            the departure itself.
-          </p>
+          {/*
+            What is already closed, and the way back. Above the form that closes
+            more: somebody opening Manage on a day that says Closed is usually
+            here to undo it, not to close it twice.
+          */}
+          {closures.length > 0 ? (
+            <div className="border-cream-line mt-5 border-t pt-4">
+              <h4 className="label text-forest/75">Already closed</h4>
+              <ul className="mt-2 space-y-3">
+                {closures.map((closure) => (
+                  <li key={closure.id}>
+                    <p className="text-sm font-bold">
+                      {closure.departureId
+                        ? "One departure"
+                        : closure.experienceId
+                          ? "One listing"
+                          : "The whole day"}
+                    </p>
+                    <p className="text-forest/80 mt-1 text-sm">
+                      {closureLine(closure)}
+                    </p>
+                    <ReopenClosure id={closure.id} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
-          <div className="mt-5">
-            <BlackoutForm today={day} day={{ date: day, label, closed }} />
+          <div className="border-cream-line mt-5 border-t pt-4">
+            <h4 className="label text-forest/75">Stop selling one departure</h4>
+            {/*
+              Replaces "set its seats to what is already sold", which worked and
+              read as a trick: it also made the departure look full to whoever
+              read the row next, and there was no way to tell that from a boat
+              that genuinely sold out.
+            */}
+            <p className="text-forest/70 mt-2 text-sm">
+              The bookings on it stay. Calling a departure off is the heavier
+              act, and it is on the departure itself.
+            </p>
+            {departures.filter((s) => s.status === "open").length === 0 ? (
+              <p className="text-forest/70 mt-3 text-sm">
+                Nothing here is still selling.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {departures
+                  .filter((s) => s.status === "open")
+                  .map((slot) => (
+                    <li key={slot.id}>
+                      <CloseDeparture
+                        slotId={slot.id}
+                        title={slot.title}
+                        time={marketTime(slot.startsAt, slot.timezone)}
+                      />
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="border-cream-line mt-5 border-t pt-4">
+            <h4 className="label text-forest/75">Close the whole day</h4>
+            <div className="mt-3">
+              <BlackoutForm today={day} day={{ date: day, label, closed }} />
+            </div>
           </div>
         </div>
       ) : null}

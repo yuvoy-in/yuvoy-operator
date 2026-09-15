@@ -25,6 +25,31 @@ async function signIn(page: Page) {
   await signInAs(page, "+919000000101");
 }
 
+/** A market day `n` days from today, the way the fixtures build them. */
+function marketDay(offset: number): string {
+  const now = new Date();
+  const ist = new Date(now.getTime() + 5.5 * 3600_000 + offset * 86_400_000);
+  return ist.toISOString().slice(0, 10);
+}
+
+/**
+ * What the day's own region is called on screen.
+ *
+ * Every day past tomorrow is captioned with its written-out date, so the label
+ * has to be built the same way `dayCaption` does rather than guessed at. Today
+ * and tomorrow have names of their own and are not used by these tests: both
+ * carry fixtures other suites depend on.
+ */
+function dayLabel(offset: number): string {
+  const day = marketDay(offset);
+  return new Intl.DateTimeFormat("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "Asia/Kolkata",
+  }).format(new Date(`${day}T06:00:00+05:30`));
+}
+
 /** A departure per project: capacity writes mutate shared server state. */
 function mySlot(name: string) {
   return name === "mobile"
@@ -531,8 +556,15 @@ test("Manage says what closing does not do, before anything is closed", async ({
     ),
   ).toBeVisible();
 
-  // And the heavier act is named as a different one, somewhere else.
-  await expect(tomorrow.getByText(/refunds everyone on it/)).toBeVisible();
+  /*
+    And the heavier act is named as a different one. The sentence used to say
+    "set its seats to what is already sold" to stop one departure, which worked
+    and read as a trick; there is a control for it now (#45 item 4), so the
+    paragraph says only what a call-off is and where it lives.
+  */
+  await expect(
+    tomorrow.getByText(/Calling a departure off is the heavier act/),
+  ).toBeVisible();
 });
 
 test("closing one day from Manage closes it, and says who is still owed", async ({
@@ -569,7 +601,202 @@ test("closing one day from Manage closes it, and says who is still owed", async 
   // The departure says why it is not selling, in the API's own sentence.
   await expect(
     day.getByText(
-      "This departure is closed. Anybody already booked on it is unaffected.",
+      "This departure is closed to new bookings. Anybody already booked on it is unaffected.",
+    ),
+  ).toBeVisible();
+});
+
+test("a closed day with nothing on it still says Closed, and why", async ({
+  page,
+}, testInfo) => {
+  /*
+    op#45 item 1's own acceptance, and the whole reason "Closed" is READ now
+    rather than inferred.
+
+    The old rule was "every departure still running is closed", which an empty
+    day can never satisfy: a shop that closed a fortnight in January saw
+    fourteen ordinary empty days and no sign that anything had been done. And a
+    status carries no reason, so the badge could never say why.
+
+    A day each, because closing is read back and both projects share the mock's
+    process.
+  */
+  /*
+    Days nothing else touches. The fortnight is crowded: the departure-creation
+    test builds on +9 and +11, the closing fixtures are +12 and +13, and the
+    stop-selling ones are +7 and +8. +5 and +6 are empty and stay empty, which
+    is the whole premise of this test.
+  */
+  const offset = testInfo.project.name === "mobile" ? 5 : 6;
+  await signIn(page);
+  await page.goto("/calendar");
+
+  const region = page.getByRole("region", { name: dayLabel(offset) });
+  await expect(region).toContainText("No departures scheduled");
+  await expect(region.getByText("Closed", { exact: true })).toHaveCount(0);
+
+  await region.getByRole("button", { name: /^Manage/ }).click();
+  await region.getByRole("radio", { name: "Maintenance" }).check();
+  await region.getByRole("button", { name: /^Close / }).click();
+
+  // Closed, with its reason, on a day that has no departures at all.
+  await expect(region.getByText("Closed", { exact: true })).toBeVisible();
+  /*
+    `.first()` because the reason is deliberately in two places: on the day row,
+    where somebody scanning the fortnight reads it, and inside Manage beside the
+    Reopen button, where somebody undoing it needs to know which closure they
+    are undoing.
+  */
+  await expect(
+    region.getByText("Maintenance", { exact: true }).first(),
+  ).toBeVisible();
+
+  /*
+    And the way back, which did not exist either: Manage used to need a running
+    departure, so a closed empty day could be closed and never reopened.
+
+    Manage is still open from the close above — closing revalidates the day and
+    the panel's open state is the client's, so it survives the re-render. A
+    second click here would close it.
+  */
+  // Exact: "Close the whole day" is a heading in the same panel.
+  await expect(
+    region.getByText("The whole day", { exact: true }),
+  ).toBeVisible();
+  await region.getByRole("button", { name: "Reopen" }).click();
+  /*
+    The note, which the API asks to be said out loud because it gives both
+    counts in words. It survives because the action does not revalidate: a
+    re-render drops the closure out of the list and would take the counts with
+    it. The day catches up on the next read.
+  */
+  await expect(region.getByText(/back on sale/)).toBeVisible();
+
+  await page.reload();
+  const after = page.getByRole("region", { name: dayLabel(offset) });
+  await expect(after.getByText("Closed", { exact: true })).toHaveCount(0);
+});
+
+test("stopping one departure leaves the rest of the day selling, and reopens", async ({
+  page,
+}, testInfo) => {
+  /*
+    op#45 items 4 and 2. "This departure stops selling and the rest of its day
+    does not", and "closing is not cancelling people": the bookings on it still
+    stand, and the receipt says so.
+
+    This replaces telling the operator to set the departure's seats to what was
+    sold, which worked and read as a trick — and left the row looking full to
+    whoever read it next, indistinguishable from a boat that genuinely sold out.
+  */
+  const offset = testInfo.project.name === "mobile" ? 7 : 8;
+  const letter = testInfo.project.name === "mobile" ? "A" : "B";
+  await signIn(page);
+  await page.goto("/calendar");
+
+  const region = page.getByRole("region", { name: dayLabel(offset) });
+  await region.getByRole("button", { name: /^Manage/ }).click();
+
+  const stopping = region
+    .locator("li")
+    .filter({ hasText: `Lagoon kayak (stop fixture ${letter})` });
+  await stopping.getByRole("button", { name: "Stop selling" }).click();
+  /*
+    Scoped to the departure's own row, and "Staff" is this list's label: closing
+    takes `BLACKOUT_REASONS` (Weather, Maintenance, Staff, Personal, Out of
+    season, Something else), not the call-off list's "Staffing". The contract
+    keeps four separate reason lists on purpose and each act takes only its own.
+  */
+  await stopping.getByRole("radio", { name: "Staff", exact: true }).check();
+  await stopping.getByRole("button", { name: "Stop selling it" }).click();
+
+  // The receipt, verbatim: closing cancels nobody.
+  await expect(region.getByText(/is closed to new bookings$/)).toBeVisible();
+  await expect(
+    region.getByText(/The bookings already on this departure still stand/),
+  ).toBeVisible();
+
+  await page.reload();
+  const after = page.getByRole("region", { name: dayLabel(offset) });
+
+  // The departure says why, in the API's sentence. The other one still sells.
+  const closedRow = after
+    .locator("li")
+    .filter({ hasText: `Lagoon kayak (stop fixture ${letter})` })
+    .first();
+  await expect(closedRow).toContainText(
+    "This departure is closed to new bookings.",
+  );
+  const stillSelling = after
+    .locator("li")
+    .filter({ hasText: `Sunset paddle (stop fixture ${letter})` })
+    .first();
+  await expect(stillSelling).not.toContainText("closed to new bookings");
+
+  // And the DAY is not closed: only one departure was.
+  await expect(after.getByText("Closed", { exact: true })).toHaveCount(0);
+
+  /*
+    Reopening it is offered on the day, and it puts exactly that departure back:
+    `departuresReopened: 1`, which the API's note says in words.
+  */
+  await after.getByRole("button", { name: /^Manage/ }).click();
+  /*
+    Scoped by exactness: "Stop selling one departure" is a heading in the same
+    panel and contains the same words.
+  */
+  await expect(after.getByText("One departure", { exact: true })).toBeVisible();
+  await after.getByRole("button", { name: "Reopen" }).click();
+  await expect(after.getByText("1 departure is back on sale.")).toBeVisible();
+
+  await page.reload();
+  await expect(
+    page
+      .getByRole("region", { name: dayLabel(offset) })
+      .locator("li")
+      .filter({ hasText: `Lagoon kayak (stop fixture ${letter})` })
+      .first(),
+  ).not.toContainText("closed to new bookings");
+});
+
+test("a called-off departure says what the API says, not what we used to", async ({
+  page,
+}) => {
+  /*
+    op#45 item 5. The portal wrote its own sentence here: "Called off. Everyone
+    booked on it was cancelled and refunded." It existed because the API filed
+    `cancelled` under `departure_closed` with "anybody already booked on it is
+    unaffected", which was the opposite of the truth.
+
+    `departure_called_off` is its own reason now, and ours had to go because it
+    was never true of a CASH booking: nothing was refunded on one, the money
+    never reached us, and the operator is the one holding it.
+  */
+  await signIn(page);
+  await page.goto("/calendar");
+
+  const row = page
+    .locator("li")
+    .filter({ hasText: "Private boat charter, whole day" })
+    .first();
+  // The chip, exactly: the API's sentence below it also contains the words.
+  await expect(row.getByText("Called off", { exact: true })).toBeVisible();
+  await expect(row).toContainText("This departure was called off.");
+  await expect(row).toContainText("anything paid in cash is with the operator");
+  await expect(row).not.toContainText("Everyone booked on it was cancelled");
+});
+
+test("a staff login is told who can change this, in one sentence", async ({
+  page,
+}) => {
+  // op#45 item 7: three sentences opening "Your role cannot ..." became one
+  // that says who to ask rather than what the reader is.
+  await signInAs(page, "+919000000103");
+  await page.goto("/calendar");
+
+  await expect(
+    page.getByText(
+      "Only owners, admins and managers can change seats, close dates or record counter sales.",
     ),
   ).toBeVisible();
 });

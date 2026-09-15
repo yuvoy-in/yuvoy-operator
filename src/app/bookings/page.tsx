@@ -3,12 +3,7 @@ import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import { listOpenRequests } from "@/lib/day/requests";
 import { urgencyOf } from "@/lib/day/request-types";
-import {
-  BOOKINGS_PAGE,
-  apiWindow,
-  inMarketDays,
-  shiftDay,
-} from "@/lib/day/calendar";
+import { apiWindow, inMarketDays, shiftDay } from "@/lib/day/calendar";
 import {
   byMarketDay,
   mostRecentFirst,
@@ -325,12 +320,19 @@ export default async function BookingsPage() {
               ))}
             </div>
           )}
-          {upcomingRead !== null && upcomingRead.length >= BOOKINGS_PAGE ? (
-            <p className="text-forest/70 mt-3 text-xs">
-              Only the first {BOOKINGS_PAGE} bookings from today could be read,
-              so later trips may be missing from this list.
-            </p>
-          ) : null}
+          {/*
+            The "only the first 100 could be read" warning is GONE, because it
+            became false rather than because it stopped mattering.
+
+            `listBookings` pages until the API says `complete`
+            (yuvoy-operator#45 item 3), so a hundred rows means there are a
+            hundred bookings, not that a hundred was all anybody could see. The
+            sentence would have told an operator that later trips may be missing
+            from a list that has all of them, which is worse than no sentence:
+            they would go looking somewhere else for bookings that are here.
+
+            #57 replaces this list entirely.
+          */}
         </div>
 
         <div id="past" className="mt-10 scroll-mt-6">
@@ -353,12 +355,7 @@ export default async function BookingsPage() {
               ))}
             </ul>
           )}
-          {pastRead !== null && pastRead.length >= BOOKINGS_PAGE ? (
-            <p className="text-forest/70 mt-3 text-xs">
-              Only {BOOKINGS_PAGE} bookings from the last month could be read,
-              so the most recent may be missing from this list.
-            </p>
-          ) : null}
+          {/* Gone with the one above, and for the same reason. */}
         </div>
       </section>
     </Screen>

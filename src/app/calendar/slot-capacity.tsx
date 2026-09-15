@@ -62,16 +62,20 @@ export function SlotCapacity({ slot }: { slot: OperatorSlot }) {
         certificate lapsing on Tuesday takes Wednesday's boat off sale and
         leaves Monday's selling.
 
-        NOT for a called-off departure. The API files `cancelled` under
-        `departure_closed` and sends "Anybody already booked on it is
-        unaffected" — the opposite of what a call-off did, which cancelled and
-        refunded all of them. Raised on yuvoy-operator#45.
+        ## Including a called-off one, which this used to override
+
+        The portal wrote its own sentence here: "Called off. Everyone booked on
+        it was cancelled and refunded." It existed because the API filed
+        `cancelled` under `departure_closed` and sent "anybody already booked on
+        it is unaffected", which was the opposite of the truth.
+
+        `departure_called_off` is now its own reason, "split from
+        departure_closed, which leaves every booking in place" — so the API says
+        the right thing and ours has to go, because ours was never true of a
+        CASH booking. Nothing was refunded on one: the money never reached us,
+        and it is the operator holding it (yuvoy-operator#45 item 5).
       */}
-      {slot.status === "cancelled" ? (
-        <p className="text-forest/80 mt-1 text-sm">
-          Called off. Everyone booked on it was cancelled and refunded.
-        </p>
-      ) : slot.onSale === false && slot.notOnSaleDetail ? (
+      {slot.onSale === false && slot.notOnSaleDetail ? (
         <p className="text-forest/80 mt-1 text-sm">{slot.notOnSaleDetail}</p>
       ) : null}
       {/*

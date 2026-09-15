@@ -1,7 +1,8 @@
 import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
 import type { Manifest, OperatorListing, OperatorSlot } from "./types";
-import { apiWindow, inMarketDays } from "./calendar";
+import { inMarketDays } from "./calendar";
+import type { Closure } from "./closures";
 import { dedash } from "@/lib/format/dedash";
 
 export * from "./types";
@@ -49,43 +50,141 @@ export async function listSlots(
   from: string,
   to: string,
 ): Promise<OperatorSlot[]> {
-  const asked = apiWindow(from, to);
-  const { data, error } = await operatorApi(token).GET("/slots", {
-    params: { query: { from: asked.from, to: asked.to } },
-  });
-  if (error) throw error;
+  /*
+    `from` and `to` are MARKET days, inclusive, and are sent as asked.
 
-  const slots = (data.items ?? []).map((s): OperatorSlot => ({
-    id: s.id ?? "",
-    title: s.title ?? "Departure",
-    startsAt: s.startsAt ?? "",
-    timezone: s.timezone ?? "Asia/Kolkata",
-    seats: s.seats ?? 0,
-    sold: s.sold ?? 0,
-    remaining: s.remaining ?? 0,
-    /*
+    This used to widen the range by a day either side and cut the answer back,
+    because the API read these as UTC days: a 05:00 IST departure is 23:30 UTC
+    the evening before, so asking for its own day missed it. The contract now
+    says "the first day to include, in the market's clock" on both ends, so the
+    widening asked for two days nobody wanted and `inMarketDays` threw them away
+    again (yuvoy-operator#45 item 6).
+  */
+  const items: Record<string, unknown>[] = [];
+  let cursor: string | undefined;
+
+  /*
+    Paged until `complete`. A fortnight of departures across several listings
+    passes 50 easily, and the page that went missing would be the far end of the
+    fortnight: the days an operator is planning, which is what this screen is
+    for. The ceiling is there so a broken cursor cannot spin.
+  */
+  for (let page = 0; page < 20; page += 1) {
+    const { data, error } = await operatorApi(token).GET("/slots", {
+      params: { query: { from, to, ...(cursor ? { cursor } : {}) } },
+    });
+    if (error) throw error;
+    items.push(...((data.items ?? []) as Record<string, unknown>[]));
+    if (data.complete !== false || !data.nextCursor) break;
+    cursor = data.nextCursor;
+  }
+
+  const slots = items.map((raw): OperatorSlot => {
+    const s = raw as {
+      id?: string;
+      title?: string;
+      startsAt?: string;
+      timezone?: string;
+      seats?: number;
+      sold?: number;
+      remaining?: number;
+      bookingMode?: string;
+      status?: string;
+      onSale?: boolean;
+      notOnSaleReason?: string;
+      notOnSaleDetail?: string;
+    };
+    return {
+      id: s.id ?? "",
+      title: s.title ?? "Departure",
+      startsAt: s.startsAt ?? "",
+      timezone: s.timezone ?? "Asia/Kolkata",
+      seats: s.seats ?? 0,
+      sold: s.sold ?? 0,
+      remaining: s.remaining ?? 0,
+      /*
         Left undefined when absent rather than defaulted. `allotment` is the
         commoner mode and would be the tempting default, and it is the one that
         makes a claim: it would put "3 seats left" against a departure that
         holds nothing until the operator answers.
       */
-    ...(s.bookingMode ? { bookingMode: s.bookingMode } : {}),
-    status: s.status ?? "open",
-    /*
+      ...(s.bookingMode
+        ? { bookingMode: s.bookingMode as OperatorSlot["bookingMode"] }
+        : {}),
+      status: s.status ?? "open",
+      /*
         Whether a traveller can buy it, and the API's sentence when not. Left
         out when absent, for the same reason as `bookingMode`: an older API
         sending neither must not read as a calendar of boats nobody can book.
       */
-    ...(typeof s.onSale === "boolean" ? { onSale: s.onSale } : {}),
-    ...(s.notOnSaleReason ? { notOnSaleReason: s.notOnSaleReason } : {}),
-    ...(s.notOnSaleDetail
-      ? { notOnSaleDetail: dedash(s.notOnSaleDetail) }
-      : {}),
-  }));
+      ...(typeof s.onSale === "boolean" ? { onSale: s.onSale } : {}),
+      ...(s.notOnSaleReason ? { notOnSaleReason: s.notOnSaleReason } : {}),
+      ...(s.notOnSaleDetail
+        ? { notOnSaleDetail: dedash(s.notOnSaleDetail) }
+        : {}),
+    };
+  });
 
+  /*
+    Still filtered to the market days asked for. The API is the authority now,
+    so this should be a no-op — and it stays because it is cheap and because a
+    departure on the wrong day is the kind of thing that puts somebody at a
+    jetty on a Tuesday for a Wednesday boat.
+  */
   return inMarketDays(slots, from, to).sort((a, b) =>
     a.startsAt.localeCompare(b.startsAt),
   );
+}
+
+/**
+ * Every closure touching a range of market days, paged to the end.
+ *
+ * Read rather than inferred (yuvoy-operator#45 item 1): a day with no
+ * departures on it can be closed, and only this call knows it. Reopened
+ * closures come back too, carrying `reopenedAt`, and `inForce` is what tells
+ * them apart.
+ */
+export async function listClosures(
+  token: string,
+  from: string,
+  to: string,
+): Promise<Closure[]> {
+  const items: Closure[] = [];
+  let cursor: string | undefined;
+
+  for (let page = 0; page < 20; page += 1) {
+    const { data, error } = await operatorApi(token).GET("/blackouts", {
+      params: {
+        query: { from, to, limit: 200, ...(cursor ? { cursor } : {}) },
+      },
+    });
+    if (error) throw error;
+
+    for (const raw of data.items ?? []) {
+      items.push({
+        id: raw.id ?? "",
+        from: raw.from ?? "",
+        to: raw.to ?? "",
+        reasonCode: raw.reasonCode ?? "OTHER",
+        ...(raw.note ? { note: raw.note } : {}),
+        ...(raw.experienceId ? { experienceId: raw.experienceId } : {}),
+        ...(raw.departureId ? { departureId: raw.departureId } : {}),
+        ...(raw.reopenedAt ? { reopenedAt: raw.reopenedAt } : {}),
+        departureIds: raw.departureIds ?? [],
+      });
+    }
+
+    /*
+      "Told rather than inferred … Do not infer the end from a short page." A
+      full last page and a partial one are the same length and a different
+      answer, and the page that went missing would be a closure the calendar
+      then draws as open.
+    */
+    if (data.complete !== false || !data.nextCursor) break;
+    cursor = data.nextCursor;
+  }
+
+  return items;
 }
 
 /**

@@ -913,22 +913,65 @@ function storyResponse() {
   is not on sale. Before this a closure changed nothing the calendar could
   show, so no test could see a day turn Closed.
 */
-let blackouts: { from: string; to: string; experienceId?: string }[] = [];
+/**
+ * Closures, as records rather than as a list of date ranges.
+ *
+ * They were `{ from, to, experienceId? }` and nothing else, which could not
+ * model any of what #45 needs: an id to reopen, a reason to show, a note, the
+ * departures a closure holds, or a closure of ONE departure. A calendar reading
+ * that list back would have had to infer "closed" from each departure's status
+ * all over again — which cannot see a closed day with no departures on it, and
+ * can never say why.
+ */
+interface MockClosure {
+  id: string;
+  from: string;
+  to: string;
+  reasonCode: string;
+  note?: string;
+  experienceId?: string;
+  departureId?: string;
+  reopenedAt?: string;
+  createdAt: string;
+  /** Every departure it held when it was made. Fixed at that moment. */
+  departureIds: string[];
+}
+let blackouts: MockClosure[] = [];
+
+/** The market day a departure leaves on, in its OWN zone. */
+function slotDay(slot: MockSlot): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: slot.timezone }).format(
+    new Date(slot.startsAt),
+  );
+}
+
+/** Every departure this operator has, fixtures and ones a test added. */
+function allSlots(): MockSlot[] {
+  return [...SLOTS, ...createdSlots];
+}
+
+/**
+ * Whether any closure STILL IN FORCE holds this departure.
+ *
+ * "A departure stays closed while any closure still in force holds it" — so a
+ * departure closed twice and reopened once is still closed, which is the whole
+ * reason `departuresStillClosed` exists on the reopen answer.
+ */
+function closedByAny(slot: MockSlot): boolean {
+  const day = slotDay(slot);
+  return blackouts.some((b) => {
+    if (b.reopenedAt) return false;
+    if (b.departureId) return b.departureId === slot.id;
+    if (b.experienceId && b.experienceId !== slot.experienceId) return false;
+    return day >= b.from && day <= b.to;
+  });
+}
 
 /** A departure's status as the API would answer it now. */
 function slotStatusOf(slot: MockSlot): string {
   if (calledOff[slot.id]) return "cancelled";
   if (slot.status !== "open") return slot.status;
-  const day = new Intl.DateTimeFormat("en-CA", {
-    timeZone: slot.timezone,
-  }).format(new Date(slot.startsAt));
-  const closed = blackouts.some(
-    (b) =>
-      day >= b.from &&
-      day <= b.to &&
-      (!b.experienceId || b.experienceId === slot.experienceId),
-  );
-  return closed ? "closed" : "open";
+  return closedByAny(slot) ? "closed" : "open";
 }
 
 /**
@@ -936,10 +979,18 @@ function slotStatusOf(slot: MockSlot): string {
  * part of `OperatorSaleBlock` (yuvoy-api `catalog/operator_sale.go`) the
  * fixtures can reach, in its order and with its words.
  *
- * Including its one wrong sentence: a called-off departure is
- * `departure_closed` there too, with "Anybody already booked on it is
- * unaffected". Modelled on purpose, so the screen's refusal to print that
- * about a call-off is exercised rather than assumed.
+ * ## The one wrong sentence is FIXED, on both sides
+ *
+ * A called-off departure used to be `departure_closed` here too, carrying
+ * "anybody already booked on it is unaffected" — the opposite of what a
+ * call-off does — and the portal wrote its own sentence over it. The contract
+ * now has `departure_called_off`, "split from departure_closed, which leaves
+ * every booking in place", so the mock sends that and the portal renders it
+ * (yuvoy-operator#45 item 5).
+ *
+ * `cancelled` is checked BEFORE `closed`, because a departure can be both: one
+ * that was closed and then called off is called off, and the heavier fact is
+ * the one somebody needs.
  */
 function saleVerdictOf(
   slot: MockSlot,
@@ -951,10 +1002,17 @@ function saleVerdictOf(
     notOnSaleReason: reason,
     notOnSaleDetail: detail,
   });
-  if (slotStatusOf(slot) !== "open") {
+  const status = slotStatusOf(slot);
+  if (status === "cancelled") {
+    return notOnSale(
+      "departure_called_off",
+      "This departure was called off. Everybody who paid online has been refunded; anything paid in cash is with the operator.",
+    );
+  }
+  if (status !== "open") {
     return notOnSale(
       "departure_closed",
-      "This departure is closed. Anybody already booked on it is unaffected.",
+      "This departure is closed to new bookings. Anybody already booked on it is unaffected.",
     );
   }
   if (Date.parse(slot.startsAt) <= Date.now()) {
@@ -3458,21 +3516,22 @@ export const handlers = [
     const to = u.searchParams.get("to");
 
     /*
-      UTC days, as the API reads them: `from` is UTC midnight and `to` runs to
-      the next one (yuvoy-api `operator_platform.go`). This used to filter on
-      the MARKET's day, which is kinder than production — a screen asking for
-      "today" was handed a 05:00 IST departure here that the API would have
-      left out. Faithful now, so it is `listSlots` widening the window that
-      keeps those boats on the screen, and a regression there shows.
+      MARKET days, inclusive, as the contract now reads them: "the first day to
+      include, in the market's clock" on both ends (yuvoy-operator#45 item 6).
 
-      Created departures are read back like any other. A mock whose reads
-      ignore its writes proves the message rendered and nothing about the row.
+      This filtered on UTC days, faithfully, because that is what the API did —
+      `from` was UTC midnight and `to` ran to the next one — and it is why
+      `listSlots` widened its window by a day either side and threw the extra
+      back. Both halves have gone: the range asked for is the range meant, and a
+      04:00 IST departure lists under its own day rather than the evening
+      before.
+
+      Created departures are read back like any other. A mock whose reads ignore
+      its writes proves the message rendered and nothing about the row.
     */
-    const startMs = from ? Date.parse(`${from}T00:00:00Z`) : -Infinity;
-    const endMs = to ? Date.parse(`${to}T00:00:00Z`) + 86_400_000 : Infinity;
-    const inRange = [...SLOTS, ...createdSlots].filter((s) => {
-      const t = Date.parse(s.startsAt);
-      return t >= startMs && t < endMs;
+    const inRange = allSlots().filter((s) => {
+      const day = slotDay(s);
+      return (!from || day >= from) && (!to || day <= to);
     });
 
     /*
@@ -3503,6 +3562,12 @@ export const handlers = [
           ...saleVerdictOf(s, seats, sold),
         };
       }),
+      /*
+        Told rather than left out. `GET /slots` is paged in the contract and
+        `listSlots` walks it until this says so; a mock omitting it would let a
+        client ship that stops at the first page and never notice.
+      */
+      complete: true,
     });
   }),
 
@@ -3584,21 +3649,24 @@ export const handlers = [
     const from = u.searchParams.get("from");
     const to = u.searchParams.get("to");
     /*
-      UTC DAYS, as the API reads them — `from` is UTC midnight and `to` runs
-      to the next one (`internal/handler/operator.go`), not the market's
-      calendar. This filtered on the market day, which is kinder than the API:
-      a 05:00 IST departure is 23:30 UTC the evening before, and a client that
-      asked for its market day would find it here and miss it in production.
+      MARKET days, inclusive, as the contract now reads them: "the first day to
+      include, in the market's clock" (yuvoy-operator#45 item 6). It filtered on
+      UTC days before, faithfully, and that is what made every caller widen its
+      window by a day either side and cut the answer back.
+
+      Each departure's OWN zone, never a fixed one: that is what the phrase "the
+      market's clock" means, and a fixed offset would be right for Havelock and
+      wrong for the next market we open.
     */
-    const lo = from ? Date.parse(`${from}T00:00:00Z`) : -Infinity;
-    const hi = to ? Date.parse(`${to}T00:00:00Z`) + 86_400_000 : Infinity;
-    const inWindow = (startsAt: string) => {
-      const t = Date.parse(startsAt);
-      return t >= lo && t < hi;
+    const inWindow = (startsAt: string, timezone: string) => {
+      const day = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+      }).format(new Date(startsAt));
+      return (!from || day >= from) && (!to || day <= to);
     };
 
     const captured = SLOTS.flatMap((slot) =>
-      inWindow(slot.startsAt)
+      inWindow(slot.startsAt, slot.timezone)
         ? slot.parties
             .filter((p) => p.bookingId)
             .map((p) => ({
@@ -3620,7 +3688,7 @@ export const handlers = [
     );
 
     const awaiting = REQUESTS.filter(
-      (r) => !answered[r.id] && inWindow(r.startsAt),
+      (r) => !answered[r.id] && inWindow(r.startsAt, r.timezone),
     ).map((r) => ({
       id: r.id,
       state: "pending_request",
@@ -3631,7 +3699,15 @@ export const handlers = [
       createdAt: r.requestedAt,
     }));
 
-    return HttpResponse.json({ items: [...captured, ...awaiting] });
+    /*
+      `complete` is told, because `listBookings` now pages until it says so. A
+      mock that left it out would let a client ship believing one page is the
+      whole list, which is the bug the 100-row warning existed to paper over.
+    */
+    return HttpResponse.json({
+      items: [...captured, ...awaiting],
+      complete: true,
+    });
   }),
 
   /**
@@ -4656,6 +4732,7 @@ export const handlers = [
       to?: string;
       reasonCode?: string;
       experienceId?: string;
+      note?: string;
     };
     const REASONS = [
       "WEATHER",
@@ -4692,29 +4769,228 @@ export const handlers = [
       way the API does — `closed`, and not on sale — for one listing when the
       body names one, and for every listing when it does not.
     */
-    const inRange = [...SLOTS, ...createdSlots].filter((s) => {
+    const inRange = allSlots().filter((s) => {
       if (calledOff[s.id] || s.status === "cancelled") return false;
       if (body.experienceId && s.experienceId !== body.experienceId) {
         return false;
       }
-      const day = new Intl.DateTimeFormat("en-CA", {
-        timeZone: s.timezone,
-      }).format(new Date(s.startsAt));
+      const day = slotDay(s);
       return day >= body.from! && day <= body.to!;
     });
     const existingBookings = inRange.reduce((n, s) => n + s.parties.length, 0);
+
+    /*
+      The departures it holds are recorded WITH it, at this moment: "including
+      any that another closure had already closed", because reopening "puts back
+      exactly those departures". A closure that recomputed its scope later would
+      reopen a departure added to the day afterwards, which nobody closed.
+    */
+    const id = `blk_${Math.random().toString(36).slice(2, 10)}`;
     blackouts.push({
+      id,
       from: body.from,
       to: body.to,
+      reasonCode: body.reasonCode,
+      ...(body.note ? { note: body.note } : {}),
       ...(body.experienceId ? { experienceId: body.experienceId } : {}),
+      createdAt: new Date().toISOString(),
+      departureIds: inRange.map((s) => s.id),
     });
 
     return HttpResponse.json({
+      id,
       closed: true,
       existingBookings,
       ...(existingBookings > 0
         ? {
             note: "The bookings you already have still stand — including anyone mid-checkout, whose hold predates the closure and can still complete. Run them, or call each departure off individually.",
+          }
+        : {}),
+    });
+  }),
+
+  /**
+   * Closures read back — yuvoy-operator#45 item 1.
+   *
+   * "Every closure touching the range, reopened ones included; those carry
+   * `reopenedAt`." Reopened ones are sent on purpose: a mock that hid them would
+   * let the portal ship without checking `reopenedAt`, and every reopened day
+   * would read as closed for the rest of the season.
+   */
+  http.get(url("/blackouts"), async ({ request }) => {
+    // "Any operator user may read it." No role gate, deliberately.
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const params = new URL(request.url).searchParams;
+    const from = params.get("from") ?? "";
+    const to = params.get("to") ?? "";
+
+    /*
+      "Only closures whose last day is on or after `from`" and "whose first day
+      is on or before `to`" — overlap, not containment. A closure running from
+      last week into next week touches this fortnight and a containment test
+      would drop it, which is the one an operator would most want to see.
+    */
+    const touching = blackouts
+      .filter((b) => (!from || b.to >= from) && (!to || b.from <= to))
+      .sort((a, b) => a.from.localeCompare(b.from) || a.id.localeCompare(b.id));
+
+    const limitRaw = Number(params.get("limit"));
+    const limit =
+      Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 50;
+    const cursor = params.get("cursor");
+    let start = 0;
+    if (cursor !== null) {
+      const parsed = Number(cursor);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > touching.length) {
+        return envelope("invalid_input", "Not a cursor we issued.", 400);
+      }
+      start = parsed;
+    }
+    const page = touching.slice(start, start + limit);
+    const end = start + page.length;
+
+    return HttpResponse.json({
+      items: page,
+      // "Told rather than inferred … Do not infer the end from a short page."
+      complete: end >= touching.length,
+      ...(end < touching.length ? { nextCursor: String(end) } : {}),
+    });
+  }),
+
+  /**
+   * Reopen one closure — yuvoy-operator#45 item 2.
+   *
+   * The two counts are the point. "A departure it holds goes back to open only
+   * if it is still closed, has not left yet, and no other closure still in force
+   * holds it. **A called-off departure is never reopened.**" A mock that simply
+   * dropped the closure and reported success would let the portal ship a screen
+   * that says a day is back on sale when half of it is not.
+   */
+  http.post(url("/blackouts/:id/reopen"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const closure = blackouts.find((b) => b.id === id);
+    if (!closure) return envelope("not_found", "No such closure.", 404);
+    if (closure.reopenedAt) {
+      return envelope("already_reopened", "This was reopened before.", 409);
+    }
+
+    closure.reopenedAt = new Date().toISOString();
+
+    /*
+      Counted AFTER the closure is marked reopened, so `closedByAny` sees the
+      world as it now is: a departure another closure still holds is counted as
+      still closed, which is exactly what `departuresStillClosed` means.
+    */
+    const held = allSlots().filter((s) => closure.departureIds.includes(s.id));
+    let reopened = 0;
+    let stillClosed = 0;
+    for (const slot of held) {
+      // "Its departures that have already left stay closed, because they did
+      // pass closed", and a called-off one is never reopened.
+      if (calledOff[slot.id] || Date.parse(slot.startsAt) <= Date.now()) {
+        continue;
+      }
+      if (closedByAny(slot)) stillClosed += 1;
+      else reopened += 1;
+    }
+
+    return HttpResponse.json({
+      id,
+      reopenedAt: closure.reopenedAt,
+      departuresReopened: reopened,
+      departuresStillClosed: stillClosed,
+      // "Say this out loud. It gives both counts in words."
+      note:
+        stillClosed > 0
+          ? `${reopened === 1 ? "1 departure is" : `${reopened} departures are`} back on sale. ${stillClosed === 1 ? "1 is" : `${stillClosed} are`} still closed by another closure.`
+          : `${reopened === 1 ? "1 departure is" : `${reopened} departures are`} back on sale.`,
+    });
+  }),
+
+  /**
+   * Close ONE departure — yuvoy-operator#45 item 4.
+   *
+   * "It is a closure like a closed date: `GET /blackouts` reads it back with
+   * `departureId`, and `POST /blackouts/{id}/reopen` reopens it." So it makes a
+   * real closure record rather than flipping a status, which is what lets the
+   * calendar offer the way back.
+   */
+  http.post(url("/slots/:id/close"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+
+    const id = String(params.id);
+    const slot = allSlots().find((s) => s.id === id);
+    if (!slot) return envelope("not_found", "No such departure.", 404);
+
+    const body = (await request.json()) as {
+      reasonCode?: string;
+      note?: string;
+    };
+    if (
+      !body.reasonCode ||
+      ![
+        "WEATHER",
+        "MAINTENANCE",
+        "STAFF",
+        "PERSONAL",
+        "SEASONAL",
+        "OTHER",
+      ].includes(body.reasonCode)
+    ) {
+      return envelope("invalid_input", "Unknown reasonCode.", 400);
+    }
+
+    if (calledOff[id] || slot.status === "cancelled") {
+      return envelope(
+        "already_called_off",
+        "This departure was called off, so there is nothing to close.",
+        409,
+      );
+    }
+    if (Date.parse(slot.startsAt) <= Date.now()) {
+      return envelope("departure_started", "That departure has left.", 409);
+    }
+
+    /*
+      "Closing a departure that is already closed on its own answers with the
+      closure that holds it rather than making a second one." Two closures on
+      one departure would need two reopens to undo one act.
+    */
+    const existing = blackouts.find(
+      (b) => b.departureId === id && !b.reopenedAt,
+    );
+    const closureId =
+      existing?.id ?? `blk_${Math.random().toString(36).slice(2, 10)}`;
+    if (!existing) {
+      const day = slotDay(slot);
+      blackouts.push({
+        id: closureId,
+        from: day,
+        to: day,
+        reasonCode: body.reasonCode,
+        ...(body.note ? { note: body.note } : {}),
+        departureId: id,
+        createdAt: new Date().toISOString(),
+        departureIds: [id],
+      });
+    }
+
+    const existingBookings = slot.parties.length;
+    return HttpResponse.json({
+      id: closureId,
+      closed: true,
+      existingBookings,
+      ...(existingBookings > 0
+        ? {
+            note: "The bookings already on this departure still stand, including anyone mid-checkout. Closing it stops new ones and cancels nobody.",
           }
         : {}),
     });

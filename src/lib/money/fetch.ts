@@ -49,13 +49,45 @@ export async function listBookings(
   token: string,
   from: string,
   to: string,
+  view?: "upcoming" | "past" | "cancelled",
 ): Promise<BookingLine[] | null> {
   try {
-    const { data, error } = await operatorApi(token).GET("/bookings", {
-      params: { query: { from, to } },
-    });
-    if (error) throw error;
-    return (data.items ?? []).map(toBookingLine).sort(byDeparture);
+    const items: BookingLine[] = [];
+    let cursor: string | undefined;
+
+    /*
+      Paged to the end (yuvoy-operator#45 item 3).
+
+      It used to be one call of at most 100 rows, and the caller could not tell
+      a full page from a cut-short one — so the calendar threw the count away
+      whenever 100 came back and said "anybody already confirmed" instead of "4
+      guests are already confirmed". A fortnight of a busy operator's bookings
+      passes 100 easily, which meant the number was missing exactly when it
+      mattered most.
+
+      `complete` is read rather than the page's length, for the same reason: a
+      full last page and a partial one are the same length and a different
+      answer.
+    */
+    for (let page = 0; page < 25; page += 1) {
+      const { data, error } = await operatorApi(token).GET("/bookings", {
+        params: {
+          query: {
+            from,
+            to,
+            limit: 200,
+            ...(view ? { view } : {}),
+            ...(cursor ? { cursor } : {}),
+          },
+        },
+      });
+      if (error) throw error;
+      items.push(...(data.items ?? []).map(toBookingLine));
+      if (data.complete !== false || !data.nextCursor) break;
+      cursor = data.nextCursor;
+    }
+
+    return items.sort(byDeparture);
   } catch {
     return null;
   }
