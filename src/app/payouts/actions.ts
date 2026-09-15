@@ -27,6 +27,15 @@ export interface StepUpState {
   message?: string;
   /** Development only, exactly as on sign-in. Never reaches production. */
   devCode?: string;
+  /**
+   * The API accepted the request and sent nothing — `202` with `sent: false`.
+   *
+   * A business whose first person runs it has no owner (D15), so there is
+   * nobody the code can go to: "the code goes to no number, `sent` is `false`,
+   * and no session there can be elevated until an owner has joined." Distinct
+   * from `message`, because nothing went wrong and there is nothing to retry.
+   */
+  nobodyToSendTo?: boolean;
 }
 
 /**
@@ -42,13 +51,36 @@ export async function requestStepUp(): Promise<StepUpState> {
   try {
     const { data, error } = await operatorApi(token).POST("/auth/step-up", {});
     if (error) throw error;
+
+    /*
+      `data.sent` is READ. This returned `sent: true` whatever the API said,
+      which put a code field in front of somebody at a business with no owner
+      and left them typing into it (yuvoy-operator#46 item 4).
+
+      It is `false` for one reason and it is not an error: the code "goes to the
+      owner who joined first", and a business whose first person runs it has no
+      owner to send it to. Absent is read as `true`, because that is what every
+      response before this field existed meant.
+    */
+    if (data.sent === false) {
+      return { sent: false, nobodyToSendTo: true };
+    }
     return { sent: true, devCode: MOCKING ? data.devCode : undefined };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. No code was sent." };
     }
-    if (err instanceof OperatorApiError && err.status === 429) {
-      return { message: "Too many attempts. Wait a minute." };
+    if (err instanceof OperatorApiError) {
+      if (err.status === 429) {
+        return { message: "Too many attempts. Wait a minute." };
+      }
+      /*
+        A suspended business cannot raise a bank change, and the API's own
+        sentence says which of suspended, closed or disqualified it is (#50). A
+        generic "we could not send a code" would have them trying again.
+      */
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
     }
     return { message: "We could not send a code just now." };
   }

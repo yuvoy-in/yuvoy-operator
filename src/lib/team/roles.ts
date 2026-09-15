@@ -25,13 +25,30 @@ export const OPERATOR_ROLES = ["OWNER", "ADMIN", "MANAGER", "STAFF"] as const;
 export type OperatorRole = (typeof OPERATOR_ROLES)[number];
 
 /**
- * What may be invited — **not** the same list.
+ * What may be invited, and it is now TWO roles rather than three.
  *
- * "OWNER cannot be invited, because the owner is the person whose bank
- * account this is, and that is not a thing one login should be able to hand
- * to a phone number." The first owner is created by Yuvoy.
+ * ## The reversal, 14 September 2026
+ *
+ * This list used to be `["ADMIN", "MANAGER", "STAFF"]`, on the contract's own
+ * reasoning that "OWNER cannot be invited, because the owner is the person
+ * whose bank account this is, and that is not a thing one login should be able
+ * to hand to a phone number."
+ *
+ * That has changed on both ends (D15, yuvoy-operator#51). `POST /team` now
+ * says "**Everybody joins as `STAFF`, except an owner**": an invitation makes
+ * somebody staff or an owner, and nothing in between. ADMIN and MANAGER are
+ * reached by CHANGING a role after they have joined, not by inviting into one.
+ *
+ * So the two lists have diverged rather than one being a subset of the other:
+ * `ASSIGNABLE_ROLES` in `access.ts` is all four, and this is two. Asking for
+ * MANAGER or ADMIN is not refused — it is downgraded to STAFF and answered with
+ * a `note` — so offering either would be a form that quietly does something else.
+ *
+ * STAFF is first because it is the preselected answer and the safer one. The
+ * form checks it BY NAME rather than by position, so reordering this cannot
+ * preselect Owner by accident.
  */
-export const INVITABLE_ROLES = ["ADMIN", "MANAGER", "STAFF"] as const;
+export const INVITABLE_ROLES = ["STAFF", "OWNER"] as const;
 export type InvitableRole = (typeof INVITABLE_ROLES)[number];
 
 export function isInvitableRole(v: string): v is InvitableRole {
@@ -124,8 +141,16 @@ export function describeRole(role: string): RoleDescription | null {
           one: OWNER only"), and acting on an owner or another admin, which is
           the 403 all four access endpoints carry.
         */
-        cannot:
-          "Cannot change payout details, and cannot change the owner or another admin.",
+        /*
+          Narrowed on 14 September (yuvoy-operator#51). It read "cannot change
+          the owner or another admin", which was the contract's rule until the
+          access endpoints were restated: each now says only that "an ADMIN
+          cannot change an OWNER". An admin may act on another admin.
+
+          Worth being exact about, because an owner appointing an admin reads
+          this to decide whether two admins can lock each other out. They can.
+        */
+        cannot: "Cannot change payout details, and cannot change the owner.",
       };
     case "MANAGER":
       return {

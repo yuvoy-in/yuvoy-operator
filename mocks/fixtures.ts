@@ -101,6 +101,42 @@ export interface MockParty {
     answeredVersion?: number;
   };
   /**
+   * What the listing asks and what this party answered.
+   *
+   * Optional exactly as in the contract: "present only when there is something
+   * to show". A listing with no questions carries none, and the screen must
+   * draw nothing rather than an empty heading.
+   *
+   * These "never ask about health, which stays with `screening`" — the two are
+   * deliberately separate, and this one may be read out on a jetty.
+   */
+  questions?: {
+    questionId: string;
+    text: string;
+    answerType: "short_text" | "choice" | "yes_no";
+    required: boolean;
+    current: boolean;
+    answered: boolean;
+    answer?: string;
+    answeredAt?: string;
+  }[];
+  /**
+   * Why this booking ended, on a party that arrives already cancelled.
+   *
+   * Separate from the cancellations a test makes through the portal, which the
+   * handler keeps in its own state: this is for the shapes a test cannot
+   * produce, chiefly a departure called off and a traveller who cancelled from
+   * their own link. Both are lines the screen has to be right about and neither
+   * has a button in this portal.
+   */
+  cancellation?: {
+    at: string;
+    by?: "traveller" | "operator" | "yuvoy" | "system";
+    reasonCode?: string;
+    calledOff?: { reasonCode: string };
+    operatorCancelled?: { reasonCode: string };
+  };
+  /**
    * Paid at the counter — yuvoy-operator#40 §1.
    *
    * On the BOOKING, never on the manifest party: `Manifest.parties[]` carries
@@ -187,6 +223,35 @@ export const SLOTS: MockSlot[] = [
         state: "confirmed",
         arrived: false,
         screening: { declared: true, clear: true, needsAttention: false },
+        /*
+          Answered, and one of them to a question the listing NO LONGER asks.
+          `current: false` only ever appears on an answered question, and it is
+          kept "so an answer to a reworded question stays readable with the
+          words it answered" — the one case where a screen must show a question
+          that is not on the listing in front of it.
+        */
+        questions: [
+          {
+            questionId: "q_shoe",
+            text: "What shoe size are you?",
+            answerType: "short_text",
+            required: true,
+            current: true,
+            answered: true,
+            answer: "44",
+            answeredAt: todayAt("19:10", -3),
+          },
+          {
+            questionId: "q_swim_old",
+            text: "Can you swim 200m unaided?",
+            answerType: "yes_no",
+            required: false,
+            current: false,
+            answered: true,
+            answer: "yes",
+            answeredAt: todayAt("19:11", -3),
+          },
+        ],
       },
       {
         bookingId: "bkg_2",
@@ -216,6 +281,22 @@ export const SLOTS: MockSlot[] = [
         state: "confirmed",
         arrived: false,
         screening: { declared: false, clear: false, needsAttention: false },
+        /*
+          Asked and NOT answered, which is the case the copy exists for: a
+          question with nothing under it reads as an answer somebody gave. It is
+          also what a booking looks like 90 days after the trip, when the answer
+          is deleted and the question reads `answered: false` again.
+        */
+        questions: [
+          {
+            questionId: "q_shoe",
+            text: "What shoe size are you?",
+            answerType: "short_text",
+            required: true,
+            current: true,
+            answered: false,
+          },
+        ],
       },
       // A live hold: mid-checkout, no bookingId, may still walk up — and no
       // screening object at all, on a departure where everybody else has one.
@@ -417,6 +498,38 @@ export const SLOTS: MockSlot[] = [
         state: "confirmed",
         arrived: false,
       },
+      /*
+        Two bookings that exist only to be CANCELLED, one per Playwright
+        project — yuvoy-operator#43 item 4.
+
+        Cancelling is one-way, so a booking two projects both cancel is a race
+        in the fixture, and the second project reports a product failure that is
+        not there. The first attempt at this reused the two cash parties above,
+        which `cash.spec.ts` claims by name for its collection walkthroughs; a
+        cancelled booking has no Cash taken button, so that suite went red.
+
+        Cash rather than card, because the confirmation's money sentence is the
+        opposite one and it is the one that can promise a traveller a refund
+        that was never taken: "nothing is refunded online."
+      */
+      {
+        bookingId: "bkg_cancel_a",
+        reference: "YV-CANCEL1A",
+        name: "Ritu Bhalla",
+        guests: 2,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 900_000, collected: false },
+      },
+      {
+        bookingId: "bkg_cancel_b",
+        reference: "YV-CANCEL2B",
+        name: "Jonas Weber",
+        guests: 2,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 900_000, collected: false },
+      },
     ],
   },
   {
@@ -432,7 +545,76 @@ export const SLOTS: MockSlot[] = [
     meetingPoint: "Beach 5 slipway",
     seatsSoldOffline: 0,
     calledOff: { reasonCode: "weather" },
-    parties: [],
+    parties: [
+      {
+        /*
+          A CARD booking the call-off took with it — yuvoy-operator#43 item 1.
+
+          The line an operator reads most often after something goes wrong, and
+          nothing in the portal can produce it: a call-off cancels every booking
+          on the departure, so this shape only exists as a fixture. The money is
+          the other half of the acceptance: commission is 0 on a cancelled
+          booking and the net is gross less refunds, which is what a payout will
+          pay on it.
+        */
+        bookingId: "bkg_calledoff_card",
+        reference: "YV-CALL0FF1",
+        name: "Ishaan Roy",
+        guests: 2,
+        state: "cancelled",
+        arrived: false,
+        cancellation: {
+          at: todayAt("07:40"),
+          by: "operator",
+          reasonCode: "OPERATOR_CALLED_OFF",
+          calledOff: { reasonCode: "weather" },
+        },
+      },
+      {
+        /*
+          Cancelled, and its CASH is still in the till. The one path where we
+          refunded nothing because nothing reached us, so the money the business
+          is holding belongs to somebody else until they record handing it back
+          (item 5). Nothing else in these fixtures reaches that state.
+        */
+        bookingId: "bkg_calledoff_cash",
+        reference: "YV-CALL0FF2",
+        name: "Farah Sheikh",
+        guests: 1,
+        state: "cancelled",
+        arrived: false,
+        cash: {
+          collectPaise: 450_000,
+          collected: true,
+          collectedAt: todayAt("07:05"),
+          collectedPaise: 450_000,
+        },
+        cancellation: {
+          at: todayAt("07:40"),
+          by: "operator",
+          reasonCode: "OPERATOR_CALLED_OFF",
+          calledOff: { reasonCode: "weather" },
+        },
+      },
+      {
+        /*
+          The traveller cancelled it themselves, from their own booking link.
+          The most common cancellation there is, and the one an operator will
+          otherwise assume WE did.
+        */
+        bookingId: "bkg_traveller_left",
+        reference: "YV-LEFT2R4T",
+        name: "Bruno Costa",
+        guests: 1,
+        state: "cancelled",
+        arrived: false,
+        cancellation: {
+          at: todayAt("18:20", -1),
+          by: "traveller",
+          reasonCode: "CUSTOMER_REQUEST",
+        },
+      },
+    ],
   },
   /*
     Two days of their own, twelve and thirteen out, for closing a day —
@@ -467,6 +649,95 @@ export const SLOTS: MockSlot[] = [
       },
     ],
   },
+  /*
+    Two more days of their own, seven and eight out, for STOPPING ONE
+    DEPARTURE and putting it back — yuvoy-operator#45 items 2 and 4.
+
+    Separate from the closing fixtures above for the same reason those are
+    separate from each other: closing is read back now, so a departure two
+    projects both close is a race in the fixture. Each carries one confirmed
+    booking, so the receipt's "the bookings already on it still stand" is
+    exercised rather than the empty case.
+
+    TWO departures on each day, deliberately. Stopping one has to leave the
+    other selling — "this departure stops selling and the rest of its day does
+    not" — and a day with one departure cannot tell that apart from closing the
+    whole day.
+  */
+  {
+    id: "slot_stop_a1",
+    experienceId: "exp_snorkel",
+    title: "Lagoon kayak (stop fixture A)",
+    startsAt: todayAt("08:00", 7),
+    timezone: TZ,
+    seats: 6,
+    sold: 2,
+    remaining: 4,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_stop_a",
+        reference: "YV-ST0P1A2B",
+        name: "Leela Nair",
+        guests: 2,
+        state: "confirmed",
+        arrived: false,
+      },
+    ],
+  },
+  {
+    id: "slot_stop_a2",
+    experienceId: "exp_snorkel",
+    title: "Sunset paddle (stop fixture A)",
+    startsAt: todayAt("16:30", 7),
+    timezone: TZ,
+    seats: 6,
+    sold: 0,
+    remaining: 6,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [],
+  },
+  {
+    id: "slot_stop_b1",
+    experienceId: "exp_snorkel",
+    title: "Lagoon kayak (stop fixture B)",
+    startsAt: todayAt("08:00", 8),
+    timezone: TZ,
+    seats: 6,
+    sold: 2,
+    remaining: 4,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_stop_b",
+        reference: "YV-ST0P3C4D",
+        name: "Arjun Pillai",
+        guests: 2,
+        state: "confirmed",
+        arrived: false,
+      },
+    ],
+  },
+  {
+    id: "slot_stop_b2",
+    experienceId: "exp_snorkel",
+    title: "Sunset paddle (stop fixture B)",
+    startsAt: todayAt("16:30", 8),
+    timezone: TZ,
+    seats: 6,
+    sold: 0,
+    remaining: 6,
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 2",
+    seatsSoldOffline: 0,
+    parties: [],
+  },
   {
     id: "slot_closing_b",
     experienceId: "exp_snorkel",
@@ -497,6 +768,16 @@ export const DEV_CODE = "424242";
 export interface MockRequest {
   id: string;
   slotId: string;
+  /**
+   * The listing, "always present. The same id the listings endpoints use, so a
+   * listing filter applies to requests as it does to bookings."
+   *
+   * Added for yuvoy-operator#57 item 5, which filters the Requests pill in the
+   * portal because `GET /requests` takes no search. Matched on the id and never
+   * on `experience`: two listings may be called the same thing, and a title is
+   * a label somebody can edit.
+   */
+  experienceId: string;
   experience: string;
   guests: number;
   startsAt: string;
@@ -531,6 +812,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_urgent",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 2,
     startsAt: todayAt("23:30"),
@@ -544,6 +826,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_accept_mobile",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 4,
     startsAt: todayAt("23:30"),
@@ -557,6 +840,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_accept_desktop",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 3,
     startsAt: todayAt("23:30"),
@@ -573,6 +857,7 @@ export const REQUESTS: MockRequest[] = [
     // with a 409.
     id: "req_over_ceiling",
     slotId: "slot_dawn",
+    experienceId: "exp_try_dive",
     experience: "Try-dive at Nemo Reef",
     guests: 5,
     startsAt: todayAt("06:45"),
@@ -586,6 +871,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_decline_mobile",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 1,
     startsAt: todayAt("23:30", 1),
@@ -599,6 +885,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_decline_desktop",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 1,
     startsAt: todayAt("23:30", 1),
@@ -612,20 +899,83 @@ export const REQUESTS: MockRequest[] = [
 ];
 
 /**
- * Earnings, and a bank change that holds the payout.
+ * Past payout weeks, one of each state (yuvoy-operator#47).
  *
- * The figures reconcile on purpose — gross − commission − refunds = net — so
- * that the screen's own reconciliation check is exercised on a case that
- * passes rather than only on one that fails.
+ * `EARNINGS` and its month-shaped figures are gone with `GET /earnings`: a
+ * calendar month was never the unit money moves in.
+ *
+ * The three states are here because they are three different promises to an
+ * operator, and only one of them means money has actually moved. The oldest
+ * week is NEGATIVE: a correction larger than what the week pays, which the
+ * contract says leaves that week unpaid "until somebody at Yuvoy decides how to
+ * recover it". A fixture with no negative week would let a screen render an
+ * absolute value and pass.
  */
-export const EARNINGS = {
-  bookings: 12,
+export const SETTLEMENT_SENT = {
+  id: "stl_sent",
+  periodStart: "2026-08-31",
+  periodEnd: "2026-09-06",
+  state: "settled" as const,
+  bookings: 5,
+  /*
+    Deliberately NOT the same net as `nextSettlement` in the overview. The first
+    version of this fixture paid an identical ₹40,150, which made an e2e
+    assertion on that figure ambiguous and, worse, described a world where two
+    different weeks paid the same amount to the paise. A fixture should not be
+    a coincidence.
+  */
   grossPaise: 5_400_000,
-  commissionPaise: 810_000,
-  refundsPaise: 450_000,
-  netPaise: 4_140_000,
-  state: "provisional" as const,
+  commissionPaise: 540_000,
+  refundsPaise: 900_000,
+  adjustmentsPaise: -125_000,
+  netPaise: 3_835_000,
+  lockedAt: "2026-09-07T04:00:00Z",
+  settledAt: "2026-09-08T06:30:00Z",
+  reference: "UTR2026090812345",
 };
+
+export const SETTLEMENT_APPROVED = {
+  id: "stl_approved",
+  periodStart: "2026-08-24",
+  periodEnd: "2026-08-30",
+  state: "approved" as const,
+  bookings: 4,
+  grossPaise: 3_600_000,
+  commissionPaise: 540_000,
+  refundsPaise: 0,
+  adjustmentsPaise: 0,
+  netPaise: 3_060_000,
+  lockedAt: "2026-08-31T04:00:00Z",
+};
+
+export const SETTLEMENT_OWED_BACK = {
+  id: "stl_owed_back",
+  periodStart: "2026-08-17",
+  periodEnd: "2026-08-23",
+  state: "locked" as const,
+  bookings: 1,
+  grossPaise: 450_000,
+  commissionPaise: 67_500,
+  refundsPaise: 0,
+  adjustmentsPaise: -600_000,
+  netPaise: -217_500,
+  lockedAt: "2026-08-24T04:00:00Z",
+};
+
+/**
+ * The statement, as the API sends it.
+ *
+ * A TOTAL row whose net INCLUDES the adjustment, which has no column: that is
+ * the contract's own description and the reason the rows do not add up to the
+ * total. The second row is a cancelled booking the operator kept money on, so
+ * its commission is 0.00, because we take none on a booking that did not
+ * happen.
+ */
+export const STATEMENT_CSV = `reference,trip_date,guests,gross,commission,refunded,net
+YV-7KJ2MQ,2026-09-02,2,36000.00,5400.00,0.00,30600.00
+YV-9PL4XR,2026-09-04,1,18000.00,0.00,9000.00,9000.00
+TOTAL,,3,54000.00,5400.00,9000.00,38350.00
+`;
 
 /**
  * What is owed on cash already taken — yuvoy-operator#40 §2.
@@ -790,6 +1140,28 @@ export const TEAM: MockTeamMember[] = [
     lastSeenAt: todayAt("07:20"),
     phone: "+919000000114",
   },
+  {
+    /*
+      A SECOND active admin, and the only thing it exists for is the rule that
+      changed on 14 September: an admin may now act on another admin.
+
+      Every one of the four access endpoints used to refuse it, and both the
+      portal and this mock agreed. Each endpoint now names one exception only —
+      "an ADMIN cannot change an OWNER" — so admin-on-admin is a positive case,
+      and without a second admin row there is nothing to assert it against. The
+      old test passed by pointing an admin at their OWN row, which answers `409`
+      and is in the same list of acceptable refusals, so it proved nothing.
+
+      Read but never written: Nisha is the one tests act as, and this is the one
+      they act on. Nothing demotes, holds or removes it.
+    */
+    id: "usr_admin_ravi",
+    name: "Ravi Menon",
+    roles: ["ADMIN"],
+    state: "active",
+    lastSeenAt: todayAt("06:40", -1),
+    phone: "+919000000116",
+  },
   /*
     Two managers that exist only to have their access changed, one per
     Playwright project.
@@ -857,6 +1229,26 @@ export const TEAM: MockTeamMember[] = [
     state: "invited",
     pending: true,
     phone: LEAVING_PHONE,
+  },
+  {
+    /*
+      An invitation to be the business's OWNER — impossible until D15.
+      `POST /team` now says "**Everybody joins as `STAFF`, except an owner**",
+      and an owner invitation is how a business whose first person runs it gets
+      one at all (yuvoy-operator#51 items 2 and 5).
+      
+      Never accepted by any test. Asking for the code is enough to see what
+      accepting would make somebody — the join screen names it before they
+      accept — and that read leaves the invitation where it is, so both
+      Playwright projects can make it. Accepting would consume it and the second
+      project would find nothing.
+    */
+    id: "inv_owner_seema",
+    name: "Seema Lall",
+    roles: ["OWNER"],
+    state: "invited",
+    pending: true,
+    phone: "+919000000117",
   },
 ];
 
@@ -1002,6 +1394,15 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
 export const ACCOUNT_LIVE = {
   state: "LIVE",
   bookable: true,
+  /*
+    NOTHING outstanding, and this stays that way.
+
+    An unmet required document was put here at first, with the
+    `CREDENTIAL_MISSING` that explains it — and it broke two suites that read
+    this identity as "a live account with nothing waiting on you", which is what
+    it is for. The unmet case lives on `ACCOUNT_LIVE_OUTSTANDING`, which already
+    has blockers and its own identity.
+  */
   blocking: [],
   credentials: [
     {
@@ -1028,6 +1429,75 @@ export const ACCOUNT_LIVE = {
       expiresOn: marketDay(21),
       verifiedAt: todayAt("10:00", -60),
     },
+    {
+      /*
+        PENDING, with an id and no file — the one state that takes one
+        (yuvoy-operator#46 items 2 and 3).
+
+        "Only a pending document takes a file. Once somebody at Yuvoy has
+        verified or rejected a document, a new file behind it would change the
+        evidence under a decision nobody re-made." The two above are verified
+        and must therefore offer nothing, which is half of what makes this
+        fixture worth having.
+      */
+      id: "cred_oxygen_pending",
+      type: "oxygen",
+      state: "pending",
+      mandatory: true,
+      issuer: "Andaman Divers Supply",
+      hasFile: false,
+      filedAt: todayAt("11:00", -2),
+    },
+    {
+      /*
+        A SECOND pending document, and the only one a test uploads to.
+
+        `cred_oxygen_pending` above is read by both Playwright projects, which
+        assert it has no file and offers the control; a successful upload is not
+        reversible and the mock's state is shared, so the project that uploaded
+        first would take both assertions away from the other. This row is the
+        one that receives a file, and nothing asserts it is empty.
+      */
+      id: "cred_gst_pending",
+      type: "gst",
+      state: "pending",
+      mandatory: false,
+      issuer: "GST Network",
+      hasFile: false,
+      filedAt: todayAt("11:00", -2),
+    },
+    {
+      /*
+        VERIFIED and carrying a file, so the row that names one is exercised and
+        the row that offers to send one is proved absent on the same screen.
+      */
+      id: "cred_boat_verified",
+      type: "boat",
+      state: "verified",
+      mandatory: true,
+      issuer: "Port Blair Harbour Master",
+      hasFile: true,
+      filename: "boat-survey-2026.pdf",
+      sizeBytes: 480_000,
+      expiresOn: marketDay(300),
+      verifiedAt: todayAt("10:00", -30),
+    },
+  ],
+  /*
+    Four required, four met — yuvoy-operator#46 item 1.
+
+    `bank` is in the set and has NO credential row, which is the whole reason
+    the count is read rather than counted: a portal totalling the rows it can
+    see would answer "5" here, and the set is "what your market requires of
+    every business, plus what the categories you have published listings in
+    require". The unmet case is on `ACCOUNT_LIVE_OUTSTANDING`, so this identity
+    keeps its empty `blocking`.
+  */
+  requiredDocuments: [
+    { type: "directorate_registration", satisfied: true },
+    { type: "insurance", satisfied: true },
+    { type: "boat", satisfied: true },
+    { type: "bank", satisfied: true },
   ],
 };
 
@@ -1120,8 +1590,30 @@ export const ACCOUNT_LIVE_OUTSTANDING = {
       gates: false,
       since: todayAt("09:00", -9),
     },
+    {
+      /*
+        The blocker that explains an unmet required document — yuvoy-operator#46
+        item 1. "A document that is not satisfied always has a `CREDENTIAL_*`
+        entry in `blocking` saying why", and without one the row would name a
+        document and no reason.
+      */
+      code: "CREDENTIAL_MISSING",
+      label: "We have no equipment inspection on file.",
+      waitingOn: "operator",
+      gates: false,
+      since: todayAt("09:00", -5),
+    },
   ],
   credentials: ACCOUNT_LIVE.credentials,
+  /*
+    Five required, four met. `equipment` is required and has no credential row
+    at all, so a portal counting the rows it can see would answer "4 of 4" and
+    tell an operator they were finished.
+  */
+  requiredDocuments: [
+    ...ACCOUNT_LIVE.requiredDocuments,
+    { type: "equipment", satisfied: false },
+  ],
 };
 
 export const SUSPENDED_ID = "usr_suspended";
@@ -1172,3 +1664,298 @@ export const CONTENDED_ID = "usr_upload_contended";
 /** `GET /slots` refuses their wide range, and answers the fortnight. */
 export const WIDE_READ_FAILS_ID = "usr_wide_read_fails";
 export const FAILING_ID = "usr_api_failing";
+
+/* --------------------------------------------------- conversations ------- */
+
+export interface MockMessage {
+  id: string;
+  from: "traveller" | "operator";
+  senderName: string;
+  text?: string;
+  textRemovedAt?: string;
+  sentAt: string;
+}
+
+export interface MockThread {
+  bookingId: string;
+  messages: MockMessage[];
+  /** Absent means writable. Set means the composer is gone, and why. */
+  closedReason?: "cancelled" | "declined" | "window_closed";
+  /** How many of the traveller's messages nobody has marked read yet. */
+  unread: number;
+}
+
+/**
+ * Four conversations, and each one exists for a branch that is otherwise
+ * unreachable — yuvoy-operator#52.
+ *
+ * `bkg_1` is the live one, and it carries **two unread** so the Home strip has a
+ * number to draw and a number to lose. It is long enough to page: the endpoint's
+ * first page is the most recent messages and `nextCursor` walks backwards, which
+ * is the opposite of how a list usually reads, and a conversation that fits on
+ * one page would let a client ship that backwards.
+ *
+ * `bkg_2` is CANCELLED: messages, the cancelled line, and no composer. `bkg_3`
+ * is `window_closed`, which is the same shape with a different sentence and the
+ * one an operator meets most often, since every trip reaches it eventually.
+ *
+ * `bkg_5` holds a message whose text was REMOVED. "The message stays, with who
+ * wrote it and when" — an empty bubble would say somebody sent nothing, which is
+ * a different and untrue thing.
+ */
+/**
+ * The part of a long conversation nobody reads, so the part that CAN be paged.
+ *
+ * Alternating sides, oldest first, ending three days before the hand-written
+ * messages begin. The first one is distinctive on purpose: it is what a test
+ * looks for to prove "Show earlier messages" reached the beginning.
+ */
+function earlierChat(count: number): MockMessage[] {
+  return Array.from({ length: count }, (_, i) => {
+    const traveller = i % 2 === 0;
+    return {
+      id: `msg_1_early_${String(i).padStart(2, "0")}`,
+      from: traveller ? ("traveller" as const) : ("operator" as const),
+      senderName: traveller ? "Asha Menon" : "Priya Raut",
+      text:
+        i === 0
+          ? "This is where the conversation begins."
+          : traveller
+            ? `Another question, number ${i}.`
+            : `Answered, number ${i}.`,
+      /*
+        Spread across the days before the written ones, so the list is ordered by
+        something real rather than by array position alone. Ten minutes apart is
+        enough to keep every `sentAt` distinct without running into the next day.
+      */
+      sentAt: todayAt(
+        `${String(8 + Math.floor(i / 6)).padStart(2, "0")}:${String((i % 6) * 10).padStart(2, "0")}`,
+        -10 + Math.floor(i / 6),
+      ),
+    };
+  });
+}
+
+export const MESSAGE_THREADS: MockThread[] = [
+  {
+    bookingId: "bkg_1",
+    /*
+      NO unread on this one, and that is a decision about the test suite rather
+      than about the fixture.
+
+      Reading a conversation marks it read, and it is not reversible. Half a
+      dozen tests open this booking to exercise the composer, the paging and the
+      removed text, so any unread here would be cleared by whichever ran first
+      and the strip test would be racing them. `bkg_card` carries the unread
+      instead, and nothing else in the suite opens it.
+    */
+    unread: 0,
+    messages: [
+      /*
+        Longer than ONE PAGE, and that is the whole reason the filler is here.
+
+        The endpoint's first page is the 50 most recent messages and `nextCursor`
+        walks backwards through what came before, which is the opposite of how a
+        list usually reads. A conversation that fitted on one page would let a
+        client ship that backwards and nothing would notice, so this one does not
+        fit: the eleven written out below are the most recent, and the generated
+        block before them pushes the opening past the first page.
+
+        Generated rather than typed, because forty-five lines of invented small
+        talk would bury the eleven that carry the branches.
+      */
+      ...earlierChat(45),
+      {
+        id: "msg_1_01",
+        from: "traveller",
+        senderName: "Asha Menon",
+        text: "Hello, we are two people booked for the dawn dive.",
+        sentAt: todayAt("18:02", -3),
+      },
+      {
+        id: "msg_1_02",
+        from: "operator",
+        senderName: "Priya Raut",
+        text: "You are on the list. Be at Beach 3 dive hut by 06:30.",
+        sentAt: todayAt("18:20", -3),
+      },
+      {
+        id: "msg_1_03",
+        from: "traveller",
+        senderName: "Asha Menon",
+        text: "Is there somewhere to leave a bag?",
+        sentAt: todayAt("09:15", -2),
+      },
+      {
+        id: "msg_1_04",
+        from: "operator",
+        senderName: "Priya Raut",
+        text: "Yes, the hut has lockers. Bring your own padlock if you can.",
+        sentAt: todayAt("09:40", -2),
+      },
+      {
+        id: "msg_1_05",
+        from: "traveller",
+        senderName: "Asha Menon",
+        text: "Perfect, thank you.",
+        sentAt: todayAt("09:44", -2),
+      },
+      {
+        id: "msg_1_06",
+        from: "operator",
+        senderName: "Dev Kapoor",
+        /*
+          A second name on the business's side. "The name of the person on the
+          team who wrote it" — the traveller sees the business, the business sees
+          who answered, and a screen showing one name for every outgoing message
+          would hide which colleague already replied.
+        */
+        text: "Dev here, covering the morning. Anything else, just ask.",
+        sentAt: todayAt("07:05", -1),
+      },
+      {
+        id: "msg_1_07",
+        from: "traveller",
+        senderName: "Asha Menon",
+        text: "One of us has not dived since last year. Is that a problem?",
+        sentAt: todayAt("19:30", -1),
+      },
+      {
+        id: "msg_1_08",
+        from: "operator",
+        senderName: "Priya Raut",
+        text: "Not at all. We will run through the basics before we go in.",
+        sentAt: todayAt("19:55", -1),
+      },
+      {
+        id: "msg_1_09",
+        from: "traveller",
+        senderName: "Asha Menon",
+        text: "Great. What time should we actually arrive?",
+        sentAt: todayAt("05:10"),
+      },
+      {
+        /*
+          The first of the two unread ones, and the reason `unread` is 2: the
+          count is the TRAVELLER's messages nobody has marked read, so the two
+          newest from her are it.
+        */
+        id: "msg_1_10",
+        from: "traveller",
+        senderName: "Asha Menon",
+        text: "Also, do you have fins in size 44?",
+        sentAt: todayAt("05:12"),
+      },
+      {
+        id: "msg_1_11",
+        from: "traveller",
+        senderName: "Asha Menon",
+        text: "We are on our way now.",
+        sentAt: todayAt("05:40"),
+      },
+    ],
+  },
+  {
+    /*
+      The only conversation with anything UNREAD, and the only one the Home strip
+      and the unread chip are asserted against.
+
+      Two messages, both from the traveller, both after the last thing the
+      business said: `unreadCount` is "the traveller's messages nobody at the
+      business has marked read", so a reply of ours in between would be counted
+      by nobody and the number would not be two.
+    */
+    bookingId: "bkg_card",
+    unread: 2,
+    messages: [
+      {
+        id: "msg_card_01",
+        from: "operator",
+        senderName: "Priya Raut",
+        text: "You are booked. Meet us at the counter twenty minutes before.",
+        sentAt: todayAt("16:00", -1),
+      },
+      {
+        id: "msg_card_02",
+        from: "traveller",
+        senderName: "Sofia Alves",
+        text: "Is the counter the same one as the ticket office?",
+        sentAt: todayAt("06:05"),
+      },
+      {
+        id: "msg_card_03",
+        from: "traveller",
+        senderName: "Sofia Alves",
+        text: "I am running about ten minutes behind.",
+        sentAt: todayAt("06:20"),
+      },
+    ],
+  },
+  {
+    bookingId: "bkg_2",
+    unread: 0,
+    closedReason: "cancelled",
+    messages: [
+      {
+        id: "msg_2_01",
+        from: "traveller",
+        senderName: "Daniel Okafor",
+        text: "Sorry, something has come up and I need to cancel.",
+        sentAt: todayAt("14:00", -2),
+      },
+      {
+        id: "msg_2_02",
+        from: "operator",
+        senderName: "Priya Raut",
+        text: "No problem at all. Come and see us next season.",
+        sentAt: todayAt("14:06", -2),
+      },
+    ],
+  },
+  {
+    bookingId: "bkg_3",
+    unread: 0,
+    closedReason: "window_closed",
+    messages: [
+      {
+        id: "msg_3_01",
+        from: "operator",
+        senderName: "Priya Raut",
+        text: "Thanks for coming out with us. Hope the photos came out well.",
+        sentAt: todayAt("16:00", -30),
+      },
+    ],
+  },
+  {
+    /*
+      `bkg_4` rather than an id nothing else knows: a thread has to resolve to a
+      real booking for the list to carry its reference, its experience and its
+      departure, and inventing one would give the conversations list a row that
+      opens a 404.
+    */
+    bookingId: "bkg_4",
+    unread: 0,
+    closedReason: "window_closed",
+    messages: [
+      {
+        id: "msg_4_01",
+        from: "traveller",
+        senderName: "Rhea Kapoor",
+        /*
+          No `text`. Removed "a set time after the trip ends (90 days unless the
+          service is configured otherwise)", and the message stays: who wrote it,
+          when, and this field in place of the words.
+        */
+        textRemovedAt: todayAt("03:00", -1),
+        sentAt: todayAt("11:20", -95),
+      },
+      {
+        id: "msg_4_02",
+        from: "operator",
+        senderName: "Priya Raut",
+        textRemovedAt: todayAt("03:00", -1),
+        sentAt: todayAt("11:31", -95),
+      },
+    ],
+  },
+];

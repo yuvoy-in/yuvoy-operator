@@ -43,19 +43,18 @@ export default async function TeamPage() {
   const [team, at] = await Promise.all([listTeam(token), now()]);
 
   /*
-    OWNER, not `canManage`.
+    OWNER or ADMIN, never `canManage`.
 
     `canManage` is "OWNER, ADMIN or MANAGER" and gates capacity, closed dates,
-    earnings and listing edits. `POST /team` and `DELETE /team/{id}` are both
-    403 "OWNER only", and gating this screen on `canManage` would offer a
-    manager an invite form that fails — while teaching them, wrongly, that they
-    are allowed to hand out access to somebody else's business.
+    earnings and listing edits. Every write on this screen is "OWNER or ADMIN
+    only", so gating it on `canManage` would offer a manager controls that fail —
+    while teaching them, wrongly, that they may hand out access to somebody
+    else's business.
 
-    `POST /team` is now "OWNER or **ADMIN**" and `DELETE /team/{id}` is still
-    403 "OWNER only", so the two stopped being one question. An admin exists
+    All four access endpoints and `POST /team` agree on that gate now;
+    `DELETE /team/{id}` was the last to widen (yuvoy-api#109). An admin exists
     precisely because an owner may be off the island and cannot be the only
-    person able to add somebody — gating the form on OWNER left them looking at
-    a screen that told them nothing they could act on.
+    person who can add somebody.
   */
   /*
     Inviting is refused while suspended; holding, restoring and removing are
@@ -63,11 +62,19 @@ export default async function TeamPage() {
     access away and cannot hand new access out.
   */
   const canInvite = canManageAccess(me.roles) && !me.suspension;
+  /*
+    An admin who is not also an owner. One sentence in the role picker depends on
+    it: "an ADMIN who makes somebody an owner cannot change that person's access
+    afterwards." Somebody holding both roles keeps the owner's way back, so the
+    warning would be false for them.
+  */
+  const iAmOnlyAdmin =
+    me.roles.includes("ADMIN") && !me.roles.includes("OWNER");
   const { people, invitations } = splitTeam(team.people);
 
   return (
     <Screen
-      nav={{ back: { href: "/account", label: "your business" } }}
+      nav={{ back: { href: "/account/settings", label: "settings" } }}
       stageLabel="Team access"
     >
       <p className="eyebrow text-terra-deep">Your account</p>
@@ -128,6 +135,8 @@ export default async function TeamPage() {
                 canRole={canChangeRole(member, me.id, me.roles)}
                 canHoldThem={canHold(member, me.id, me.roles, team.people)}
                 canRestoreThem={canRestore(member, me.id, me.roles)}
+                iAmOnlyAdmin={iAmOnlyAdmin}
+                canSeeNotifications={canManageAccess(me.roles)}
               />
             ))}
           </ul>
@@ -159,6 +168,8 @@ export default async function TeamPage() {
                 canRole={canChangeRole(invite, me.id, me.roles)}
                 canHoldThem={canHold(invite, me.id, me.roles, team.people)}
                 canRestoreThem={canRestore(invite, me.id, me.roles)}
+                iAmOnlyAdmin={iAmOnlyAdmin}
+                canSeeNotifications={canManageAccess(me.roles)}
                 /*
                   The link, on the row somebody is actually chasing. `joinUrl`
                   is "present only for a caller who can invite", so the server
@@ -205,9 +216,15 @@ export default async function TeamPage() {
             should be able to tick people off a manifest and nothing else.
           </p>
           <p className="text-forest/80 mt-3 text-sm">
-            Payout details and this list are the owner&rsquo;s alone. A stolen
-            manager login plus one convincing phone call is otherwise enough to
-            redirect a season&rsquo;s takings.
+            Payout details are the owner&rsquo;s alone. A stolen manager login
+            plus one convincing phone call is otherwise enough to redirect a
+            season&rsquo;s takings. This list is an owner&rsquo;s or an
+            admin&rsquo;s, because an owner who is off the island cannot be the
+            only person who can let somebody in.
+          </p>
+          <p className="text-forest/80 mt-3 text-sm">
+            Making somebody an owner hands them the payout details too. An admin
+            who does it cannot change that person&rsquo;s access afterwards.
           </p>
           <p className="text-forest/80 mt-3 text-sm">
             Removing somebody ends their sessions immediately: on their next

@@ -3,12 +3,20 @@
  * in the portal. The floating tab bar and the desktop rail both derive from
  * it, and a route is added here in the same change that ships its page.
  *
- * Five destinations. The day is what an operator opens at 6am; **bookings**
- * is who is coming; **calendar** is where the seats are promised, "the single
- * most important number in the system"; **listings** is what the business
- * actually sells and the footage that sells it; and everything else about the
- * business — money, people, whether the account can trade — sits behind one
- * door.
+ * FOUR destinations since D-036 (yuvoy-operator#56). **Home** is what an
+ * operator opens at 6am, and it now carries the requests, today's departures
+ * and every listing; **bookings** is who is coming; **calendar** is where a
+ * whole day is closed across every listing; and everything else about the
+ * business — money, people, the listings themselves and whether the account
+ * can trade — sits behind one door.
+ *
+ * ## Why Listings stopped being a tab
+ *
+ * It had two pages under it and the tab pointed at the first, which meant the
+ * footage was a stop nobody found. Every listing is now on Home, where an
+ * operator already looks, and each one opens a hub with everything that can be
+ * done to it. Creating and editing them moved to the Business profile (#58),
+ * beside the other things that are set up once and rarely touched.
  *
  * ## Why Services became Listings (yuvoy-operator#42)
  *
@@ -47,8 +55,7 @@
  * nothing about the two things the business IS.
  */
 
-export type NavIcon =
-  "today" | "bookings" | "calendar" | "listings" | "business";
+export type NavIcon = "home" | "bookings" | "calendar" | "business";
 
 export interface NavItem {
   href: string;
@@ -61,8 +68,14 @@ export interface NavItem {
 export const NAV: readonly NavItem[] = [
   {
     href: "/today",
-    label: "Today",
-    icon: "today",
+    label: "Home",
+    icon: "home",
+    /*
+      The path stays `/today`. It is in operators' histories and a path is not
+      something anybody reads — the same call the Services URLs got when that
+      tab was renamed. `/today/listing/{id}` is under it, so the listing hub
+      lights Home and draws as a focused screen.
+    */
     match: (p) => p === "/today" || p.startsWith("/today/"),
   },
   {
@@ -81,23 +94,18 @@ export const NAV: readonly NavItem[] = [
     match: (p) => p.startsWith("/calendar") || p.startsWith("/capacity"),
   },
   {
-    href: "/services/activities",
-    label: "Listings",
-    icon: "listings",
-    /*
-      The section, not the page. `/services` has two pages under it and the
-      stop points at the first — an operator opening this tab is far more often
-      adding or fixing a listing than looking at footage, and a hub in between
-      would be a tap that shows them nothing.
-    */
-    match: (p) => p.startsWith("/services"),
-  },
-  {
     href: "/account",
     label: "Business",
     icon: "business",
     match: (p) =>
       p.startsWith("/account") ||
+      /*
+        `/services` still lights Business, for the instant its redirect is on
+        screen: creating and editing listings and reels moved to the Business
+        profile (#58), and an old bookmark must not flash an unlit bar on its
+        way through.
+      */
+      p.startsWith("/services") ||
       p.startsWith("/earnings") ||
       p.startsWith("/cash") ||
       p.startsWith("/payouts") ||
@@ -174,6 +182,13 @@ export const FOCUSED_ROUTE_PREFIXES = [
   // beside the logo (yuvoy-operator#41).
   "/story",
   "/team",
+  /*
+    Everything UNDER Business, with the slash — yuvoy-operator#58. `/account`
+    itself is the tab root: the business profile, which is where an operator
+    lands. Settings, verification and the listing screens are places they go
+    INTO from it and close back out of.
+  */
+  "/account/",
 ] as const;
 
 /**

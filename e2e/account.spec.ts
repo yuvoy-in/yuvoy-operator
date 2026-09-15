@@ -63,14 +63,26 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
 
   /*
     The heading is the BUSINESS — yuvoy-operator#33 §3 — and the status is
-    said once, in the line beneath it. "Your account is live" as an `h1` with
-    a LIVE chip beside it was the same thing twice, and worse, that heading
-    was derived from `bookable` while an operator can be LIVE and not sellable
-    since migration 0053.
+    said once, on the screen that holds the list it describes. "Your account is
+    live" as an `h1` with a LIVE chip beside it was the same thing twice, and
+    worse, that heading was derived from `bookable` while an operator can be
+    LIVE and not sellable since migration 0053.
   */
   await expect(
-    page.getByRole("heading", { name: "Nemo Reef Watersports" }),
+    /*
+      `displayName`, not `legalName` — yuvoy-operator#58 item 2. The profile is
+      headed by what travellers see; the registered name is a detail on the
+      Business details screen.
+    */
+    page.getByRole("heading", { name: "Reef Divers Havelock" }),
   ).toBeVisible();
+
+  /*
+    The status, the documents and what is outstanding came off the profile in
+    #58 item 10 and are on Verification together. The profile keeps the name,
+    the logo, the three numbers and what the business sells.
+  */
+  await page.goto("/account/verification");
   await expect(page.getByText("Your account is live")).toBeVisible();
   await expect(page.getByRole("link", { name: "Go to today" })).toBeVisible();
 
@@ -107,8 +119,21 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
     out, offers nothing: the API would refuse a new copy of it.
   */
   const replace = page.getByRole("link", { name: "Replace it" });
-  await expect(replace).toHaveCount(1);
-  await expect(replace).toHaveAttribute("href", "/profile#documents");
+  /*
+    Three now, not one. The insurance twenty-one days out, plus the two PENDING
+    documents #46 added to this fixture so the file controls have something to
+    act on — a pending document is one `POST /credentials` will take a fresh
+    copy of, so it offers the same link.
+
+    The property this asserts is unchanged and is the one that matters: the
+    registration 400 days out offers NOTHING, because the API would refuse a
+    renewal of it.
+  */
+  await expect(replace).toHaveCount(3);
+  await expect(replace.first()).toHaveAttribute("href", "/profile#documents");
+  await expect(
+    page.locator("li").filter({ hasText: "Directorate registration" }).first(),
+  ).not.toContainText("Replace it");
 
   // The sentence that said no document could be sent here at all is gone —
   // false since `POST /credentials`, and contradicted by the Replace above.
@@ -136,7 +161,7 @@ test("a signed-up account that cannot sell is never told it is live", async ({
   */
   await signIn(page, PROSPECT);
   await page.waitForURL("**/today");
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   /*
     The heading is the BUSINESS, not the state — yuvoy-operator#33 §3. The
@@ -194,7 +219,7 @@ test("an account waiting on Yuvoy is told not to chase it", async ({
   */
   await signIn(page, AWAITING);
   await page.waitForURL("**/today");
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   await expect(page.getByText("You cannot be booked yet")).toBeVisible();
   await expect(page.getByRole("heading", { name: "With Yuvoy" })).toBeVisible();
@@ -233,15 +258,20 @@ test("a live account is still asked for what is outstanding", async ({
   */
   await signIn(page, LIVE_OUTSTANDING);
   await page.waitForURL("**/today");
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   // Open for business — the sentence yuvoy-api#139 exists to protect.
   await expect(page.getByText(/Your account is live/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Go to today" })).toBeVisible();
   await expect(page.getByText("You cannot be booked yet")).toHaveCount(0);
 
-  // AND still outstanding — the half that vanished.
-  await expect(page.getByText("2 things are still outstanding")).toBeVisible();
+  /*
+    AND still outstanding — the half that vanished. Three since #46, which added
+    the `CREDENTIAL_MISSING` that explains this fixture's one unmet required
+    document: "a document that is not satisfied always has a `CREDENTIAL_*`
+    entry in `blocking` saying why."
+  */
+  await expect(page.getByText("3 things are still outstanding")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Waiting on you" }),
   ).toBeVisible();
@@ -255,7 +285,7 @@ test("a live account is still asked for what is outstanding", async ({
     logo sit in the same red panel as a lapsed licence. An operator who cannot
     tell the difference learns to ignore all of it.
   */
-  await expect(page.getByText("Not stopping sales")).toHaveCount(2);
+  await expect(page.getByText("Not stopping sales")).toHaveCount(3);
   await expect(page.getByText(/These are not blocking you/)).toBeVisible();
 
   // And each one still carries the way out of it — yuvoy-operator#33.
@@ -281,7 +311,7 @@ test("an account block the API did not send is unknown, not approval", async ({
   */
   await signIn(page, NO_STANDING);
   await page.waitForURL("**/today");
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   /*
     The heading is the BUSINESS, not the state — yuvoy-operator#33 §3. The
@@ -297,23 +327,32 @@ test("an account block the API did not send is unknown, not approval", async ({
   ).toBeVisible();
 });
 
-test("the day screen explains an empty day the account is the reason for", async ({
+test("Home explains an empty day the account is the reason for", async ({
   page,
 }) => {
   /*
     Where the question is actually asked. A new operator signs in and lands
-    here — `/` redirects to `/today` — and "Nothing scheduled" reads as "you
+    here — `/` redirects to `/today` — and "Nothing running today" reads as "you
     have not added anything" rather than "you cannot sell yet".
+
+    The strip is the first thing on Home since #56, above the requests, and it
+    carries `headline(account).title` so it cannot disagree with the sentence
+    the Business screen leads with.
   */
   await signIn(page, PROSPECT);
   await page.waitForURL("**/today");
 
+  /*
+    ONE line and a chevron since #56 item 3. It carried a second line saying
+    "See what is outstanding", which is what a chevron already says: Home is
+    four blocks an operator scans at six in the morning, and every extra line is
+    one between them and the boat.
+  */
   const banner = page.getByRole("link", { name: /You cannot be booked yet/ });
   await expect(banner).toBeVisible();
-  await expect(banner).toContainText("See what is outstanding");
 
   await banner.click();
-  await page.waitForURL("**/account");
+  await page.waitForURL("**/account/verification");
   await expect(
     page.getByRole("heading", { name: "Waiting on you" }),
   ).toBeVisible();

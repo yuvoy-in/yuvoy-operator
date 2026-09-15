@@ -1,10 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { apiBaseUrl } from "../src/lib/api/server-client";
-import { marketDate } from "../src/lib/format/market-time";
 import {
   MOCK_TUS_PORT,
   mockPhotoArrived,
   resetMockPhotos,
+  mockDocumentArrived,
+  resetMockDocuments,
   createMockUpload,
   mockUploadDone,
   resetMockUploads,
@@ -25,7 +26,10 @@ import {
   JOIN_TOKEN,
   JOIN_URL,
   LEAVING_PHONE,
-  EARNINGS,
+  SETTLEMENT_SENT,
+  SETTLEMENT_APPROVED,
+  SETTLEMENT_OWED_BACK,
+  STATEMENT_CSV,
   FAILING_ID,
   OPERATOR,
   OTHER_MEMBERS,
@@ -36,6 +40,9 @@ import {
   REQUESTS,
   SLOTS,
   TEAM,
+  MESSAGE_THREADS,
+  type MockMessage,
+  type MockThread,
   type MockParty,
   WIDE_READ_FAILS_ID,
   type MockSlot,
@@ -98,6 +105,46 @@ function sessionUser(request: Request): MockTeamMember | null {
   );
 }
 
+/**
+ * Which BUSINESS this session belongs to, as far as these mocks model one.
+ *
+ * Everybody on `TEAM` works for Reef Divers and shares its state. An identity
+ * created through `POST /auth/signup` is a business of its own, brand new, with
+ * nothing behind it — and `OTHER_MEMBERS` belong to businesses this mock does not
+ * otherwise model.
+ *
+ * It exists because one piece of state was leaking across all of them: the bank
+ * change list. An account created a minute ago was shown Reef Divers' open
+ * change and told "there is already a change in progress", which is not a screen
+ * the real API can produce. It also made a second business's tests depend on
+ * whether another spec had raised one, which is a race rather than a fixture.
+ */
+function businessOf(request: Request): string {
+  const me = sessionUser(request);
+  if (!me) return "none";
+  return team.some((m) => m.id === me.id) ? "reef" : `solo:${me.id}`;
+}
+
+/**
+ * The change requests this session's business actually has.
+ *
+ * `CHANGE_REQUESTS` is Reef Divers' history; `bankChanges` is what anybody has
+ * raised since the process started, each tagged with `raisedFor`. The tag is
+ * stripped here rather than stored on the way out, because it is bookkeeping
+ * this mock needs and not a field the API sends.
+ */
+function changesFor(request: Request): Record<string, unknown>[] {
+  const mine = businessOf(request);
+  const raised = bankChanges
+    .filter((r) => r.raisedFor === mine)
+    .map((r) => {
+      const out = { ...r };
+      delete out.raisedFor;
+      return out;
+    });
+  return mine === "reef" ? [...raised, ...CHANGE_REQUESTS] : raised;
+}
+
 /** OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it. */
 const canManage = (member: MockTeamMember) =>
   member.roles.includes("OWNER") || member.roles.includes("MANAGER");
@@ -135,6 +182,71 @@ let team: MockTeamMember[] = TEAM.map((m) => ({ ...m }));
  * subject is who can get into your business.
  */
 let signups: MockTeamMember[] = [];
+/**
+ * Upload intents for a document's file, by intent id — yuvoy-operator#46.
+ *
+ * Kept as state because `complete` is specified to CHECK rather than trust:
+ * "the browser saying it finished is a reason to look, not a fact … that it is
+ * the size declared, and that its first bytes are the kind its label claims."
+ * A mock that recorded nothing at intent time would have nothing to check
+ * against, and the portal's whole failure surface would ship unexercised.
+ */
+let documentIntents: Record<
+  string,
+  {
+    credentialId: string;
+    filename: string;
+    contentType: string;
+    sizeBytes: number;
+    /** Refused or already used. A closed intent answers `upload_closed`. */
+    closed?: boolean;
+  }
+> = {};
+/** Files on record, by credential id. What `hasFile` and `filename` read. */
+let documentFiles: Record<
+  string,
+  { filename: string; sizeBytes: number; contentType: string }
+> = {};
+/**
+ * Notification switches somebody has changed, by user id then group.
+ *
+ * Absent means ON, which is the contract's own default: "every switch is on
+ * until somebody turns it off." Stored as the change rather than as the whole
+ * set for the same reason the endpoint takes one switch at a time — two people
+ * on two phones must not overwrite each other.
+ *
+ * `by` is what makes item 6 testable: an owner turning off a staff member's
+ * switch has to show up, by name, on that person's own screen.
+ */
+let switchState: Record<
+  string,
+  Record<string, { on: boolean; at: string; by: { id: string; name: string } }>
+> = {};
+/**
+ * Bookings this team cancelled, by id — yuvoy-operator#43 item 4.
+ *
+ * Kept as state rather than baked into a fixture, because the whole point of
+ * the endpoint is that the second call answers `409 already_cancelled` and
+ * refunds nothing twice. A mock that cancelled statelessly would let the portal
+ * ship a retry that refunds again.
+ */
+let cancelled: Record<
+  string,
+  { at: string; reasonCode: string; refundedPaise: number }
+> = {};
+/** Cash handed back, by booking id. Recorded once, and it cannot be undone. */
+let cashReturned: Record<
+  string,
+  { returnedAt: string; returnedPaise: number }
+> = {};
+/** Conversations, by booking. Written to by `POST /bookings/{id}/messages`. */
+let threads: MockThread[] = seedThreads();
+function seedThreads(): MockThread[] {
+  return MESSAGE_THREADS.map((t) => ({
+    ...t,
+    messages: t.messages.map((m) => ({ ...m })),
+  }));
+}
 /** Upload intents in flight, by operator. One at a time, as the API enforces. */
 let uploadIntents: Record<
   string,
@@ -229,6 +341,15 @@ type MockExperience = {
     test could not tell the fixed form from the broken one.
   */
   screenerKey?: string;
+  /**
+   * Whether anybody has SAID what the price means — yuvoy-operator#30 §1.
+   *
+   * `experiences.pricing_unit` is NOT NULL, so `pricingUnit` alone cannot carry
+   * the answer: a listing nobody has asked still has a value in that column.
+   * The API records the difference separately and reports it as a publish
+   * blocker; this is the mock's version of that column.
+   */
+  pricingUnitStated?: boolean;
   /*
     The mandatory fields still empty — yuvoy-operator#30 §3. Computed rather
     than stored, so a fixture cannot claim a listing is ready while missing
@@ -237,6 +358,17 @@ type MockExperience = {
   publishBlockers?: string[];
   upcomingDepartures?: number;
   sellable?: boolean;
+  /**
+   * The weekly schedule the hub edits — yuvoy-operator#56 item 8.
+   *
+   * `repeatsWeekly` is the half that decides whether an empty save is a
+   * question: clearing a schedule that exists closes every departure it made,
+   * and clearing one that never existed does nothing.
+   */
+  schedule?: {
+    repeatsWeekly: boolean;
+    weekly: { weekday: number; startTime: string; seats: number }[];
+  };
   review?: {
     state: string;
     since?: string;
@@ -284,6 +416,18 @@ function seedExperiences(): MockExperience[] {
       publishBlockers: [],
       sellable: true,
       upcomingDepartures: 6,
+      /*
+        A schedule that exists, so clearing it is the branch the form asks
+        about. A listing with none can be saved empty without a question, which
+        is the other half and is what every other fixture here covers.
+      */
+      schedule: {
+        repeatsWeekly: true,
+        weekly: [
+          { weekday: 2, startTime: "09:00", seats: 8 },
+          { weekday: 4, startTime: "09:00", seats: 8 },
+        ],
+      },
     },
     {
       id: "exp_snorkel",
@@ -493,6 +637,32 @@ function seedExperiences(): MockExperience[] {
       `exp_dive` is deliberately NOT used for it: other checks rely on that row
       still reading as plainly on sale.
     */
+    /*
+      A LIVE listing with nothing attached to it, and nothing else asserts on
+      it — yuvoy-operator#58.
+
+      The cross-link it proves is the one the two old section pages existed for:
+      "on sale with nothing to show", which renders as a black card in the
+      traveller app and is exactly what `yuvoy.in` showed for months. It needs a
+      listing that is selling AND has no media, and every other live fixture is
+      either attached to by `reels.spec.ts` or submitted against elsewhere.
+    */
+    {
+      id: "exp_nofootage",
+      slug: "blue-lagoon-no-footage",
+      title: "Blue lagoon (no footage fixture)",
+      summary: "A quiet hour in the lagoon.",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      unitPricePaise: 150000,
+      pricingUnit: "per_person",
+      meetingPoint: "Havelock jetty 2",
+      upcomingDepartures: 1,
+      sellable: true,
+      review: { state: "applied" },
+    },
     {
       id: "exp_revision_a",
       slug: "revision-fixture-a",
@@ -609,7 +779,80 @@ function seedExperiences(): MockExperience[] {
   ];
 }
 
-let mockExperiences: MockExperience[] = seedExperiences();
+/**
+ * The mandatory fields a draft is still without.
+ *
+ * Computed, never stored, so a fixture cannot claim a listing is ready while
+ * missing something the API would refuse — and so a save that fills a field
+ * clears the mark the builder draws from it.
+ *
+ * `pricingUnit` is the subtle one: the column is NOT NULL, so its value cannot
+ * say whether anybody chose it. The mock models the same thing with an explicit
+ * `pricingUnitStated` flag set only by a write that named it.
+ */
+function draftBlockers(listing: MockExperience): string[] {
+  const missing: string[] = [];
+  if (!listing.title) missing.push("title");
+  if (!listing.category) missing.push("category");
+  if (!listing.summary) missing.push("summary");
+  if (!listing.activityType) missing.push("activityType");
+  if (!listing.destination) missing.push("destination");
+  if (
+    typeof listing.unitPricePaise !== "number" ||
+    listing.unitPricePaise <= 0
+  ) {
+    missing.push("unitPricePaise");
+  }
+  if (!listing.pricingUnitStated) missing.push("pricingUnit");
+  if (!listing.meetingPoint) missing.push("meetingPoint");
+  if (!listing.durationMinutes) missing.push("durationMinutes");
+  if (!listing.maxPartySize) missing.push("maxPartySize");
+  return missing;
+}
+
+/** One question a listing asks, as the mock stores it. */
+type MockQuestion = {
+  id: string;
+  text: string;
+  answerType: string;
+  options: string[];
+  required: boolean;
+};
+
+/**
+ * The questions per listing, empty until somebody saves some.
+ *
+ * Seeded on `exp_boat` so the builder's Questions step has a list to edit
+ * rather than only an empty one: keeping an existing question's id across a
+ * save is the behaviour that is easy to get wrong, and it cannot be exercised
+ * against a listing that has never had one.
+ */
+const listingQuestions: Record<string, MockQuestion[]> = {
+  exp_boat: [
+    {
+      id: "q_seed_swim",
+      text: "Can everyone in your party swim?",
+      answerType: "yes_no",
+      options: [],
+      required: true,
+    },
+  ],
+};
+
+/*
+  The seeded listings state their basis unless their own `publishBlockers` say
+  they do not. Written once here rather than on twenty fixtures, so the two can
+  never disagree: a fixture claiming a blocker it does not have is a fixture that
+  tests nothing.
+*/
+function seedWithBasis(): MockExperience[] {
+  return seedExperiences().map((e) => ({
+    ...e,
+    pricingUnitStated: !(e.publishBlockers ?? []).includes("pricingUnit"),
+  }));
+}
+
+let mockExperiences: MockExperience[] = seedWithBasis();
 
 function seedMediaAssets(): Record<string, MockMediaAsset> {
   return {
@@ -696,7 +939,79 @@ function seedMediaAssets(): Record<string, MockMediaAsset> {
         state: "draft",
       },
     },
+    /*
+      A clip a reviewer refused, for the "why it was declined" half of the reel
+      sheet (#58 item 6). It carries `rejection`, which is the only reason the
+      sheet has anything to say: "a clip that disappears into rejected with no
+      reason is a support conversation."
+    */
+    med_declined_fixture: {
+      attested: true,
+      kind: "video",
+      state: "rejected",
+      durationSeconds: 22,
+      rejection: {
+        code: "NOT_THIS_EXPERIENCE",
+        note: "This looks like a different beach.",
+      },
+    },
+    /*
+      A clip already taken down. The one state that offers NOTHING — not even
+      a takedown — so it is what proves the sheet withholds a control rather
+      than offering one the API would refuse.
+    */
+    med_withdrawn_fixture: {
+      attested: true,
+      kind: "video",
+      state: "withdrawn",
+      durationSeconds: 15,
+    },
   };
+}
+
+/**
+ * The whole answer in one word, computed here because the API computes it.
+ *
+ * "`state` and `listing.state` are both still here and both still true, and
+ * since media can be approved, attached to a listing, and invisible all at once,
+ * deriving the situation from two enumerations client side gets it wrong in ways
+ * nobody notices for a month."
+ *
+ * A mock that omitted it left every tile in the portal badgeless and every reel
+ * sheet offering only the one action an unknown situation earns, which is the
+ * worst kind of green suite: the screens rendered, and none of them rendered
+ * what production sends.
+ */
+function situationOf(asset: MockMediaAsset): string {
+  switch (asset.state) {
+    case "uploaded":
+    case "processing":
+      return "processing";
+    case "ready":
+      return "needs_rights";
+    case "attested":
+    case "in_moderation":
+      return "in_review";
+    case "rejected":
+    case "quarantined":
+      return "changes_needed";
+    case "withdrawn":
+      return "withdrawn";
+    case "failed":
+      return "failed";
+    case "approved":
+      // Approved and on nothing at all. Only media that predates the listing
+      // being chosen at upload time can be here.
+      return asset.listing ? "waiting_on_listing" : "not_attached";
+    case "published":
+      return asset.listing?.state === "published"
+        ? "live"
+        : asset.listing?.state === "withdrawn"
+          ? "listing_withdrawn"
+          : "waiting_on_listing";
+    default:
+      return "processing";
+  }
 }
 
 /**
@@ -755,6 +1070,14 @@ let photoIntentsById: Record<string, { imageId: string }> = {};
  * next one through a module nothing resets.
  */
 let createdSlots: MockSlot[] = [];
+/**
+ * Departures moved this session, by id — yuvoy-operator#56 item 9.
+ *
+ * Kept beside the fixtures rather than written into them: `SLOTS` is a `const`
+ * every other handler reads, and a test that moved one would leak into the next
+ * through a module nothing resets.
+ */
+let movedTimes: Record<string, string> = {};
 /**
  * Cash recorded as taken this session, by booking id — yuvoy-operator#40 §1.
  *
@@ -843,22 +1166,65 @@ function storyResponse() {
   is not on sale. Before this a closure changed nothing the calendar could
   show, so no test could see a day turn Closed.
 */
-let blackouts: { from: string; to: string; experienceId?: string }[] = [];
+/**
+ * Closures, as records rather than as a list of date ranges.
+ *
+ * They were `{ from, to, experienceId? }` and nothing else, which could not
+ * model any of what #45 needs: an id to reopen, a reason to show, a note, the
+ * departures a closure holds, or a closure of ONE departure. A calendar reading
+ * that list back would have had to infer "closed" from each departure's status
+ * all over again — which cannot see a closed day with no departures on it, and
+ * can never say why.
+ */
+interface MockClosure {
+  id: string;
+  from: string;
+  to: string;
+  reasonCode: string;
+  note?: string;
+  experienceId?: string;
+  departureId?: string;
+  reopenedAt?: string;
+  createdAt: string;
+  /** Every departure it held when it was made. Fixed at that moment. */
+  departureIds: string[];
+}
+let blackouts: MockClosure[] = [];
+
+/** The market day a departure leaves on, in its OWN zone. */
+function slotDay(slot: MockSlot): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: slot.timezone }).format(
+    new Date(slot.startsAt),
+  );
+}
+
+/** Every departure this operator has, fixtures and ones a test added. */
+function allSlots(): MockSlot[] {
+  return [...SLOTS, ...createdSlots];
+}
+
+/**
+ * Whether any closure STILL IN FORCE holds this departure.
+ *
+ * "A departure stays closed while any closure still in force holds it" — so a
+ * departure closed twice and reopened once is still closed, which is the whole
+ * reason `departuresStillClosed` exists on the reopen answer.
+ */
+function closedByAny(slot: MockSlot): boolean {
+  const day = slotDay(slot);
+  return blackouts.some((b) => {
+    if (b.reopenedAt) return false;
+    if (b.departureId) return b.departureId === slot.id;
+    if (b.experienceId && b.experienceId !== slot.experienceId) return false;
+    return day >= b.from && day <= b.to;
+  });
+}
 
 /** A departure's status as the API would answer it now. */
 function slotStatusOf(slot: MockSlot): string {
   if (calledOff[slot.id]) return "cancelled";
   if (slot.status !== "open") return slot.status;
-  const day = new Intl.DateTimeFormat("en-CA", {
-    timeZone: slot.timezone,
-  }).format(new Date(slot.startsAt));
-  const closed = blackouts.some(
-    (b) =>
-      day >= b.from &&
-      day <= b.to &&
-      (!b.experienceId || b.experienceId === slot.experienceId),
-  );
-  return closed ? "closed" : "open";
+  return closedByAny(slot) ? "closed" : "open";
 }
 
 /**
@@ -866,10 +1232,18 @@ function slotStatusOf(slot: MockSlot): string {
  * part of `OperatorSaleBlock` (yuvoy-api `catalog/operator_sale.go`) the
  * fixtures can reach, in its order and with its words.
  *
- * Including its one wrong sentence: a called-off departure is
- * `departure_closed` there too, with "Anybody already booked on it is
- * unaffected". Modelled on purpose, so the screen's refusal to print that
- * about a call-off is exercised rather than assumed.
+ * ## The one wrong sentence is FIXED, on both sides
+ *
+ * A called-off departure used to be `departure_closed` here too, carrying
+ * "anybody already booked on it is unaffected" — the opposite of what a
+ * call-off does — and the portal wrote its own sentence over it. The contract
+ * now has `departure_called_off`, "split from departure_closed, which leaves
+ * every booking in place", so the mock sends that and the portal renders it
+ * (yuvoy-operator#45 item 5).
+ *
+ * `cancelled` is checked BEFORE `closed`, because a departure can be both: one
+ * that was closed and then called off is called off, and the heavier fact is
+ * the one somebody needs.
  */
 function saleVerdictOf(
   slot: MockSlot,
@@ -881,10 +1255,17 @@ function saleVerdictOf(
     notOnSaleReason: reason,
     notOnSaleDetail: detail,
   });
-  if (slotStatusOf(slot) !== "open") {
+  const status = slotStatusOf(slot);
+  if (status === "cancelled") {
+    return notOnSale(
+      "departure_called_off",
+      "This departure was called off. Everybody who paid online has been refunded; anything paid in cash is with the operator.",
+    );
+  }
+  if (status !== "open") {
     return notOnSale(
       "departure_closed",
-      "This departure is closed. Anybody already booked on it is unaffected.",
+      "This departure is closed to new bookings. Anybody already booked on it is unaffected.",
     );
   }
   if (Date.parse(slot.startsAt) <= Date.now()) {
@@ -897,6 +1278,237 @@ function saleVerdictOf(
     return notOnSale("departure_full", "Every seat on this departure is sold.");
   }
   return { onSale: true };
+}
+
+/**
+ * What the API refuses to store, and the mock has to refuse too.
+ *
+ * "A message with a phone number, an email address or a link in it is refused
+ * `400 invalid_input` … The rule is the traveller's too, and it is D-018 kept
+ * in the conversation: you do not see a traveller's number, and neither side
+ * can type one."
+ *
+ * Modelled rather than waved through, because this is the one branch of the
+ * composer somebody will actually hit and the portal does NO filtering of its
+ * own — the issue says so in `Do not build`. A permissive mock would let the
+ * portal ship with the refusal never once rendered, which is exactly how this
+ * repo ended up with a `requireOperator()` that threw to an error boundary
+ * that did not exist.
+ *
+ * The date exception is the subtle half and it is in the contract: "except the
+ * digits of a date written like 14.09.2026 or 2026-09-14". An operator saying
+ * when to turn up must not be told they typed a phone number.
+ */
+function contactDetailIn(text: string): "phone" | "email" | "link" | null {
+  // Email first: an address contains something the link rule would also match.
+  if (/[^\s@]+@[^\s@]+\.[^\s@]{2,}/.test(text)) return "email";
+  if (/(^|\s)(https?:\/\/|www\.)/i.test(text)) return "link";
+  if (/\b[a-z0-9][a-z0-9-]*\.(com|in|net|org|io|co|me)\b/i.test(text))
+    return "link";
+
+  const withoutDates = text
+    .replace(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g, " ")
+    .replace(/\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/g, " ");
+  // Seven or more digits "counted through the spaces, dashes, brackets and
+  // dots between them".
+  if (/\d(?:[\s().-]*\d){6,}/.test(withoutDates)) return "phone";
+  return null;
+}
+
+/** The thread for a booking, or `null` for one that has never been written in. */
+function threadFor(id: string): MockThread | null {
+  return threads.find((t) => t.bookingId === id) ?? null;
+}
+
+/**
+ * The booking behind a thread, so the conversations list can carry a
+ * reference, an experience and a departure. A thread whose booking has gone is
+ * dropped rather than rendered with blanks.
+ */
+function bookingOf(id: string) {
+  for (const slot of SLOTS) {
+    const party = slot.parties.find((p) => p.bookingId === id);
+    if (party) {
+      return {
+        reference: party.reference,
+        experience: slot.title,
+        slot: { startsAt: slot.startsAt, timezone: slot.timezone },
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * One credential by its id, across every account fixture.
+ *
+ * Needed because the intent endpoint refuses a document that is not pending,
+ * and "pending" is a fact about the fixture rather than about the intent.
+ */
+function credentialOf(
+  id: string,
+): { id?: string; type?: string; state?: string } | undefined {
+  for (const account of [
+    ACCOUNT_LIVE,
+    ACCOUNT_LIVE_OUTSTANDING,
+    ACCOUNT_SUSPENDED,
+    ACCOUNT_PROSPECT,
+    ACCOUNT_AWAITING,
+  ]) {
+    const hit = (
+      account.credentials as { id?: string; type?: string; state?: string }[]
+    ).find((c) => c.id === id);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/**
+ * An account block with this session's uploaded files overlaid.
+ *
+ * The fixtures are `const` and every handler reads them, so a file recorded by
+ * an upload is kept beside them and merged on the way out — the same call
+ * `createdSlots` and `cashTaken` make. Without this the row would still say "no
+ * file sent" after a successful upload, and the walkthrough would be proving
+ * the message rendered and nothing about the screen.
+ */
+function accountWithFiles<T extends { credentials: readonly unknown[] }>(
+  account: T,
+): T {
+  const anyFiles = Object.keys(documentFiles).length > 0;
+  if (!anyFiles) return account;
+  return {
+    ...account,
+    credentials: (account.credentials as { id?: string }[]).map((c) => {
+      const file = c.id ? documentFiles[c.id] : undefined;
+      return file
+        ? {
+            ...c,
+            hasFile: true,
+            filename: file.filename,
+            sizeBytes: file.sizeBytes,
+          }
+        : c;
+    }),
+  };
+}
+
+/**
+ * The five switches, as the API declares them — yuvoy-operator#46 item 5.
+ *
+ * `label` and `description` are the API's words, and the descriptions say who
+ * each kind of message goes to. That is load-bearing rather than decorative:
+ * "every person sees every switch, so this is how a staff member can tell that
+ * a payout summary was never going to reach them."
+ */
+const SWITCHES = [
+  {
+    group: "new_bookings",
+    label: "New bookings",
+    description:
+      "A booking, a seat request that needs an answer, and a message a traveller writes about their trip. Everybody at the business.",
+  },
+  {
+    group: "guest_cancellations",
+    label: "Guest cancellations",
+    description:
+      "A traveller cancelled a booking they made. Everybody at the business.",
+  },
+  {
+    group: "todays_departures",
+    label: "Today's departures",
+    description: "The 06:00 summary of the day's booked departures.",
+  },
+  {
+    group: "settlement_summary",
+    label: "Payout sent",
+    description:
+      "A payout has been sent to the business's bank. Owners, admins and managers only, so a staff login never receives one.",
+  },
+  {
+    group: "document_expiry",
+    label: "Documents running out",
+    description:
+      "A document we require of the business expires within 30 days. The owner and any admin.",
+  },
+] as const;
+
+const ALWAYS_SENT =
+  "Some messages have no switch: a booking being cancelled by us, a bank change being raised or stopped, and anything about your account being suspended. Those reach the owner whatever is set here.";
+
+/** One person's switches, with anything changed overlaid. */
+function switchesFor(user: MockTeamMember) {
+  const changes = switchState[user.id] ?? {};
+  return {
+    userId: user.id,
+    name: user.name,
+    switches: SWITCHES.map((s) => {
+      const change = changes[s.group];
+      return {
+        ...s,
+        // Absent is ON: "every switch is on until somebody turns it off".
+        on: change ? change.on : true,
+        ...(change ? { changedAt: change.at, changedBy: change.by } : {}),
+      };
+    }),
+    alwaysSent: ALWAYS_SENT,
+  };
+}
+
+/**
+ * Apply a change, or answer the `400` the contract describes.
+ *
+ * "No switch named, one named twice, one without `on`, or a name that is not a
+ * switch. The message lists the switches that exist." Every one of those is
+ * modelled: a mock that took anything would let the portal ship a body the API
+ * refuses, and the operator would meet a refusal nobody could read.
+ */
+function applySwitches(
+  actor: MockTeamMember,
+  target: MockTeamMember,
+  changes: { group?: string; on?: unknown }[] | undefined,
+) {
+  const names = SWITCHES.map((s) => s.group);
+  const listed = `The switches are ${names.join(", ")}.`;
+
+  if (!Array.isArray(changes) || changes.length === 0) {
+    return envelope("invalid_input", `Name a switch. ${listed}`, 400);
+  }
+  const seen = new Set<string>();
+  for (const change of changes) {
+    const group = String(change.group ?? "");
+    if (!names.includes(group as (typeof names)[number])) {
+      return envelope("invalid_input", `No such switch. ${listed}`, 400);
+    }
+    if (seen.has(group)) {
+      return envelope("invalid_input", `${group} is named twice.`, 400);
+    }
+    seen.add(group);
+    if (typeof change.on !== "boolean") {
+      /*
+        "A switch sent without it is refused rather than read as off." Read as
+        off, a body with a typo in the field name would silence somebody.
+      */
+      return envelope(
+        "invalid_input",
+        `${group} needs on: true or false.`,
+        400,
+      );
+    }
+  }
+
+  const at = new Date().toISOString();
+  switchState[target.id] = switchState[target.id] ?? {};
+  for (const change of changes) {
+    switchState[target.id][String(change.group)] = {
+      on: change.on as boolean,
+      at,
+      // Who did it, which is the whole of item 6: an owner turning somebody
+      // else's switch off shows up by name on that person's own screen.
+      by: { id: actor.id, name: actor.name },
+    };
+  }
+  return null;
 }
 
 /** Reset between tests so one case cannot make the next pass. */
@@ -913,16 +1525,24 @@ export function __resetOperatorMocks() {
   stoppedChanges = [];
   team = TEAM.map((m) => ({ ...m }));
   signups = [];
+  threads = seedThreads();
+  documentIntents = {};
+  documentFiles = {};
+  switchState = {};
+  cancelled = {};
+  cashReturned = {};
   uploadIntents = {};
   mediaAssets = seedMediaAssets();
   profile = seedProfile();
   filedCredentials = {};
-  mockExperiences = seedExperiences();
+  mockExperiences = seedWithBasis();
   createdSlots = [];
+  movedTimes = {};
   cashTaken = {};
   story = seedStory();
   resetMockUploads();
   resetMockPhotos();
+  resetMockDocuments();
   photoIntents = {};
   photoIntentsById = {};
 }
@@ -945,8 +1565,43 @@ function profileResponse() {
   return { ...profile, missing };
 }
 
-function envelope(code: string, message: string, status: number) {
-  return HttpResponse.json({ error: { code, message } }, { status });
+/**
+ * sha256 of a string, as lowercase hex.
+ *
+ * Computed rather than hardcoded, so the statement fixture cannot drift out of
+ * agreement with its own header and make the portal's integrity check look
+ * broken when the CSV is edited (yuvoy-operator#47 item 7).
+ *
+ * `crypto.subtle` rather than `node:crypto`: these handlers run in the browser
+ * worker as well as in Node, and importing a Node builtin here would pull
+ * `node:crypto` into the client graph, which is the failure `pnpm qa`'s
+ * client-import walk exists to catch.
+ */
+async function sha256Hex(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function envelope(
+  code: string,
+  message: string,
+  status: number,
+  /*
+    `details` is how a refusal names WHICH field it is about, and several
+    screens branch on it: `unknownFields` and `screenerKey` on a draft save,
+    `missing` on a submit, `questions[0].text` on a question list. A mock that
+    could not carry it would let a client ship a details reader that has never
+    once been given details.
+  */
+  details?: unknown,
+) {
+  return HttpResponse.json(
+    { error: { code, message, ...(details ? { details } : {}) } },
+    { status },
+  );
 }
 
 /**
@@ -1107,13 +1762,20 @@ function requireInviter(request: Request) {
 
 /**
  * The 403 every access write shares — OWNER or ADMIN, and an admin may not act
- * on an owner or on another admin.
+ * on an OWNER.
  *
- * Modelled rather than collapsed into `requireInviter`, because the extra
- * clause is the whole difference between the two: an admin who could demote
- * another admin could demote the owner's stand-in and then invite themselves a
- * replacement. A mock that gated these on "owner or admin" alone would let the
- * portal ship a Team screen offering an admin controls the API refuses.
+ * ## The "or another admin" clause is gone
+ *
+ * It was here until 14 September, and it was the contract's wording at the time.
+ * Each of the four endpoints now names one exception and only one: "an ADMIN
+ * cannot change an OWNER's role", "cannot hold an OWNER", "cannot restore an
+ * OWNER", "cannot remove an OWNER". Two admins may act on each other, and what
+ * stops that becoming a lockout is the `409` on the last active OWNER or ADMIN
+ * rather than rank (D15, yuvoy-operator#51).
+ *
+ * The mock has to move with it. One that kept refusing admin-on-admin would let
+ * the portal go on hiding controls the API allows, and no test would notice —
+ * which is exactly how the old clause survived the restatement.
  *
  * Returns the refusal, or `null`, or the target member when it is allowed.
  */
@@ -1143,16 +1805,9 @@ function requireAccessManager(request: Request, targetId: string) {
     };
   }
 
-  if (
-    !roles.includes("OWNER") &&
-    (member.roles.includes("OWNER") || member.roles.includes("ADMIN"))
-  ) {
+  if (!roles.includes("OWNER") && member.roles.includes("OWNER")) {
     return {
-      refusal: envelope(
-        "forbidden",
-        "An admin cannot change an owner or another admin.",
-        403,
-      ),
+      refusal: envelope("forbidden", "An admin cannot change an owner.", 403),
       member: null,
     };
   }
@@ -1169,6 +1824,34 @@ function requireAccessManager(request: Request, targetId: string) {
   }
 
   return { refusal: null, member };
+}
+
+/**
+ * Active people who can let somebody in — owners AND admins, counted together.
+ *
+ * The line every access write holds: "the business keeps at least one active
+ * OWNER or ADMIN … a business with neither has nobody who can let anybody back
+ * in" (D15). Pending rows are invitations rather than logins and are not counted;
+ * a held login cannot let anybody in either.
+ *
+ * The mock counted owners alone until 14 September, which meant the portal's own
+ * owners-only version agreed with it and neither was right. A business whose
+ * owner had left and whose last admin could be removed was a lockout both sides
+ * called legal.
+ */
+function activeSeniors() {
+  return team.filter(
+    (m) =>
+      !m.pending &&
+      m.state !== "suspended" &&
+      (m.roles.includes("OWNER") || m.roles.includes("ADMIN")),
+  );
+}
+
+/** Whether this row is the last active owner or admin the business has. */
+function isLastSenior(member: MockTeamMember) {
+  const seniors = activeSeniors();
+  return seniors.length === 1 && seniors[0].id === member.id;
 }
 
 /**
@@ -1276,9 +1959,36 @@ function partyOf(
  * API never does, and which would have let a screen branch on it.
  */
 function bookingStateOf(p: MockParty): string {
+  /*
+    A cancellation wins over everything, including a recorded collection: the
+    booking is off, and the cash being in the till is what `cash-returned`
+    exists for rather than a reason to call it confirmed.
+  */
+  if (cancelled[p.bookingId]) return "cancelled";
   const outcome = attendance[p.bookingId]?.outcome;
   if (outcome && outcome !== "arrived") return outcome;
   return cashTaken[p.bookingId] ? "confirmed" : p.state;
+}
+
+/**
+ * A booking's `cancellation`, as the API sends it — present only on one that
+ * ended.
+ *
+ * `operatorCancelled` is set because this team did it through the portal, which
+ * is the only way a booking gets cancelled in this mock. `CALLED_OFF_PARTIES`
+ * covers the other shape: a departure called off takes its bookings with it.
+ */
+function bookingCancellationOf(p: MockParty) {
+  const ours = cancelled[p.bookingId];
+  if (ours) {
+    return {
+      at: ours.at,
+      by: "operator",
+      reasonCode: "OPERATOR_CANCELLED",
+      operatorCancelled: { reasonCode: ours.reasonCode },
+    };
+  }
+  return p.cancellation;
 }
 
 /** A booking's `cash` — present only on a cash booking, as the API sends it. */
@@ -1293,6 +2003,14 @@ function bookingCashOf(p: MockParty) {
         collectedPaise: taken.collectedPaise,
       }
     : { ...p.cash };
+}
+
+/** What was recorded as taken, which is all of what goes back. */
+function cashReturnOf(p: MockParty) {
+  const back = cashReturned[p.bookingId];
+  return back
+    ? { returnedAt: back.returnedAt, returnedPaise: back.returnedPaise }
+    : {};
 }
 
 /**
@@ -1543,11 +2261,19 @@ export const handlers = [
       businessName?: string;
       name?: string;
       phone?: string;
+      relationship?: string;
       email?: string;
     };
     const businessName = (body.businessName ?? "").trim();
     const name = (body.name ?? "").trim();
     const phone = (body.phone ?? "").trim();
+    /*
+      "Optional. Absent means `own`, which is what every sign-up meant before the
+      question was asked." The mock honours that rather than requiring it, so a
+      client that stops sending the field is not silently broken by the mock
+      being stricter than the API.
+    */
+    const relationship = body.relationship ?? "own";
 
     if (
       businessName.length < 2 ||
@@ -1561,6 +2287,16 @@ export const handlers = [
       );
     }
 
+    /*
+      "Anything else is refused with `400`, BEFORE the number is looked at, so the
+      refusal says nothing about whether the number has an account." The order
+      matters as much as the refusal: checking the phone first would make this a
+      way to ask whether a number is registered.
+    */
+    if (relationship !== "own" && relationship !== "run") {
+      return envelope("invalid_input", "Own it, or run it for the owner.", 400);
+    }
+
     const taken = [...team, ...OTHER_MEMBERS, ...signups].some(
       (m) => m.phone === phone,
     );
@@ -1568,8 +2304,13 @@ export const handlers = [
       signups.push({
         id: `usr_signup_${Math.random().toString(36).slice(2, 10)}`,
         name,
-        // The first OWNER of the new business, as the contract says.
-        roles: ["OWNER"],
+        /*
+          "`own` makes them its OWNER. `run` makes them its ADMIN, and the
+          business has no owner until they invite one" (D15). The whole point of
+          asking the question, so the mock is what makes the answer observable:
+          `GET /me` is where a test can see which one it got.
+        */
+        roles: [relationship === "run" ? "ADMIN" : "OWNER"],
         state: "active",
         phone,
       });
@@ -1685,7 +2426,7 @@ export const handlers = [
       slug: OPERATOR.slug,
       commissionRateBps: OPERATOR.commissionRateBps,
       canManage: canManage(me),
-      ...(account ? { account } : {}),
+      ...(account ? { account: accountWithFiles(account) } : {}),
     });
   }),
 
@@ -1748,14 +2489,30 @@ export const handlers = [
     }
 
     /*
-      A role that does not exist is a different failure from a role that is not
-      allowed, and the contract keeps them apart: `invalid_role` is "pick a role
-      that exists", while inviting an OWNER folds into the one deliberately
-      uninformative `cannot_invite` below.
+      `invalid_role` is "pick a role that EXISTS", and `role` may be left out,
+      which is STAFF. The four are all valid input; what varies is what they get.
     */
-    if (role !== "MANAGER" && role !== "STAFF" && role !== "OWNER") {
+    if (role !== "" && !["OWNER", "ADMIN", "MANAGER", "STAFF"].includes(role)) {
       return envelope("invalid_role", "No such role.", 400);
     }
+
+    /*
+      **Everybody joins as STAFF, except an owner** (D15).
+
+      An invitation for ADMIN or MANAGER is "sent, not refused. The response says
+      `role: STAFF` and carries a `note` saying so, because a portal built before
+      D15 still offers those roles and the person inviting must be told what will
+      actually happen."
+
+      Modelled rather than refused, because the difference is invisible unless the
+      mock does it: a portal that asked for ADMIN and read back its own request
+      would tell an owner they had appointed a stand-in who is in fact staff.
+    */
+    const granted = role === "OWNER" ? "OWNER" : "STAFF";
+    const note =
+      role === "ADMIN" || role === "MANAGER"
+        ? `They join as staff. You can make them ${role === "ADMIN" ? "an admin" : "a manager"} from their row once they have joined.`
+        : undefined;
 
     /*
       ONE message for every refusal, and the mock keeps it that way on purpose.
@@ -1765,9 +2522,13 @@ export const handlers = [
       which businesses are on Yuvoy." A mock that distinguished them would let
       this portal ship a branch the real API never takes — and the branch would
       be the enumeration oracle the endpoint exists to avoid being.
+
+      Inviting an OWNER is no longer one of those failures. "An ADMIN may invite
+      an owner as well as an OWNER may", because a business whose first person
+      runs it has none until somebody invites one.
     */
     const alreadyHere = team.some((m) => !m.pending && m.phone === phone);
-    if (role === "OWNER" || alreadyHere) {
+    if (alreadyHere) {
       return envelope(
         "cannot_invite",
         "We could not send that invitation.",
@@ -1784,7 +2545,8 @@ export const handlers = [
     team.push({
       id: `inv_${Math.random().toString(36).slice(2, 10)}`,
       name,
-      roles: [role],
+      // What accepting will make them, which is not always what was asked for.
+      roles: [granted],
       state: "invited",
       pending: true,
       phone,
@@ -1797,7 +2559,13 @@ export const handlers = [
       inviting somebody a dead end for the invitee.
     */
     return HttpResponse.json(
-      { sent: true, joinUrl: JOIN_URL, devCode: DEV_CODE },
+      {
+        sent: true,
+        role: granted,
+        ...(note ? { note } : {}),
+        joinUrl: JOIN_URL,
+        devCode: DEV_CODE,
+      },
       { status: 202 },
     );
   }),
@@ -2102,6 +2870,241 @@ export const handlers = [
       { status: 201 },
     );
   }),
+
+  /* ------------------------------------------------- notifications ------ */
+
+  http.get(url("/me/notifications"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json(switchesFor(sessionUser(request)!));
+  }),
+
+  http.put(url("/me/notifications"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const me = sessionUser(request)!;
+    const body = (await request.json()) as {
+      switches?: { group?: string; on?: unknown }[];
+    };
+    const refusal = applySwitches(me, me, body.switches);
+    return refusal ?? HttpResponse.json(switchesFor(me));
+  }),
+
+  http.get(url("/team/:id/notifications"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    /*
+      OWNER or ADMIN, and NOT `canManage` — the narrowest gate on these routes.
+      "An owner and an admin control everybody's switches, and each person
+      controls their own." A MANAGER has `canManage` and is refused here, which
+      is why the mock cannot reuse `requireManager`.
+    */
+    const roles = sessionUser(request)!.roles;
+    if (!roles.includes("OWNER") && !roles.includes("ADMIN")) {
+      return envelope(
+        "forbidden",
+        "Only an owner or an admin can see somebody else's notifications.",
+        403,
+      );
+    }
+    const target = team.find((m) => m.id === String(params.id) && !m.pending);
+    // A pending row is an invitation, not a person, and answers 404 like any
+    // other id that names nobody.
+    if (!target) return envelope("not_found", "No such member.", 404);
+    return HttpResponse.json(switchesFor(target));
+  }),
+
+  http.put(url("/team/:id/notifications"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const me = sessionUser(request)!;
+    if (!me.roles.includes("OWNER") && !me.roles.includes("ADMIN")) {
+      return envelope(
+        "forbidden",
+        "Only an owner or an admin can change somebody else's notifications.",
+        403,
+      );
+    }
+    const target = team.find((m) => m.id === String(params.id) && !m.pending);
+    if (!target) return envelope("not_found", "No such member.", 404);
+
+    const body = (await request.json()) as {
+      switches?: { group?: string; on?: unknown }[];
+    };
+    const refusal = applySwitches(me, target, body.switches);
+    return refusal ?? HttpResponse.json(switchesFor(target));
+  }),
+
+  /* ------------------------------------------------- document files ----- */
+
+  /**
+   * Sign a URL for the file behind a document — yuvoy-operator#46 item 3.
+   *
+   * "Only a pending document takes a file", which is the refusal the portal
+   * withholds the control for; modelled anyway, because the control is withheld
+   * on a render and the decision can change between that and the tap.
+   */
+  http.post(
+    url("/credentials/:id/upload-intents"),
+    async ({ request, params }) => {
+      const failed = requireSession(request);
+      if (failed) return failed;
+      /*
+        NOT `requireWritable`. A suspended business may still send a document
+        (#50), and refusing here would hold an operator at a state they are
+        being asked to clear.
+      */
+
+      const credentialId = String(params.id);
+      const body = (await request.json()) as {
+        filename?: string;
+        contentType?: string;
+        sizeBytes?: number;
+      };
+
+      const KINDS = ["application/pdf", "image/jpeg", "image/png"];
+      if (!KINDS.includes(String(body.contentType))) {
+        return envelope("invalid_input", "PDF, JPEG or PNG.", 400);
+      }
+      if (
+        !Number.isInteger(body.sizeBytes) ||
+        (body.sizeBytes ?? 0) <= 0 ||
+        (body.sizeBytes ?? 0) > 10 * 1024 * 1024
+      ) {
+        return envelope("invalid_input", "Up to 10 MB.", 400);
+      }
+
+      /*
+        A document already verified or rejected is locked, whether it was so
+        when the page rendered or became so while the operator was picking a
+        file: "a new file behind it would change the evidence under a decision
+        nobody re-made."
+      */
+      const credential = credentialOf(credentialId);
+      if (credential && credential.state !== "pending") {
+        return envelope(
+          "document_locked",
+          "This document has already been checked, so its file cannot change. File it again to send a different one.",
+          409,
+        );
+      }
+
+      const intentId = `int_${Math.random().toString(36).slice(2, 10)}`;
+      documentIntents[intentId] = {
+        credentialId,
+        filename: String(body.filename ?? "document"),
+        contentType: String(body.contentType),
+        sizeBytes: Number(body.sizeBytes),
+      };
+
+      return HttpResponse.json(
+        {
+          intentId,
+          /*
+            A DIFFERENT ORIGIN, as production is: "the file never passes through
+            this API". MSW runs in the Next process here, so a same-origin URL
+            would be intercepted and the browser's cross-origin upload — the
+            one the CSP's `connect-src` actually governs — would never happen.
+          */
+          uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/documents/${intentId}`,
+          method: "PUT",
+          /*
+            Signed headers, sent back "exactly as given". The metadata is what
+            `complete` looks for to know a URL minted here signed this file.
+          */
+          headers: {
+            "Content-Type": String(body.contentType),
+            "x-amz-meta-intent": intentId,
+            "x-amz-meta-credential": credentialId,
+          },
+          expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+          maxBytes: 10 * 1024 * 1024,
+          next: "send_the_file",
+        },
+        { status: 201 },
+      );
+    },
+  ),
+
+  /**
+   * Ask the bucket what actually arrived — yuvoy-operator#46 item 3.
+   *
+   * Every refusal here is modelled, because each is a different next step on
+   * screen and none of them would ever run against a mock that took the
+   * browser's word: the file that never arrived, the intent already used, and
+   * the file that is not the size it declared.
+   */
+  http.post(
+    url("/credentials/:id/upload-intents/:intentId/complete"),
+    async ({ request, params }) => {
+      const failed = requireSession(request);
+      if (failed) return failed;
+
+      const credentialId = String(params.id);
+      const intentId = String(params.intentId);
+      const intent = documentIntents[intentId];
+      if (!intent || intent.credentialId !== credentialId) {
+        return envelope("not_found", "No such upload.", 404);
+      }
+      if (intent.closed) {
+        return envelope(
+          "upload_closed",
+          "That upload was refused or replaced. Start a new one.",
+          409,
+        );
+      }
+
+      const arrived = mockDocumentArrived(intentId);
+      if (!arrived) {
+        // "The file has not reached the bucket yet, so send it first."
+        return envelope(
+          "upload_not_arrived",
+          "The file has not reached us yet.",
+          409,
+        );
+      }
+      if (arrived.bytes !== intent.sizeBytes) {
+        /*
+          Closed, and the retention sweep deletes it: "a file this refuses is
+          closed … start a new upload to send another." So the intent cannot be
+          completed a second time, which is what makes `upload_closed` reachable.
+        */
+        intent.closed = true;
+        return HttpResponse.json(
+          {
+            error: {
+              code: "document_refused",
+              message: "That file is not the size it said it was.",
+              details: { reason: "size_mismatch" },
+            },
+          },
+          { status: 400 },
+        );
+      }
+
+      const replacedPrevious = Boolean(documentFiles[credentialId]);
+      documentFiles[credentialId] = {
+        filename: intent.filename,
+        sizeBytes: intent.sizeBytes,
+        contentType: intent.contentType,
+      };
+
+      /*
+        "Called again after it succeeded, it answers the same thing again." The
+        intent is NOT closed here, so a retry on a dropped response is answered
+        rather than refused.
+      */
+      return HttpResponse.json({
+        credentialId,
+        hasFile: true,
+        filename: intent.filename,
+        sizeBytes: intent.sizeBytes,
+        contentType: intent.contentType,
+        replacedPrevious,
+        next: "we_check_it",
+      });
+    },
+  ),
 
   /* ------------------------------------------------------------ story --- */
 
@@ -2555,6 +3558,15 @@ export const handlers = [
       destination,
       summary: body.summary ? String(body.summary) : undefined,
       description: body.description ? String(body.description) : undefined,
+      /*
+        Stored, which it was not. The create form has sent `activityType` since
+        yuvoy-operator#30 §2 and this handler dropped it on the floor, so a
+        listing created here came back without one and `publishBlockers` named
+        it forever. Invisible until the builder started deriving which step to
+        open from that list, and then it opened Basics over a field the operator
+        had already answered.
+      */
+      activityType: body.activityType ? String(body.activityType) : undefined,
       status: "draft",
       publicationState: "draft",
       bookingMode: String(body.bookingMode ?? "request"),
@@ -2562,6 +3574,10 @@ export const handlers = [
       maxPartySize: Number(body.maxPartySize ?? 6),
       unitPricePaise,
       pricingUnit: String(body.pricingUnit ?? "per_person"),
+      // Stated only when somebody said so. The column has a default; the answer
+      // does not.
+      pricingUnitStated:
+        typeof body.pricingUnit === "string" && !!body.pricingUnit,
       inclusions: Array.isArray(body.inclusions)
         ? (body.inclusions as string[])
         : undefined,
@@ -2580,12 +3596,552 @@ export const handlers = [
       // approved, which the response reports as `sellable: false`."
       sellable: unitPricePaise !== null,
     };
+    /*
+      What it is still missing, from the moment it exists. It was left off, and
+      the consequence was invisible until the builder read it: a brand-new draft
+      reported nothing outstanding, so reopening it landed on Review with five
+      mandatory fields empty.
+    */
+    created.publishBlockers = draftBlockers(created);
     mockExperiences.push(created);
 
     return HttpResponse.json(
       { id: created.id, status: "draft", next: "submit_for_review" },
       { status: 201 },
     );
+  }),
+
+  /**
+   * One listing and everything attached to it — yuvoy-operator#56 item 6.
+   *
+   * The whole point of the endpoint is that it is ONE request: "building a
+   * listing meant fetching the whole calendar and the whole media library to
+   * find the handful of rows that belong to it. On island 4G that is three
+   * requests and most of a business's data to render one screen."
+   */
+  http.get(url("/experiences/:id/workspace"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const listing = mockExperiences.find((e) => e.id === id);
+    // Gone and belonging-to-somebody-else are one answer, as everywhere else.
+    if (!listing) return envelope("not_found", "No such listing.", 404);
+
+    /*
+      "Its own departures that have NOT YET LEFT, soonest first." A departure
+      that has gone is read from `GET /slots` with a date range, so a mock that
+      sent them here would let the hub ship a list of boats nobody can act on.
+    */
+    const departures = allSlots()
+      .filter(
+        (slot) =>
+          slot.experienceId === id && Date.parse(slot.startsAt) > Date.now(),
+      )
+      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+      .slice(0, 200)
+      .map((slot) => {
+        const seats = capacity[slot.id] ?? slot.seats;
+        const sold = slot.sold + (offlineSold[slot.id] ?? 0);
+        return {
+          id: slot.id,
+          experienceId: slot.experienceId,
+          title: slot.title,
+          startsAt: slot.startsAt,
+          timezone: slot.timezone,
+          seats,
+          sold,
+          remaining: Math.max(0, seats - sold),
+          ...(slot.bookingMode ? { bookingMode: slot.bookingMode } : {}),
+          status: slotStatusOf(slot),
+          ...saleVerdictOf(slot, seats, sold),
+        };
+      });
+
+    return HttpResponse.json({
+      listing,
+      departures,
+      /*
+        The listing's own media, matched on the NESTED `listing.experienceId`
+        that `OperatorMedia` actually carries.
+      */
+      media: Object.entries(mediaAssets)
+        .filter(([, asset]) => asset.listing?.experienceId === id)
+        .map(([mediaId, asset]) => ({
+          id: mediaId,
+          kind: asset.kind,
+          state: asset.state,
+          ...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
+          listing: asset.listing,
+          situation: situationOf(asset),
+        })),
+      /*
+        The listing's own questions, "exactly as `GET /experiences/{id}/questions`
+        returns it". It was a hardcoded empty list, which meant the builder's
+        Questions step could never show a question it had just saved and the
+        Review step counted none no matter what was there.
+      */
+      questions: listingQuestions[id] ?? [],
+    });
+  }),
+
+  /**
+   * Save the whole weekly schedule — yuvoy-operator#56 item 8.
+   *
+   * Whole, which is what makes an empty save dangerous: a row left out is a row
+   * removed. The mock records it so the hub reads back what it saved, and
+   * answers the `note` the screen renders verbatim.
+   */
+  http.put(url("/experiences/:id/schedule"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+
+    const listing = mockExperiences.find((e) => e.id === String(params.id));
+    if (!listing) return envelope("not_found", "No such listing.", 404);
+
+    const body = (await request.json()) as {
+      weekly?: { weekday?: number; startTime?: string; seats?: number }[];
+    };
+    const weekly = body.weekly ?? [];
+
+    /*
+      `details` names the row AND the field — keys like `weekly[2].startTime` —
+      so a form can mark that row rather than printing one sentence above seven
+      of them. Modelled, because a mock that answered a bare 400 would let the
+      portal ship without ever rendering a row problem.
+    */
+    const details: Record<string, string> = {};
+    weekly.forEach((row, i) => {
+      if (
+        !Number.isInteger(row.weekday) ||
+        (row.weekday ?? -1) < 0 ||
+        (row.weekday ?? 7) > 6
+      ) {
+        details[`weekly[${i}].weekday`] = "Sunday to Saturday, as 0 to 6.";
+      }
+      if (!/^\d{2}:\d{2}$/.test(String(row.startTime))) {
+        details[`weekly[${i}].startTime`] = "Times look like 07:00.";
+      }
+      if (
+        !Number.isInteger(row.seats) ||
+        (row.seats ?? 0) < 1 ||
+        (row.seats ?? 0) > 200
+      ) {
+        details[`weekly[${i}].seats`] = "Seats are 1 to 200.";
+      }
+    });
+    if (Object.keys(details).length > 0) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message: "Some rows need fixing.",
+            details,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const before = listing.schedule?.weekly.length ?? 0;
+    listing.schedule = {
+      repeatsWeekly: weekly.length > 0,
+      weekly: weekly.map((row) => ({
+        weekday: row.weekday!,
+        startTime: row.startTime!,
+        seats: row.seats!,
+      })),
+    };
+
+    return HttpResponse.json({
+      onSale: listing.sellable !== false,
+      note:
+        weekly.length === 0
+          ? `The weekly schedule is removed. ${before} ${before === 1 ? "departure it made is" : "departures it made are"} closed to new bookings, and the bookings on them stay.`
+          : `${weekly.length} ${weekly.length === 1 ? "day" : "days"} a week, from now on.`,
+      ...(listing.sellable === false
+        ? {
+            notOnSaleDetail:
+              "This listing is not selling, so none of these departures can be booked yet.",
+          }
+        : {}),
+    });
+  }),
+
+  /**
+   * Move one departure — yuvoy-operator#56 item 9.
+   *
+   * All three refusals are modelled, because each is a different sentence on
+   * screen and none of them would ever render against a permissive mock: too
+   * close to its start, a different day, and a time this listing already has.
+   */
+  http.patch(url("/slots/:id/time"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+
+    const id = String(params.id);
+    const slot = allSlots().find((s) => s.id === id);
+    if (!slot) return envelope("not_found", "No such departure.", 404);
+
+    const { startsAt } = (await request.json()) as { startsAt?: string };
+    const when = Date.parse(String(startsAt));
+    if (Number.isNaN(when)) {
+      return envelope("invalid_input", "startsAt must be an instant.", 400);
+    }
+
+    if (calledOff[id] || Date.parse(slot.startsAt) <= Date.now()) {
+      return envelope("departure_started", "It has already left.", 409);
+    }
+    /*
+      "The new time has to be on the same day", compared in the departure's own
+      market clock: an instant sent as UTC would read as the previous evening
+      for a 05:00 boat, which is exactly the mistake this refusal exists for.
+    */
+    const dayOf = (iso: string) =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: slot.timezone }).format(
+        new Date(iso),
+      );
+    if (dayOf(String(startsAt)) !== dayOf(slot.startsAt)) {
+      return envelope("different_day", "Same day only.", 409);
+    }
+    const clash = allSlots().some(
+      (other) =>
+        other.id !== id &&
+        other.experienceId === slot.experienceId &&
+        Date.parse(other.startsAt) === when,
+    );
+    if (clash) {
+      return envelope("time_taken", "Already a departure at that time.", 409);
+    }
+
+    movedTimes[id] = new Date(when).toISOString();
+    return HttpResponse.json({
+      id,
+      startsAt: movedTimes[id],
+      note: `Moved. ${slot.parties.length} ${slot.parties.length === 1 ? "traveller has" : "travellers have"} been told, and each can cancel for a full refund until it leaves.`,
+    });
+  }),
+
+  /**
+   * Save a draft in place — the builder's every step but the schedule and the
+   * questions (yuvoy-operator#58 item 7).
+   *
+   * "On a draft there is no completeness check and no review." So this writes
+   * whatever it is given and recomputes `publishBlockers`, which is the field
+   * the builder marks its steps from: a mock that stored the fields without
+   * recomputing them would leave a step marked unfinished after it was
+   * finished, and no test would catch the builder never clearing a mark.
+   *
+   * **Only a draft.** A submitted listing is what a reviewer is reading and a
+   * published one is what travellers are booking against, so both answer `409`.
+   */
+  http.patch(url("/experiences/:id"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner, admin or manager can change a listing",
+        403,
+      );
+    }
+
+    const found = mockExperiences.find((e) => e.id === String(params.id));
+    if (!found) return envelope("not_found", "No such listing.", 404);
+    if (found.status !== "draft") {
+      return envelope(
+        "conflict",
+        "This listing is no longer a draft. Change it through a revision.",
+        409,
+      );
+    }
+
+    const body = (await request.json()) as Record<string, unknown>;
+
+    /*
+      The closed set. "Unknown fields are refused", and the refusal names them
+      in `details.unknownFields` with `details.allowed` beside it, because a
+      client sending a field we renamed should be able to say which one.
+    */
+    const allowed = [
+      "title",
+      "summary",
+      "description",
+      "category",
+      "activityType",
+      "destination",
+      "meetingPoint",
+      "meetingLandmark",
+      "inclusions",
+      "requirements",
+      "safetyNotes",
+      "screenerKey",
+      "durationMinutes",
+      "maxPartySize",
+      "unitPricePaise",
+      "bookingMode",
+      "pricingUnit",
+    ];
+    const unknownFields = Object.keys(body).filter((k) => !allowed.includes(k));
+    if (unknownFields.length > 0) {
+      return envelope(
+        "invalid_input",
+        "We do not know one of those fields.",
+        400,
+        { unknownFields, allowed },
+      );
+    }
+
+    /*
+      A destination outside the market, refused exactly as create refuses it.
+      It is the single most likely 400 the builder will meet, and the step
+      renders the API's own sentence for it.
+    */
+    if (
+      typeof body.destination === "string" &&
+      !body.destination.startsWith("andaman/")
+    ) {
+      return envelope(
+        "invalid_input",
+        `"${body.destination}" is not a place in your market. Yours all start with "andaman/".`,
+        400,
+      );
+    }
+
+    /*
+      A screener that is not current. "Not an enum: a screener is a row, added
+      or retired on medical advice rather than by a release", so the refusal
+      names the keys that ARE current rather than a fixed list.
+    */
+    if (body.screenerKey && String(body.screenerKey) !== "diving_rstc") {
+      return envelope(
+        "invalid_input",
+        "That health check is not one we run.",
+        400,
+        { screenerKey: ["diving_rstc"] },
+      );
+    }
+
+    for (const key of allowed) {
+      if (!(key in body)) continue;
+      const value = body[key];
+      /*
+        An empty optional is stored as absent, as the API stores it: "an absent
+        key and an empty string mean the same thing". Storing "" would clear a
+        blocker with a value nobody typed.
+      */
+      (found as Record<string, unknown>)[key] =
+        value === "" ? undefined : value;
+    }
+
+    if (typeof body.pricingUnit === "string" && body.pricingUnit) {
+      found.pricingUnitStated = true;
+    }
+    found.publishBlockers = draftBlockers(found);
+    found.sellable =
+      typeof found.unitPricePaise === "number" && found.unitPricePaise > 0;
+
+    return HttpResponse.json(found);
+  }),
+
+  /**
+   * Send a listing to a person at Yuvoy — yuvoy-operator#58 items 4 and 7.
+   *
+   * The submit gate demands everything mandatory EXCEPT `activityType` and
+   * `pricingUnit`, which is the contract's own asymmetry and the reason the
+   * Review step disables its button over two fields the server would accept.
+   * Modelled rather than smoothed over: a mock that refused them too would hide
+   * the gap the builder exists to cover.
+   *
+   * "A double tap is safe: an `in_review` listing answers `200`."
+   */
+  http.post(url("/experiences/:id/submit"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner, admin or manager can send a listing for review",
+        403,
+      );
+    }
+
+    const found = mockExperiences.find((e) => e.id === String(params.id));
+    if (!found) return envelope("not_found", "No such listing.", 404);
+    if (found.status === "in_review") {
+      return HttpResponse.json({ id: found.id, status: "in_review" });
+    }
+    if (found.status !== "draft" && found.status !== "changes_rejected") {
+      return envelope("conflict", "This listing is no longer a draft.", 409);
+    }
+
+    const missing = draftBlockers(found).filter(
+      (key) => key !== "activityType" && key !== "pricingUnit",
+    );
+    if (missing.length > 0) {
+      return envelope("invalid_input", "Something is still missing.", 400, {
+        missing,
+      });
+    }
+
+    found.status = "in_review";
+    found.review = { state: "submitted", since: new Date().toISOString() };
+    found.sentBack = undefined;
+    return HttpResponse.json({ id: found.id, status: "in_review" });
+  }),
+
+  /** The questions a listing asks travellers. */
+  http.get(url("/experiences/:id/questions"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const found = mockExperiences.find((e) => e.id === String(params.id));
+    if (!found) return envelope("not_found", "No such listing.", 404);
+    return HttpResponse.json({ questions: listingQuestions[found.id] ?? [] });
+  }),
+
+  /**
+   * Replace them. It is the WHOLE list, in order, and it takes effect at once.
+   *
+   * "A question sent back with its `id` and the same `text`, `answerType` and
+   * `options` keeps that id and every answer to it. Changing its `text`,
+   * `answerType` or `options` makes it a new question with a new id." Modelled,
+   * because a client that re-sent an id with new wording would keep answers
+   * against words nobody saw, and only a mock that reissues the id can catch it.
+   */
+  http.put(url("/experiences/:id/questions"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner, admin or manager can change the questions",
+        403,
+      );
+    }
+    const found = mockExperiences.find((e) => e.id === String(params.id));
+    if (!found) return envelope("not_found", "No such listing.", 404);
+
+    const body = (await request.json()) as {
+      questions?: Record<string, unknown>[];
+    };
+    const rows = body.questions ?? [];
+    if (rows.length > 10) {
+      return envelope("invalid_input", "Ten questions is the most.", 400, {
+        questions: ["at most 10"],
+      });
+    }
+
+    const existing = listingQuestions[found.id] ?? [];
+    const saved: MockQuestion[] = [];
+    for (const [i, row] of rows.entries()) {
+      const text = String(row.text ?? "").trim();
+      const answerType = String(row.answerType ?? "");
+      if (!text || text.length > 200) {
+        return envelope("invalid_input", "A question we can ask.", 400, {
+          [`questions[${i}].text`]: ["1 to 200 characters"],
+        });
+      }
+      if (!["short_text", "choice", "yes_no"].includes(answerType)) {
+        return envelope("invalid_input", "An answer type we know.", 400, {
+          [`questions[${i}].answerType`]: ["short_text, choice or yes_no"],
+        });
+      }
+      const options = Array.isArray(row.options)
+        ? (row.options as string[]).map((o) => String(o).trim()).filter(Boolean)
+        : [];
+      if (answerType === "choice") {
+        const unique = new Set(options.map((o) => o.toLowerCase()));
+        if (
+          options.length < 2 ||
+          options.length > 10 ||
+          unique.size !== options.length
+        ) {
+          return envelope(
+            "invalid_input",
+            "Two to ten different choices.",
+            400,
+            {
+              [`questions[${i}].options`]: ["2 to 10, all different"],
+            },
+          );
+        }
+      } else if (options.length > 0) {
+        return envelope(
+          "invalid_input",
+          "Only a choice question has options.",
+          400,
+          {
+            [`questions[${i}].options`]: ["only on a choice question"],
+          },
+        );
+      }
+
+      const sameAsBefore = existing.find(
+        (q) =>
+          q.id === row.id &&
+          q.text === text &&
+          q.answerType === answerType &&
+          q.options.join("\u0000") === options.join("\u0000"),
+      );
+      saved.push({
+        id: sameAsBefore
+          ? sameAsBefore.id
+          : `q_${Math.random().toString(36).slice(2, 10)}`,
+        text,
+        answerType,
+        options,
+        required: row.required === true,
+      });
+    }
+
+    listingQuestions[found.id] = saved;
+    return HttpResponse.json({ questions: saved });
+  }),
+
+  /**
+   * What a listing in this category needs the business to hold.
+   *
+   * `satisfied` is read from the same credential state the account screens use,
+   * so the Review step and Verification cannot disagree about whether a
+   * document is in place.
+   */
+  http.get(url("/credential-requirements"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const asked = new URL(request.url);
+    const category = asked.searchParams.get("category") ?? "";
+    if (!category) {
+      return envelope("invalid_input", "A category.", 400);
+    }
+    /*
+      Water categories need the documents a boat needs; everything else needs
+      the two every business needs. Not a real taxonomy, and not pretending to
+      be: what the screen has to render is a list with both states in it.
+    */
+    const water = category === "adventure" || category === "nature_wildlife";
+    const types = water
+      ? ["directorate_registration", "insurance", "boat", "oxygen"]
+      : ["directorate_registration", "insurance"];
+    return HttpResponse.json({
+      category,
+      ...(asked.searchParams.get("activityType")
+        ? { activityType: asked.searchParams.get("activityType") }
+        : {}),
+      documents: types.map((type) => ({
+        type,
+        satisfied: type !== "boat" && type !== "oxygen",
+      })),
+    });
   }),
 
   http.get(url("/experiences/:id"), async ({ request, params }) => {
@@ -2666,6 +4222,7 @@ export const handlers = [
         durationSeconds: asset.durationSeconds,
         listing: asset.listing,
         rejection: asset.rejection,
+        situation: situationOf(asset),
         createdAt: new Date().toISOString(),
       })),
     });
@@ -2918,14 +4475,24 @@ export const handlers = [
 
     const body = (await request.json()) as { role?: string };
     const role = body.role ?? "";
-    if (!["ADMIN", "MANAGER", "STAFF"].includes(role)) {
-      // OWNER lands here too, on purpose: "`OWNER` cannot be given."
-      return envelope("invalid_input", "ADMIN, MANAGER or STAFF.", 400);
+    /*
+      All FOUR. `OWNER` used to land in the 400 here on "`OWNER` cannot be
+      given"; the enum is now `[OWNER, ADMIN, MANAGER, STAFF]` and "an OWNER or an
+      ADMIN may make somebody already on the team an owner" (D31).
+    */
+    if (!["OWNER", "ADMIN", "MANAGER", "STAFF"].includes(role)) {
+      return envelope("invalid_input", "OWNER, ADMIN, MANAGER or STAFF.", 400);
     }
-    if (member!.roles.includes("OWNER")) {
+    /*
+      Demoting the last active owner-or-admin is the refusal, not touching an
+      owner's row at all. The old rule — "an owner's role is not changed here" —
+      refused a change the API now makes, and an owner handing the business on had
+      no way through the portal.
+    */
+    if (role !== "OWNER" && role !== "ADMIN" && isLastSenior(member!)) {
       return envelope(
         "cannot_change_access",
-        "An owner's role is not changed here.",
+        "That would leave the business with no owner and no admin.",
         409,
       );
     }
@@ -2955,13 +4522,10 @@ export const handlers = [
       // "Not on this team, or not currently working."
       return envelope("not_found", "Not currently working.", 404);
     }
-    const owners = team.filter(
-      (m) => !m.pending && m.roles.includes("OWNER"),
-    ).length;
-    if (member!.roles.includes("OWNER") && owners <= 1) {
+    if (isLastSenior(member!)) {
       return envelope(
         "cannot_change_access",
-        "You cannot pause the last owner.",
+        "You cannot pause the last owner or admin. Somebody has to be able to let people in.",
         409,
       );
     }
@@ -2989,7 +4553,12 @@ export const handlers = [
 
   /*
     "OWNER **or** ADMIN, was OWNER-only" (yuvoy-api#109). The seniority clause
-    comes with it: an admin may not remove an owner or another admin.
+    comes with it, and it is now one clause rather than two: an admin may not
+    remove an OWNER, and may remove another admin.
+
+    The 409 is `cannot_change_access`. `cannot_remove` is gone from the contract
+    and this mock no longer sends it — a mock that did would keep the portal's
+    dead branch alive and passing (yuvoy-operator#51 item 4).
   */
   http.delete(url("/team/:id"), async ({ request, params }) => {
     const failed = requireSession(request);
@@ -3007,28 +4576,22 @@ export const handlers = [
     const member = team.find((m) => m.id === id);
     if (!member) return envelope("not_found", "No such member.", 404);
 
-    if (
-      !myRoles.includes("OWNER") &&
-      (member.roles.includes("OWNER") || member.roles.includes("ADMIN"))
-    ) {
-      return envelope(
-        "forbidden",
-        "An admin cannot remove an owner or another admin.",
-        403,
-      );
+    if (!myRoles.includes("OWNER") && member.roles.includes("OWNER")) {
+      return envelope("forbidden", "An admin cannot remove an owner.", 403);
     }
 
     if (!member.pending) {
       if (member.id === sessionUser(request)!.id) {
-        return envelope("cannot_remove", "You cannot remove yourself.", 409);
-      }
-      const owners = team.filter(
-        (m) => !m.pending && m.roles.includes("OWNER"),
-      ).length;
-      if (member.roles.includes("OWNER") && owners <= 1) {
         return envelope(
-          "cannot_remove",
-          "You cannot remove the last owner.",
+          "cannot_change_access",
+          "You cannot remove yourself.",
+          409,
+        );
+      }
+      if (isLastSenior(member)) {
+        return envelope(
+          "cannot_change_access",
+          "You cannot remove the last owner or admin. A business with neither has nobody who can let anybody back in.",
           409,
         );
       }
@@ -3187,21 +4750,22 @@ export const handlers = [
     const to = u.searchParams.get("to");
 
     /*
-      UTC days, as the API reads them: `from` is UTC midnight and `to` runs to
-      the next one (yuvoy-api `operator_platform.go`). This used to filter on
-      the MARKET's day, which is kinder than production — a screen asking for
-      "today" was handed a 05:00 IST departure here that the API would have
-      left out. Faithful now, so it is `listSlots` widening the window that
-      keeps those boats on the screen, and a regression there shows.
+      MARKET days, inclusive, as the contract now reads them: "the first day to
+      include, in the market's clock" on both ends (yuvoy-operator#45 item 6).
 
-      Created departures are read back like any other. A mock whose reads
-      ignore its writes proves the message rendered and nothing about the row.
+      This filtered on UTC days, faithfully, because that is what the API did —
+      `from` was UTC midnight and `to` ran to the next one — and it is why
+      `listSlots` widened its window by a day either side and threw the extra
+      back. Both halves have gone: the range asked for is the range meant, and a
+      04:00 IST departure lists under its own day rather than the evening
+      before.
+
+      Created departures are read back like any other. A mock whose reads ignore
+      its writes proves the message rendered and nothing about the row.
     */
-    const startMs = from ? Date.parse(`${from}T00:00:00Z`) : -Infinity;
-    const endMs = to ? Date.parse(`${to}T00:00:00Z`) + 86_400_000 : Infinity;
-    const inRange = [...SLOTS, ...createdSlots].filter((s) => {
-      const t = Date.parse(s.startsAt);
-      return t >= startMs && t < endMs;
+    const inRange = allSlots().filter((s) => {
+      const day = slotDay(s);
+      return (!from || day >= from) && (!to || day <= to);
     });
 
     /*
@@ -3232,6 +4796,12 @@ export const handlers = [
           ...saleVerdictOf(s, seats, sold),
         };
       }),
+      /*
+        Told rather than left out. `GET /slots` is paged in the contract and
+        `listSlots` walks it until this says so; a mock omitting it would let a
+        client ship that stops at the first page and never notice.
+      */
+      complete: true,
     });
   }),
 
@@ -3305,6 +4875,15 @@ export const handlers = [
    * renders as "no money has moved". A live hold is not a booking and is not
    * here.
    */
+  /**
+   * The bookings list, with views, search, filters, counts and a cursor —
+   * yuvoy-operator#57 (yuvoy-api#185).
+   *
+   * Every one of those is modelled rather than ignored, because the whole point
+   * of the change is that the SERVER answers them: a mock that returned
+   * everything and let the portal filter would let this screen ship counting
+   * the rows it happened to load, which is the bug #57 exists to remove.
+   */
   http.get(url("/bookings"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
@@ -3312,30 +4891,76 @@ export const handlers = [
     const u = new URL(request.url);
     const from = u.searchParams.get("from");
     const to = u.searchParams.get("to");
+    const view = u.searchParams.get("view");
+    const q = (u.searchParams.get("q") ?? "").trim();
+    const experienceId = u.searchParams.get("experienceId");
+
+    if (view !== null && !["upcoming", "past", "cancelled"].includes(view)) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message: "view must be upcoming, past or cancelled",
+            details: { view: "must be upcoming, past or cancelled" },
+          },
+        },
+        { status: 400 },
+      );
+    }
+    if (q.length > 60) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message: "q is at most 60 characters",
+            details: { q: "at most 60 characters" },
+          },
+        },
+        { status: 400 },
+      );
+    }
+
     /*
-      UTC DAYS, as the API reads them — `from` is UTC midnight and `to` runs
-      to the next one (`internal/handler/operator.go`), not the market's
-      calendar. This filtered on the market day, which is kinder than the API:
-      a 05:00 IST departure is 23:30 UTC the evening before, and a client that
-      asked for its market day would find it here and miss it in production.
+      MARKET days, inclusive, as the contract now reads them: "the first day to
+      include, in the market's clock" (yuvoy-operator#45 item 6). Each
+      departure's OWN zone, never a fixed one.
     */
-    const lo = from ? Date.parse(`${from}T00:00:00Z`) : -Infinity;
-    const hi = to ? Date.parse(`${to}T00:00:00Z`) + 86_400_000 : Infinity;
-    const inWindow = (startsAt: string) => {
-      const t = Date.parse(startsAt);
-      return t >= lo && t < hi;
+    const inWindow = (startsAt: string, timezone: string) => {
+      const day = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+      }).format(new Date(startsAt));
+      return (!from || day >= from) && (!to || day <= to);
+    };
+
+    /*
+      "Any part of the guest's name, or any part of the reference with or
+      without `YV-`, case ignored." A request has no reference, which is why
+      `counts.requests` and the portal's own request filter both match by name
+      alone.
+    */
+    const needle = q.toLowerCase();
+    const matchesQ = (name: string, reference?: string) => {
+      if (!needle) return true;
+      if (name.toLowerCase().includes(needle)) return true;
+      if (!reference) return false;
+      const ref = reference.toLowerCase();
+      return ref.includes(needle) || ref.replace("yv-", "").includes(needle);
     };
 
     const captured = SLOTS.flatMap((slot) =>
-      inWindow(slot.startsAt)
+      inWindow(slot.startsAt, slot.timezone) &&
+      (!experienceId || slot.experienceId === experienceId)
         ? slot.parties
-            .filter((p) => p.bookingId)
+            .filter((p) => p.bookingId && matchesQ(p.name, p.reference))
             .map((p) => ({
               id: p.bookingId,
               reference: p.reference,
               state: bookingStateOf(p),
               guests: p.guests,
               experience: slot.title,
+              // Every row carries it, so a listing filter built from
+              // `GET /experiences` lines up with these rows.
+              experienceId: slot.experienceId,
               slot: { startsAt: slot.startsAt, timezone: slot.timezone },
               contact: { name: p.name },
               createdAt: new Date(
@@ -3344,36 +4969,564 @@ export const handlers = [
               money: bookingMoney(p),
               // Present only on a cash booking — "branch on the key existing".
               ...(p.cash ? { cash: bookingCashOf(p) } : {}),
+              ...(bookingCancellationOf(p)
+                ? { cancellation: bookingCancellationOf(p) }
+                : {}),
             }))
         : [],
     );
 
     const awaiting = REQUESTS.filter(
-      (r) => !answered[r.id] && inWindow(r.startsAt),
-    ).map((r) => ({
-      id: r.id,
-      state: "pending_request",
-      guests: r.guests,
-      experience: r.experience,
-      slot: { startsAt: r.startsAt, timezone: r.timezone },
-      contact: { name: r.contactName },
-      createdAt: r.requestedAt,
-    }));
+      (r) =>
+        !answered[r.id] &&
+        inWindow(r.startsAt, r.timezone) &&
+        (!experienceId || r.experienceId === experienceId) &&
+        // By NAME alone: a request has no reference to match against.
+        matchesQ(r.contactName),
+    );
 
-    return HttpResponse.json({ items: [...captured, ...awaiting] });
+    /*
+      Which view a booking is in, first match wins, exactly as the contract's
+      table has it. A trip earlier today stays `upcoming` "until the market's
+      day ends or it is marked", which is why the day is compared rather than
+      the instant.
+    */
+    const todayMarket = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+    }).format(new Date());
+    const viewOf = (b: (typeof captured)[number]) => {
+      const state = String(b.state);
+      if (state === "cancelled" || state === "declined") return "cancelled";
+      if (state === "completed" || state === "no_show") return "past";
+      const day = new Intl.DateTimeFormat("en-CA", {
+        timeZone: b.slot.timezone,
+      }).format(new Date(b.slot.startsAt));
+      return day < todayMarket ? "past" : "upcoming";
+    };
+
+    /*
+      "`counts` are totals, not the size of this page. They honour `q`,
+      `experienceId`, `from` and `to`, and ignore `view`, `state`, `limit` and
+      `cursor`, so the pills stay put while you switch between them."
+    */
+    const counts = {
+      requests: awaiting.length,
+      upcoming: captured.filter((b) => viewOf(b) === "upcoming").length,
+      past: captured.filter((b) => viewOf(b) === "past").length,
+      cancelled: captured.filter((b) => viewOf(b) === "cancelled").length,
+    };
+
+    const when = (b: (typeof captured)[number]) => Date.parse(b.slot.startsAt);
+    let rows = captured;
+    if (view) {
+      // "Upcoming soonest trip first; past and cancelled most recent first."
+      rows = captured
+        .filter((b) => viewOf(b) === view)
+        .sort((a, b) =>
+          view === "upcoming" ? when(a) - when(b) : when(b) - when(a),
+        );
+    } else {
+      /*
+        No view: every booking, soonest trip first, "as this list always was".
+        The open requests come too, because that is what the older callers read.
+      */
+      rows = [...captured].sort((a, b) => when(a) - when(b));
+    }
+
+    const items: Record<string, unknown>[] = view
+      ? [...rows]
+      : [
+          ...rows,
+          ...awaiting.map((r) => ({
+            id: r.id,
+            state: "pending_request",
+            guests: r.guests,
+            experience: r.experience,
+            experienceId: r.experienceId,
+            slot: { startsAt: r.startsAt, timezone: r.timezone },
+            contact: { name: r.contactName },
+            createdAt: r.requestedAt,
+          })),
+        ];
+
+    const limitRaw = Number(u.searchParams.get("limit"));
+    const limit =
+      Number.isInteger(limitRaw) && limitRaw > 0
+        ? Math.min(limitRaw, 200)
+        : 100;
+    const cursor = u.searchParams.get("cursor");
+    let start = 0;
+    if (cursor !== null) {
+      /*
+        "A cursor this list did not issue is a `400`, and so is a cursor from
+        one view sent with another." The view is encoded into the cursor for
+        exactly that: a client carrying a page across a pill change would
+        otherwise silently show the wrong rows.
+      */
+      const [cursorView, offset] = cursor.split(":");
+      if (cursorView !== (view ?? "") || !Number.isInteger(Number(offset))) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "invalid_input",
+              message: "cursor was issued for another list",
+              details: { cursor: "issued for another list" },
+            },
+          },
+          { status: 400 },
+        );
+      }
+      start = Number(offset);
+    }
+    const page = items.slice(start, start + limit);
+    const end = start + page.length;
+
+    return HttpResponse.json({
+      items: page,
+      complete: end >= items.length,
+      ...(end < items.length ? { nextCursor: `${view ?? ""}:${end}` } : {}),
+      counts,
+    });
   }),
 
-  /**
-   * One booking — yuvoy-operator#34.
-   *
-   * Built from the same two sources the list is, so the detail screen cannot
-   * show something the row it was opened from did not.
-   *
-   * A booking that is not this operator's answers **404, never 403**: the API
-   * says why in as many words — "a 403 confirms the booking exists, which is
-   * exactly what somebody probing ids wants to learn" — and a mock that
-   * answered 403 would let a client ship a branch the real API never takes.
-   */
+  /* ------------------------------------------------ conversations ------- */
+
+  http.get(url("/bookings/:id/messages"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const thread = threadFor(id);
+    /*
+      A booking with no conversation is an EMPTY one, not a 404 — nobody has
+      written in it yet, and the composer belongs there. Only a booking that is
+      not this operator's is missing, and that is what `bookingOf` decides.
+    */
+    if (!bookingOf(id)) return envelope("not_found", "No such booking.", 404);
+
+    const all = thread?.messages ?? [];
+    const limitRaw = Number(new URL(request.url).searchParams.get("limit"));
+    const limit =
+      Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 50;
+    const cursor = new URL(request.url).searchParams.get("cursor");
+
+    /*
+      The cursor is the index one past the oldest message already sent, so
+      paging walks BACKWARDS through a list stored oldest-first. Opaque to the
+      client by contract, and this is a mock, so a number is honest enough —
+      what matters is that a cursor this conversation did not issue is a 400,
+      which is the branch a client that constructs one would hit.
+    */
+    let end = all.length;
+    if (cursor !== null) {
+      const parsed = Number(cursor);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > all.length) {
+        return envelope("invalid_input", "Not a cursor we issued.", 400);
+      }
+      end = parsed;
+    }
+    const start = Math.max(0, end - limit);
+    const page = all.slice(start, end);
+
+    const closed = thread?.closedReason;
+    return HttpResponse.json({
+      messages: page,
+      complete: start === 0,
+      ...(start > 0 ? { nextCursor: String(start) } : {}),
+      unreadCount: thread?.unread ?? 0,
+      canWrite: !closed,
+      ...(closed ? { closedReason: closed } : {}),
+      /*
+        Absent on a cancelled or declined booking, by the contract: there is no
+        moment writing stops on its own, because it has already stopped.
+      */
+      ...(closed
+        ? {}
+        : {
+            writableUntil: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+          }),
+    });
+  }),
+
+  http.post(url("/bookings/:id/messages"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    /*
+      NOT `requireWritable`. "It still works while the business is suspended"
+      (#50): a suspended business must still be able to answer the travellers it
+      already has, and a mock that refused would let the portal hide the composer
+      from exactly the operator who most needs it.
+
+      And no role gate: "any role can write: whoever is holding the phone answers
+      the question."
+    */
+
+    const id = String(params.id);
+    if (!bookingOf(id)) return envelope("not_found", "No such booking.", 404);
+
+    const thread = threadFor(id);
+    if (thread?.closedReason) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "messages_closed",
+            message:
+              thread.closedReason === "cancelled"
+                ? "This booking was cancelled, so no more messages can be sent."
+                : thread.closedReason === "declined"
+                  ? "This booking was declined, so no more messages can be sent."
+                  : "Messages for this trip are closed.",
+            details: { reason: thread.closedReason },
+          },
+        },
+        { status: 409 },
+      );
+    }
+
+    const body = (await request.json()) as { text?: string };
+    const text = (body.text ?? "").trim();
+
+    if (text.length === 0) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message: "Write something first.",
+            details: { text: "required" },
+          },
+        },
+        { status: 400 },
+      );
+    }
+    if (text.length > 1000) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message: "That is longer than 1000 characters. Shorten it.",
+            details: { text: "too long" },
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const kind = contactDetailIn(text);
+    if (kind) {
+      /*
+        The message names the KIND and never repeats any of the text — "nothing
+        is stored, and the refusal names the kind without repeating any of it".
+        A refusal that echoed the number back would put it on a screen, which is
+        the thing the rule exists to prevent.
+      */
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message:
+              kind === "phone"
+                ? "Messages cannot contain a phone number. Travellers reach you through Yuvoy, and this keeps it that way."
+                : kind === "email"
+                  ? "Messages cannot contain an email address. Travellers reach you through Yuvoy, and this keeps it that way."
+                  : "Messages cannot contain a link. Travellers reach you through Yuvoy, and this keeps it that way.",
+            details: { text: "contact details", contactDetail: kind },
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const message: MockMessage = {
+      id: `msg_${Math.random().toString(36).slice(2, 10)}`,
+      from: "operator",
+      // "Signed with the name of whoever is signed in."
+      senderName: sessionUser(request)!.name,
+      text,
+      sentAt: new Date().toISOString(),
+    };
+    if (thread) {
+      thread.messages.push(message);
+    } else {
+      threads.push({ bookingId: id, messages: [message], unread: 0 });
+    }
+    return HttpResponse.json(message, { status: 201 });
+  }),
+
+  http.post(url("/bookings/:id/messages/read"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const thread = threadFor(id);
+    if (!thread) return envelope("not_found", "No such conversation.", 404);
+
+    const { upTo } = (await request.json()) as { upTo?: string };
+    const at = thread.messages.findIndex((m) => m.id === upTo);
+    /*
+      "No such booking for this operator, or that message is not in its
+      conversation. Deliberately indistinguishable." One answer, and the mock
+      does not tell them apart either.
+    */
+    if (at < 0) return envelope("not_found", "No such message.", 404);
+
+    /*
+      The marker moves to this message "and so to everything before it", and
+      NEVER back. What stays unread is the traveller's messages after it — which
+      is the whole reason the endpoint is named by a message rather than being
+      "all of it, now": one that arrived while somebody read stays unread.
+    */
+    const after = thread.messages
+      .slice(at + 1)
+      .filter((m) => m.from === "traveller").length;
+    thread.unread = Math.min(thread.unread, after);
+    return HttpResponse.json({ unreadCount: thread.unread });
+  }),
+
+  http.get(url("/message-threads"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const rows = threads
+      .map((t) => {
+        const booking = bookingOf(t.bookingId);
+        const last = t.messages.at(-1);
+        if (!booking || !last) return null;
+        return {
+          bookingId: t.bookingId,
+          reference: booking.reference,
+          experience: booking.experience,
+          slot: booking.slot,
+          lastMessageAt: last.sentAt,
+          lastFrom: last.from,
+          unreadCount: t.unread,
+        };
+      })
+      .filter((r) => r !== null)
+      // "The one with the latest message first."
+      .sort(
+        (a, b) => Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt),
+      );
+
+    const params = new URL(request.url).searchParams;
+    const limitRaw = Number(params.get("limit"));
+    const limit =
+      Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 50;
+    const cursor = params.get("cursor");
+    let start = 0;
+    if (cursor !== null) {
+      const parsed = Number(cursor);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > rows.length) {
+        return envelope("invalid_input", "Not a cursor we issued.", 400);
+      }
+      start = parsed;
+    }
+    const page = rows.slice(start, start + limit);
+    const end = start + page.length;
+
+    return HttpResponse.json({
+      threads: page,
+      // "Told rather than inferred", so the client never has to guess from a
+      // page's length whether a full one was the last.
+      complete: end >= rows.length,
+      ...(end < rows.length ? { nextCursor: String(end) } : {}),
+    });
+  }),
+
+  /*
+    Cancelling ONE booking — yuvoy-operator#43 item 4.
+
+    Every refusal is modelled, because each one is a different sentence on the
+    screen and none of them would ever render against a permissive mock: the
+    reference typed back, the role, the departure that has left, the booking
+    that already ended, and the retry that must not refund twice.
+  */
+  http.post(url("/bookings/:id/cancel"), async ({ request, params }) => {
+    const failed = requireManager(request, "STAFF cannot cancel a booking.");
+    if (failed) return failed;
+    /*
+      NOT `requireWritable`. A suspended business must still be able to tell a
+      traveller their trip is off (#50), and refusing here would strand the
+      traveller rather than the operator.
+    */
+
+    const id = String(params.id);
+    let found: { party: MockParty; slot: MockSlot } | null = null;
+    for (const slot of SLOTS) {
+      const party = slot.parties.find((p) => p.bookingId === id);
+      if (party) found = { party, slot };
+    }
+    // "Another business's booking answers `404` BEFORE its reference is
+    // compared" — so a wrong id can never be used to learn a reference.
+    if (!found) return envelope("not_found", "No such booking.", 404);
+
+    const body = (await request.json()) as {
+      reasonCode?: string;
+      note?: string;
+      confirmReference?: string;
+    };
+
+    if (
+      ![
+        "weather",
+        "equipment",
+        "staffing",
+        "safety",
+        "insufficient_numbers",
+      ].includes(body.reasonCode ?? "")
+    ) {
+      return envelope(
+        "invalid_reason_code",
+        "Pick a reason from the list.",
+        400,
+      );
+    }
+    if ((body.note ?? "").length > 500) {
+      return envelope(
+        "invalid_input",
+        "That note is longer than 500 characters.",
+        400,
+      );
+    }
+
+    /*
+      "Letter case and surrounding spaces are ignored." Modelled, because the
+      alternative is a portal that uppercases on the client to be safe and a
+      real API that did not need it.
+    */
+    const typed = (body.confirmReference ?? "").trim().toUpperCase();
+    if (typed !== found.party.reference.toUpperCase()) {
+      return envelope(
+        "confirmation_required",
+        "That is not this booking's reference.",
+        400,
+      );
+    }
+
+    if (cancelled[id]) {
+      return envelope(
+        "already_cancelled",
+        "This booking is already cancelled.",
+        409,
+      );
+    }
+
+    const state = bookingStateOf(found.party);
+    if (state !== "confirmed" && state !== "paid_pending_ops") {
+      return envelope(
+        "booking_ended",
+        "This booking was declined, completed or marked a no-show.",
+        409,
+      );
+    }
+    if (Date.parse(found.slot.startsAt) <= Date.now()) {
+      return envelope("departure_started", "That departure has left.", 409);
+    }
+
+    /*
+      A cash booking captured nothing online, so nothing is refunded and the
+      response says the money is with the business. That sentence is the only
+      thing standing between an operator and a traveller who was never handed
+      their cash back.
+    */
+    const money = bookingMoney(found.party);
+    const refundedPaise = found.party.cash ? 0 : (money?.grossPaise ?? 0);
+    const held = cashTaken[id];
+
+    cancelled[id] = {
+      at: new Date().toISOString(),
+      reasonCode: body.reasonCode!,
+      refundedPaise,
+    };
+
+    return HttpResponse.json({
+      bookingId: id,
+      reference: found.party.reference,
+      state: "cancelled",
+      reasonCode: body.reasonCode,
+      refundedPaise,
+      seatsReleased: found.party.guests,
+      ...(held
+        ? {
+            cashToGiveBackPaise: held.collectedPaise,
+            note: "You have this traveller's cash. Give it back to them, then record it here.",
+          }
+        : {}),
+    });
+  }),
+
+  http.post(url("/bookings/:id/cash-returned"), async ({ request, params }) => {
+    const failed = requireManager(
+      request,
+      "STAFF cannot record giving the cash back.",
+    );
+    if (failed) return failed;
+
+    const id = String(params.id);
+    let party: MockParty | null = null;
+    for (const slot of SLOTS) {
+      const hit = slot.parties.find((p) => p.bookingId === id);
+      if (hit) party = hit;
+    }
+    if (!party) return envelope("not_found", "No such booking.", 404);
+
+    if (cashReturned[id]) {
+      /*
+        "A retry answers `409 cash_already_returned` and changes nothing." The
+        common way to arrive here is a second tap on one bar of signal, and a
+        mock that recorded twice would let the portal ship a screen that says a
+        traveller was handed money twice.
+      */
+      return envelope(
+        "cash_already_returned",
+        "You already recorded giving this cash back.",
+        409,
+      );
+    }
+
+    /*
+      Read through the same two functions `GET /bookings/{id}` reads through,
+      not from the portal's own write log.
+
+      This checked `cancelled[id]` and `cashTaken[id]` at first, which only know
+      about what happened through the portal in this process. A booking that
+      arrives already cancelled with its cash already taken — the fixture for a
+      called-off departure, and the only shape this endpoint exists for — was
+      therefore answered "this booking is not cancelled".
+    */
+    const effectiveCash = bookingCashOf(party);
+    const takenPaise = effectiveCash?.collected
+      ? (effectiveCash.collectedPaise ?? effectiveCash.collectPaise)
+      : undefined;
+
+    if (
+      bookingStateOf(party) !== "cancelled" ||
+      !party.cash ||
+      takenPaise === undefined
+    ) {
+      // Three cases, one code, and "the message says which".
+      return envelope(
+        "nothing_to_give_back",
+        !party.cash
+          ? "This booking was paid online, so there is nothing of yours to give back."
+          : bookingStateOf(party) !== "cancelled"
+            ? "This booking is not cancelled."
+            : "No cash is recorded as taken on this booking.",
+        409,
+      );
+    }
+
+    const record = {
+      returnedAt: new Date().toISOString(),
+      returnedPaise: takenPaise,
+    };
+    cashReturned[id] = record;
+    return HttpResponse.json({
+      bookingId: id,
+      reference: party.reference,
+      ...record,
+    });
+  }),
+
   http.get(url("/bookings/:id"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
@@ -3395,7 +5548,16 @@ export const handlers = [
             new Date(slot.startsAt).getTime() - 3 * 86_400_000,
           ).toISOString(),
           money: bookingMoney(party),
-          ...(party.cash ? { cash: bookingCashOf(party) } : {}),
+          ...(party.cash
+            ? {
+                cash: { ...bookingCashOf(party), ...cashReturnOf(party) },
+              }
+            : {}),
+          ...(bookingCancellationOf(party)
+            ? { cancellation: bookingCancellationOf(party) }
+            : {}),
+          ...(party.screening ? { screening: party.screening } : {}),
+          ...(party.questions ? { questions: party.questions } : {}),
         });
       }
     }
@@ -3495,33 +5657,157 @@ export const handlers = [
 
   /* -------------------------------------------------------------- money - */
 
-  http.get(url("/earnings"), async ({ request }) => {
+  /*
+    SETTLEMENTS — yuvoy-operator#47.
+
+    `GET /earnings` and its month picker are gone: a calendar month was never
+    the unit money moves in, so every figure it derived was one no transfer ever
+    matched. These four fixtures are shaped to exercise the cases that are
+    easy to get wrong rather than the happy one.
+
+    `nextSettlement` carries a CORRECTION, because a settlement whose
+    adjustment is zero never shows the row that explains why the rows do not add
+    up to the total.
+
+    `pipeline` and `paidAtCounter` are non-zero and deliberately NOT summable
+    into anything: the contract says the pipeline "is never part of anything
+    earned", and a fixture of zeros would let a screen add them in and still
+    look right.
+  */
+  http.get(url("/settlements/overview"), async ({ request }) => {
     const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
 
-    const u = new URL(request.url);
-    const from = u.searchParams.get("from") ?? undefined;
-    const to = u.searchParams.get("to") ?? undefined;
-
-    /*
-      Last month is settled; this month is still provisional. Two states from
-      one endpoint, so the screen's "this can still move" warning is exercised
-      on the case where it matters and absent on the case where it does not.
-    */
-    /*
-      "Over" in the market's calendar, by date string, never `new Date(to)`:
-      that parses a bare date as UTC midnight, which arrives at 05:30 IST — so
-      from half past five on the last morning of every month "This month"
-      rendered as "Paid. The money has left our side" while the month was
-      still running, and the earnings e2e went red for the rest of the day.
-      The same class of bug the day screen had (369267c), one file over.
-    */
-    const isPast = Boolean(from && to && to < marketDate(new Date()));
     return HttpResponse.json({
-      from,
-      to,
-      ...EARNINGS,
-      state: isPast ? "settled" : EARNINGS.state,
+      nextSettlement: {
+        periodStart: "2026-09-07",
+        periodEnd: "2026-09-13",
+        settlesFrom: "2026-09-14",
+        bookings: 6,
+        grossPaise: 5400000,
+        commissionPaise: 810000,
+        refundsPaise: 450000,
+        adjustmentsPaise: -125000,
+        netPaise: 4015000,
+      },
+      pipeline: {
+        bookings: 4,
+        grossPaise: 3600000,
+        commissionPaise: 540000,
+        refundsPaise: 0,
+        netPaise: 3060000,
+      },
+      paidAtCounter: {
+        bookings: 3,
+        farePaise: 2700000,
+        commissionPaise: 405000,
+        netPaise: 2295000,
+      },
+      seasonToDate: {
+        from: "2026-04-01",
+        settlements: 18,
+        bookings: 214,
+        grossPaise: 192600000,
+        commissionPaise: 28890000,
+        refundsPaise: 7200000,
+        adjustmentsPaise: -340000,
+        netPaise: 156170000,
+      },
+    });
+  }),
+
+  /*
+    Past weeks, one of each state, most recent first.
+
+    `complete: true` and no cursor: paging is exercised by the unit tests rather
+    than by a fixture that would make every e2e read two pages.
+
+    The oldest week is NEGATIVE. A correction larger than what a week pays makes
+    the net below zero, and the contract says that week "is not paid until
+    somebody at Yuvoy decides how to recover it". A fixture without one would
+    let a screen render an absolute value and pass.
+  */
+  http.get(url("/settlements"), async ({ request }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    return HttpResponse.json({
+      items: [SETTLEMENT_SENT, SETTLEMENT_APPROVED, SETTLEMENT_OWED_BACK],
+      complete: true,
+      nextCursor: null,
+    });
+  }),
+
+  http.get(url("/settlements/:id"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    const found = [
+      SETTLEMENT_SENT,
+      SETTLEMENT_APPROVED,
+      SETTLEMENT_OWED_BACK,
+    ].find((x) => x.id === params.id);
+    if (!found) return envelope("not_found", "No such settlement.", 404);
+
+    return HttpResponse.json({
+      ...found,
+      /*
+        Two lines, and their nets deliberately do NOT add up to the
+        settlement's: the difference is exactly `adjustmentsPaise`, which is on
+        the settlement and on no line. That gap is the thing the screen has to
+        explain, so the fixture has to contain it.
+
+        The second line is a cancelled booking the operator kept money on: a
+        commission of 0, because we take none on a booking that did not happen.
+      */
+      lines: [
+        {
+          bookingId: "bk_stl_1",
+          reference: "YV-7KJ2MQ",
+          tripDate: "2026-09-09",
+          guests: 2,
+          grossPaise: 3600000,
+          commissionPaise: 540000,
+          refundedPaise: 0,
+          netPaise: 3060000,
+        },
+        {
+          bookingId: "bk_stl_2",
+          reference: "YV-9PL4XR",
+          tripDate: "2026-09-11",
+          guests: 1,
+          grossPaise: 1800000,
+          commissionPaise: 0,
+          refundedPaise: 900000,
+          netPaise: 900000,
+        },
+      ],
+    });
+  }),
+
+  /*
+    The statement, with the header that lets an operator prove they hold the
+    same file we do. The sha256 is COMPUTED from the body rather than
+    hardcoded, so the fixture cannot drift out of agreement with itself and
+    silently make the integrity check look broken.
+  */
+  http.get(url("/settlements/:id/statement"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    if (params.id !== SETTLEMENT_SENT.id) {
+      return envelope("not_settled", "This payout has not been sent yet.", 409);
+    }
+
+    const csv = STATEMENT_CSV;
+    const digest = await sha256Hex(csv);
+    return new HttpResponse(csv, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv",
+        "X-Payout-Sha256": digest,
+        "Content-Disposition": `attachment; filename="yuvoy-statement-${SETTLEMENT_SENT.periodStart}-to-${SETTLEMENT_SENT.periodEnd}.csv"`,
+      },
     });
   }),
 
@@ -3561,10 +5847,24 @@ export const handlers = [
     return HttpResponse.json(COMMISSION_OWED);
   }),
 
+  /*
+    One business's changes, and only that business's.
+
+    `CHANGE_REQUESTS` is Reef Divers' history and `bankChanges` records who
+    raised each one, so a signup identity sees an empty list until it raises
+    something of its own. Before this, every identity in the mock saw Reef
+    Divers' open change — which made a brand-new account's Payout screen say
+    "there is already a change in progress" before it had ever had a bank
+    account, and made any test on a second identity depend on whether another
+    spec had raised one first.
+
+    `raisedFor` is stripped on the way out: it is bookkeeping this mock needs
+    and not a field the API sends.
+  */
   http.get(url("/change-requests"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
-    const live = [...bankChanges, ...CHANGE_REQUESTS].map((r) =>
+    const live = changesFor(request).map((r) =>
       stoppedChanges.includes(String((r as { id?: string }).id))
         ? { ...r, state: "withdrawn" }
         : r,
@@ -3577,6 +5877,39 @@ export const handlers = [
   http.post(url("/auth/step-up"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+
+    /*
+      `sent: false` when there is NOBODY to send it to — yuvoy-operator#46
+      item 4.
+
+      "A business with no active owner, whose first person runs it (D15), has
+      nobody to send it to. The code goes to no number, `sent` is `false`, and
+      no session there can be elevated until an owner has joined."
+
+      Modelled by looking at the team, because the portal had been returning
+      `sent: true` whatever the API said — so somebody at such a business was
+      handed a code field and left typing into it. A mock that always sent one
+      would have kept that invisible.
+    */
+    const me = sessionUser(request)!;
+    /*
+      Whose business, and therefore whose owners. An identity created through
+      `POST /auth/signup` is a business of its own with exactly one person on
+      it, so asking Reef Divers' team about it would answer for somebody else's
+      shop — and the one business that can have no owner is precisely the solo
+      one whose first person answered "I run it for the owner".
+    */
+    const onReef = team.some((m) => m.id === me.id);
+    const hasActiveOwner = onReef
+      ? team.some(
+          (m) =>
+            !m.pending && m.state !== "suspended" && m.roles.includes("OWNER"),
+        )
+      : me.roles.includes("OWNER");
+    if (!hasActiveOwner) {
+      return HttpResponse.json({ sent: false }, { status: 202 });
+    }
+
     // Sent to the OWNER's number whoever asks. The mock does not model a
     // second user, but it does model that asking is not the same as receiving.
     return HttpResponse.json(
@@ -3641,7 +5974,7 @@ export const handlers = [
       return envelope("forbidden", "Only the owner can change this.", 403);
     }
 
-    const open = [...bankChanges, ...CHANGE_REQUESTS].filter(
+    const open = changesFor(request).filter(
       (r) =>
         !stoppedChanges.includes(String((r as { id?: string }).id)) &&
         ["objection_window", "pending", "cooling", "approved"].includes(
@@ -3682,6 +6015,8 @@ export const handlers = [
     const summary = `${body.bankName || "Bank"} ••••${account.slice(-4)} · ${(body.ifsc ?? "").toUpperCase()}`;
 
     bankChanges.unshift({
+      // Whose it is. See `changesFor`.
+      raisedFor: businessOf(request),
       id,
       kind: "bank",
       state: "objection_window",
@@ -3709,11 +6044,15 @@ export const handlers = [
     if (failed) return failed;
 
     const id = String(params.id);
-    const all = [...bankChanges, ...CHANGE_REQUESTS] as {
-      id?: string;
-      state?: string;
-    }[];
-    const found = all.find((r) => r.id === id);
+    /*
+      Scoped to the caller's own business. Another business's change is a `404`,
+      never a `403` — "a row belonging to another operator answers 404, never
+      403. A 403 would confirm the row exists, which is precisely what somebody
+      probing ids wants to learn."
+    */
+    const found = (
+      changesFor(request) as { id?: string; state?: string }[]
+    ).find((r) => r.id === id);
     if (!found) return envelope("not_found", "No such change.", 404);
 
     if (stoppedChanges.includes(id) || found.state === "applied") {
@@ -3794,6 +6133,7 @@ export const handlers = [
       to?: string;
       reasonCode?: string;
       experienceId?: string;
+      note?: string;
     };
     const REASONS = [
       "WEATHER",
@@ -3830,29 +6170,228 @@ export const handlers = [
       way the API does — `closed`, and not on sale — for one listing when the
       body names one, and for every listing when it does not.
     */
-    const inRange = [...SLOTS, ...createdSlots].filter((s) => {
+    const inRange = allSlots().filter((s) => {
       if (calledOff[s.id] || s.status === "cancelled") return false;
       if (body.experienceId && s.experienceId !== body.experienceId) {
         return false;
       }
-      const day = new Intl.DateTimeFormat("en-CA", {
-        timeZone: s.timezone,
-      }).format(new Date(s.startsAt));
+      const day = slotDay(s);
       return day >= body.from! && day <= body.to!;
     });
     const existingBookings = inRange.reduce((n, s) => n + s.parties.length, 0);
+
+    /*
+      The departures it holds are recorded WITH it, at this moment: "including
+      any that another closure had already closed", because reopening "puts back
+      exactly those departures". A closure that recomputed its scope later would
+      reopen a departure added to the day afterwards, which nobody closed.
+    */
+    const id = `blk_${Math.random().toString(36).slice(2, 10)}`;
     blackouts.push({
+      id,
       from: body.from,
       to: body.to,
+      reasonCode: body.reasonCode,
+      ...(body.note ? { note: body.note } : {}),
       ...(body.experienceId ? { experienceId: body.experienceId } : {}),
+      createdAt: new Date().toISOString(),
+      departureIds: inRange.map((s) => s.id),
     });
 
     return HttpResponse.json({
+      id,
       closed: true,
       existingBookings,
       ...(existingBookings > 0
         ? {
             note: "The bookings you already have still stand — including anyone mid-checkout, whose hold predates the closure and can still complete. Run them, or call each departure off individually.",
+          }
+        : {}),
+    });
+  }),
+
+  /**
+   * Closures read back — yuvoy-operator#45 item 1.
+   *
+   * "Every closure touching the range, reopened ones included; those carry
+   * `reopenedAt`." Reopened ones are sent on purpose: a mock that hid them would
+   * let the portal ship without checking `reopenedAt`, and every reopened day
+   * would read as closed for the rest of the season.
+   */
+  http.get(url("/blackouts"), async ({ request }) => {
+    // "Any operator user may read it." No role gate, deliberately.
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const params = new URL(request.url).searchParams;
+    const from = params.get("from") ?? "";
+    const to = params.get("to") ?? "";
+
+    /*
+      "Only closures whose last day is on or after `from`" and "whose first day
+      is on or before `to`" — overlap, not containment. A closure running from
+      last week into next week touches this fortnight and a containment test
+      would drop it, which is the one an operator would most want to see.
+    */
+    const touching = blackouts
+      .filter((b) => (!from || b.to >= from) && (!to || b.from <= to))
+      .sort((a, b) => a.from.localeCompare(b.from) || a.id.localeCompare(b.id));
+
+    const limitRaw = Number(params.get("limit"));
+    const limit =
+      Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 50;
+    const cursor = params.get("cursor");
+    let start = 0;
+    if (cursor !== null) {
+      const parsed = Number(cursor);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > touching.length) {
+        return envelope("invalid_input", "Not a cursor we issued.", 400);
+      }
+      start = parsed;
+    }
+    const page = touching.slice(start, start + limit);
+    const end = start + page.length;
+
+    return HttpResponse.json({
+      items: page,
+      // "Told rather than inferred … Do not infer the end from a short page."
+      complete: end >= touching.length,
+      ...(end < touching.length ? { nextCursor: String(end) } : {}),
+    });
+  }),
+
+  /**
+   * Reopen one closure — yuvoy-operator#45 item 2.
+   *
+   * The two counts are the point. "A departure it holds goes back to open only
+   * if it is still closed, has not left yet, and no other closure still in force
+   * holds it. **A called-off departure is never reopened.**" A mock that simply
+   * dropped the closure and reported success would let the portal ship a screen
+   * that says a day is back on sale when half of it is not.
+   */
+  http.post(url("/blackouts/:id/reopen"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const closure = blackouts.find((b) => b.id === id);
+    if (!closure) return envelope("not_found", "No such closure.", 404);
+    if (closure.reopenedAt) {
+      return envelope("already_reopened", "This was reopened before.", 409);
+    }
+
+    closure.reopenedAt = new Date().toISOString();
+
+    /*
+      Counted AFTER the closure is marked reopened, so `closedByAny` sees the
+      world as it now is: a departure another closure still holds is counted as
+      still closed, which is exactly what `departuresStillClosed` means.
+    */
+    const held = allSlots().filter((s) => closure.departureIds.includes(s.id));
+    let reopened = 0;
+    let stillClosed = 0;
+    for (const slot of held) {
+      // "Its departures that have already left stay closed, because they did
+      // pass closed", and a called-off one is never reopened.
+      if (calledOff[slot.id] || Date.parse(slot.startsAt) <= Date.now()) {
+        continue;
+      }
+      if (closedByAny(slot)) stillClosed += 1;
+      else reopened += 1;
+    }
+
+    return HttpResponse.json({
+      id,
+      reopenedAt: closure.reopenedAt,
+      departuresReopened: reopened,
+      departuresStillClosed: stillClosed,
+      // "Say this out loud. It gives both counts in words."
+      note:
+        stillClosed > 0
+          ? `${reopened === 1 ? "1 departure is" : `${reopened} departures are`} back on sale. ${stillClosed === 1 ? "1 is" : `${stillClosed} are`} still closed by another closure.`
+          : `${reopened === 1 ? "1 departure is" : `${reopened} departures are`} back on sale.`,
+    });
+  }),
+
+  /**
+   * Close ONE departure — yuvoy-operator#45 item 4.
+   *
+   * "It is a closure like a closed date: `GET /blackouts` reads it back with
+   * `departureId`, and `POST /blackouts/{id}/reopen` reopens it." So it makes a
+   * real closure record rather than flipping a status, which is what lets the
+   * calendar offer the way back.
+   */
+  http.post(url("/slots/:id/close"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+
+    const id = String(params.id);
+    const slot = allSlots().find((s) => s.id === id);
+    if (!slot) return envelope("not_found", "No such departure.", 404);
+
+    const body = (await request.json()) as {
+      reasonCode?: string;
+      note?: string;
+    };
+    if (
+      !body.reasonCode ||
+      ![
+        "WEATHER",
+        "MAINTENANCE",
+        "STAFF",
+        "PERSONAL",
+        "SEASONAL",
+        "OTHER",
+      ].includes(body.reasonCode)
+    ) {
+      return envelope("invalid_input", "Unknown reasonCode.", 400);
+    }
+
+    if (calledOff[id] || slot.status === "cancelled") {
+      return envelope(
+        "already_called_off",
+        "This departure was called off, so there is nothing to close.",
+        409,
+      );
+    }
+    if (Date.parse(slot.startsAt) <= Date.now()) {
+      return envelope("departure_started", "That departure has left.", 409);
+    }
+
+    /*
+      "Closing a departure that is already closed on its own answers with the
+      closure that holds it rather than making a second one." Two closures on
+      one departure would need two reopens to undo one act.
+    */
+    const existing = blackouts.find(
+      (b) => b.departureId === id && !b.reopenedAt,
+    );
+    const closureId =
+      existing?.id ?? `blk_${Math.random().toString(36).slice(2, 10)}`;
+    if (!existing) {
+      const day = slotDay(slot);
+      blackouts.push({
+        id: closureId,
+        from: day,
+        to: day,
+        reasonCode: body.reasonCode,
+        ...(body.note ? { note: body.note } : {}),
+        departureId: id,
+        createdAt: new Date().toISOString(),
+        departureIds: [id],
+      });
+    }
+
+    const existingBookings = slot.parties.length;
+    return HttpResponse.json({
+      id: closureId,
+      closed: true,
+      existingBookings,
+      ...(existingBookings > 0
+        ? {
+            note: "The bookings already on this departure still stand, including anyone mid-checkout. Closing it stops new ones and cancels nobody.",
           }
         : {}),
     });

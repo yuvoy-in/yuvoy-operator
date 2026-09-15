@@ -4,6 +4,8 @@ import { useActionState, useState } from "react";
 import { markAttendance, type AttendanceState } from "./actions";
 import { isHolding, type PartyForClient } from "@/lib/day/types";
 import type { ScreeningSignal } from "@/lib/day/screening";
+import { answerFor, toQuestions } from "@/lib/bookings/ending";
+import { CancelBooking } from "@/app/bookings/cancel-booking";
 import type { BookingCash } from "@/lib/money/bookings";
 import { cn } from "@/lib/cn";
 import { RelayPanel } from "./relay-panel";
@@ -27,6 +29,7 @@ export function PartyRow({
   screening,
   cash,
   timezone,
+  canManage,
 }: {
   /**
    * The screener is NOT on this type. It is decided on the server and arrives
@@ -60,11 +63,29 @@ export function PartyRow({
   cash: BookingCash | null | undefined;
   /** The departure's own zone, for when the cash was taken. */
   timezone: string;
+  /**
+   * The signed-in person may cancel a booking — yuvoy-operator#56 item 10.
+   *
+   * `POST /bookings/{id}/cancel` "requires OWNER, ADMIN or MANAGER, the roles
+   * that may call a departure off", and a STAFF login gets no control rather
+   * than a refusal after the tap. It stays drawn for a SUSPENDED business,
+   * which can still stop the trips it has already sold (#50).
+   */
+  canManage: boolean;
 }) {
   const [state, act, pending] = useActionState<AttendanceState, FormData>(
     markAttendance,
     {},
   );
+
+  /*
+    Narrowed here rather than on the server, because this row already receives
+    the whole party: `toQuestions` drops a question with no words and reads an
+    absent `current` as `true`, which is the same treatment the booking screen
+    gives them. One function, so the two surfaces cannot disagree about what a
+    question is.
+  */
+  const answers = toQuestions(party.questions);
 
   const holding = isHolding(party);
   const arrived = Boolean(party.arrived);
@@ -127,6 +148,57 @@ export function PartyRow({
         <p className="text-forest/80 mt-3 text-sm font-bold">
           No screening answer recorded. Ask them before boarding.
         </p>
+      ) : null}
+
+      {/*
+        What the listing asked, and what this party said — yuvoy-operator#43
+        item 3.
+
+        Behind a disclosure, and that is the one design decision here. A
+        manifest is a scanning surface: eleven parties, two questions each, and
+        the attendance buttons are what somebody is reaching for at 06:30. Laid
+        out flat, the answers push the controls off the screen and get skipped
+        by everybody. One tap opens the party being asked about.
+
+        These questions "never ask about health, which stays with `screening`",
+        so unlike the screener there is nothing here that must not be read out
+        on a jetty.
+      */}
+      {answers.length > 0 ? (
+        <details className="border-cream-line mt-3 border-t pt-3">
+          <summary className="label text-forest/75 tap-target cursor-pointer">
+            What they answered
+          </summary>
+          <dl className="mt-2 space-y-2 text-sm">
+            {answers.map((question) => (
+              <div key={question.questionId}>
+                <dt className="text-forest/75">{question.text}</dt>
+                <dd className="font-bold">{answerFor(question)}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      ) : null}
+
+      {/*
+        Cancelling this one party — yuvoy-operator#56 item 10, and the same
+        component the booking's own screen uses (#43 item 4), because the act is
+        the same and a second confirmation written for the manifest would be a
+        second chance to get the reference check wrong.
+
+        Withheld on a departure that has left and on a booking that has already
+        ended: the API answers `409 departure_started` and `409 booking_ended`,
+        and both are knowable from what is on this row.
+      */}
+      {canManage &&
+      !departed &&
+      party.bookingId &&
+      (party.state === "confirmed" || party.state === "paid_pending_ops") ? (
+        <CancelBooking
+          bookingId={party.bookingId}
+          reference={party.reference ?? ""}
+          isCash={Boolean(cash)}
+        />
       ) : null}
 
       {holding ? (

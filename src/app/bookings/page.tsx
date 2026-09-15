@@ -1,36 +1,28 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import { listOpenRequests } from "@/lib/day/requests";
-import { urgencyOf } from "@/lib/day/request-types";
+import { listListings } from "@/lib/day/manifest";
+import { searchBookings } from "@/lib/money/fetch";
 import {
-  BOOKINGS_PAGE,
-  apiWindow,
-  inMarketDays,
-  shiftDay,
-} from "@/lib/day/calendar";
-import {
-  byMarketDay,
-  mostRecentFirst,
-  uniqueById,
-} from "@/lib/day/booking-days";
-import { listBookings } from "@/lib/money/fetch";
-import { describeCash, type BookingLine } from "@/lib/money/bookings";
-import {
-  describeBookingState,
-  isUpcomingBooking,
-} from "@/lib/day/booking-state";
-import {
-  dayCaption,
-  marketDay,
-  marketDays,
-  marketTime,
-  now,
-} from "@/lib/format/market-time";
+  NO_COUNTS,
+  PILL_LABEL,
+  VIEWS,
+  anyFilter,
+  countFor,
+  defaultView,
+  emptyLine,
+  matchesRequest,
+  pillHref,
+  readFilters,
+  readView,
+  type View,
+} from "@/lib/bookings/list";
+import { marketDays, now } from "@/lib/format/market-time";
+import { ButtonLink } from "@/components/ui/button";
 import { Problem } from "@/components/ui/states";
-import { Chip } from "@/components/ui/chip";
-import { buttonClass } from "@/components/ui/button";
-import { panelClass } from "@/components/ui/panel";
+import { cn } from "@/lib/cn";
+import { BookingFilters } from "./filters";
+import { BookingList } from "./booking-list";
 import { RequestQueue } from "./request-queue";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
@@ -43,234 +35,198 @@ export const metadata: Metadata = { title: "Bookings" };
 */
 export const dynamic = "force-dynamic";
 
-/** How far either side of today this screen lists. */
-const BACK_DAYS = 30;
-const AHEAD_DAYS = 90;
-
 /**
- * Who has booked — yuvoy-operator#34, and the demo's three views, #43.
+ * Who has booked — yuvoy-operator#57.
  *
- * ## Why this tab replaced Requests
+ * ## What this replaced, and why
  *
- * There was no list of "who has booked me" anywhere in the portal. There was a
- * Requests tab, which holds ONLY request-mode bookings awaiting an answer, a
- * manifest per departure reached by opening a day, and money lines inside
- * Earnings. `GET /bookings` and `GET /bookings/{id}` both existed and were
- * called by nothing.
+ * Three anchored sections over two overlapping reads of a fixed window: the
+ * last month and the next three, at most a hundred rows each, with a line
+ * apologising when a hundred came back. An operator with a busy season could
+ * not find a booking from April, and could not find one by name at all.
  *
- * Migration 0054 then changed the default booking mode from `request` to
- * `allotment` (D-031 P5), because the product thesis is paid and confirmed
- * inside sixty seconds. So an operator on the new default has an EMPTY
- * Requests tab and no bookings screen at all, and their only view of a
- * confirmed booking is to open the right day and read the manifest — which
- * means knowing the date first. "Has my booking come through" is the common
- * phone call, and they could not answer it without guessing.
+ * **The server answers the search now** (D-036, yuvoy-api#185). `GET /bookings`
+ * takes `q`, `experienceId`, `from` and `to`, answers a page with a cursor, and
+ * sends `counts` for all four pills under the same filters. So the four badges
+ * are totals rather than counts of what happened to load, and they stay right
+ * at any number of bookings.
  *
- * ## Requests, Confirmed and Past — places on one screen, not three tabs
+ * ## The pills, and which one opens
  *
- * The demo splits these into sub-tabs. Here they are three sections in that
- * order, with a row of links to each, and that is deliberate rather than an
- * omission: the queue is the only thing on the screen with a deadline, and a
- * tab that hides it behind "Confirmed" is a request left to expire. One screen
- * also keeps the promise #34 made — a booking is never on it twice, in two
- * visual languages — checkable in one place.
+ * Requests · Upcoming · Past · Cancelled. With no `view` in the URL: Requests
+ * when any are waiting, otherwise Upcoming. "Past and Cancelled are never the
+ * default" — a request has a clock on it and nothing else on this screen does.
  *
- * - **Requests** stay first, ordered by how soon each expires; each says when
- *   the trip is and how long ago they asked.
- * - **Confirmed** is the promises still to keep, grouped by the day the trip
- *   runs with the day's bookings and guests added up.
- * - **Past** is everything that has run or will not, most recent first.
+ * ## Requests are not bookings
  *
- * ## What an operator may and may not see
- *
- * **No phone number, ever** — masked or not, and whatever the demo draws.
- * `contact` carries the name and only the name — `whatsapp` was removed in
- * M13 per D-018: "a traveller gives us a number so we can tell them about
- * their booking, not so it can be added to an operator's contacts." The
- * reference is how a person walking up a jetty is matched to a row, and the
- * relay is how they are reached.
+ * They come from `GET /requests`, they are in no view, and a request that was
+ * declined or ran out of time never became a booking, so it is on no pill at
+ * all. Their filtering happens in the portal, because that endpoint takes no
+ * search — by the same three rules the API counts `counts.requests` by, and by
+ * NAME only, because a request has no reference.
  */
-export default async function BookingsPage() {
+export default async function BookingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { token, me } = await requireOperator();
-  const { today, tomorrow } = await marketDays();
-  const at = await now();
+  const raw = await searchParams;
+  const one = (key: string) =>
+    Array.isArray(raw[key]) ? raw[key][0] : (raw[key] as string | undefined);
 
-  const ahead = shiftDay(today, AHEAD_DAYS);
-  const back = shiftDay(today, -BACK_DAYS);
-  const yesterday = shiftDay(today, -1);
+  const asked = readView(one("view"));
+  const filters = readFilters({
+    q: one("q"),
+    experienceId: one("experienceId"),
+    from: one("from"),
+    to: one("to"),
+  });
+
+  const [{ today, tomorrow }, at] = await Promise.all([marketDays(), now()]);
 
   /*
-    Three reads, and none may take another down.
+    Three reads in parallel.
 
-    Requests come from `/requests` and are the queue with a deadline. The
-    bookings are read as TWO windows rather than one, because `GET /bookings`
-    stops at 100 rows, oldest trip first, with no cursor: one read of four
-    months lets a busy month of the past push next week's trips off the end of
-    the list. Each window is asked a day wider than it means — the API's dates
-    are UTC days, the screen's are the market's — and cut back to its days.
+    The bookings read does double duty: on Upcoming, Past and Cancelled it is
+    the rows AND the counts; on Requests it asks for one row of `upcoming` and
+    uses only the counts, because `counts` "ignores `view`, `state`, `limit` and
+    `cursor`" and a hundred rows nobody will draw is a hundred rows of wire.
 
-    `null` stays "we could not load it" and `[]` stays "nothing in this
-    window": different sentences, and only one is a reason to worry.
+    Requests are read when the Requests pill is selected or the URL names no
+    pill, because the default depends on whether any are waiting.
   */
-  const upcomingAsked = apiWindow(today, ahead);
-  const pastAsked = apiWindow(back, yesterday);
-  const [requests, upcomingRead, pastRead] = await Promise.all([
-    listOpenRequests(token).catch(() => null),
-    listBookings(token, upcomingAsked.from, upcomingAsked.to),
-    listBookings(token, pastAsked.from, pastAsked.to),
+  const wantsRequests = asked === "requests" || asked === null;
+  const listView: "upcoming" | "past" | "cancelled" =
+    asked === "past" || asked === "cancelled" ? asked : "upcoming";
+
+  const [page, requests, listings] = await Promise.all([
+    searchBookings(token, {
+      view: listView,
+      ...filters,
+      limit: asked === "requests" ? 1 : 100,
+    }),
+    wantsRequests ? listOpenRequests(token).catch(() => null) : null,
+    listListings(token).catch(() => []),
   ]);
 
-  const critical = (requests ?? []).filter(
-    (r) => urgencyOf(r.minutesToAnswer) === "critical",
-  ).length;
+  const counts = page?.counts ?? NO_COUNTS;
+  const view: View = asked ?? defaultView(counts);
+  const filtered = anyFilter(filters);
 
-  /*
-    An unanswered request is in BOTH responses, and must appear once.
+  const listingOptions = [...(listings ?? [])]
+    .map((l) => ({ id: l.id ?? "", title: l.title ?? "" }))
+    .filter((l) => l.id && l.title)
+    .sort((a, b) => a.title.localeCompare(b.title));
 
-    `GET /bookings` includes `pending_request` rows — the contract says so
-    itself when it explains why such a row carries no `money` — and
-    `GET /requests` returns the same open requests. The queue wins, because it
-    is the copy that can be acted on.
-  */
-  const notARequest = (b: BookingLine) =>
-    b.state?.trim().toLowerCase() !== "pending_request";
-
-  const upcomingDays =
-    upcomingRead === null
-      ? null
-      : inMarketDays(upcomingRead, today, ahead).filter(notARequest);
-  const pastDays =
-    pastRead === null
-      ? null
-      : inMarketDays(pastRead, back, yesterday).filter(notARequest);
-
-  // Confirmed: promises still to keep, from today on.
-  const confirmed =
-    upcomingDays === null
-      ? null
-      : upcomingDays.filter((b) => isUpcomingBooking(b.state));
-  /*
-    Past: every trip before today whatever became of it, and any from today on
-    that is no longer going ahead. Both reads are needed to say that honestly,
-    so either failing is a failure of the whole section rather than a shorter
-    list nobody is told about.
-  */
-  const past =
-    upcomingDays === null || pastDays === null
-      ? null
-      : mostRecentFirst(
-          uniqueById(
-            pastDays,
-            upcomingDays.filter((b) => !isUpcomingBooking(b.state)),
-          ),
-        );
+  const visibleRequests = (requests ?? []).filter((r) =>
+    matchesRequest(r, filters),
+  );
 
   return (
     <Screen>
       <RefreshOnFocus />
 
-      <p className="eyebrow text-terra-deep">Who is coming</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Bookings
       </h1>
-      <p className="text-forest/70 mt-3 text-base">
-        Everyone who has booked you, and anyone still waiting on your answer.
-      </p>
+
+      <BookingFilters
+        filters={filters}
+        view={view}
+        today={today}
+        tomorrow={tomorrow}
+        listings={listingOptions}
+      />
 
       {/*
-        STAFF can see this and cannot answer a request. Said up front rather
-        than after somebody chooses a reason, taps Decline and reads a 403 —
-        the contract refuses the write, not the read.
-      */}
-      {!me.canManage ? (
-        <div className="mt-6">
-          <Problem
-            title="You can see these, but not answer them"
-            body="Granting seats needs an owner, an admin or a manager. Pass it on rather than letting the clock run out."
-          />
-        </div>
-      ) : null}
+        The pills. Links rather than buttons: the URL holds the place, so back
+        and refresh restore the pill somebody was on, and a pill can be opened
+        in a new tab like anything else on the web.
 
-      <nav aria-label="On this screen" className="mt-6 flex flex-wrap gap-2">
-        <a
-          href="#requests"
-          className={buttonClass({
-            variant: "outline",
-            size: "sm",
-            block: false,
-          })}
-        >
-          {requests && requests.length > 0
-            ? `Requests · ${requests.length}`
-            : "Requests"}
-        </a>
-        <a
-          href="#confirmed"
-          className={buttonClass({
-            variant: "outline",
-            size: "sm",
-            block: false,
-          })}
-        >
-          Confirmed
-        </a>
-        <a
-          href="#past"
-          className={buttonClass({
-            variant: "outline",
-            size: "sm",
-            block: false,
-          })}
-        >
-          Past
-        </a>
+        No badges at all when the read failed. A number from a failed read is
+        one an operator would plan against.
+      */}
+      <nav aria-label="Which bookings" className="mt-5 flex flex-wrap gap-2">
+        {VIEWS.map((pill) => {
+          const selected = pill === view;
+          return (
+            <ButtonLink
+              key={pill}
+              href={pillHref(pill, filters)}
+              variant={selected ? "primary" : "secondary"}
+              size="sm"
+              block={false}
+              aria-current={selected ? "page" : undefined}
+              className={cn(selected && "pointer-events-none")}
+            >
+              {PILL_LABEL[pill]}
+              {page ? (
+                <span className="tabular-nums">{countFor(counts, pill)}</span>
+              ) : null}
+            </ButtonLink>
+          );
+        })}
       </nav>
 
-      <section
-        id="requests"
-        className="mt-10 scroll-mt-6"
-        aria-labelledby="waiting-heading"
-      >
-        <h2 id="waiting-heading" className="font-display text-3xl">
-          Waiting on you
-        </h2>
-        {/*
-          The demo's sentence, kept because it is why answering fast is a
-          conversion job and not an admin chore.
-        */}
-        <p className="text-forest/70 mt-2 text-sm">
-          Nobody holds a seat until you say yes. Guests see &ldquo;confirming
-          with the operator&rdquo; until you answer. Fast answers are what stop
-          them walking to a counter. Soonest to expire first.
-        </p>
+      {page === null ? (
+        /*
+          One line and a way back, for every pill. The button is a link to this
+          same URL: the route is `force-dynamic`, so navigating to itself
+          genuinely re-reads rather than replaying a cached answer.
+        */
+        <div className="mt-8">
+          <Problem
+            title="Bookings did not load. Try again."
+            body="Nothing has changed. This is us, not you."
+          />
+          <div className="mt-4">
+            <ButtonLink
+              href={pillHref(view, filters)}
+              variant="secondary"
+              block={false}
+            >
+              Try again
+            </ButtonLink>
+          </div>
+        </div>
+      ) : view === "requests" ? (
+        <div className="mt-6">
+          {/*
+            STAFF, on this pill only, in one line. It replaced a `Problem` panel
+            at the top of the whole screen, which told somebody who had come to
+            read their bookings that they could not do something they had not
+            tried.
+          */}
+          {!me.canManage ? (
+            <p className="text-forest/80 text-base font-bold">
+              Only owners, admins and managers can answer requests
+            </p>
+          ) : null}
 
-        {critical > 0 ? (
-          <p className="text-terra-deep mt-4 text-sm font-bold">
-            {critical} {critical === 1 ? "request runs" : "requests run"} out
-            within the hour.
-          </p>
-        ) : null}
-
-        <div className="mt-5">
           {requests === null ? (
             <Problem
-              title="The requests did not load"
-              body="Your bookings below are unaffected. Try again in a moment."
+              title="Requests did not load. Try again."
+              body="Your bookings on the other pills are unaffected."
             />
+          ) : visibleRequests.length === 0 ? (
+            <p className="text-forest/70 text-base">
+              {emptyLine("requests", filtered)}
+            </p>
           ) : (
             /*
-              The list and its receipts are one client component on purpose:
-              the receipt an accept produces has to outlive the row the next
-              refresh removes. See `RequestQueue`.
+              The list and its receipts are one client component on purpose: the
+              receipt an accept produces has to outlive the row the next refresh
+              removes. See `RequestQueue`.
             */
             <RequestQueue
-              requests={requests}
+              requests={visibleRequests}
               /*
-                Accepting is refused while suspended and declining is not
-                (yuvoy-operator#50): a suspended business can always let a
-                traveller go and can never take one on. The row draws Decline
-                either way and drops Accept, rather than going read-only and
-                leaving a traveller waiting on an answer that cannot come.
+                Accepting is refused while suspended and declining is not (#50):
+                a suspended business can always let a traveller go and can never
+                take one on. The row draws Decline either way and drops Accept,
+                rather than going read-only and leaving a traveller waiting on
+                an answer that cannot come.
               */
               canAnswer={me.canManage}
               canAccept={!me.suspension}
@@ -279,163 +235,58 @@ export default async function BookingsPage() {
               tomorrow={tomorrow}
             />
           )}
-        </div>
-      </section>
 
-      <section className="mt-14" aria-labelledby="booked-heading">
-        <h2 id="booked-heading" className="font-display text-3xl">
-          Booked
-        </h2>
-        <p className="text-forest/70 mt-2 text-sm">
-          By the day the trip runs: the last month and the next three.
-        </p>
-
-        <div id="confirmed" className="mt-8 scroll-mt-6">
-          <h3 className="label text-forest/75">Confirmed</h3>
-          {confirmed === null ? (
-            <div className="mt-3">
-              <Problem
-                title="The bookings did not load"
-                body="This is us, not you. Try again in a moment. Nothing has changed because of it."
-              />
+          {visibleRequests.length === 0 && filtered ? (
+            <div className="mt-4">
+              <ButtonLink
+                href={pillHref("requests", {
+                  q: "",
+                  experienceId: "",
+                  from: "",
+                  to: "",
+                })}
+                variant="secondary"
+                block={false}
+              >
+                Clear
+              </ButtonLink>
             </div>
-          ) : confirmed.length === 0 ? (
-            <p className="text-forest/70 mt-3 text-sm">
-              Nothing ahead in the next three months.
-            </p>
-          ) : (
-            <div className="mt-3 space-y-6">
-              {byMarketDay(confirmed).map((group) => (
-                <div key={group.day || "no-time"}>
-                  <h4 className="text-base font-bold">
-                    {group.day
-                      ? dayCaption(group.day, today, tomorrow)
-                      : "No time on these yet"}
-                  </h4>
-                  {/* "Grouped by date, summarised as total bookings and guests." */}
-                  <p className="text-forest/70 mt-0.5 text-sm">
-                    {`${group.bookings.length} ${group.bookings.length === 1 ? "booking" : "bookings"} · ${group.guests} ${group.guests === 1 ? "guest" : "guests"}`}
-                  </p>
-                  <ul className="mt-3 space-y-3">
-                    {group.bookings.map((b) => (
-                      <BookingRow key={b.id} booking={b} dated={false} />
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-          {upcomingRead !== null && upcomingRead.length >= BOOKINGS_PAGE ? (
-            <p className="text-forest/70 mt-3 text-xs">
-              Only the first {BOOKINGS_PAGE} bookings from today could be read,
-              so later trips may be missing from this list.
-            </p>
           ) : null}
         </div>
-
-        <div id="past" className="mt-10 scroll-mt-6">
-          <h3 className="label text-forest/75">Past</h3>
-          {past === null ? (
-            <div className="mt-3">
-              <Problem
-                title="The bookings did not load"
-                body="This is us, not you. Try again in a moment. Nothing has changed because of it."
-              />
+      ) : (
+        <>
+          <BookingList
+            /*
+              Keyed on the query, so switching pill or filter mounts a fresh
+              list rather than showing the previous pill's rows under the new
+              one until the server answers. The pages already loaded belong to
+              the cursor that issued them and cannot be carried across.
+            */
+            key={pillHref(view, filters)}
+            view={view}
+            filters={filters}
+            initial={page}
+            today={today}
+            tomorrow={tomorrow}
+          />
+          {page.items.length === 0 && filtered ? (
+            <div className="mt-4">
+              <ButtonLink
+                href={pillHref(view, {
+                  q: "",
+                  experienceId: "",
+                  from: "",
+                  to: "",
+                })}
+                variant="secondary"
+                block={false}
+              >
+                Clear
+              </ButtonLink>
             </div>
-          ) : past.length === 0 ? (
-            <p className="text-forest/70 mt-3 text-sm">
-              Nothing behind you in the last month.
-            </p>
-          ) : (
-            <ul className="mt-3 space-y-3">
-              {past.map((b) => (
-                <BookingRow key={b.id} booking={b} dated />
-              ))}
-            </ul>
-          )}
-          {pastRead !== null && pastRead.length >= BOOKINGS_PAGE ? (
-            <p className="text-forest/70 mt-3 text-xs">
-              Only {BOOKINGS_PAGE} bookings from the last month could be read,
-              so the most recent may be missing from this list.
-            </p>
           ) : null}
-        </div>
-      </section>
+        </>
+      )}
     </Screen>
-  );
-}
-
-/**
- * One booking, linking to its own screen.
- *
- * `dated` says the day as well as the time. Under a day's heading the day is
- * already said, so the row gives the time alone; in Past every row needs both.
- */
-function BookingRow({
-  booking: b,
-  dated,
-}: {
-  booking: BookingLine;
-  dated: boolean;
-}) {
-  /*
-    With its cash — yuvoy-operator#40. A cash booking waiting on the operator
-    reads "Collect ₹9,000", never the card sentence "Payment clearing" its
-    state would otherwise produce.
-  */
-  const state = describeBookingState(b.state, b.cash);
-  const when = b.startsAt
-    ? dated
-      ? `${marketDay(b.startsAt, b.timezone)}, ${marketTime(b.startsAt, b.timezone)}`
-      : marketTime(b.startsAt, b.timezone)
-    : null;
-
-  return (
-    <li>
-      <Link
-        href={`/bookings/${b.id}`}
-        className={panelClass(
-          "raised",
-          "hover:border-forest/40 ease-interaction block transition-colors duration-200",
-        )}
-      >
-        <div className="flex items-baseline justify-between gap-3">
-          {/*
-            The name if we have it, the reference if not. Never a number:
-            `contact` carries the name and only the name.
-          */}
-          <p className="text-base font-bold">{b.name || b.reference}</p>
-          {/*
-            Mapped, never raw. This list returns `fulfilment_state` verbatim —
-            a column value — so an unmapped one renders no chip rather than
-            shouting `paid_pending_ops` at somebody.
-          */}
-          {state ? (
-            <Chip tone={state.live ? "accent" : "neutral"}>{state.label}</Chip>
-          ) : null}
-        </div>
-        {b.reference ? (
-          <p className="text-forest/70 mt-1 font-mono text-sm tracking-wider">
-            {b.reference}
-          </p>
-        ) : null}
-        <p className="text-forest/70 mt-2 text-sm">
-          {when ? `${when} · ${b.experience}` : b.experience}
-        </p>
-        <p className="text-forest/70 mt-1 text-sm">
-          {b.guests} {b.guests === 1 ? "guest" : "guests"}
-        </p>
-        {/*
-          Once taken, the row says so and when. While it is owed the chip
-          already carries the amount, and a second line saying the same would
-          bury the rest of the row.
-        */}
-        {b.cash?.collected ? (
-          <p className="text-forest/70 mt-1 text-sm">
-            {describeCash(b.cash, b.timezone)}
-          </p>
-        ) : null}
-      </Link>
-    </li>
   );
 }

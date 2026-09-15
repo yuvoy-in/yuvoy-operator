@@ -47,6 +47,15 @@ export interface Standing {
   bookable: boolean;
   blocking: Blocker[];
   credentials: OperatorCredential[];
+  /**
+   * Every document this business must hold to sell, met or not.
+   *
+   * Read rather than derived from `credentials`, and the contract says why: the
+   * set is "what your market requires of every business, plus what the
+   * categories and activities you have published listings in require, so it can
+   * grow when a listing in a new category is approved" (yuvoy-operator#46).
+   */
+  requiredDocuments: { type: string; satisfied: boolean }[];
 }
 
 /**
@@ -67,6 +76,30 @@ export function standingOf(
     bookable: account.bookable,
     blocking: Array.isArray(account.blocking) ? account.blocking : [],
     credentials: Array.isArray(account.credentials) ? account.credentials : [],
+    /*
+      Absent is an EMPTY list, and the count is then not drawn at all. Not a
+      guess from the credential rows: an older API sending nothing here must
+      leave the screen silent rather than answer "3 of 3" from what it happens
+      to hold.
+    */
+    requiredDocuments: Array.isArray(account.requiredDocuments)
+      ? account.requiredDocuments
+          .filter(
+            (d) =>
+              typeof d?.type === "string" && typeof d?.satisfied === "boolean",
+          )
+          /*
+            Widened to `string`. The contract's enum is the eight types this
+            build knows, and a ninth added on the other side must still be
+            counted and named rather than dropped: the count is "5 of 6", and a
+            row quietly missing makes it "5 of 5" and tells an operator they are
+            finished.
+          */
+          .map((d) => ({
+            type: String(d.type),
+            satisfied: d.satisfied === true,
+          }))
+      : [],
   };
 }
 

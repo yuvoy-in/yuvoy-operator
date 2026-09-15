@@ -93,6 +93,24 @@ const MEDIA_HOSTS = [
   "https://*.imagedelivery.net",
 ];
 
+/**
+ * Where a document's file is sent — yuvoy-operator#46 item 3.
+ *
+ * **One exact origin, and no wildcard.** Every other entry above is a subdomain
+ * wildcard because the upload endpoint is minted per intent and its subdomain
+ * is not ours to predict; this bucket's is, and it is named in the issue. A
+ * document is a business's registration, insurance and instructor certificates,
+ * so the directive that decides where a browser may send one is worth being
+ * exact about: a wildcard over `*.amazonaws.com` would name every bucket on the
+ * platform.
+ *
+ * Separate from `MEDIA_HOSTS` and deliberately NOT in `img-src`. Nothing reads
+ * a document back in this portal: the bucket is private, and a file goes one
+ * way. `connect-src` alone is the whole of what this needs.
+ */
+const DOCUMENT_HOST =
+  "https://yuvoy-operator-documents-prod.s3.ap-south-1.amazonaws.com";
+
 export interface CspEnv {
   /** Development runs the mock upload host on loopback, and HMR on a socket. */
   dev?: boolean;
@@ -120,6 +138,7 @@ export function cspDirectives(env: CspEnv): string[] {
   const connect = [
     "'self'",
     ...MEDIA_HOSTS,
+    DOCUMENT_HOST,
     ...(mock ? [mock] : []),
     // Next's dev server talks HMR over a websocket to the same host.
     ...(env.dev

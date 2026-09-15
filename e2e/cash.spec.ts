@@ -33,7 +33,8 @@ async function signIn(page: Page, phone: string) {
 
 test("the business door leads to it", async ({ page }) => {
   await signIn(page, OWNER);
-  await page.goto("/account");
+  // The doors moved behind the gear on the profile, #58 item 9.
+  await page.goto("/account/settings");
   await page.getByRole("link", { name: /Cash you.{1,3}ve collected/ }).click();
   await page.waitForURL("**/cash");
   await expect(
@@ -290,10 +291,12 @@ test("the bookings list asks for the cash, and never says a payment is clearing"
     `paid_pending_ops` was all the screen had. Nothing was clearing.
   */
   await signIn(page, OWNER);
-  await page.goto("/bookings");
+  // The Upcoming pill, which is where the rows are since yuvoy-operator#57
+  // replaced the three anchored sections with four.
+  await page.goto("/bookings?view=upcoming");
 
   const owed = page
-    .getByRole("region", { name: "Booked" })
+    .locator("main")
     .getByRole("link")
     .filter({ hasText: "Anil Kumar" });
   await expect(owed.getByText("Collect ₹9,000")).toBeVisible();

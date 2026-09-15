@@ -88,9 +88,72 @@ export function splitTeam(team: readonly TeamPerson[]): SplitTeam {
   };
 }
 
-/** Active owners only. An unaccepted invitation cannot approve a bank change. */
-export function activeOwnerCount(team: readonly TeamPerson[]): number {
-  return team.filter((m) => !m.pending && m.roles.includes("OWNER")).length;
+/**
+ * Active people who can administer the business: owners AND admins together.
+ *
+ * ## Why it is not owners alone
+ *
+ * It was, and that was wrong in the direction that matters. The contract's
+ * refusal is "the last active **OWNER or ADMIN**", with the reason spelled out
+ * on `DELETE /team/{id}`: "a business with neither has nobody who can let
+ * anybody back in."
+ *
+ * Counting owners alone therefore refused too much and allowed too much at the
+ * same time. It blocked holding an owner while an active admin could still
+ * administer the business, and it allowed removing the last ADMIN at a business
+ * with no owner, which is the lockout the rule exists to prevent
+ * (yuvoy-operator#51 item 4).
+ *
+ * A PENDING row is an invitation, not a login, so it cannot let anybody in and
+ * is not counted. A HELD login cannot either, which is why the name says
+ * active: `isHeld` lives in `access.ts` and the state value is checked here
+ * rather than imported, to keep this module free of that dependency.
+ */
+export function activeSeniorCount(team: readonly TeamPerson[]): number {
+  return team.filter(
+    (m) =>
+      !m.pending &&
+      m.state !== "suspended" &&
+      (m.roles.includes("OWNER") || m.roles.includes("ADMIN")),
+  ).length;
+}
+
+/**
+ * Whether this person IS the last active owner or admin — the refusal
+ * `DELETE /team/{id}` and `POST /team/{id}/hold` share, in the server's words:
+ * "nobody can remove the last active OWNER or ADMIN: a business with neither has
+ * nobody who can let anybody back in."
+ *
+ * ## Two clauses, and each one fixes a different mistake
+ *
+ * It used to read `member is senior && activeSeniorCount(team) <= 1`, which
+ * over-refused. A business with one active owner and one HELD admin has a count
+ * of 1, and the held admin holds a senior role, so Remove was withheld from
+ * their row with "the last owner or admin" — false. They are not active, the
+ * server does not count them, and removing them takes nothing away. Reef Divers
+ * hits it the moment somebody pauses Nisha. So the first clause asks whether the
+ * member is an ACTIVE senior, not whether they hold the role.
+ *
+ * And it asks what the count is AFTERWARDS rather than what it is now, because
+ * "the last one" is a claim about what the change leaves behind. One active
+ * senior with a second row that is pending, held or junior reads the same either
+ * way; a list that is one render behind does not.
+ *
+ * Note this cannot fire for a row other than your own in normal use: whoever
+ * reaches these controls is themselves an active OWNER or ADMIN, so the count
+ * after the change includes them. Their own row is refused before this. It is
+ * kept because it is the rule, it is cheap, and it still bites when `me` and the
+ * list disagree — and because the server stays the authority regardless: every
+ * action renders the `409`.
+ */
+export function isLastActiveSenior(
+  team: readonly TeamPerson[],
+  member: TeamPerson,
+): boolean {
+  const senior =
+    member.roles.includes("OWNER") || member.roles.includes("ADMIN");
+  if (!senior || member.pending || member.state === "suspended") return false;
+  return activeSeniorCount(team.filter((m) => m.id !== member.id)) === 0;
 }
 
 export interface Removability {
@@ -102,11 +165,14 @@ export interface Removability {
 /**
  * Whether this row may be removed, decided the way the server decides it.
  *
- * `409 cannot_remove` is "yourself, or the last owner", and both refusals are
- * knowable from what is already on screen. The precedent is the capacity
- * ceiling in O9: **disable the control and say why, rather than explain a 409
- * afterwards.** The action still handles `cannot_remove`, because roles can
- * change between this render and the tap.
+ * `DELETE /team/{id}` answers **`409 cannot_change_access`**: "yourself, or the
+ * last active OWNER or ADMIN". `cannot_remove` is gone from the contract and is
+ * never sent (yuvoy-operator#51 item 4), so nothing branches on it any more.
+ *
+ * Both refusals are knowable from what is already on screen. The precedent is
+ * the capacity ceiling in O9: **disable the control and say why, rather than
+ * explain a 409 afterwards.** The action still handles the 409, because roles
+ * can change between this render and the tap.
  */
 export function removability(
   member: TeamPerson,
@@ -122,25 +188,40 @@ export function removability(
     return { removable: false };
   }
   if (!member.pending && member.id === meId) return { removable: false };
-  if (
-    !myRoles.includes("OWNER") &&
-    (member.roles.includes("OWNER") || member.roles.includes("ADMIN"))
-  ) {
+  /*
+    NARROWED on 14 September. It read "an admin may not remove an owner or
+    another admin", which was this endpoint's 403 until it was restated: it now
+    says only "an ADMIN cannot remove an OWNER" (yuvoy-operator#51 item 4).
+
+    So two admins may remove each other, and the thing that stops that becoming
+    a lockout is the `409` below rather than rank. Same narrowing as
+    `seniorityAllows` in `access.ts`, and it has to happen in both or the Remove
+    button and the Change role button disagree on the same row.
+  */
+  if (!myRoles.includes("OWNER") && member.roles.includes("OWNER")) {
     return { removable: false };
   }
 
   /*
-    The one refusal that survives the copy cut. An owner would otherwise read
-    a missing Remove on the only owner as a bug, and it is not inferable from
-    the row. Stated as a fact with no next step attached, because there is
-    none — an owner cannot be invited from this portal.
+    The one refusal that survives the copy cut. An owner would otherwise read a
+    missing Remove on the last senior row as a bug, and it is not inferable from
+    the row itself.
   */
-  if (
-    !member.pending &&
-    member.roles.includes("OWNER") &&
-    activeOwnerCount(team) <= 1
-  ) {
-    return { removable: false, reason: "The only owner." };
+  /*
+    The last person who can administer the business, counting owners AND admins
+    together (yuvoy-operator#51 item 4). The contract's reason on this very
+    endpoint: "a business with neither has nobody who can let anybody back in."
+
+    Applies to an ADMIN as well as an OWNER, which the owners-only version
+    missed: removing the last admin at a business whose owner has left is the
+    same lockout by a different door.
+  */
+  if (!member.pending && isLastActiveSenior(team, member)) {
+    return {
+      removable: false,
+      reason:
+        "The last owner or admin. Somebody has to be able to let people in.",
+    };
   }
 
   return { removable: true };

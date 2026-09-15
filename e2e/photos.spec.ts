@@ -48,6 +48,17 @@ function pngBytes(): Buffer {
  * photograph does after eighty seconds of upload is fail, and the moderator
  * shown the picture has no listing to judge `NOT_THIS_EXPERIENCE` against.
  */
+/**
+ * The uploaders, where #58 item 8 put them: behind the + on the profile.
+ * `/services/reels` is a redirect now.
+ */
+async function openUploader(page: Page) {
+  await page.goto("/account");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Add a reel" }).click();
+  await expect(page.getByRole("dialog", { name: "Add a reel" })).toBeVisible();
+}
+
 async function choosePhoto(
   page: Page,
   opts: { name?: string; mimeType?: string; buffer?: Buffer } = {},
@@ -65,6 +76,8 @@ async function choosePhoto(
 test("a photograph goes up and ends at the same attestation a clip needs", async ({
   page,
 }, testInfo) => {
+  // Two navigations and a real upload. The default 30s is the upload's alone.
+  test.setTimeout(90_000);
   /*
     Uploading adds a media asset to state the Next server shares between
     projects, so this runs on one. Declared rather than hidden, the same call
@@ -76,7 +89,7 @@ test("a photograph goes up and ends at the same attestation a clip needs", async
   );
 
   await signIn(page);
-  await page.goto("/services/reels");
+  await openUploader(page);
 
   await choosePhoto(page);
 
@@ -91,9 +104,9 @@ test("a photograph goes up and ends at the same attestation a clip needs", async
     says a person reviews it.
   */
   await expect(
-    page.getByText(/who owns this footage|rights/i).first(),
+    page.getByText(/tell us it is yours to give us/i).first(),
   ).toBeVisible({
-    timeout: 30_000,
+    timeout: 60_000,
   });
 });
 
@@ -106,7 +119,7 @@ test("a video chosen as a photograph is refused before a slot is spent", async (
     going to be uploaded — the mistake the clip path made once already.
   */
   await signIn(page);
-  await page.goto("/services/reels");
+  await openUploader(page);
 
   await choosePhoto(page, {
     name: "clip.mp4",
@@ -125,7 +138,7 @@ test("a GIF is refused, because it would sit in a gallery as one still", async (
   page,
 }) => {
   await signIn(page);
-  await page.goto("/services/reels");
+  await openUploader(page);
 
   await choosePhoto(page, {
     name: "wave.gif",
@@ -146,53 +159,39 @@ test("the screen says it cannot resume, because it cannot", async ({
     the sentence.
   */
   await signIn(page);
-  await page.goto("/services/reels");
+  await openUploader(page);
   await choosePhoto(page);
   await expect(
     page.getByText(/cannot pick up where it left off/),
   ).toBeVisible();
 });
 
-test("the section is named for what it actually holds", async ({ page }) => {
-  // The list holds both, so it is not called "Your reels".
+test("the sheet offers both, and says which is which", async ({ page }) => {
+  // One sheet holds both, so neither is called the other.
   await signIn(page);
-  await page.goto("/services/reels");
+  await openUploader(page);
 
+  const sheet = page.getByRole("dialog", { name: "Add a reel" });
+  await expect(sheet.getByRole("heading", { name: "A clip" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { level: 1, name: "Photos & reels" }),
+    sheet.getByRole("heading", { name: "A photograph" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Your media" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Add a photograph" }),
-  ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Add a reel" })).toBeVisible();
 });
 
-test("the library counts reels and photographs separately", async ({
-  page,
-}) => {
+test("every tile says which of the two it is", async ({ page }) => {
   /*
-    yuvoy-api#119. This used to read "N items", because `GET /media` returned
-    no `kind` and the list genuinely could not tell one from the other. It says
-    which now, and an operator with a dozen of each can scan it.
+    yuvoy-api#119. The grid could not tell one from the other before `kind` was
+    on the wire, and the badge alone still cannot — "In review" is three tiles,
+    one of them a photograph. The tile's own name carries both.
   */
   await signIn(page);
-  await page.goto("/services/reels");
+  await page.goto("/account?tab=reels");
 
-  await expect(page.getByText(/\d+ reels? · \d+ photographs?$/)).toBeVisible();
-  await expect(page.getByText(/^\d+ items?$/)).toBeHidden();
-});
-
-test("every row says which of the two it is", async ({ page }) => {
-  await signIn(page);
-  await page.goto("/services/reels");
-
-  const library = page.getByRole("list").filter({ hasText: "Approved" });
   await expect(
-    library.getByText("Reel", { exact: true }).first(),
+    page.getByRole("button", { name: /^Reel,/ }).first(),
   ).toBeVisible();
   await expect(
-    library.getByText("Photograph", { exact: true }).first(),
+    page.getByRole("button", { name: /^Photograph,/ }).first(),
   ).toBeVisible();
 });
 
@@ -214,16 +213,13 @@ test("a clip still processing is not labelled a photograph", async ({
     fails.
   */
   await signIn(page);
-  await page.goto("/services/reels");
+  await page.goto("/account?tab=reels");
 
-  const processing = page
-    .getByRole("listitem")
-    .filter({ hasText: "The media host is preparing it." });
+  const processing = page.getByRole("button", { name: "Reel, Processing" });
   await expect(processing).toHaveCount(1);
-  await expect(processing.getByText("Reel", { exact: true })).toBeVisible();
-  await expect(processing.getByText("Photograph", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("button", { name: "Photograph, Processing" }),
+  ).toHaveCount(0);
 });
 
 test("a row with no preview says so, instead of being a grey rectangle", async ({
@@ -240,17 +236,15 @@ test("a row with no preview says so, instead of being a grey rectangle", async (
     who has just spent twenty minutes of island uplink on the upload.
   */
   await signIn(page);
-  await page.goto("/services/reels");
+  await page.goto("/account?tab=reels");
 
-  const processing = page
-    .getByRole("listitem")
-    .filter({ hasText: "The media host is preparing it." });
   /*
     And it says WHICH kind of nothing — yuvoy-operator#29. A clip still
     arriving has no still at any price, and saying so is the difference between
     "nothing is wrong" and an unexplained empty box to somebody who has just
     spent twenty minutes of island uplink on the upload.
   */
+  const processing = page.getByRole("button", { name: "Reel, Processing" });
   await expect(processing.getByText(/Still arriving/)).toBeVisible();
 });
 
@@ -264,31 +258,31 @@ test("the four kinds of missing picture do not read the same", async ({
     reviewer refused.
   */
   await signIn(page);
-  await page.goto("/services/reels");
+  await page.goto("/account?tab=reels");
 
   /*
-    `.first()` on every row, deliberately. Other tests in this file upload into
-    the same shared Next server, so a state's row count grows during a full run
-    — and the assertion is about what a row of that state SAYS, not how many
+    `.first()` on every tile, deliberately. Other tests in this file upload into
+    the same shared Next server, so a badge's tile count grows during a full run
+    — and the assertion is about what a tile of that state SAYS, not how many
     exist. Without it this passes alone and fails on the second project.
   */
-  const rowSaying = (body: string) =>
-    page.getByRole("listitem").filter({ hasText: body }).first();
+  const tileSaying = (name: string) =>
+    page.getByRole("button", { name }).first();
 
   // In flight — nothing is wrong, and that is the whole message.
   await expect(
-    rowSaying("The media host is preparing it.").getByText(/Still arriving/),
+    tileSaying("Reel, Processing").getByText(/Still arriving/),
   ).toBeVisible();
 
   // With us — the most reassuring thing the screen can say.
   await expect(
-    rowSaying("A person at Yuvoy will watch it.").getByText(/With us/),
+    tileSaying("Reel, In review").getByText(/With us/),
   ).toBeVisible();
 
-  // Waiting on the operator, and `ready` belongs HERE rather than with the two
-  // above: it means the rights are unattested, which is their own next act.
+  // Waiting on the operator, and `not_attached` belongs HERE rather than with
+  // the two above: approved and on nothing is their own next act.
   await expect(
-    rowSaying("Choose the listing it belongs to.").getByText(/below is yours/),
+    tileSaying("Reel, Not on a listing").getByText(/below is yours/),
   ).toBeVisible();
 });
 
@@ -306,26 +300,21 @@ test("a photograph shows its picture before it is published", async ({
     this is an empty frame.
   */
   await signIn(page);
-  await page.goto("/services/reels");
+  await page.goto("/account?tab=reels");
 
   /*
-    Scoped to the ONE row that is a photograph in review.
-
-    Neither half identifies it alone, and both were tried: "In review" is a
-    chip label that resolves to several elements, and "has a photograph
-    preview" matches every photograph — including the one the upload test in
-    this file adds to the same shared Next server, so it passed alone and
-    failed in a full run. `in_moderation`'s body sentence belongs to
-    `med_photo_fixture` and to nothing else.
+    Scoped by kind AND badge together. Neither half identifies it alone: "In
+    review" is three tiles, and "is a photograph" matches every photograph,
+    including the one the upload test in this file adds to the same shared Next
+    server. `.first()` over the pair, because that upload can add a second
+    photograph in review during a full run and the claim is about what such a
+    tile shows.
   */
   const photo = page
-    .getByRole("listitem")
-    .filter({ hasText: "A person at Yuvoy is checking it." });
+    .getByRole("button", { name: "Photograph, In review" })
+    .first();
 
-  await expect(photo).toHaveCount(1);
-  await expect(
-    photo.getByRole("img", { name: "Photograph preview" }),
-  ).toBeVisible();
+  await expect(photo.locator("img")).toBeVisible();
   await expect(photo.getByText(/No preview yet/)).toHaveCount(0);
 });
 
@@ -342,8 +331,7 @@ test("the category and destination are pickers, not text boxes", async ({
     place."
   */
   await signIn(page);
-  await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add a listing" }).click();
+  await page.goto("/account/listings/new");
 
   const category = page.getByLabel("What kind of thing it is");
   await expect(category).toHaveJSProperty("tagName", "SELECT");
@@ -367,8 +355,7 @@ test("a listing can be created straight from the pickers", async ({
   const title = `Reef walk ${suffix}`;
 
   await signIn(page);
-  await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add a listing" }).click();
+  await page.goto("/account/listings/new");
 
   await page.getByLabel("What is it called").fill(title);
   await page
@@ -377,12 +364,26 @@ test("a listing can be created straight from the pickers", async ({
   await page
     .getByLabel("Where it runs")
     .selectOption({ label: "Neil (Shaheed Dweep)" });
-  await page.getByLabel("Price", { exact: true }).fill("1800");
-  // A price now has to say what it means — yuvoy-operator#30 §1.
-  await page.getByRole("radio", { name: /Per person/ }).check();
-  await page.getByRole("button", { name: "Save as a draft" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
 
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
+  /*
+    The draft exists the moment Basics saves, and the URL is replaced with its
+    id. That is the end to end this test is about: the pickers send keys the
+    closed enum accepts, and a mismatch is a 400 rather than anything the form
+    could show.
+  */
+  await page.waitForURL(/\/account\/listings\/[^/]+\/edit\?step=selling/);
+
+  // A price now has to say what it means — yuvoy-operator#30 §1.
+  await page.getByLabel("Price").fill("1800");
+  await page.getByRole("radio", { name: "Per person" }).check();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=schedule/);
+
+  await page.goto("/account");
+  await expect(
+    page.getByRole("link", { name: new RegExp(`^${title}`) }),
+  ).toBeVisible();
 });
 
 test("a price must say whether it is per person or for the group", async ({
@@ -403,8 +404,7 @@ test("a price must say whether it is per person or for the group", async ({
   const suffix = testInfo.project.name === "mobile" ? "a" : "b";
 
   await signIn(page);
-  await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add a listing" }).click();
+  await page.goto("/account/listings/new");
 
   await page.getByLabel("What is it called").fill(`Unstated basis ${suffix}`);
   await page
@@ -413,25 +413,26 @@ test("a price must say whether it is per person or for the group", async ({
   await page
     .getByLabel("Where it runs")
     .selectOption({ label: "Neil (Shaheed Dweep)" });
-  await page.getByLabel("Price", { exact: true }).fill("12000");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=selling/);
+
+  await page.getByLabel("Price").fill("12000");
 
   // Neither option preselected — that is the whole point of the control.
   await expect(
-    page.getByRole("radio", { name: /Per person/ }),
+    page.getByRole("radio", { name: "Per person" }),
   ).not.toBeChecked();
   await expect(
-    page.getByRole("radio", { name: /For the group/ }),
+    page.getByRole("radio", { name: "For the group" }),
   ).not.toBeChecked();
 
-  await page.getByRole("button", { name: "Save as a draft" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
 
-  await expect(
-    page.getByText(/per person or for the whole group/i),
-  ).toBeVisible();
-  // And nothing was created behind the refusal.
-  await expect(
-    page.getByText(`Unstated basis ${suffix} is a draft`),
-  ).toBeHidden();
+  await expect(page.getByRole("alert").first()).toContainText(
+    /per person or for the whole group/i,
+  );
+  // And the step did not move on behind the refusal.
+  await expect(page).toHaveURL(/step=selling/);
 });
 
 test("a listing with no price is not asked for a basis", async ({
@@ -448,8 +449,7 @@ test("a listing with no price is not asked for a basis", async ({
   const title = `No price yet ${suffix}`;
 
   await signIn(page);
-  await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add a listing" }).click();
+  await page.goto("/account/listings/new");
 
   await page.getByLabel("What is it called").fill(title);
   await page
@@ -458,7 +458,18 @@ test("a listing with no price is not asked for a basis", async ({
   await page
     .getByLabel("Where it runs")
     .selectOption({ label: "Neil (Shaheed Dweep)" });
-  await page.getByRole("button", { name: "Save as a draft" }).click();
 
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
+  /*
+    Basics asks for no price at all, which is the point one step along: the
+    price is deliberately optional, a listing without one "saves but cannot be
+    approved", and an operator should be able to write the rest first.
+  */
+  await expect(page.getByLabel("Price")).toHaveCount(0);
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=selling/);
+
+  await page.goto("/account");
+  await expect(
+    page.getByRole("link", { name: new RegExp(`^${title}`) }),
+  ).toBeVisible();
 });

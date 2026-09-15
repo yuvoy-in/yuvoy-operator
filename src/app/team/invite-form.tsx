@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { inviteMember, type InviteState } from "./actions";
 import { INVITABLE_ROLES, describeRole, roleLabel } from "@/lib/team/roles";
 import { Button } from "@/components/ui/button";
@@ -10,18 +10,36 @@ import { Panel } from "@/components/ui/panel";
 /**
  * Adding the new skipper before the 6am boat.
  *
- * Three fields and a role, because that is the whole of `POST /team`. The
- * work this form does beyond collecting them is explaining what each role
- * grants **at the moment of choosing**, rather than in a help page nobody
- * opens: the crew phone goes out on the boat and gets left on a bench, and the
- * owner deciding between Manager and Staff is deciding what a lost phone can
- * do.
+ * Three fields and a role, because that is the whole of `POST /team`. The work
+ * this form does beyond collecting them is explaining what each role grants **at
+ * the moment of choosing**, rather than in a help page nobody opens: the crew
+ * phone goes out on the boat and gets left on a bench, and somebody deciding
+ * between Staff and Owner is deciding what a lost phone can do.
+ *
+ * ## The two roles, and why not four
+ *
+ * Staff or Owner (D15, yuvoy-operator#51 item 2). `POST /team` says "everybody
+ * joins as `STAFF`, except an owner", and an invitation asking for ADMIN or
+ * MANAGER is **sent rather than refused** — downgraded to STAFF, with a `note`
+ * saying so. So offering those two would be a form that silently does something
+ * other than what it says; they are given from the member's row once somebody
+ * has joined.
+ *
+ * Owner is the heavier of the two by a long way: an invited owner can change
+ * where the business is paid, and unlike a role change it is granted to a phone
+ * number nobody has answered from yet. That is said beside the choice, not after
+ * the send.
  */
 export function InviteForm() {
   const [state, act, pending] = useActionState<InviteState, FormData>(
     inviteMember,
     {},
   );
+  /**
+   * Which role is selected, mirrored out of the form so the screen can say what
+   * the Owner choice means before it is sent. Seeded to the preselected STAFF.
+   */
+  const [role, setRole] = useState<string>("STAFF");
 
   return (
     <form action={act} className="space-y-5">
@@ -75,24 +93,32 @@ export function InviteForm() {
       <fieldset>
         <legend className="label text-forest/75">What they can do</legend>
         <div className="mt-2 space-y-2">
-          {INVITABLE_ROLES.map((role, i) => {
-            const described = describeRole(role)!;
+          {INVITABLE_ROLES.map((option) => {
+            const described = describeRole(option)!;
             return (
               <label
-                key={role}
-                className={choiceClass(false, "items-start py-4")}
+                key={option}
+                className={choiceClass(role === option, "items-start py-4")}
               >
                 <input
                   type="radio"
                   name="role"
-                  value={role}
+                  value={option}
                   required
-                  defaultChecked={i === INVITABLE_ROLES.length - 1}
+                  /*
+                    STAFF by name, not by position. It used to be "the last one
+                    in the list", which was STAFF only because of how
+                    `INVITABLE_ROLES` happened to be ordered — and that list has
+                    just been rewritten once. Reordering it must not silently
+                    preselect Owner.
+                  */
+                  defaultChecked={option === "STAFF"}
+                  onChange={() => setRole(option)}
                   className="accent-terra-deep mt-0.5 size-5 shrink-0"
                 />
                 <span>
                   <span className="block text-sm font-bold">
-                    {roleLabel(role)}
+                    {roleLabel(option)}
                   </span>
                   <span className="text-forest/80 block text-xs">
                     {described.can}
@@ -108,17 +134,43 @@ export function InviteForm() {
           })}
         </div>
         {/*
-          The absence is the point, so it is stated. An owner looking for
-          "Owner" in this list should find the reason rather than assume the
-          form is incomplete and go looking for another screen.
+          Two things an owner acts on, and the second is the reason Owner is a
+          choice here at all rather than the thing this paragraph used to
+          apologise for. It read "there is no Owner option … Yuvoy sets it up",
+          which was true until D15 and is now the opposite of the form above it.
+
+          Manager and Admin are not missing by accident: `POST /team` says
+          "everybody joins as STAFF, except an owner", and asking for either
+          answers `role: STAFF` with a `note`. So the honest thing is to say
+          where they come from instead.
         */}
         <p className="text-forest/70 mt-3 text-xs">
-          There is no Owner option. The owner is whoever the payout account
-          belongs to, and that is not something one login can hand to a phone
-          number. Yuvoy sets it up. Staff is preselected: it is the safest of
-          the two, and the one a boat phone should have.
+          Staff is preselected: it is the safer of the two, and the one a boat
+          phone should have. Manager and Admin are given after somebody has
+          joined, from their row on this list.
         </p>
       </fieldset>
+
+      {/*
+        The weight of the Owner choice, at the moment it is selected rather than
+        after the invitation has gone.
+
+        An invited owner "gains every owner power, including changing where the
+        business is paid" — and unlike a role change, this one is granted to a
+        phone number that has not answered yet. The person inviting should read
+        that before they send it, not discover it from a bank change.
+      */}
+      {role === "OWNER" ? (
+        <Panel tone="alert" className="p-4">
+          <p className="text-sm font-bold">
+            An owner can change where the business is paid.
+          </p>
+          <p className="text-forest/80 mt-1.5 text-sm">
+            They get everything an owner can do, from the moment they accept.
+            Check the number.
+          </p>
+        </Panel>
+      ) : null}
 
       {state.message ? (
         <p
@@ -137,7 +189,21 @@ export function InviteForm() {
             WhatsApp account yet (yuvoy-api#68) — so a screen that says a code
             went out is a screen the owner will believe, and then wait on.
           */}
-          <p className="text-base font-bold">{state.sent.name} is invited</p>
+          <p className="text-base font-bold">
+            {state.sent.name} is invited as {roleLabel(state.sent.role)}
+          </p>
+          {/*
+            The server's sentence about a role it did not grant as asked. This
+            form only asks for OWNER or STAFF, so it should never arrive — which
+            is why it is shown rather than dropped: if it does, this build and the
+            API disagree about what an invitation grants, and the person handing
+            a phone over is the one who needs to know.
+          */}
+          {state.note ? (
+            <p className="text-terra-deep mt-2 text-sm font-bold">
+              {state.note}
+            </p>
+          ) : null}
           {/*
             The whole number, echoed once, at the moment it matters most. The
             pending row now shows its last four digits (`phoneMasked`,

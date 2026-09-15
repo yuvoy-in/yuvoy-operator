@@ -59,6 +59,8 @@ export interface SignUpState {
     name: string;
     phone: string;
     email: string;
+    /** "own", "run", or "" when they have not answered yet. */
+    relationship: string;
   };
   /** Bumped per submission, so the form remounts and re-reads `values`. */
   attempt?: number;
@@ -84,6 +86,13 @@ export async function createAccount(
     name: String(form.get("name") ?? ""),
     phone: String(form.get("phone") ?? ""),
     email: String(form.get("email") ?? ""),
+    /*
+      Absent when neither radio was touched, which is a real state rather than a
+      default: the schema refuses it and the form points at the question. An
+      unanswered radio group sends no key at all, which is why this reads `?? ""`
+      and not `?? "own"`.
+    */
+    relationship: String(form.get("relationship") ?? ""),
   };
   const attempt = (prev.attempt ?? 0) + 1;
   const refuse = (state: Omit<SignUpState, "values" | "attempt">) => ({

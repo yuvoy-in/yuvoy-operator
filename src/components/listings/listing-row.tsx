@@ -238,8 +238,8 @@ export function ListingRow({
         <p className="border-cream-line text-forest/80 mt-3 border-t pt-3 text-sm">
           On sale with nothing to show. Travellers see a blank card until a
           photograph or a reel is attached to it.{" "}
-          <a href="/services/reels" className="underline underline-offset-2">
-            Photos &amp; reels
+          <a href="/account?tab=reels" className="underline underline-offset-2">
+            Your reels
           </a>
         </p>
       ) : null}

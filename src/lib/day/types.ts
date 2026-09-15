@@ -84,6 +84,15 @@ export function orderParties(parties: Party[]): Party[] {
 export interface OperatorSlot {
   id: string;
   title: string;
+  /**
+   * The listing this departure belongs to.
+   *
+   * Optional because a response that omits it must render as a departure that
+   * belongs to nothing rather than to the wrong listing. Home reads the
+   * fortnight ONCE and finds each listing's next departure in it
+   * (yuvoy-operator#56 item 5), which is only possible because rows carry this.
+   */
+  experienceId?: string;
   startsAt: string;
   timezone: string;
   seats: number;
@@ -149,4 +158,17 @@ export interface OperatorListing {
    * but the operator should be told, not left to find out.
    */
   sellable?: boolean;
+  /**
+   * Present exactly while a reviewer has sent this listing back to its author.
+   *
+   * Carried because `changes_rejected` means two different things and only this
+   * field separates them: an edit declined on something still selling, and a
+   * first listing bounced back to draft. The tile badge says "Sent back" for
+   * one and "Changes declined" for the other (#56, #58 item 3), and without it
+   * every sent-back listing is mislabelled as the harmless one.
+   *
+   * `unknown` because it is an object on the wire and nothing here reads
+   * inside it. See `isSentBack` in `src/lib/services/home.ts`.
+   */
+  sentBack?: unknown;
 }

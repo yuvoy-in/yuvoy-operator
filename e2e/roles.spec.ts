@@ -36,10 +36,11 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     "The crew phone goes out on the boat and gets left on a bench. It should be
     able to tick people off a manifest and nothing else." Three of these are
     OWNER-or-MANAGER on the server, so offering them would be offering a 403.
-    The doors live behind the Business tab, so that is where the absence is
-    asserted.
+    The doors moved behind the gear on the business profile (#58 item 9), and a
+    group with no visible rows is not drawn at all — so a staff login sees no
+    Money and no Team heading, not headings over empty space.
   */
-  await page.goto("/account");
+  await page.goto("/account/settings");
   await expect(page.getByRole("link", { name: /Earnings/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Payout details/ })).toHaveCount(
     0,
@@ -50,34 +51,38 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     What they DO get: the day, the seats they may look at but not change, and
     the media upload the contract puts no role on.
 
-    The "Add a reel" door came off this screen with yuvoy-operator#33 §4 — it
-    opened what is now Listings, which is its own tab, and one screen should
-    not live in two places. The Listings stop in the bar is the way there, and
-    it is not role-gated. What replaced it here is the LOGO, which is mandatory before an
-    operator can be booked and is also ungated: `PUT /logo` declares a generic
+    The "Add a reel" door came off this screen with yuvoy-operator#33 §4, and
+    the Listings TAB that replaced it came off the bar with #56: every listing
+    is on Home now. What is here instead is the LOGO, which is mandatory before
+    an operator can be booked and is ungated — `PUT /logo` declares a generic
     Forbidden and names no role.
   */
   await expect(page.getByRole("link", { name: /Add a reel/ })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Your logo/ })).toBeVisible();
-  await expect(
-    page
-      .getByRole("navigation", { name: /Primary/i })
-      .first()
-      .getByRole("link", { name: "Listings" }),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("navigation", { name: /Primary/i })
-      .first()
-      .getByRole("link", { name: "Calendar" }),
-  ).toBeVisible();
+  /*
+    The logo is on the profile itself now — tapping it opens the screen that
+    sets it — and it is ungated: `PUT /logo` declares a generic Forbidden and
+    names no role. Settings carries the labelled row.
+  */
+  await expect(page.getByRole("link", { name: /Logo/ }).first()).toBeVisible();
+
+  /*
+    Home and Calendar are on the bar for every role, and there is no Listings
+    stop for anybody. Asserted on the day rather than here: everything under
+    `/account/` is a focused screen since #58, so the bar is deliberately not
+    drawn on settings at all.
+  */
+  await page.goto("/today");
+  const nav = page.getByRole("navigation", { name: /Primary/i }).first();
+  await expect(nav.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Calendar" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Listings" })).toHaveCount(0);
 });
 
 test("a manager is offered all three, because the server allows them", async ({
   page,
 }) => {
   await signIn(page, MANAGER);
-  await page.goto("/account");
+  await page.goto("/account/settings");
 
   // The positive control. A test that only ever asserts an absence passes just
   // as well when the links have been deleted for everybody.
@@ -99,12 +104,18 @@ test("a staff login sees the queue and cannot answer it — including the button
     gate, `POST /requests/{id}/accept` is 403 "STAFF cannot commit seats".
     So the queue is visible — a request nobody sees is a request that expires.
   */
+  /*
+    ONE line, on the Requests pill only, since yuvoy-operator#57 item 9. It was
+    a `Problem` panel at the top of the whole screen, which told somebody who
+    had come to read their bookings that they could not do something they had
+    not tried.
+  */
+  await expect(
+    page.getByText("Only owners, admins and managers can answer requests"),
+  ).toBeVisible();
   await expect(
     page.getByText("You can see these, but not answer them"),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/Pass it on rather than letting the clock run out/),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   /*
     And the controls are disabled, not merely explained. A banner and a working
@@ -135,11 +146,15 @@ test("a staff phone that forces the button through is refused by the action itse
   await accept.evaluate((button) => button.removeAttribute("disabled"));
   await accept.click();
 
+  /*
+    Reworded on 15 September (yuvoy-operator#43 item 6). It read "Your role
+    cannot answer requests. An owner, admin or manager has to." — two sentences
+    to say one thing, and the first of them addresses somebody by their role
+    rather than saying who to ask.
+  */
   await expect(
-    page.getByRole("alert").filter({ hasText: "Your role cannot answer" }),
-  ).toHaveText(
-    "Your role cannot answer requests. An owner, admin or manager has to.",
-  );
+    page.getByRole("alert").filter({ hasText: "can answer requests" }),
+  ).toHaveText("Only owners, admins and managers can answer requests.");
 
   // And nothing was granted: the request is still in the queue.
   await expect(
@@ -170,9 +185,15 @@ test("a staff login sees capacity and is told it cannot change it", async ({
   await expect(
     page.getByText("You can see these, but not change them"),
   ).toBeVisible();
+  /*
+    Reworded on 15 September (yuvoy-operator#45 item 7). Three sentences on this
+    screen opened "Your role cannot ...", which addresses the reader by their
+    role rather than saying who to ask; they are one `canManage` gate, so they
+    are one sentence now and the banner uses it too.
+  */
   await expect(
     page.getByText(
-      "Seats, closed dates and counter sales need an owner, an admin or a manager.",
+      "Only owners, admins and managers can change seats, close dates or record counter sales.",
     ),
   ).toBeVisible();
 });
@@ -188,16 +209,24 @@ test("earnings refuses a staff login before the request, not after", async ({
     error boundary, and said "That did not load — try again": false, and
     unactionable, because nothing went wrong and retrying will never work.
   */
+  /*
+    The sentence changed with yuvoy-operator#47 item 8. The rule did not: say it
+    first rather than let somebody meet a refusal they cannot read.
+  */
   await expect(
-    page.getByText("Earnings are for an owner, an admin or a manager"),
+    page.getByText(
+      "Only owners, admins and managers can see what the business is paid",
+    ),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "That did not load" }),
   ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
 
-  // And no figures leaked past the gate on the way to refusing.
-  await expect(page.getByText("Gross")).toHaveCount(0);
+  // And no figures leaked past the gate on the way to refusing. "Fares" is
+  // the label the new screen uses where "Gross" was.
+  await expect(page.getByText("Fares")).toHaveCount(0);
+  await expect(page.getByText("Next settlement")).toHaveCount(0);
 });
 
 test("the staff earnings refusal has no accessibility violations", async ({

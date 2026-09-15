@@ -42,6 +42,7 @@ describe("PartyRow — terminal outcomes", () => {
           screening={null}
           cash={null}
           timezone={TZ}
+          canManage={false}
         />
       </ul>,
     );
@@ -70,6 +71,7 @@ describe("PartyRow — terminal outcomes", () => {
           screening={null}
           cash={null}
           timezone={TZ}
+          canManage={false}
         />
       </ul>,
     );
@@ -90,6 +92,7 @@ describe("PartyRow — terminal outcomes", () => {
           screening={null}
           cash={null}
           timezone={TZ}
+          canManage={false}
         />
       </ul>,
     );
@@ -109,6 +112,7 @@ describe("PartyRow — the medical screener", () => {
           screening={screening}
           cash={null}
           timezone={TZ}
+          canManage={false}
         />
       </ul>,
     );
@@ -184,6 +188,7 @@ describe("PartyRow — the medical screener", () => {
             screening={null}
             cash={null}
             timezone={TZ}
+            canManage={false}
           />
         </ul>,
       ),
@@ -205,6 +210,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
           screening={null}
           cash={owed}
           timezone={TZ}
+          canManage={false}
         />
       </ul>,
     );
@@ -225,6 +231,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
           screening={null}
           cash={null}
           timezone={TZ}
+          canManage={false}
         />
       </ul>,
     );
@@ -242,6 +249,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
           screening={null}
           cash={owed}
           timezone={TZ}
+          canManage={false}
         />
       </ul>,
     );
@@ -263,6 +271,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
           screening={null}
           cash={owed}
           timezone={TZ}
+          canManage={false}
         />
       </ul>,
     );
@@ -281,6 +290,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
           screening={null}
           cash={null}
           timezone={TZ}
+          canManage={false}
         />
       </ul>,
     );

@@ -229,11 +229,8 @@ function DepartureRound({
         */}
         <p className="text-forest/80 mt-2 text-sm">
           Write your first one on{" "}
-          <a
-            href="/services/activities"
-            className="underline underline-offset-2"
-          >
-            Listings
+          <a href="/account" className="underline underline-offset-2">
+            your business
           </a>
           .
         </p>

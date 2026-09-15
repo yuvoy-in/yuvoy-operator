@@ -15,22 +15,22 @@ import {
   BriefcaseIcon,
   CalendarIcon,
   ClockIcon,
-  LayersIcon,
   TicketIcon,
 } from "@/components/ui/icons";
 
 const ICONS: Record<NavIcon, ComponentType<{ className?: string }>> = {
-  today: ClockIcon,
-  bookings: TicketIcon,
   /*
-    The glyphs moved with the labels (yuvoy-operator#32). Today is the hours
-    of one day, so it takes the clock; Bookings is a list of tickets; Calendar
-    is a month, so it takes the calendar. The previous pairing had Today on a
-    calendar and Capacity on a ticket, which read backwards the moment the
-    tabs were named for what they are.
+    The glyphs moved with the labels (yuvoy-operator#32). Home is the hours of
+    one day, so it keeps the clock; Bookings is a list of tickets; Calendar is a
+    month, so it takes the calendar. The previous pairing had Today on a
+    calendar and Capacity on a ticket, which read backwards the moment the tabs
+    were named for what they are.
+
+    `layers` went with the Listings tab (#56). Every listing is on Home now.
   */
+  home: ClockIcon,
+  bookings: TicketIcon,
   calendar: CalendarIcon,
-  listings: LayersIcon,
   business: BriefcaseIcon,
 };
 

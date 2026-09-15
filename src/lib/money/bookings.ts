@@ -1,6 +1,11 @@
 import type { components } from "@/lib/api/schema.gen";
 import { formatPaise } from "@/lib/format/money";
 import { marketTime } from "@/lib/format/market-time";
+import {
+  toQuestions,
+  type Cancellation,
+  type PartyQuestion,
+} from "@/lib/bookings/ending";
 
 /**
  * One booking's money, for the "why is THIS one less" question (O11).
@@ -56,6 +61,13 @@ export interface BookingCash {
   collectedAt?: string;
   /** What was recorded as taken — less than the fare when they gave something off. */
   collectedPaise?: number;
+  /**
+   * When giving this cash back was recorded, on a booking cancelled after it
+   * was taken. Absent until then, and it cannot be undone once set.
+   */
+  returnedAt?: string;
+  /** What was recorded as given back, which is all of `collectedPaise`. */
+  returnedPaise?: number;
 }
 
 export interface BookingLine {
@@ -73,6 +85,12 @@ export interface BookingLine {
   money?: BookingMoney;
   /** Present only on a booking paid at the counter. */
   cash?: BookingCash;
+  /** Present only on a booking that was cancelled or declined (#43 item 1). */
+  cancellation?: Cancellation;
+  /** Present only when the listing asks a medical question. Never the answer. */
+  screening?: { needsAttention?: boolean };
+  /** What the listing asks and what this party answered, in the order sent. */
+  questions?: PartyQuestion[];
 }
 
 const isPaise = (value: unknown): value is number =>
@@ -101,6 +119,16 @@ export function toBookingCash(
     ...(collectedAt ? { collectedAt } : {}),
     ...(isPaise(raw.collectedPaise)
       ? { collectedPaise: raw.collectedPaise }
+      : {}),
+    /*
+      Both or neither. "Present with `returnedAt`" — a returned amount with no
+      date, or a date with no amount, is a half-fact about money somebody handed
+      over, and the screen would render one of them as a blank.
+    */
+    ...(typeof raw.returnedAt === "string" &&
+    raw.returnedAt !== "" &&
+    isPaise(raw.returnedPaise)
+      ? { returnedAt: raw.returnedAt, returnedPaise: raw.returnedPaise }
       : {}),
   };
 }
@@ -148,6 +176,15 @@ export function toBookingLine(raw: OperatorBooking): BookingLine {
     state: raw.state ?? "",
     money,
     ...(cash ? { cash } : {}),
+    /*
+      All three are "present only when" fields, so an absent one stays absent
+      rather than becoming an empty object. A `cancellation: {}` on a live
+      booking would draw the ended line; a `screening: {}` on a snorkel trip
+      would put a medical chip on a listing that asks no medical question.
+    */
+    ...(raw.cancellation?.at ? { cancellation: raw.cancellation } : {}),
+    ...(raw.screening ? { screening: raw.screening } : {}),
+    ...(raw.questions ? { questions: toQuestions(raw.questions) } : {}),
   };
 }
 

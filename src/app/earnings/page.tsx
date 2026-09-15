@@ -3,27 +3,23 @@ import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import {
   getChangeRequests,
-  getEarnings,
-  listBookings,
+  getSettlementOverview,
+  listSettlements,
 } from "@/lib/money/fetch";
+import { payoutHold } from "@/lib/money/earnings";
 import {
-  canStillMove,
-  describeState,
-  monthRange,
-  payoutHold,
-  reconciles,
-} from "@/lib/money/earnings";
-import {
-  bookingReconciles,
-  describeCash,
-  type BookingLine,
-} from "@/lib/money/bookings";
-import { describeBookingState } from "@/lib/day/booking-state";
+  SETTLEMENT_STATE_LABEL,
+  isOwedBack,
+  showsAdjustments,
+  weekLabel,
+  seasonStartLabel,
+  nextSettlementNote,
+  type Settlement,
+} from "@/lib/money/settlements";
 import { formatPaise } from "@/lib/format/money";
-import { marketDay, marketTime, now } from "@/lib/format/market-time";
 import { Empty, Problem } from "@/components/ui/states";
 import { Screen } from "@/components/chrome/screen";
-import { Panel, panelClass } from "@/components/ui/panel";
+import { Panel } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
 
 export const metadata: Metadata = { title: "Earnings" };
@@ -34,40 +30,50 @@ export const metadata: Metadata = { title: "Earnings" };
 */
 export const dynamic = "force-dynamic";
 
-const BACK = { href: "/account", label: "your business" };
+const BACK = { href: "/account/settings", label: "settings" };
 
 /**
- * O11 — what the operator is owed, and why it is that number.
+ * What the business is paid — yuvoy-operator#47.
  *
- * The "why" matters as much as the total: an operator asking "why is this
- * ₹200 less than I expected" should be able to answer it here rather than by
- * messaging us. So the arithmetic is shown as arithmetic — gross, minus
- * commission, minus refunds, equals net — rather than a headline with the
- * workings hidden.
+ * ## What this replaces
  *
- * Read-only. There is no action on this screen and there should not be.
+ * A month picker over `GET /earnings`, showing gross minus commission minus
+ * refunds for "this month" or "last month". The owner removed it on 14 Sep,
+ * and the reason is that a calendar month was never the unit money moves in: a
+ * payout is a Monday-to-Sunday week, and a booking belongs to the week its
+ * TRIP happened in, not the month it was paid for. So the old screen's total
+ * was a number no transfer ever matched.
+ *
+ * ## The one rule this screen exists to hold
+ *
+ * **The pipeline is never earned.** `pipeline.netPaise` is card bookings still
+ * to run, and the contract says it "is **never** part of anything earned".
+ * It has its own block, visually separate, with its own sentence, and no total
+ * anywhere on this screen includes it. An operator who reads a pipeline figure
+ * inside a total believes we owe them money for trips that have not happened.
+ *
+ * Cash is the same shape and for a different reason: the traveller pays the
+ * operator directly, so it "never passes through a settlement" at all. What
+ * they owe US on it is `/cash`, which this links to rather than restates.
+ *
+ * ## Read-only
+ *
+ * There is no action here except downloading a statement of a payout that has
+ * already been sent. Nothing on this screen can change what anybody is paid.
  */
-export default async function EarningsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ month?: string }>;
-}) {
+export default async function EarningsPage() {
   const { token, me } = await requireOperator();
-  const { month } = await searchParams;
 
   /*
     Refused before the request, not after it.
 
-    `GET /earnings` is "Requires OWNER, ADMIN or MANAGER" and answers 403 to a
-    staff
-    login, and this page used to make the call anyway. The throw landed on the
-    error boundary, which says "That did not load — try again" — false, and
-    unactionable: retrying will never work, because nothing went wrong.
+    Every settlement endpoint "Requires OWNER, ADMIN or MANAGER" and answers
+    403 to a staff login. Making the call anyway put the throw on the error
+    boundary, which says "That did not load, try again": false, and
+    unactionable, because nothing went wrong.
 
-    The contract's own reasoning is the copy: "a staff member who can see
-    today's manifest does not need the margin on it." Same call as the queue in
-    O9 and the seats in capacity — say it first rather than let somebody meet a
-    refusal they cannot read.
+    An ADMIN can do everything a MANAGER can, so the sentence names all three
+    (op#48 item 3).
   */
   if (!me.canManage) {
     return (
@@ -78,27 +84,22 @@ export default async function EarningsPage({
         </h1>
         <div className="mt-6">
           <Problem
-            title="Earnings are for an owner, an admin or a manager"
-            body="A staff login runs the day (today's manifest, who has arrived) and does not carry what the business is owed. Ask an owner, an admin or a manager if you need the figure."
+            title="Only owners, admins and managers can see what the business is paid"
+            body="A staff login runs the day: today's manifest, who has arrived. It does not carry what the business is owed. Ask an owner, an admin or a manager if you need the figure."
           />
         </div>
       </Screen>
     );
   }
 
-  // 0 = this month, 1 = last. Validated rather than trusted: it arrives in a URL.
-  const monthsAgo = month === "last" ? 1 : 0;
-  const { from, to } = monthRange(monthsAgo, await now());
-
-  const [earnings, changes, bookings] = await Promise.all([
-    getEarnings(token, from, to),
+  const [overview, changes, past] = await Promise.all([
+    getSettlementOverview(token),
     getChangeRequests(token),
-    listBookings(token, from, to),
+    listSettlements(token),
   ]);
 
   const hold = payoutHold(changes);
-  const moving = canStillMove(earnings.state);
-  const addsUp = reconciles(earnings);
+  const { nextSettlement, pipeline, paidAtCounter, seasonToDate } = overview;
 
   return (
     <Screen nav={{ back: BACK }} stageLabel="Earnings">
@@ -107,294 +108,292 @@ export default async function EarningsPage({
         Earnings
       </h1>
 
-      <nav className="mt-6 flex gap-2" aria-label="Which month">
-        <MonthLink
-          label="This month"
-          href="/earnings"
-          active={monthsAgo === 0}
-        />
-        <MonthLink
-          label="Last month"
-          href="/earnings?month=last"
-          active={monthsAgo === 1}
-        />
-      </nav>
-
       {/*
-        A payout held by a bank change in flight. Above the number, because
-        it changes what the number means: it is owed, and it is not moving.
+        A payout held by a bank change in flight. Above the number, because it
+        changes what the number means: it is owed, and it is not moving.
       */}
       {hold ? (
         <div className="mt-6">
+          {/*
+            The original body, restored rather than rewritten.
+
+            My first pass replaced it with a general sentence and dropped two
+            things an operator can ACT on: which stage the change is at, and
+            that they can stop it if they did not request it. An e2e caught it,
+            which is the right outcome and the reason those sentences were
+            asserted in the first place.
+          */}
           <Problem
             title="Payouts are on hold while your bank change is reviewed"
-            body={`${hold.summary ?? "A bank change"} is ${hold.state === "cooling" ? "approved and waiting out its cooling period" : hold.state === "objection_window" ? "in its objection window: you can still stop it" : "awaiting review"}. Nothing is paid out until it settles. If you did not request this, stop it now from Payout details.`}
+            body={`${hold.summary ?? "A bank change"} is ${
+              hold.state === "cooling"
+                ? "approved and waiting out its cooling period"
+                : hold.state === "objection_window"
+                  ? "in its objection window: you can still stop it"
+                  : "awaiting review"
+            }. Nothing is paid out until it settles. If you did not request this, stop it now from Payout details.`}
           />
         </div>
       ) : null}
 
-      {/*
-        The arithmetic, not a headline. An operator reconciling against their
-        own book needs to see WHICH line disagrees.
-      */}
-      <section className="mt-8" aria-labelledby="totals">
-        <h2 id="totals" className="label text-forest/75">
-          {monthsAgo === 0 ? "This month" : "Last month"}
+      {/* ------------------------------------------- 1. next settlement -- */}
+
+      <Panel className="mt-6" role="region" aria-labelledby="next-settlement">
+        <h2 id="next-settlement" className="label text-forest/75">
+          Next settlement
         </h2>
-        <Panel className="mt-3 p-0">
-          <dl className="divide-cream-line divide-y">
-            <Line label="Bookings" value={String(earnings.bookings)} />
-            <Line label="Gross" value={formatPaise(earnings.grossPaise)} />
-            <Line
-              label="Yuvoy's commission"
-              value={`− ${formatPaise(earnings.commissionPaise)}`}
-            />
-            <Line
-              label="Refunds"
-              value={`− ${formatPaise(earnings.refundsPaise)}`}
-            />
-            <Line label="Net" value={formatPaise(earnings.netPaise)} emphasis />
-          </dl>
-        </Panel>
-      </section>
-
-      {/*
-        If the parts do not sum to the total, say so rather than rendering a
-        number that quietly disagrees with itself. This has never fired; it
-        exists because a reconciliation screen that cannot reconcile is worse
-        than no screen.
-      */}
-      {!addsUp ? (
-        <div className="mt-6">
-          <Problem
-            title="These figures do not add up"
-            body="Gross minus commission minus refunds does not equal the net shown. Do not reconcile against this. Send us the dates and we will find it."
-          />
-        </div>
-      ) : null}
-
-      <p
-        className={
-          moving
-            ? "text-terra-deep mt-6 text-sm font-bold"
-            : "text-forest/80 mt-6 text-sm"
-        }
-      >
-        {describeState(earnings.state)}
-      </p>
-
-      <p className="text-forest/70 mt-6 text-sm">
-        Every figure is frozen at the moment money is captured, so a commission
-        change today cannot restate what you earned last week.
-        {earnings.from && earnings.to
-          ? ` Covering ${earnings.from} to ${earnings.to}.`
-          : null}
-      </p>
-
-      {/*
-        Each booking's own arithmetic — the answer to "why is THIS one ₹200
-        less", which is a per-booking question and the reason this list exists
-        (yuvoy-api#60).
-
-        Deliberately not summed. `/earnings` selects on when the money moved;
-        this list on when the trip runs, so a screenful of these does not
-        reproduce the total above unless both windows happened to agree. The
-        caption says so rather than letting an operator discover it with a
-        calculator.
-      */}
-      <section className="mt-10" aria-labelledby="by-booking">
-        <h2 id="by-booking" className="label text-forest/75">
-          By booking
-        </h2>
-        <p className="text-forest/70 mt-2 text-sm">
-          Every departure in this window, with what it contributed. These do not
-          add up to the total above, on purpose: the total counts when money
-          moved, this list counts when the trip runs. Reconcile one booking
-          against itself, not this page against the month.
+        <p className="text-forest/70 mt-1 text-sm">
+          {weekLabel(nextSettlement.periodStart, nextSettlement.periodEnd)}
         </p>
 
-        {bookings === null ? (
+        {/*
+          The net can be BELOW ZERO, and the minus sign is the whole message: a
+          correction larger than the week pays means the week is not paid at all
+          until somebody at Yuvoy decides how to recover it. Nothing clamps it.
+        */}
+        <p
+          className={cn(
+            "font-display tracking-display mt-4 text-4xl leading-none",
+            isOwedBack(nextSettlement.netPaise) && "text-terra-deep",
+          )}
+        >
+          {formatPaise(nextSettlement.netPaise)}
+        </p>
+        {isOwedBack(nextSettlement.netPaise) ? (
+          <p className="text-terra-deep mt-2 text-sm">
+            A correction is larger than this week pays. Nothing is sent until we
+            have agreed with you how to settle it.
+          </p>
+        ) : null}
+
+        <dl className="mt-5 space-y-2 text-sm">
+          <Row label="Fares" value={formatPaise(nextSettlement.grossPaise)} />
+          <Row
+            label="Our commission"
+            value={formatPaise(nextSettlement.commissionPaise)}
+          />
+          <Row
+            label="Refunded"
+            value={formatPaise(nextSettlement.refundsPaise)}
+          />
+          {/*
+            Only when there is one. A row reading "Corrections ₹0" on every
+            payout trains somebody to stop reading the block that occasionally
+            says something important.
+          */}
+          {showsAdjustments(nextSettlement.adjustmentsPaise) ? (
+            <Row
+              label="Corrections"
+              value={formatPaise(nextSettlement.adjustmentsPaise)}
+            />
+          ) : null}
+          <Row label="Bookings" value={String(nextSettlement.bookings)} plain />
+        </dl>
+
+        <p className="text-forest/70 mt-5 text-sm">
+          {nextSettlementNote(nextSettlement.settlesFrom)}
+        </p>
+      </Panel>
+
+      {/* ------------------------------------- 2. booked, not run yet ---- */}
+
+      {/*
+        Its own panel, deliberately apart from the one above. This figure is
+        NEVER added to anything earned: the trips have not happened, so the
+        money is not owed. `settlements.test.ts` has no function that sums the
+        two, and there is none to write.
+      */}
+      <Panel
+        tone="outline"
+        className="mt-4"
+        role="region"
+        aria-labelledby="booked-not-run"
+      >
+        <h2 id="booked-not-run" className="label text-forest/75">
+          Booked, not run yet
+        </h2>
+        <p className="font-display tracking-display mt-3 text-2xl leading-none">
+          {formatPaise(pipeline.netPaise)}
+        </p>
+        <p className="text-forest/70 mt-2 text-sm">
+          Not earned until the trip is marked.
+        </p>
+        <dl className="mt-4 space-y-2 text-sm">
+          <Row label="Bookings" value={String(pipeline.bookings)} plain />
+        </dl>
+      </Panel>
+
+      {/* ----------------------------- 3. cash bookings still to run ----- */}
+
+      <Panel
+        tone="outline"
+        className="mt-4"
+        role="region"
+        aria-labelledby="cash-to-run"
+      >
+        <h2 id="cash-to-run" className="label text-forest/75">
+          Cash bookings still to run
+        </h2>
+        <p className="font-display tracking-display mt-3 text-2xl leading-none">
+          {formatPaise(paidAtCounter.netPaise)}
+        </p>
+        <p className="text-forest/70 mt-2 text-sm">
+          The traveller pays you on the day, so none of this passes through a
+          settlement.
+        </p>
+        <dl className="mt-4 space-y-2 text-sm">
+          <Row label="Fares" value={formatPaise(paidAtCounter.farePaise)} />
+          <Row
+            label="Our commission"
+            value={formatPaise(paidAtCounter.commissionPaise)}
+          />
+          <Row label="Bookings" value={String(paidAtCounter.bookings)} plain />
+        </dl>
+        <Link
+          href="/cash"
+          className="text-terra-deep tap-target mt-4 inline-block text-sm underline underline-offset-4"
+        >
+          What you owe us on cash already taken
+        </Link>
+      </Panel>
+
+      {/* ------------------------------------------- 4. season so far ---- */}
+
+      <Panel className="mt-4" role="region" aria-labelledby="season">
+        <h2 id="season" className="label text-forest/75">
+          Season so far
+        </h2>
+        <p className="text-forest/70 mt-1 text-sm">
+          Since {seasonStartLabel(seasonToDate.from)}
+        </p>
+        <p className="font-display tracking-display mt-4 text-3xl leading-none">
+          {formatPaise(seasonToDate.netPaise)}
+        </p>
+        <dl className="mt-5 space-y-2 text-sm">
+          <Row label="Fares" value={formatPaise(seasonToDate.grossPaise)} />
+          <Row
+            label="Our commission"
+            value={formatPaise(seasonToDate.commissionPaise)}
+          />
+          <Row
+            label="Refunded"
+            value={formatPaise(seasonToDate.refundsPaise)}
+          />
+          {showsAdjustments(seasonToDate.adjustmentsPaise) ? (
+            <Row
+              label="Corrections"
+              value={formatPaise(seasonToDate.adjustmentsPaise)}
+            />
+          ) : null}
+          <Row
+            label="Payouts sent"
+            value={String(seasonToDate.settlements)}
+            plain
+          />
+          <Row label="Bookings" value={String(seasonToDate.bookings)} plain />
+        </dl>
+      </Panel>
+
+      {/* -------------------------------------- 5. past settlements ------ */}
+
+      <section className="mt-10">
+        <h2 className="font-display tracking-display text-2xl leading-tight">
+          Past settlements
+        </h2>
+
+        {/*
+          `null` is "we could not load it" and `[]` is "there are none": two
+          different sentences, and a list that could not load must not take the
+          figures above it down with it.
+        */}
+        {past === null ? (
           <div className="mt-4">
             <Problem
-              title="The bookings did not load"
-              body="The totals above are unaffected. Try again in a moment. Nothing here has changed because of it."
+              title="We could not load your past settlements"
+              body="The figures above are still correct. Try again in a moment."
             />
           </div>
-        ) : bookings.length === 0 ? (
+        ) : past.items.length === 0 ? (
           <div className="mt-4">
             <Empty
-              title="No departures in this window"
-              body="Bookings appear here by the day the trip runs. A booking made this month for a trip next month is in next month's list."
+              title="No payouts yet"
+              body="A week appears here once it has been locked for payment."
             />
           </div>
         ) : (
-          <ul className="mt-4 space-y-3">
-            {bookings.map((b) => (
-              <li key={b.id} className={panelClass("raised", "p-0")}>
-                <div className="flex items-baseline justify-between gap-3 px-5 pt-4">
-                  <p className="text-base font-bold">{b.name || b.reference}</p>
-                  <p className="text-forest/70 text-sm">
-                    {b.guests} {b.guests === 1 ? "guest" : "guests"}
-                  </p>
-                </div>
-                {b.reference ? (
-                  <p className="text-forest/70 px-5 font-mono text-sm tracking-wider">
-                    {b.reference}
-                  </p>
-                ) : null}
-                <p className="text-forest/70 mt-1 px-5 text-sm">
-                  {b.experience}
-                  {b.startsAt
-                    ? ` · ${marketDay(b.startsAt, b.timezone)}, ${marketTime(b.startsAt, b.timezone)}`
-                    : null}
-                </p>
+          <>
+            <ul className="mt-4 space-y-3">
+              {past.items.map((settlement) => (
+                <li key={settlement.id}>
+                  <SettlementRow settlement={settlement} />
+                </li>
+              ))}
+            </ul>
 
-                {b.money ? (
-                  <>
-                    <dl className="divide-cream-line border-cream-line mt-3 divide-y border-t">
-                      <Line
-                        label="Gross"
-                        value={formatPaise(b.money.grossPaise)}
-                        compact
-                      />
-                      <Line
-                        label="Yuvoy's commission"
-                        value={`− ${formatPaise(b.money.commissionPaise)}`}
-                        compact
-                      />
-                      <Line
-                        label="Refunds"
-                        value={`− ${formatPaise(b.money.refundsPaise)}`}
-                        compact
-                      />
-                      <Line
-                        label="Net"
-                        value={formatPaise(b.money.netPaise)}
-                        emphasis
-                        compact
-                      />
-                    </dl>
-                    {/*
-                      The per-row twin of the totals' check. `netPaise` is
-                      sent, not derived, so a row that disagrees with its own
-                      parts is told not to be reconciled against rather than
-                      quietly recomputed.
-                    */}
-                    {!bookingReconciles(b.money) ? (
-                      <p
-                        role="alert"
-                        className="text-terra-deep px-5 pb-4 text-sm font-bold"
-                      >
-                        These figures do not add up. Do not reconcile against
-                        this booking. Send us the reference and we will find it.
-                      </p>
-                    ) : null}
-                  </>
-                ) : b.cash ? (
-                  /*
-                    Paid at the counter — yuvoy-operator#40. None of it passed
-                    through Yuvoy, so it is in none of the figures above, and
-                    the share owed on it lives on `/cash`. The API's `money` on
-                    such a booking is gross ₹0 and a negative net, which
-                    `toBookingLine` drops rather than let this list render.
-                  */
-                  <p className="text-forest/70 border-cream-line mt-3 border-t px-5 py-4 text-sm">
-                    Cash at the counter, so it is not in these figures.{" "}
-                    <span className="font-bold">
-                      {describeCash(b.cash, b.timezone)}
-                    </span>
-                  </p>
-                ) : (
-                  /*
-                    "Absent, not zeroed." A booking that has captured nothing
-                    has nothing to reconcile, and a row of ₹0s would invite
-                    exactly that.
-
-                    The state in the operator's words. This printed the raw
-                    column value — `pending_request` — which is the defect
-                    yuvoy-operator#34 fixed on Bookings and this list kept.
-                  */
-                  <p className="text-forest/70 border-cream-line mt-3 border-t px-5 py-4 text-sm">
-                    No money has moved for this booking yet.
-                    {stateWord(b) ? (
-                      <span className="font-bold"> · {stateWord(b)}</span>
-                    ) : null}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
+            {/*
+              "Show more" while there is more, and `complete` is what says so.
+              The contract is explicit: "Told rather than inferred. Do not infer
+              the end from a short page." A link rather than a button, because
+              this page is server-rendered and paging is a navigation.
+            */}
+            {!past.complete && past.nextCursor ? (
+              <Link
+                href={`/earnings?cursor=${encodeURIComponent(past.nextCursor)}`}
+                className="text-terra-deep tap-target mt-5 inline-block text-sm underline underline-offset-4"
+              >
+                Show more
+              </Link>
+            ) : null}
+          </>
         )}
       </section>
     </Screen>
   );
 }
 
-/** A booking's state in the operator's words, or nothing for one we cannot name. */
-function stateWord(b: BookingLine): string | null {
-  return describeBookingState(b.state, b.cash)?.label ?? null;
-}
-
-function MonthLink({
-  label,
-  href,
-  active,
-}: {
-  label: string;
-  href: string;
-  active: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "dock-target ease-interaction rounded-full border px-6 text-sm transition-colors duration-200",
-        active
-          ? "border-forest bg-forest text-cream font-bold"
-          : "border-cream-line bg-cream-deep hover:border-forest/40",
-      )}
-    >
-      {label}
-    </Link>
-  );
-}
-
-function Line({
+/** One line of the arithmetic. `plain` is a count rather than an amount. */
+function Row({
   label,
   value,
-  emphasis,
-  compact,
+  plain,
 }: {
   label: string;
   value: string;
-  emphasis?: boolean;
-  /** A row inside a booking, not the month's total: tighter, and no display figure. */
-  compact?: boolean;
+  plain?: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-baseline justify-between gap-4 px-5",
-        compact ? "py-3" : "py-4",
-      )}
-    >
-      <dt
-        className={emphasis ? "text-base font-bold" : "text-forest/80 text-sm"}
-      >
-        {label}
-      </dt>
-      <dd
-        className={
-          emphasis
-            ? compact
-              ? "text-base font-bold"
-              : "font-display text-3xl leading-none"
-            : "text-forest/80 font-mono text-sm"
-        }
-      >
-        {value}
-      </dd>
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="text-forest/75">{label}</dt>
+      <dd className={cn("tabular-nums", !plain && "font-bold")}>{value}</dd>
     </div>
+  );
+}
+
+function SettlementRow({ settlement }: { settlement: Settlement }) {
+  return (
+    <Link
+      href={`/earnings/${settlement.id}`}
+      className="rounded-card border-cream-line bg-cream-deep hover:border-forest/40 ease-interaction flex items-center justify-between gap-4 border p-4 transition-colors duration-200"
+    >
+      <div className="min-w-0">
+        <p className="font-bold">
+          {weekLabel(settlement.periodStart, settlement.periodEnd)}
+        </p>
+        <p className="text-forest/70 mt-1 text-sm">
+          {SETTLEMENT_STATE_LABEL[settlement.state]} ·{" "}
+          {settlement.bookings === 1
+            ? "1 booking"
+            : `${settlement.bookings} bookings`}
+        </p>
+      </div>
+      <p
+        className={cn(
+          "shrink-0 font-bold tabular-nums",
+          isOwedBack(settlement.netPaise) && "text-terra-deep",
+        )}
+      >
+        {formatPaise(settlement.netPaise)}
+      </p>
+    </Link>
   );
 }

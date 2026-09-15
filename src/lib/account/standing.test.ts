@@ -86,14 +86,45 @@ describe("absent is unknown, never fine", () => {
     ).toBeNull();
   });
 
-  it("survives a response with no blocking or credentials arrays", () => {
+  it("survives a response with no blocking, credentials or requirements", () => {
     const s = standingOf({ bookable: true } as unknown as AccountStanding);
     expect(s).toEqual({
       state: "",
       bookable: true,
       blocking: [],
       credentials: [],
+      requiredDocuments: [],
     });
+  });
+
+  it("keeps a required document type it has never heard of", () => {
+    /*
+      The enum is the eight this build knows, and a ninth added on the other
+      side must still be counted: the line reads "5 of 6", and a row quietly
+      dropped makes it "5 of 5" and tells an operator they are finished
+      (yuvoy-operator#46 item 1).
+    */
+    const s = standingOf({
+      bookable: true,
+      requiredDocuments: [
+        { type: "insurance", satisfied: true },
+        { type: "drone_permit", satisfied: false },
+      ],
+    } as unknown as AccountStanding);
+    expect(s?.requiredDocuments).toEqual([
+      { type: "insurance", satisfied: true },
+      { type: "drone_permit", satisfied: false },
+    ]);
+  });
+
+  it("drops a requirement that is missing either half of the answer", () => {
+    // A type with no verdict cannot be counted either way, and guessing `false`
+    // would put a document an operator has already sent into "waiting on you".
+    const s = standingOf({
+      bookable: true,
+      requiredDocuments: [{ type: "insurance" }, { satisfied: true }],
+    } as unknown as AccountStanding);
+    expect(s?.requiredDocuments).toEqual([]);
   });
 });
 

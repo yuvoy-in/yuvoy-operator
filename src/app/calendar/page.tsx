@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
-import { listListings, listSlots } from "@/lib/day/manifest";
+import { listClosures, listListings, listSlots } from "@/lib/day/manifest";
 import {
-  apiWindow,
   calendarDays,
   confirmedGuestsByDay,
   departuresOn,
@@ -51,9 +50,12 @@ export default async function CapacityPage() {
   const days = calendarDays(today);
   const first = days[0];
   const last = days[days.length - 1];
-  // Asked a day wider than the fortnight either side: the API's dates are UTC
-  // days, and these are the market's. `confirmedGuestsByDay` cuts it back.
-  const bookingsWindow = apiWindow(first, last);
+  /*
+    Asked for exactly the fortnight. `from` and `to` are market days on both
+    `GET /slots` and `GET /bookings`, inclusive — this used to widen by a day
+    either side because the API read them as UTC days, which asked for two days
+    nobody wanted and then threw them away (yuvoy-operator#45 item 6).
+  */
 
   /*
     Three calls, in parallel, answering three different questions.
@@ -68,10 +70,26 @@ export default async function CapacityPage() {
     is still said, without a count — so it degrades to `null` rather than
     taking a working seat-editing screen down.
   */
-  const [slots, listings, bookings] = await Promise.all([
+  /*
+    Four calls in parallel, answering four different questions.
+
+    The fortnight's departures are what this screen EDITS. The listings are
+    every listing this operator has, from `GET /experiences`. The bookings are
+    who is already confirmed on each day: the number in the one sentence a
+    closure must say first. And the closures are what is already shut, which
+    used to be guessed from each departure's status and therefore could not see
+    a closed day with nothing on it, or say why any day was closed.
+
+    A failed bookings read costs that number and nothing else. A failed closures
+    read costs the badge, so it degrades to none rather than taking a working
+    seat-editing screen down; the day still reads and the departures still show
+    their own status.
+  */
+  const [slots, listings, bookings, closures] = await Promise.all([
     listSlots(token, first, last),
     listListings(token),
-    listBookings(token, bookingsWindow.from, bookingsWindow.to),
+    listBookings(token, first, last),
+    listClosures(token, first, last).catch(() => []),
   ]);
 
   const guests = confirmedGuestsByDay(bookings, days);
@@ -98,7 +116,7 @@ export default async function CapacityPage() {
         <div className="mt-6">
           <Problem
             title="You can see these, but not change them"
-            body="Seats, closed dates and counter sales need an owner, an admin or a manager."
+            body="Only owners, admins and managers can change seats, close dates or record counter sales."
           />
         </div>
       ) : null}
@@ -148,7 +166,14 @@ export default async function CapacityPage() {
           are looked after in Bookings.
         </p>
 
-        {slots.length === 0 ? (
+        {/*
+          The empty state goes when there is a CLOSURE to show, even with no
+          departures at all. That is the case the inferred badge could never
+          see: a shop that closed a fortnight in January had nothing scheduled
+          and nothing on screen saying they had closed it, so the only way back
+          was to remember the closure existed.
+        */}
+        {slots.length === 0 && closures.length === 0 ? (
           <div className="mt-6">
             <Empty
               title="Nothing scheduled"
@@ -164,6 +189,7 @@ export default async function CapacityPage() {
                 label={dayCaption(day, today, tomorrow)}
                 departures={departuresOn(slots, day)}
                 guests={guests ? (guests.get(day) ?? 0) : null}
+                closures={closures}
                 canManage={me.canManage && !me.suspension}
               />
             ))}

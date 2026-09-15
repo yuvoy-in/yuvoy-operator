@@ -103,10 +103,18 @@ const TUS_HEADERS = {
 
 function cors(res: ServerResponse, origin: string | undefined) {
   res.setHeader("Access-Control-Allow-Origin", origin ?? "*");
-  res.setHeader("Access-Control-Allow-Methods", "HEAD, PATCH, POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "HEAD, PATCH, POST, PUT, OPTIONS",
+  );
+  /*
+    `x-amz-meta-*` is here because a presigned document upload sends the
+    metadata the URL was signed with, "exactly as given" — and a preflight that
+    does not allow those header names fails the upload before a byte moves.
+  */
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Tus-Resumable, Upload-Offset, Upload-Length, Upload-Defer-Length, Content-Type",
+    "Tus-Resumable, Upload-Offset, Upload-Length, Upload-Defer-Length, Content-Type, x-amz-meta-intent, x-amz-meta-credential",
   );
   /*
     The load-bearing one. A cross-origin client cannot read a response header
@@ -205,6 +213,69 @@ function handlePhoto(
   });
 }
 
+/**
+ * Documents, which are a PUT of the raw bytes and not multipart at all.
+ *
+ * A third shape on this host, because the document store is a third provider:
+ * "this signs a URL the browser sends the file straight to, in a private
+ * bucket. The file never passes through this API." A presigned S3 PUT takes the
+ * body as-is with the signed headers, so that is what this accepts.
+ *
+ * What it records is the SIZE and the CONTENT TYPE, because those are what
+ * `complete` is specified to check: "that it is the size declared, and that its
+ * first bytes are the kind its label claims." A mock that recorded nothing
+ * would let the portal ship a complete step that can never fail.
+ */
+const documents = new Map<string, { bytes: number; contentType: string }>();
+
+export function mockDocumentArrived(
+  intentId: string,
+): { bytes: number; contentType: string } | null {
+  return documents.get(intentId) ?? null;
+}
+
+export function resetMockDocuments(): void {
+  documents.clear();
+}
+
+/** `/documents/<intentId>` → the id, or null. */
+function documentIdOf(url: string | undefined): string | null {
+  const m = (url ?? "").match(/^\/documents\/([^/?]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function handleDocument(
+  req: IncomingMessage,
+  res: ServerResponse,
+  intentId: string,
+) {
+  if (req.method !== "PUT") {
+    /*
+      The contract says `method` is `PUT` and the client is told to use it. A
+      mock that also took POST would let a client ship the wrong verb and meet
+      a 405 from the bucket.
+    */
+    res.statusCode = 405;
+    return res.end();
+  }
+
+  let received = 0;
+  req.on("data", (chunk: Buffer) => {
+    received += chunk.length;
+  });
+  req.on("end", () => {
+    documents.set(intentId, {
+      bytes: received,
+      contentType: String(req.headers["content-type"] ?? ""),
+    });
+    res.statusCode = 200;
+    res.end();
+  });
+  req.on("error", () => {
+    /* The socket went. Nothing is recorded, and `complete` answers 409. */
+  });
+}
+
 function handle(req: IncomingMessage, res: ServerResponse) {
   cors(res, req.headers.origin);
   for (const [k, v] of Object.entries(TUS_HEADERS)) res.setHeader(k, v);
@@ -216,6 +287,9 @@ function handle(req: IncomingMessage, res: ServerResponse) {
 
   const photoId = photoIdOf(req.url);
   if (photoId) return handlePhoto(req, res, photoId);
+
+  const documentId = documentIdOf(req.url);
+  if (documentId) return handleDocument(req, res, documentId);
 
   const id = idOf(req.url);
   const upload = id ? uploads.get(id) : undefined;

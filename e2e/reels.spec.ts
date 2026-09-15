@@ -79,8 +79,22 @@ function testInfoClip(megabytes: number, name: string) {
   return { ...clip(megabytes), name };
 }
 
+/**
+ * The uploader, where it lives now: behind the + on the business profile.
+ *
+ * `/services/reels` is a redirect since #58 item 8, and the two uploaders moved
+ * into a sheet on `/account` rather than being rebuilt — one clip in flight at
+ * a time, the tus resume and the local preflight are all the shipped ones.
+ */
+async function openUploader(page: Page) {
+  await page.goto("/account");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Add a reel" }).click();
+  await expect(page.getByRole("dialog", { name: "Add a reel" })).toBeVisible();
+}
+
 async function choose(page: Page, file: ReturnType<typeof clip>) {
-  await page.goto("/services/reels");
+  await openUploader(page);
   await page.getByLabel("Choose a clip").setInputFiles(file);
 }
 
@@ -183,7 +197,7 @@ test("a slot holding one clip's bytes refuses another, and resumes the first", a
     return route.continue();
   });
 
-  await page.goto("/services/reels");
+  await openUploader(page);
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await page.getByRole("button", { name: "Upload it" }).click();
   await expect(page.getByText(/It stopped at 1\.0 MB of 3\.0 MB/)).toBeVisible({
@@ -249,7 +263,7 @@ test("a reload does not strand the upload — the same clip carries on and finis
     return route.continue();
   });
 
-  await page.goto("/services/reels");
+  await openUploader(page);
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await page.getByRole("button", { name: "Upload it" }).click();
   /*
@@ -267,7 +281,7 @@ test("a reload does not strand the upload — the same clip carries on and finis
     could not survive.
   */
   await page.unroute(/\/uploads\//);
-  await page.goto("/services/reels");
+  await openUploader(page);
 
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await expect(
@@ -298,7 +312,7 @@ test("after a reload, a different clip is refused rather than resumed into", asy
     return route.continue();
   });
 
-  await page.goto("/services/reels");
+  await openUploader(page);
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await page.getByRole("button", { name: "Upload it" }).click();
   await expect(
@@ -306,7 +320,7 @@ test("after a reload, a different clip is refused rather than resumed into", asy
   ).toBeVisible({ timeout: 60_000 });
 
   await page.unroute(/\/uploads\//);
-  await page.goto("/services/reels");
+  await openUploader(page);
 
   /*
     A different clip, into a slot holding 1 MB of the first one — and a page
@@ -361,7 +375,7 @@ test("with nothing remembered, the server's own declared length decides", async 
     return route.continue();
   });
 
-  await page.goto("/services/reels");
+  await openUploader(page);
   await page.getByLabel("Choose a clip").setInputFiles(reef);
   await page.getByRole("button", { name: "Upload it" }).click();
   await expect(
@@ -371,7 +385,7 @@ test("with nothing remembered, the server's own declared length decides", async 
   // Everything this browser knew about the slot, gone.
   await page.unroute(/\/uploads\//);
   await page.evaluate(() => window.localStorage.clear());
-  await page.goto("/services/reels");
+  await openUploader(page);
 
   // A different clip: refused, and it cannot name what is in the way.
   await page.getByLabel("Choose a clip").setInputFiles(harbour);
@@ -408,7 +422,7 @@ test("a slot somebody else is holding is refused, and says so truthfully", async
     anything about a URL that can no longer be lost.
   */
   await signIn(page, CONTENDED);
-  await page.goto("/services/reels");
+  await openUploader(page);
   await page
     .getByLabel("Choose a clip")
     .setInputFiles(testInfoClip(1, "colleague.mp4"));
@@ -424,7 +438,7 @@ test("a slot somebody else is holding is refused, and says so truthfully", async
 
 test("a file that is not a video never leaves the phone", async ({ page }) => {
   await signIn(page);
-  await page.goto("/services/reels");
+  await openUploader(page);
   await page.getByLabel("Choose a clip").setInputFiles({
     name: "boat.heic",
     mimeType: "image/heic",
@@ -614,39 +628,50 @@ test("the wrong clip can be taken down, while the page is still open", async ({
 
 test("approved footage can be attached to a listing", async ({ page }) => {
   await signIn(page);
-  await page.goto("/services/reels");
 
-  await expect(page.getByRole("heading", { name: "Your media" })).toBeVisible();
   /*
-    `.first()`: there is more than one approved clip in the fixtures now — one
-    of them exists precisely to stay attached to nothing, so the cross-link on
-    the Services section has something real to count. Attaching either proves
-    the same thing.
+    From the reel's own sheet — #58 item 6 — which is where "put it on another
+    listing" lives now. `.first()`: there is more than one approved clip in the
+    fixtures, one of which exists precisely to stay attached to nothing, and
+    attaching either proves the same thing.
   */
-  const approved = page
-    .getByText("Choose the listing it belongs to.")
-    .first()
-    .locator("..");
-  await approved.getByLabel("Listing").selectOption("exp_dive");
-  await approved.getByLabel("Gallery").check();
-  await approved.getByRole("button", { name: "Attach to listing" }).click();
+  await page.goto("/account?tab=reels");
+  await page.getByRole("button", { name: "Not on a listing" }).first().click();
 
-  await expect(page.getByText("Listing: Reef dive")).toBeVisible();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("Listing").selectOption("exp_dive");
+  await sheet.getByLabel("Gallery").check();
+  await sheet.getByRole("button", { name: "Attach to listing" }).click();
+
   await expect(
-    page.getByText("This is available to travellers."),
+    sheet.getByText("Attached. It is now available to that listing."),
   ).toBeVisible();
 });
 
-test("/services/reels has no accessibility violations", async ({ page }) => {
+test("the Reels tab and its sheet have no accessibility violations", async ({
+  page,
+}) => {
   await signIn(page);
-  await page.goto("/services/reels");
+  await page.goto("/account?tab=reels");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
+  const grid = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
+  expect(grid.violations).toEqual([]);
 
-  expect(results.violations).toEqual([]);
+  /*
+    And the sheet, which is the new thing axe has to be happy about: a dialog
+    that claims `aria-modal` over a page it does not remove from the tree.
+  */
+  await page.getByRole("button").filter({ hasText: /\w/ }).last().click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+
+  const open = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(open.violations).toEqual([]);
 });
 
 test("attaching to a listing nobody can book says so", async ({ page }) => {
@@ -661,13 +686,10 @@ test("attaching to a listing nobody can book says so", async ({ page }) => {
     travellers can see it.
   */
   await signIn(page);
-  await page.goto("/services/reels");
+  await page.goto("/account?tab=reels");
+  await page.getByRole("button", { name: "Not on a listing" }).first().click();
 
-  const row = page
-    .getByRole("listitem")
-    .filter({ hasText: "Choose the listing it belongs to." })
-    .first();
-
+  const row = page.getByRole("dialog");
   const select = row.getByLabel("Listing");
 
   /*
