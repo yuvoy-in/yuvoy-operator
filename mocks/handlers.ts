@@ -100,6 +100,46 @@ function sessionUser(request: Request): MockTeamMember | null {
   );
 }
 
+/**
+ * Which BUSINESS this session belongs to, as far as these mocks model one.
+ *
+ * Everybody on `TEAM` works for Reef Divers and shares its state. An identity
+ * created through `POST /auth/signup` is a business of its own, brand new, with
+ * nothing behind it — and `OTHER_MEMBERS` belong to businesses this mock does not
+ * otherwise model.
+ *
+ * It exists because one piece of state was leaking across all of them: the bank
+ * change list. An account created a minute ago was shown Reef Divers' open
+ * change and told "there is already a change in progress", which is not a screen
+ * the real API can produce. It also made a second business's tests depend on
+ * whether another spec had raised one, which is a race rather than a fixture.
+ */
+function businessOf(request: Request): string {
+  const me = sessionUser(request);
+  if (!me) return "none";
+  return team.some((m) => m.id === me.id) ? "reef" : `solo:${me.id}`;
+}
+
+/**
+ * The change requests this session's business actually has.
+ *
+ * `CHANGE_REQUESTS` is Reef Divers' history; `bankChanges` is what anybody has
+ * raised since the process started, each tagged with `raisedFor`. The tag is
+ * stripped here rather than stored on the way out, because it is bookkeeping
+ * this mock needs and not a field the API sends.
+ */
+function changesFor(request: Request): Record<string, unknown>[] {
+  const mine = businessOf(request);
+  const raised = bankChanges
+    .filter((r) => r.raisedFor === mine)
+    .map((r) => {
+      const out = { ...r };
+      delete out.raisedFor;
+      return out;
+    });
+  return mine === "reef" ? [...raised, ...CHANGE_REQUESTS] : raised;
+}
+
 /** OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it. */
 const canManage = (member: MockTeamMember) =>
   member.roles.includes("OWNER") || member.roles.includes("MANAGER");
@@ -1129,13 +1169,20 @@ function requireInviter(request: Request) {
 
 /**
  * The 403 every access write shares — OWNER or ADMIN, and an admin may not act
- * on an owner or on another admin.
+ * on an OWNER.
  *
- * Modelled rather than collapsed into `requireInviter`, because the extra
- * clause is the whole difference between the two: an admin who could demote
- * another admin could demote the owner's stand-in and then invite themselves a
- * replacement. A mock that gated these on "owner or admin" alone would let the
- * portal ship a Team screen offering an admin controls the API refuses.
+ * ## The "or another admin" clause is gone
+ *
+ * It was here until 14 September, and it was the contract's wording at the time.
+ * Each of the four endpoints now names one exception and only one: "an ADMIN
+ * cannot change an OWNER's role", "cannot hold an OWNER", "cannot restore an
+ * OWNER", "cannot remove an OWNER". Two admins may act on each other, and what
+ * stops that becoming a lockout is the `409` on the last active OWNER or ADMIN
+ * rather than rank (D15, yuvoy-operator#51).
+ *
+ * The mock has to move with it. One that kept refusing admin-on-admin would let
+ * the portal go on hiding controls the API allows, and no test would notice —
+ * which is exactly how the old clause survived the restatement.
  *
  * Returns the refusal, or `null`, or the target member when it is allowed.
  */
@@ -1165,16 +1212,9 @@ function requireAccessManager(request: Request, targetId: string) {
     };
   }
 
-  if (
-    !roles.includes("OWNER") &&
-    (member.roles.includes("OWNER") || member.roles.includes("ADMIN"))
-  ) {
+  if (!roles.includes("OWNER") && member.roles.includes("OWNER")) {
     return {
-      refusal: envelope(
-        "forbidden",
-        "An admin cannot change an owner or another admin.",
-        403,
-      ),
+      refusal: envelope("forbidden", "An admin cannot change an owner.", 403),
       member: null,
     };
   }
@@ -1191,6 +1231,34 @@ function requireAccessManager(request: Request, targetId: string) {
   }
 
   return { refusal: null, member };
+}
+
+/**
+ * Active people who can let somebody in — owners AND admins, counted together.
+ *
+ * The line every access write holds: "the business keeps at least one active
+ * OWNER or ADMIN … a business with neither has nobody who can let anybody back
+ * in" (D15). Pending rows are invitations rather than logins and are not counted;
+ * a held login cannot let anybody in either.
+ *
+ * The mock counted owners alone until 14 September, which meant the portal's own
+ * owners-only version agreed with it and neither was right. A business whose
+ * owner had left and whose last admin could be removed was a lockout both sides
+ * called legal.
+ */
+function activeSeniors() {
+  return team.filter(
+    (m) =>
+      !m.pending &&
+      m.state !== "suspended" &&
+      (m.roles.includes("OWNER") || m.roles.includes("ADMIN")),
+  );
+}
+
+/** Whether this row is the last active owner or admin the business has. */
+function isLastSenior(member: MockTeamMember) {
+  const seniors = activeSeniors();
+  return seniors.length === 1 && seniors[0].id === member.id;
 }
 
 /**
@@ -1565,11 +1633,19 @@ export const handlers = [
       businessName?: string;
       name?: string;
       phone?: string;
+      relationship?: string;
       email?: string;
     };
     const businessName = (body.businessName ?? "").trim();
     const name = (body.name ?? "").trim();
     const phone = (body.phone ?? "").trim();
+    /*
+      "Optional. Absent means `own`, which is what every sign-up meant before the
+      question was asked." The mock honours that rather than requiring it, so a
+      client that stops sending the field is not silently broken by the mock
+      being stricter than the API.
+    */
+    const relationship = body.relationship ?? "own";
 
     if (
       businessName.length < 2 ||
@@ -1583,6 +1659,16 @@ export const handlers = [
       );
     }
 
+    /*
+      "Anything else is refused with `400`, BEFORE the number is looked at, so the
+      refusal says nothing about whether the number has an account." The order
+      matters as much as the refusal: checking the phone first would make this a
+      way to ask whether a number is registered.
+    */
+    if (relationship !== "own" && relationship !== "run") {
+      return envelope("invalid_input", "Own it, or run it for the owner.", 400);
+    }
+
     const taken = [...team, ...OTHER_MEMBERS, ...signups].some(
       (m) => m.phone === phone,
     );
@@ -1590,8 +1676,13 @@ export const handlers = [
       signups.push({
         id: `usr_signup_${Math.random().toString(36).slice(2, 10)}`,
         name,
-        // The first OWNER of the new business, as the contract says.
-        roles: ["OWNER"],
+        /*
+          "`own` makes them its OWNER. `run` makes them its ADMIN, and the
+          business has no owner until they invite one" (D15). The whole point of
+          asking the question, so the mock is what makes the answer observable:
+          `GET /me` is where a test can see which one it got.
+        */
+        roles: [relationship === "run" ? "ADMIN" : "OWNER"],
         state: "active",
         phone,
       });
@@ -1770,14 +1861,30 @@ export const handlers = [
     }
 
     /*
-      A role that does not exist is a different failure from a role that is not
-      allowed, and the contract keeps them apart: `invalid_role` is "pick a role
-      that exists", while inviting an OWNER folds into the one deliberately
-      uninformative `cannot_invite` below.
+      `invalid_role` is "pick a role that EXISTS", and `role` may be left out,
+      which is STAFF. The four are all valid input; what varies is what they get.
     */
-    if (role !== "MANAGER" && role !== "STAFF" && role !== "OWNER") {
+    if (role !== "" && !["OWNER", "ADMIN", "MANAGER", "STAFF"].includes(role)) {
       return envelope("invalid_role", "No such role.", 400);
     }
+
+    /*
+      **Everybody joins as STAFF, except an owner** (D15).
+
+      An invitation for ADMIN or MANAGER is "sent, not refused. The response says
+      `role: STAFF` and carries a `note` saying so, because a portal built before
+      D15 still offers those roles and the person inviting must be told what will
+      actually happen."
+
+      Modelled rather than refused, because the difference is invisible unless the
+      mock does it: a portal that asked for ADMIN and read back its own request
+      would tell an owner they had appointed a stand-in who is in fact staff.
+    */
+    const granted = role === "OWNER" ? "OWNER" : "STAFF";
+    const note =
+      role === "ADMIN" || role === "MANAGER"
+        ? `They join as staff. You can make them ${role === "ADMIN" ? "an admin" : "a manager"} from their row once they have joined.`
+        : undefined;
 
     /*
       ONE message for every refusal, and the mock keeps it that way on purpose.
@@ -1787,9 +1894,13 @@ export const handlers = [
       which businesses are on Yuvoy." A mock that distinguished them would let
       this portal ship a branch the real API never takes — and the branch would
       be the enumeration oracle the endpoint exists to avoid being.
+
+      Inviting an OWNER is no longer one of those failures. "An ADMIN may invite
+      an owner as well as an OWNER may", because a business whose first person
+      runs it has none until somebody invites one.
     */
     const alreadyHere = team.some((m) => !m.pending && m.phone === phone);
-    if (role === "OWNER" || alreadyHere) {
+    if (alreadyHere) {
       return envelope(
         "cannot_invite",
         "We could not send that invitation.",
@@ -1806,7 +1917,8 @@ export const handlers = [
     team.push({
       id: `inv_${Math.random().toString(36).slice(2, 10)}`,
       name,
-      roles: [role],
+      // What accepting will make them, which is not always what was asked for.
+      roles: [granted],
       state: "invited",
       pending: true,
       phone,
@@ -1819,7 +1931,13 @@ export const handlers = [
       inviting somebody a dead end for the invitee.
     */
     return HttpResponse.json(
-      { sent: true, joinUrl: JOIN_URL, devCode: DEV_CODE },
+      {
+        sent: true,
+        role: granted,
+        ...(note ? { note } : {}),
+        joinUrl: JOIN_URL,
+        devCode: DEV_CODE,
+      },
       { status: 202 },
     );
   }),
@@ -2940,14 +3058,24 @@ export const handlers = [
 
     const body = (await request.json()) as { role?: string };
     const role = body.role ?? "";
-    if (!["ADMIN", "MANAGER", "STAFF"].includes(role)) {
-      // OWNER lands here too, on purpose: "`OWNER` cannot be given."
-      return envelope("invalid_input", "ADMIN, MANAGER or STAFF.", 400);
+    /*
+      All FOUR. `OWNER` used to land in the 400 here on "`OWNER` cannot be
+      given"; the enum is now `[OWNER, ADMIN, MANAGER, STAFF]` and "an OWNER or an
+      ADMIN may make somebody already on the team an owner" (D31).
+    */
+    if (!["OWNER", "ADMIN", "MANAGER", "STAFF"].includes(role)) {
+      return envelope("invalid_input", "OWNER, ADMIN, MANAGER or STAFF.", 400);
     }
-    if (member!.roles.includes("OWNER")) {
+    /*
+      Demoting the last active owner-or-admin is the refusal, not touching an
+      owner's row at all. The old rule — "an owner's role is not changed here" —
+      refused a change the API now makes, and an owner handing the business on had
+      no way through the portal.
+    */
+    if (role !== "OWNER" && role !== "ADMIN" && isLastSenior(member!)) {
       return envelope(
         "cannot_change_access",
-        "An owner's role is not changed here.",
+        "That would leave the business with no owner and no admin.",
         409,
       );
     }
@@ -2977,13 +3105,10 @@ export const handlers = [
       // "Not on this team, or not currently working."
       return envelope("not_found", "Not currently working.", 404);
     }
-    const owners = team.filter(
-      (m) => !m.pending && m.roles.includes("OWNER"),
-    ).length;
-    if (member!.roles.includes("OWNER") && owners <= 1) {
+    if (isLastSenior(member!)) {
       return envelope(
         "cannot_change_access",
-        "You cannot pause the last owner.",
+        "You cannot pause the last owner or admin. Somebody has to be able to let people in.",
         409,
       );
     }
@@ -3011,7 +3136,12 @@ export const handlers = [
 
   /*
     "OWNER **or** ADMIN, was OWNER-only" (yuvoy-api#109). The seniority clause
-    comes with it: an admin may not remove an owner or another admin.
+    comes with it, and it is now one clause rather than two: an admin may not
+    remove an OWNER, and may remove another admin.
+
+    The 409 is `cannot_change_access`. `cannot_remove` is gone from the contract
+    and this mock no longer sends it — a mock that did would keep the portal's
+    dead branch alive and passing (yuvoy-operator#51 item 4).
   */
   http.delete(url("/team/:id"), async ({ request, params }) => {
     const failed = requireSession(request);
@@ -3029,28 +3159,22 @@ export const handlers = [
     const member = team.find((m) => m.id === id);
     if (!member) return envelope("not_found", "No such member.", 404);
 
-    if (
-      !myRoles.includes("OWNER") &&
-      (member.roles.includes("OWNER") || member.roles.includes("ADMIN"))
-    ) {
-      return envelope(
-        "forbidden",
-        "An admin cannot remove an owner or another admin.",
-        403,
-      );
+    if (!myRoles.includes("OWNER") && member.roles.includes("OWNER")) {
+      return envelope("forbidden", "An admin cannot remove an owner.", 403);
     }
 
     if (!member.pending) {
       if (member.id === sessionUser(request)!.id) {
-        return envelope("cannot_remove", "You cannot remove yourself.", 409);
-      }
-      const owners = team.filter(
-        (m) => !m.pending && m.roles.includes("OWNER"),
-      ).length;
-      if (member.roles.includes("OWNER") && owners <= 1) {
         return envelope(
-          "cannot_remove",
-          "You cannot remove the last owner.",
+          "cannot_change_access",
+          "You cannot remove yourself.",
+          409,
+        );
+      }
+      if (isLastSenior(member)) {
+        return envelope(
+          "cannot_change_access",
+          "You cannot remove the last owner or admin. A business with neither has nobody who can let anybody back in.",
           409,
         );
       }
@@ -3707,10 +3831,24 @@ export const handlers = [
     return HttpResponse.json(COMMISSION_OWED);
   }),
 
+  /*
+    One business's changes, and only that business's.
+
+    `CHANGE_REQUESTS` is Reef Divers' history and `bankChanges` records who
+    raised each one, so a signup identity sees an empty list until it raises
+    something of its own. Before this, every identity in the mock saw Reef
+    Divers' open change — which made a brand-new account's Payout screen say
+    "there is already a change in progress" before it had ever had a bank
+    account, and made any test on a second identity depend on whether another
+    spec had raised one first.
+
+    `raisedFor` is stripped on the way out: it is bookkeeping this mock needs
+    and not a field the API sends.
+  */
   http.get(url("/change-requests"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
-    const live = [...bankChanges, ...CHANGE_REQUESTS].map((r) =>
+    const live = changesFor(request).map((r) =>
       stoppedChanges.includes(String((r as { id?: string }).id))
         ? { ...r, state: "withdrawn" }
         : r,
@@ -3787,7 +3925,7 @@ export const handlers = [
       return envelope("forbidden", "Only the owner can change this.", 403);
     }
 
-    const open = [...bankChanges, ...CHANGE_REQUESTS].filter(
+    const open = changesFor(request).filter(
       (r) =>
         !stoppedChanges.includes(String((r as { id?: string }).id)) &&
         ["objection_window", "pending", "cooling", "approved"].includes(
@@ -3828,6 +3966,8 @@ export const handlers = [
     const summary = `${body.bankName || "Bank"} ••••${account.slice(-4)} · ${(body.ifsc ?? "").toUpperCase()}`;
 
     bankChanges.unshift({
+      // Whose it is. See `changesFor`.
+      raisedFor: businessOf(request),
       id,
       kind: "bank",
       state: "objection_window",
@@ -3855,11 +3995,15 @@ export const handlers = [
     if (failed) return failed;
 
     const id = String(params.id);
-    const all = [...bankChanges, ...CHANGE_REQUESTS] as {
-      id?: string;
-      state?: string;
-    }[];
-    const found = all.find((r) => r.id === id);
+    /*
+      Scoped to the caller's own business. Another business's change is a `404`,
+      never a `403` — "a row belonging to another operator answers 404, never
+      403. A 403 would confirm the row exists, which is precisely what somebody
+      probing ids wants to learn."
+    */
+    const found = (
+      changesFor(request) as { id?: string; state?: string }[]
+    ).find((r) => r.id === id);
     if (!found) return envelope("not_found", "No such change.", 404);
 
     if (stoppedChanges.includes(id) || found.state === "applied") {

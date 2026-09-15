@@ -40,15 +40,19 @@ describe("who may manage access at all", () => {
 });
 
 describe("the assignable roles", () => {
-  it("does not include OWNER, so it cannot be sent", () => {
+  it("includes OWNER now, and still refuses anything invented", () => {
     /*
-      "`OWNER` cannot be given … the owner is whoever the payout account
-      belongs to; that moves deliberately, not from a login." The action's
-      schema is built from this list, so a hand-crafted form post carrying
-      OWNER is refused before a request exists.
+      OWNER used to be excluded, on the reasoning that "the owner is whoever the
+      payout account belongs to; that moves deliberately, not from a login."
+      `PUT /team/{id}/role` declares `enum: [OWNER, ADMIN, MANAGER, STAFF]` and
+      refuses only "an ADMIN cannot change an OWNER's role", so an OWNER may
+      hand the role on (yuvoy-operator#51 item 3).
+
+      The action's schema is built from this list, so a hand-crafted form post
+      carrying anything else is still refused before a request exists.
     */
-    expect(ASSIGNABLE_ROLES).toEqual(["ADMIN", "MANAGER", "STAFF"]);
-    expect(isAssignableRole("OWNER")).toBe(false);
+    expect(ASSIGNABLE_ROLES).toEqual(["OWNER", "ADMIN", "MANAGER", "STAFF"]);
+    expect(isAssignableRole("OWNER")).toBe(true);
     expect(isAssignableRole("ADMIN")).toBe(true);
     expect(isAssignableRole("nonsense")).toBe(false);
   });
@@ -84,12 +88,19 @@ describe("changing a role", () => {
     );
   });
 
-  it("is never offered on an owner", () => {
-    // "An owner's role cannot be changed here." No reason rendered — the
-    // absent control states the rule (§4).
-    const r = canChangeRole(person({ roles: OWNER }), ME, OWNER);
-    expect(r.allowed).toBe(false);
-    expect(r.reason).toBeUndefined();
+  it("IS offered on an owner, to another owner", () => {
+    /*
+      Reversed on 14 September. It used to refuse everybody on an owner's row,
+      because "an owner's role cannot be changed here". `PUT /team/{id}/role`
+      now takes OWNER and refuses only an ADMIN doing it, so an owner may hand
+      the business on (yuvoy-operator#51 item 3).
+
+      The weight has not gone anywhere: the confirmation says a new owner "will
+      be able to change where the business is paid."
+    */
+    expect(canChangeRole(person({ roles: OWNER }), ME, OWNER).allowed).toBe(
+      true,
+    );
   });
 
   it("is never offered on yourself", () => {
@@ -108,12 +119,21 @@ describe("changing a role", () => {
     ).toBe(false);
   });
 
-  it("refuses an admin acting on an owner or another admin", () => {
+  it("refuses an admin acting on an OWNER, and allows one on another admin", () => {
+    /*
+      Narrower than it was. Each of the four access endpoints now says only
+      "an ADMIN cannot change an OWNER", where it used to say "an OWNER or
+      another ADMIN".
+
+      Two admins may therefore act on each other, which is a real widening of
+      what one login can do to another. It is the API's decision, and the `409`
+      on the last active owner or admin is what stops it becoming a lockout.
+    */
     expect(canChangeRole(person({ roles: OWNER }), ME, ADMIN).allowed).toBe(
       false,
     );
     expect(canChangeRole(person({ roles: ADMIN }), ME, ADMIN).allowed).toBe(
-      false,
+      true,
     );
     expect(canChangeRole(person({ roles: STAFF }), ME, ADMIN).allowed).toBe(
       true,
@@ -139,11 +159,46 @@ describe("pausing and restoring", () => {
     expect(canRestore(held, ME, OWNER).allowed).toBe(true);
   });
 
-  it("refuses to pause the last owner, and says which refusal it is", () => {
+  it("refuses to pause the last owner OR admin, and says which refusal it is", () => {
+    /*
+      `cannot_change_access` on this endpoint is "your own access, or the last
+      active OWNER or ADMIN". Counting owners alone was wrong twice: it blocked
+      holding an owner while an active admin remained, and allowed holding the
+      last admin at a business whose owner had gone.
+    */
     const owner = person({ id: "usr_owner", roles: OWNER });
     const r = canHold(owner, ME, OWNER, [owner]);
     expect(r.allowed).toBe(false);
-    expect(r.reason).toBe("The only owner.");
+    expect(r.reason).toBe(
+      "The last owner or admin. Somebody has to be able to let people in.",
+    );
+
+    // And the same refusal on the last ADMIN, which the old rule missed.
+    const admin = person({ id: "usr_admin", roles: ADMIN });
+    expect(canHold(admin, ME, OWNER, [admin]).reason).toBe(
+      "The last owner or admin. Somebody has to be able to let people in.",
+    );
+  });
+
+  it("allows pausing an owner while an ACTIVE admin remains", () => {
+    /*
+      The half the owners-only count refused wrongly. An admin can let people
+      back in, so the business is not locked out.
+    */
+    const owner = person({ id: "usr_owner", roles: OWNER });
+    const admin = person({ id: "usr_admin", roles: ADMIN });
+    expect(canHold(owner, ME, OWNER, [owner, admin]).allowed).toBe(true);
+  });
+
+  it("does NOT count a held admin as the one who keeps the business open", () => {
+    // A suspended login cannot let anybody in, so it cannot make this safe.
+    const owner = person({ id: "usr_owner", roles: OWNER });
+    const heldAdmin = person({
+      id: "usr_admin",
+      roles: ADMIN,
+      state: "suspended",
+    });
+    expect(canHold(owner, ME, OWNER, [owner, heldAdmin]).allowed).toBe(false);
   });
 
   it("allows pausing an owner once there are two", () => {
@@ -176,14 +231,19 @@ describe("pausing and restoring", () => {
     expect(canRestore(selfHeld, ME, OWNER).allowed).toBe(false);
   });
 
-  it("refuses an admin acting on an owner or another admin", () => {
+  it("refuses an admin acting on an OWNER, and allows one on another admin", () => {
+    /*
+      "an ADMIN cannot hold an OWNER" is the whole of the 403 now. Holding
+      another admin is allowed, and the team here has two owners so the last
+      active owner-or-admin rule is not what is being tested.
+    */
     const owner = person({ id: "o", roles: OWNER });
     const admin2 = person({ id: "a2", roles: ADMIN });
     const staff = person({ id: "s", roles: STAFF });
     const team = [owner, person({ id: "o2", roles: OWNER }), admin2, staff];
 
     expect(canHold(owner, ME, ADMIN, team).allowed).toBe(false);
-    expect(canHold(admin2, ME, ADMIN, team).allowed).toBe(false);
+    expect(canHold(admin2, ME, ADMIN, team).allowed).toBe(true);
     expect(canHold(staff, ME, ADMIN, team).allowed).toBe(true);
   });
 

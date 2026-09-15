@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  activeOwnerCount,
+  activeSeniorCount,
   lastSeen,
   removability,
   splitTeam,
@@ -42,14 +42,48 @@ describe("an invitation is not a person", () => {
     expect(people.map((p) => p.name)).toEqual(["Asha", "Bo", "Ana", "Zara"]);
   });
 
-  it("does not count an unaccepted invitation as an owner", () => {
-    // An invitation cannot approve a bank change or receive a step-up code,
-    // so it cannot be the owner that makes removing the real one safe.
+  it("does not count an unaccepted invitation", () => {
+    // An invitation has no login, so it cannot let anybody back in and cannot
+    // be the reason removing the real one is safe.
     const team = [
       person({ id: "usr_a", roles: ["OWNER"] }),
       person({ id: "inv_b", roles: ["OWNER"], pending: true }),
     ];
-    expect(activeOwnerCount(team)).toBe(1);
+    expect(activeSeniorCount(team)).toBe(1);
+  });
+
+  it("counts ADMINS as well as owners", () => {
+    /*
+      The rule is "the last active OWNER or ADMIN", not the last owner
+      (yuvoy-operator#51 item 4). Counting owners alone was wrong twice over: it
+      blocked holding an owner while an active admin remained, and it allowed
+      removing the last admin at a business whose owner had gone.
+    */
+    const team = [
+      person({ id: "usr_owner", roles: ["OWNER"] }),
+      person({ id: "usr_admin", roles: ["ADMIN"] }),
+      person({ id: "usr_mgr", roles: ["MANAGER"] }),
+      person({ id: "usr_staff", roles: ["STAFF"] }),
+    ];
+    expect(activeSeniorCount(team)).toBe(2);
+  });
+
+  it("does not count a HELD login", () => {
+    /*
+      A suspended login cannot let anybody in either, so it cannot be the one
+      that makes removing the other safe. This is the case that would otherwise
+      let two people lock each other out one after the other.
+    */
+    const team = [
+      person({ id: "usr_owner", roles: ["OWNER"] }),
+      person({ id: "usr_admin", roles: ["ADMIN"], state: "suspended" }),
+    ];
+    expect(activeSeniorCount(team)).toBe(1);
+  });
+
+  it("counts somebody holding both roles once", () => {
+    const team = [person({ id: "usr_both", roles: ["OWNER", "ADMIN"] })];
+    expect(activeSeniorCount(team)).toBe(1);
   });
 });
 
@@ -108,21 +142,40 @@ describe("who may be removed", () => {
     expect(r.reason).toBeUndefined();
   });
 
-  it("refuses to remove the last owner, and that one DOES say why", () => {
+  it("refuses to remove the last owner OR admin, and that one DOES say why", () => {
     /*
-      The one reason that survives the cut. An owner would read a missing
-      Remove here as a bug, and it is not inferable from the row — but it is
-      stated as a fact with no next step, because there is none: an owner
-      cannot be invited from this portal.
+      The one reason that survives the cut. Somebody would read a missing Remove
+      here as a bug, and it is not inferable from the row.
+
+      It now says why rather than only what, because there IS a next step since
+      14 September: an owner can be invited from this portal, so "somebody has
+      to be able to let people in" tells a reader what to do about it.
+
+      The contract's own reasoning, on this endpoint: "a business with neither
+      has nobody who can let anybody back in."
     */
+    const expected =
+      "The last owner or admin. Somebody has to be able to let people in.";
+
+    const lastOwner = [person({ id: "usr_owner", roles: OWNER })];
+    const r = removability(lastOwner[0], me, OWNER, lastOwner);
+    expect(r.removable).toBe(false);
+    expect(r.reason).toBe(expected);
+
+    // The same refusal on the last ADMIN, which the owners-only rule allowed.
+    const lastAdmin = [person({ id: "usr_admin", roles: ADMIN })];
+    expect(removability(lastAdmin[0], me, OWNER, lastAdmin).reason).toBe(
+      expected,
+    );
+  });
+
+  it("allows removing an owner while an ACTIVE admin remains", () => {
+    // An admin can let people back in, so the business is not locked out.
     const team = [
       person({ id: "usr_owner", roles: OWNER }),
-      person({ id: me, roles: OWNER }),
+      person({ id: "usr_admin", roles: ADMIN }),
     ];
-    const only = [team[0]];
-    const r = removability(team[0], me, OWNER, only);
-    expect(r.removable).toBe(false);
-    expect(r.reason).toBe("The only owner.");
+    expect(removability(team[0], me, OWNER, team).removable).toBe(true);
   });
 
   it("allows removing an owner once there are two", () => {
@@ -143,15 +196,67 @@ describe("who may be removed", () => {
     expect(removability(team[1], me, ADMIN, team).removable).toBe(true);
   });
 
-  it("does not let an ADMIN remove an owner or another admin", () => {
-    // "An ADMIN cannot change an OWNER or another ADMIN" — 403.
+  it("does not let an ADMIN remove an owner", () => {
+    // The whole of this endpoint's seniority clause: "an ADMIN cannot remove an
+    // OWNER". Nothing about another admin (yuvoy-operator#51 item 4).
     const team = [
       person({ id: me, roles: ADMIN }),
       person({ id: "usr_owner", roles: OWNER }),
-      person({ id: "usr_admin2", roles: ADMIN }),
     ];
     expect(removability(team[1], me, ADMIN, team).removable).toBe(false);
-    expect(removability(team[2], me, ADMIN, team).removable).toBe(false);
+  });
+
+  it("lets an ADMIN remove ANOTHER ADMIN, which it used to refuse", () => {
+    /*
+      The narrowing that matters, and it widens what one login can do to
+      another. This test asserted the opposite until 14 September, on the 403 as
+      it was then worded: "an ADMIN cannot change an OWNER or another ADMIN".
+      Each endpoint now names only the OWNER clause.
+
+      An owner appointing two admins should know they can remove each other. The
+      `409` on the last active owner or admin is what stops it being a lockout,
+      and the case below proves that still bites.
+    */
+    const team = [
+      person({ id: me, roles: ADMIN }),
+      person({ id: "usr_admin2", roles: ADMIN }),
+      person({ id: "usr_owner", roles: OWNER }),
+    ];
+    expect(removability(team[1], me, ADMIN, team).removable).toBe(true);
+  });
+
+  it("does NOT withhold Remove on a held admin just because they hold the role", () => {
+    /*
+      The over-refusal the "is the last one" phrasing caused, and it is reachable
+      at Reef Divers: one active owner, one admin somebody has paused. The count
+      of active seniors is 1 and the paused admin holds a senior role, so the old
+      check refused to remove them and said "the last owner or admin" — which is
+      false. They are not active, the server does not count them, and removing
+      them takes nothing away from the business.
+    */
+    const team = [
+      person({ id: me, roles: OWNER }),
+      person({ id: "usr_admin", roles: ADMIN, state: "suspended" }),
+    ];
+    const verdict = removability(team[1], me, OWNER, team);
+    expect(verdict.removable).toBe(true);
+    expect(verdict.reason).toBeUndefined();
+  });
+
+  it("refuses when the removal itself would leave nobody in charge", () => {
+    /*
+      Stated as arithmetic about what is LEFT, which is the server's own rule:
+      "nobody can remove the last active OWNER or ADMIN: a business with neither
+      has nobody who can let anybody back in."
+
+      Reached here with a signed-in id that matches no row — a list one render
+      behind the account. That is the only way it can happen in the product, and
+      it is exactly why the check is worth keeping: rank cannot express it.
+    */
+    const team = [person({ id: "usr_owner", roles: OWNER })];
+    const verdict = removability(team[0], "usr_gone", OWNER, team);
+    expect(verdict.removable).toBe(false);
+    expect(verdict.reason).toContain("last owner or admin");
   });
 
   it("offers nothing at all to a MANAGER", () => {

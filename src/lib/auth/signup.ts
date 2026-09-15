@@ -21,6 +21,14 @@ import { z } from "zod";
  * 3. **Two businesses may share a name.** Nothing here may imply a name is
  *    claimed, reserved or checked.
  *
+ * 4. **Owning it and running it are different accounts** (D15,
+ *    yuvoy-operator#51 item 1). `relationship: "own"` makes the person signing
+ *    up the business's OWNER; `"run"` makes them its ADMIN, and the business
+ *    then has no owner at all until they invite one. That is not a label: an
+ *    admin cannot change where the business is paid, so somebody who answers
+ *    "I run it" and expects to add a bank account will be stopped, and the
+ *    question is the only place we can say so before they find out.
+ *
  * The schema lives apart from the action so it can be tested without a server
  * and without a network — the same split `rights.ts` uses.
  */
@@ -52,6 +60,22 @@ export const signUpSchema = z.object({
     .max(120, "That is longer than a name we can use. Shorten it."),
   phone,
   /*
+    REQUIRED here, and optional in the contract.
+
+    "Absent means `own`, which is what every sign-up meant before the question
+    was asked" — a sensible default for an older client, and the wrong thing for
+    a form that can simply ask. Defaulting silently would make somebody who runs
+    a business for its owner into its owner, and the first they would hear of it
+    is a bank change they are allowed to make. The issue asks for "a required
+    choice with two options" and this is why.
+
+    No `.default()` either: a default here would turn "they did not answer" into
+    an answer, which is the same mistake by a shorter route.
+  */
+  relationship: z.enum(["own", "run"], {
+    message: "Say whether you own this business or run it for the owner.",
+  }),
+  /*
     Optional in the contract, and genuinely optional here: an operator on a
     jetty may not have an email and must not be stopped by one. An empty field
     is OMITTED from the body rather than sent as "" — the request body is
@@ -76,12 +100,19 @@ export function signUpBody(input: SignUpInput): {
   businessName: string;
   name: string;
   phone: string;
+  relationship: "own" | "run";
   email?: string;
 } {
   return {
     businessName: input.businessName,
     name: input.name,
     phone: input.phone,
+    /*
+      Always sent, never inferred. The endpoint treats an absent value as `own`,
+      so omitting it on a "run" answer would quietly create an owner — the one
+      outcome this field exists to prevent.
+    */
+    relationship: input.relationship,
     ...(input.email ? { email: input.email } : {}),
   };
 }

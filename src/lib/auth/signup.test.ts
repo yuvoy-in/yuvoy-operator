@@ -5,10 +5,11 @@ const valid = {
   businessName: "Reef Divers Havelock",
   name: "Priya Raut",
   phone: "+919000000101",
+  relationship: "own",
 };
 
 describe("what an operator has to type", () => {
-  it("takes a business, a person and a number", () => {
+  it("takes a business, a person, a number and an answer about which they are", () => {
     const parsed = signUpSchema.safeParse(valid);
     expect(parsed.success).toBe(true);
   });
@@ -59,6 +60,7 @@ describe("the optional email", () => {
       businessName: valid.businessName,
       name: valid.name,
       phone: valid.phone,
+      relationship: "own",
     });
   });
 
@@ -78,7 +80,7 @@ describe("the optional email", () => {
 });
 
 describe("the body sent to the API", () => {
-  it("carries exactly the four fields the contract allows", () => {
+  it("carries exactly the fields the contract allows", () => {
     // `additionalProperties: false` — anything extra is a 400, and the schema
     // is what stops a form field from becoming one by accident.
     const body = signUpBody(
@@ -89,6 +91,7 @@ describe("the body sent to the API", () => {
       "email",
       "name",
       "phone",
+      "relationship",
     ]);
   });
 
@@ -98,10 +101,53 @@ describe("the body sent to the API", () => {
         businessName: "  Reef Divers  ",
         name: "  Priya  ",
         phone: "  +919000000101 ",
+        relationship: "own",
       }),
     );
     expect(body.businessName).toBe("Reef Divers");
     expect(body.name).toBe("Priya");
     expect(body.phone).toBe("+919000000101");
+  });
+});
+
+describe("owning it or running it (D15)", () => {
+  it("refuses a sign-up that did not answer, rather than assuming owner", () => {
+    /*
+      The contract treats an absent `relationship` as `own`, which is right for a
+      client built before the question existed and wrong for one that can ask.
+      Assuming it would make somebody who runs a business for its owner into its
+      owner, and the first they would hear of it is a bank change they are
+      allowed to make.
+    */
+    const withoutAnswer = {
+      businessName: valid.businessName,
+      name: valid.name,
+      phone: valid.phone,
+    };
+    const parsed = signUpSchema.safeParse(withoutAnswer);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const p = firstProblem(parsed.error);
+      expect(p.field).toBe("relationship");
+      expect(p.message).toMatch(/own this business or run it/);
+    }
+  });
+
+  it("refuses anything that is not one of the two", () => {
+    // `enum: [own, run]`, and the endpoint refuses anything else with a 400
+    // "before the number is looked at". No reason to spend that round trip.
+    expect(
+      signUpSchema.safeParse({ ...valid, relationship: "OWNER" }).success,
+    ).toBe(false);
+    expect(signUpSchema.safeParse({ ...valid, relationship: "" }).success).toBe(
+      false,
+    );
+  });
+
+  it("sends `run` as `run`, never as an absence", () => {
+    const body = signUpBody(
+      signUpSchema.parse({ ...valid, relationship: "run" }),
+    );
+    expect(body.relationship).toBe("run");
   });
 });

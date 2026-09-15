@@ -29,6 +29,7 @@ export function MemberRow({
   canRole,
   canHoldThem,
   canRestoreThem,
+  iAmOnlyAdmin,
   joinUrl,
 }: {
   member: TeamPerson;
@@ -39,6 +40,8 @@ export function MemberRow({
   canRole: Allowed;
   canHoldThem: Allowed;
   canRestoreThem: Allowed;
+  /** Passed through to the role picker, which warns an admin about one choice. */
+  iAmOnlyAdmin: boolean;
   /**
    * The business's join link, on a PENDING row only.
    *
@@ -204,6 +207,7 @@ export function MemberRow({
         canRole={canRole}
         canHoldThem={canHoldThem}
         canRestoreThem={canRestoreThem}
+        iAmOnlyAdmin={iAmOnlyAdmin}
       />
 
       {removability.removable || removability.reason ? (

@@ -853,6 +853,28 @@ export const TEAM: MockTeamMember[] = [
     lastSeenAt: todayAt("07:20"),
     phone: "+919000000114",
   },
+  {
+    /*
+      A SECOND active admin, and the only thing it exists for is the rule that
+      changed on 14 September: an admin may now act on another admin.
+
+      Every one of the four access endpoints used to refuse it, and both the
+      portal and this mock agreed. Each endpoint now names one exception only —
+      "an ADMIN cannot change an OWNER" — so admin-on-admin is a positive case,
+      and without a second admin row there is nothing to assert it against. The
+      old test passed by pointing an admin at their OWN row, which answers `409`
+      and is in the same list of acceptable refusals, so it proved nothing.
+
+      Read but never written: Nisha is the one tests act as, and this is the one
+      they act on. Nothing demotes, holds or removes it.
+    */
+    id: "usr_admin_ravi",
+    name: "Ravi Menon",
+    roles: ["ADMIN"],
+    state: "active",
+    lastSeenAt: todayAt("06:40", -1),
+    phone: "+919000000116",
+  },
   /*
     Two managers that exist only to have their access changed, one per
     Playwright project.
@@ -920,6 +942,26 @@ export const TEAM: MockTeamMember[] = [
     state: "invited",
     pending: true,
     phone: LEAVING_PHONE,
+  },
+  {
+    /*
+      An invitation to be the business's OWNER — impossible until D15.
+      `POST /team` now says "**Everybody joins as `STAFF`, except an owner**",
+      and an owner invitation is how a business whose first person runs it gets
+      one at all (yuvoy-operator#51 items 2 and 5).
+      
+      Never accepted by any test. Asking for the code is enough to see what
+      accepting would make somebody — the join screen names it before they
+      accept — and that read leaves the invitation where it is, so both
+      Playwright projects can make it. Accepting would consume it and the second
+      project would find nothing.
+    */
+    id: "inv_owner_seema",
+    name: "Seema Lall",
+    roles: ["OWNER"],
+    state: "invited",
+    pending: true,
+    phone: "+919000000117",
   },
 ];
 

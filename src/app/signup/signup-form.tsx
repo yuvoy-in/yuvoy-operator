@@ -9,9 +9,31 @@ import {
   type SignUpState,
 } from "./actions";
 import { Button } from "@/components/ui/button";
-import { inputClass } from "@/components/ui/input";
+import { choiceClass, inputClass } from "@/components/ui/input";
 import { PhoneField } from "@/components/ui/phone-field";
 import { formatE164 } from "@/lib/auth/phone";
+
+/**
+ * Owning it and running it, and what each one actually gets you.
+ *
+ * `relationship` is `own` or `run` (D15, yuvoy-operator#51 item 1). The second
+ * sentence on each option is the part that matters: `run` makes the person an
+ * ADMIN and the business has no owner until they invite one, and "changing where
+ * it is paid is an owner's alone, so that waits until then." Somebody choosing
+ * between two labels with no consequence attached is not making a decision.
+ */
+const RELATIONSHIPS = [
+  {
+    value: "own",
+    label: "I own it",
+    what: "You will be its owner, and can set up where it is paid.",
+  },
+  {
+    value: "run",
+    label: "I run it for the owner",
+    what: "You will be an admin. Invite the owner when you are ready: setting up where the business is paid is theirs to do.",
+  },
+] as const;
 
 /**
  * Two steps, one flow, and no bounce to sign in — yuvoy-operator#20.
@@ -34,6 +56,15 @@ export function SignUpForm() {
   );
   /** The submit waits for a whole number. See `PhoneField`. */
   const [complete, setComplete] = useState(false);
+  /**
+   * Which of the two they have answered, or `""`.
+   *
+   * Held here as well as in the form data because the name field's hint depends
+   * on it: "you will be the owner on this account" is FALSE for somebody who
+   * runs the business for its owner, and a sentence that is false about
+   * somebody's own access is the one thing this screen must not print.
+   */
+  const [relationship, setRelationship] = useState("");
 
   if (state.step === "code") {
     return (
@@ -141,6 +172,44 @@ export function SignUpForm() {
         <p className="text-forest/70 mt-2 text-sm">What travellers will see.</p>
       </div>
 
+      {/*
+        Asked BEFORE the name field, because it decides what that field's hint is
+        allowed to say. Answering "I run it" and then reading "you will be the
+        owner on this account" is the screen contradicting itself about the one
+        thing somebody is here to set up.
+      */}
+      <fieldset aria-invalid={state.field === "relationship" || undefined}>
+        <legend className="label text-forest/75">
+          Do you own this business, or run it for the owner?
+        </legend>
+        <div className="mt-2 space-y-2">
+          {RELATIONSHIPS.map((choice) => (
+            <label
+              key={choice.value}
+              className={choiceClass(
+                relationship === choice.value,
+                "items-start py-4",
+              )}
+            >
+              <input
+                type="radio"
+                name="relationship"
+                value={choice.value}
+                defaultChecked={was?.relationship === choice.value}
+                onChange={() => setRelationship(choice.value)}
+                className="accent-terra-deep mt-0.5 size-5 shrink-0"
+              />
+              <span>
+                <span className="block text-sm font-bold">{choice.label}</span>
+                <span className="text-forest/80 block text-xs">
+                  {choice.what}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
       <div>
         <label htmlFor="name" className="label text-forest/75">
           Your name
@@ -158,8 +227,18 @@ export function SignUpForm() {
           aria-invalid={state.field === "name" || undefined}
           className={inputClass("mt-2")}
         />
+        {/*
+          Three sentences for three states, and the middle one is the reason this
+          is not a constant: an ADMIN cannot change where the business is paid, so
+          telling somebody who runs a shop that they will be its owner is telling
+          them they can do something the API will refuse.
+        */}
         <p className="text-forest/70 mt-2 text-sm">
-          You will be the owner on this account.
+          {relationship === "own"
+            ? "You will be the owner on this account."
+            : relationship === "run"
+              ? "You will be an admin on this account, not its owner."
+              : "So we know who we are talking to."}
         </p>
       </div>
 

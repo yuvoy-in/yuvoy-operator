@@ -1,4 +1,4 @@
-import { activeOwnerCount, type TeamPerson } from "./members";
+import { isLastActiveSenior, type TeamPerson } from "./members";
 
 /**
  * Who may do what to whom on the Team screen — yuvoy-operator#25.
@@ -9,14 +9,16 @@ import { activeOwnerCount, type TeamPerson } from "./members";
  * `DELETE /team/{id}` each state their own refusals, and this file is the one
  * place they are written down:
  *
- *   - **403** on all four: "OWNER or ADMIN only, and an ADMIN cannot change an
- *     OWNER or another ADMIN."
- *   - **409 `cannot_change_access`** — "including changing your own", and on
- *     hold, "your own access, or the last owner".
- *   - **409 `cannot_remove`** — "yourself, or the last owner".
- *   - Role: "`OWNER` cannot be given and an owner's role cannot be changed
- *     here. The owner is whoever the payout account belongs to; that moves
- *     deliberately, not from a login."
+ *   - **403** on all four: "OWNER or ADMIN only", plus one clause each — "an
+ *     ADMIN cannot change an OWNER's role", "cannot hold an OWNER", "cannot
+ *     restore an OWNER", "cannot remove an OWNER". An admin may act on another
+ *     admin; see `seniorityAllows`.
+ *   - **409 `cannot_change_access`**, on all four: "your own access, or the last
+ *     active OWNER or ADMIN". Remove answers this too — `cannot_remove` is gone
+ *     from the contract and is never sent (yuvoy-operator#51 item 4).
+ *   - Role: `enum: [OWNER, ADMIN, MANAGER, STAFF]`. An OWNER or an ADMIN may
+ *     make somebody already on the team an owner (D31), rather than removing
+ *     them and inviting them back.
  *
  * ## Why the client decides this at all
  *
@@ -56,8 +58,20 @@ export function isHeld(member: TeamPerson): boolean {
   return member.state === HELD_STATE;
 }
 
-/** Roles that may be set here. OWNER is not one of them, deliberately. */
-export const ASSIGNABLE_ROLES = ["ADMIN", "MANAGER", "STAFF"] as const;
+/**
+ * Roles that may be set here — now all FOUR.
+ *
+ * OWNER used to be excluded, on the contract's reasoning that "the owner is
+ * whoever the payout account belongs to; that moves deliberately, not from a
+ * login." `PUT /team/{id}/role` now declares `enum: [OWNER, ADMIN, MANAGER,
+ * STAFF]` and refuses only "an ADMIN cannot change an OWNER's role", so an
+ * OWNER may hand the role on (yuvoy-operator#51 item 3).
+ *
+ * The weight of that has not gone anywhere, which is why the confirmation says
+ * what it does: a new owner "will be able to change where the business is
+ * paid." An admin doing it is told they cannot undo it.
+ */
+export const ASSIGNABLE_ROLES = ["OWNER", "ADMIN", "MANAGER", "STAFF"] as const;
 export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
 export function isAssignableRole(v: string): v is AssignableRole {
@@ -75,10 +89,9 @@ export interface Allowed {
    * does next. Your own row needs none — it has your name on it. An admin
    * looking at the owner's row needs none — the absence is the answer.
    *
-   * "The only owner" survives that test, barely: it is the one refusal an
-   * owner would otherwise read as a bug, and it is not inferable from the row
-   * itself. It is stated as a fact and nothing more, because there is no next
-   * step to offer — an owner cannot be invited from this portal.
+   * "The last owner or admin" survives that test, barely: it is the one refusal
+   * an owner would otherwise read as a bug, and it is not inferable from the row
+   * itself. It is stated as a fact and nothing more.
    */
   reason?: string;
 }
@@ -98,11 +111,26 @@ export function canManageAccess(myRoles: readonly string[]): boolean {
 }
 
 /**
- * The 403 rule, shared by all four endpoints.
+ * The 403 rule, shared by all four endpoints — and NARROWER than it was.
  *
- * An ADMIN may not act on an OWNER or on another ADMIN. An OWNER may act on
- * anybody — subject to the 409s below, which are about the account rather than
- * about rank.
+ * It used to read "an ADMIN cannot change an OWNER **or another ADMIN**", which
+ * was the contract's wording at the time. Each of the four endpoints now says
+ * only that an ADMIN cannot act on an OWNER:
+ *
+ *   - role: "an ADMIN cannot change an OWNER's role"
+ *   - hold: "an ADMIN cannot hold an OWNER"
+ *   - restore: "an ADMIN cannot restore an OWNER"
+ *   - remove: "an ADMIN cannot remove an OWNER"
+ *
+ * So two admins may act on each other. That is a real widening of what one
+ * login can do to another, and it is the API's decision rather than this
+ * screen's: an admin exists to stand in for an owner who is off the island, and
+ * one who could not remove a colleague's access would be a stand-in for
+ * nothing. The `409` on the last active owner or admin is what stops it
+ * becoming a lockout.
+ *
+ * An OWNER may act on anybody, subject to the 409s below, which are about the
+ * account rather than about rank.
  */
 function seniorityAllows(
   myRoles: readonly string[],
@@ -113,9 +141,7 @@ function seniorityAllows(
 
   // An admin, then. No reason: the absence of the control is the answer, and
   // a line explaining the hierarchy is the screen arguing with the reader.
-  if (member.roles.includes("OWNER") || member.roles.includes("ADMIN")) {
-    return NO;
-  }
+  if (member.roles.includes("OWNER")) return NO;
   return YES;
 }
 
@@ -134,9 +160,12 @@ export function canChangeRole(
 ): Allowed {
   if (member.pending) return NO;
   if (member.id === meId) return NO;
-  // No reason. An owner's role not being editable from a login is a rule the
-  // absent control states perfectly well on its own.
-  if (member.roles.includes("OWNER")) return NO;
+  /*
+    An owner's row used to refuse everybody. It now refuses only an ADMIN, which
+    `seniorityAllows` already decides: `PUT /team/{id}/role` takes OWNER in its
+    enum and refuses only "an ADMIN cannot change an OWNER's role"
+    (yuvoy-operator#51 item 3).
+  */
   return seniorityAllows(myRoles, member);
 }
 
@@ -158,8 +187,20 @@ export function canHold(
   if (isHeld(member)) return NO;
   // Your own row. It has your name on it; nothing needs saying.
   if (member.id === meId) return NO;
-  if (member.roles.includes("OWNER") && activeOwnerCount(team) <= 1) {
-    return { allowed: false, reason: "The only owner." };
+  /*
+    Owners AND admins, counted together, and asked as "what is left afterwards".
+    `cannot_change_access` here is "your own access, or the last active OWNER or
+    ADMIN" — the owners-only version both refused too much and allowed too much:
+    it blocked holding an owner while an active admin remained, and allowed
+    holding the last admin at a business with no owner. See
+    `isLastActiveSenior` for why "active" and "afterwards" both matter.
+  */
+  if (isLastActiveSenior(team, member)) {
+    return {
+      allowed: false,
+      reason:
+        "The last owner or admin. Somebody has to be able to let people in.",
+    };
   }
   return seniorityAllows(myRoles, member);
 }
