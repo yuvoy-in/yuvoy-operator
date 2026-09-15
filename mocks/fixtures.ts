@@ -768,6 +768,16 @@ export const DEV_CODE = "424242";
 export interface MockRequest {
   id: string;
   slotId: string;
+  /**
+   * The listing, "always present. The same id the listings endpoints use, so a
+   * listing filter applies to requests as it does to bookings."
+   *
+   * Added for yuvoy-operator#57 item 5, which filters the Requests pill in the
+   * portal because `GET /requests` takes no search. Matched on the id and never
+   * on `experience`: two listings may be called the same thing, and a title is
+   * a label somebody can edit.
+   */
+  experienceId: string;
   experience: string;
   guests: number;
   startsAt: string;
@@ -802,6 +812,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_urgent",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 2,
     startsAt: todayAt("23:30"),
@@ -815,6 +826,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_accept_mobile",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 4,
     startsAt: todayAt("23:30"),
@@ -828,6 +840,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_accept_desktop",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 3,
     startsAt: todayAt("23:30"),
@@ -844,6 +857,7 @@ export const REQUESTS: MockRequest[] = [
     // with a 409.
     id: "req_over_ceiling",
     slotId: "slot_dawn",
+    experienceId: "exp_try_dive",
     experience: "Try-dive at Nemo Reef",
     guests: 5,
     startsAt: todayAt("06:45"),
@@ -857,6 +871,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_decline_mobile",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 1,
     startsAt: todayAt("23:30", 1),
@@ -870,6 +885,7 @@ export const REQUESTS: MockRequest[] = [
   {
     id: "req_decline_desktop",
     slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
     experience: "Snorkel trip to Elephant Beach",
     guests: 1,
     startsAt: todayAt("23:30", 1),

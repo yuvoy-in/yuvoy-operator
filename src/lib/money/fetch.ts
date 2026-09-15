@@ -4,6 +4,7 @@ import { marketDate } from "@/lib/format/market-time";
 import type { ChangeRequest } from "./earnings";
 import { toCommission, type Commission } from "./commission";
 import type { Settlement } from "./settlements";
+import { NO_COUNTS, type Counts } from "@/lib/bookings/list";
 import {
   byDeparture,
   toBookingCash,
@@ -89,6 +90,79 @@ export async function listBookings(
 
     return items.sort(byDeparture);
   } catch {
+    return null;
+  }
+}
+
+export interface BookingPage {
+  items: BookingLine[];
+  complete: boolean;
+  nextCursor?: string;
+  counts: Counts;
+}
+
+/**
+ * ONE page of bookings, with the counts behind every pill — #57 item 3.
+ *
+ * Deliberately not `listBookings`, which pages to the end for a total. This
+ * screen shows a page and offers the next, because "search, filters and counts
+ * run on the server, so they stay right at any number of bookings": a busy
+ * operator's Past is thousands of rows and nobody is scrolling them.
+ *
+ * `counts` is the reason a pill can say how many it holds without reading it.
+ * It honours `q`, `experienceId`, `from` and `to` and ignores `view` and the
+ * page, so the four badges stay put while somebody switches between them.
+ */
+export async function searchBookings(
+  token: string,
+  params: {
+    view?: "upcoming" | "past" | "cancelled";
+    q?: string;
+    experienceId?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    cursor?: string;
+  },
+): Promise<BookingPage | null> {
+  try {
+    const { data, error } = await operatorApi(token).GET("/bookings", {
+      params: {
+        query: {
+          ...(params.view ? { view: params.view } : {}),
+          ...(params.q ? { q: params.q } : {}),
+          ...(params.experienceId ? { experienceId: params.experienceId } : {}),
+          ...(params.from ? { from: params.from } : {}),
+          ...(params.to ? { to: params.to } : {}),
+          limit: params.limit ?? 100,
+          ...(params.cursor ? { cursor: params.cursor } : {}),
+        },
+      },
+    });
+    if (error) throw error;
+
+    return {
+      items: (data.items ?? []).map(toBookingLine),
+      /*
+        Told rather than inferred, and a short page is not the end: "stop when
+        there is no `nextCursor`, not when a page comes back short."
+      */
+      complete: data.complete ?? true,
+      nextCursor: data.nextCursor,
+      /*
+        Zeroes are a real answer and are kept. An absent `counts` is not: the
+        contract marks it required, so a response without one is not the API
+        this was built against, and drawing four zeroes would say a busy
+        operator has nothing.
+      */
+      counts: data.counts ?? NO_COUNTS,
+    };
+  } catch {
+    /*
+      `null` is "we could not load it", which the screen says in one line with a
+      way to try again — and it draws NO pill badges, because a badge from a
+      failed read is a number somebody would plan against.
+    */
     return null;
   }
 }

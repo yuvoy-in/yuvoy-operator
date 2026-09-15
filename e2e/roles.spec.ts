@@ -99,12 +99,18 @@ test("a staff login sees the queue and cannot answer it — including the button
     gate, `POST /requests/{id}/accept` is 403 "STAFF cannot commit seats".
     So the queue is visible — a request nobody sees is a request that expires.
   */
+  /*
+    ONE line, on the Requests pill only, since yuvoy-operator#57 item 9. It was
+    a `Problem` panel at the top of the whole screen, which told somebody who
+    had come to read their bookings that they could not do something they had
+    not tried.
+  */
+  await expect(
+    page.getByText("Only owners, admins and managers can answer requests"),
+  ).toBeVisible();
   await expect(
     page.getByText("You can see these, but not answer them"),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/Pass it on rather than letting the clock run out/),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   /*
     And the controls are disabled, not merely explained. A banner and a working

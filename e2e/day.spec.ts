@@ -678,8 +678,11 @@ test("bookings lists who is coming, in the operator's words", async ({
   await signIn(page);
   await page.goto("/bookings");
 
-  const booked = page.getByRole("region", { name: "Booked" });
-  await expect(booked).toBeVisible();
+  /*
+    The Upcoming pill, which is where the rows are since yuvoy-operator#57
+    replaced the three anchored sections with four pills.
+  */
+  await page.goto("/bookings?view=upcoming");
 
   /*
     Not a single raw state anywhere on the screen. These are
@@ -705,22 +708,28 @@ test("a booking is never listed twice on one screen", async ({ page }) => {
   await page.goto("/bookings");
 
   /*
-    An unanswered request is in BOTH responses — `GET /bookings` includes
-    `pending_request` rows and `GET /requests` returns the same ones. Only the
-    queue's copy may render: it is the one carrying the clock and the buttons.
+    An open request is on the Requests pill and on NO other, which is now the
+    API's own rule rather than this screen's: "open requests are not bookings
+    and are in no view." It used to be a portal-side filter over two overlapping
+    reads that both carried the row.
   */
-  const waiting = page.getByRole("region", { name: "Waiting on you" });
-  const booked = page.getByRole("region", { name: "Booked" });
-  await expect(waiting).toContainText(NEVER_ANSWERED.urgent);
-  await expect(booked).not.toContainText(NEVER_ANSWERED.urgent);
+  await page.goto("/bookings?view=requests");
+  await expect(page.locator("main")).toContainText(NEVER_ANSWERED.urgent);
+
+  await page.goto("/bookings?view=upcoming");
+  await expect(page.locator("main")).not.toContainText(NEVER_ANSWERED.urgent);
 });
 
 test("a booking opens, and shows no phone number", async ({ page }) => {
   await signIn(page);
   await page.goto("/bookings");
 
-  const booked = page.getByRole("region", { name: "Booked" });
-  await booked.getByRole("link").first().click();
+  await page.goto("/bookings?view=upcoming");
+  await page
+    .locator("main")
+    .getByRole("link", { name: /\d\d:\d\d/ })
+    .first()
+    .click();
   await page.waitForURL(/\/bookings\/.+/);
 
   // A focused screen: the bar goes, a way back arrives.
@@ -749,51 +758,26 @@ test("a booking that is not yours is a 404, never a 403", async ({ page }) => {
 });
 
 /*
-  Requests, Confirmed, Past — yuvoy-operator#43.
+  The three anchored sections are GONE — yuvoy-operator#57.
 
-  The demo's three sub-tabs, as three places on one screen with a link to
-  each: the queue is the only thing here with a deadline, and a tab that hid
-  it behind "Confirmed" would be a request left to expire.
+  Requests, Confirmed and Past were three places on one screen with a link to
+  each, over two overlapping reads of a fixed window. They are four pills now,
+  each a URL of its own, each counted by the server. The test that asserted the
+  anchor nav went with them; `e2e/bookings.spec.ts` covers what replaced it.
 */
-test("bookings has the demo's three places, and each link goes to its own", async ({
+
+test("bookings are grouped by the day they run, with that day's totals", async ({
   page,
 }) => {
   await signIn(page);
-  await page.goto("/bookings");
+  await page.goto("/bookings?view=upcoming");
 
-  const onThisScreen = page.getByRole("navigation", {
-    name: "On this screen",
-  });
-  await expect(
-    onThisScreen.getByRole("link", { name: /^Requests/ }),
-  ).toHaveAttribute("href", "#requests");
-  await expect(
-    onThisScreen.getByRole("link", { name: "Past" }),
-  ).toHaveAttribute("href", "#past");
-
-  await onThisScreen.getByRole("link", { name: "Confirmed" }).click();
-  await expect(page).toHaveURL(/#confirmed$/);
-  await expect(
-    page.getByRole("heading", { name: "Confirmed", exact: true }),
-  ).toBeVisible();
-});
-
-test("confirmed bookings are grouped by the day they run, with that day's totals", async ({
-  page,
-}) => {
-  await signIn(page);
-  await page.goto("/bookings");
-
-  const booked = page.getByRole("region", { name: "Booked" });
   // "Grouped by date, summarised as total bookings and guests."
   await expect(
-    booked.getByRole("heading", { level: 4, name: "Tomorrow" }),
+    page.getByRole("heading", { level: 2, name: /^Tomorrow · / }),
   ).toBeVisible();
   await expect(
-    booked.getByText(/^\d+ bookings? · \d+ guests?$/).first(),
-  ).toBeVisible();
-  await expect(
-    booked.getByRole("heading", { name: "Past", exact: true }),
+    page.getByText(/· \d+ bookings? · \d+ guests?$/).first(),
   ).toBeVisible();
 });
 
