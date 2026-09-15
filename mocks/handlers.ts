@@ -279,7 +279,20 @@ type MockMediaAsset = {
    * as something.
    */
   posterUrl?: string;
-  listing?: { experienceId: string; title: string; state: string };
+  listing?: {
+    experienceId: string;
+    title: string;
+    state: string;
+    /**
+     * Whether this media is that listing's COVER — yuvoy-api#191.
+     *
+     * On the pairing rather than the asset, because that is where it lives: the
+     * same asset can be a cover on one listing and a gallery item on another.
+     * `null` is a real value and means "no role is known"; the portal keeps both
+     * buttons for it rather than guessing.
+     */
+    role?: "hero" | "gallery" | null;
+  };
   rejection?: { code: string; note?: string };
 };
 
@@ -647,6 +660,31 @@ function seedExperiences(): MockExperience[] {
       listing that is selling AND has no media, and every other live fixture is
       either attached to by `reels.spec.ts` or submitted against elsewhere.
     */
+    /*
+      A listing that exists only to carry a COVER and a GALLERY item —
+      yuvoy-operator#67.
+
+      Its own, because `med_published_fixture` is consumed by the takedown walk
+      and a role assertion against it passes alone and fails in a full run. The
+      same trap the revision and taxonomy fixtures exist for.
+    */
+    {
+      id: "exp_cover",
+      slug: "cover-role-fixture",
+      title: "Coral wall (cover fixture)",
+      summary: "A wall dive for the role fixtures.",
+      category: "adventure",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      unitPricePaise: 400000,
+      pricingUnit: "per_person",
+      activityType: "scuba",
+      meetingPoint: "Beach 3 dive hut",
+      upcomingDepartures: 1,
+      sellable: true,
+      review: { state: "applied" },
+    },
     {
       id: "exp_nofootage",
       slug: "blue-lagoon-no-footage",
@@ -937,6 +975,41 @@ function seedMediaAssets(): Record<string, MockMediaAsset> {
         experienceId: "exp_night",
         title: "Night fishing",
         state: "draft",
+      },
+    },
+    /*
+      THE COVER, and a gallery item beside it on the same listing —
+      yuvoy-operator#67, once `listing.role` existed.
+
+      Two of them on one listing, because the interesting assertions need both:
+      a hero that says it is the cover and offers only the demotion, a gallery
+      item that offers only the promotion, and a `hero_taken` reachable by
+      promoting the second while the first is still the cover.
+    */
+    med_cover_fixture: {
+      attested: true,
+      kind: "video",
+      state: "published",
+      durationSeconds: 29,
+      posterUrl: FIXTURE_POSTER,
+      listing: {
+        experienceId: "exp_cover",
+        title: "Coral wall (cover fixture)",
+        state: "published",
+        role: "hero",
+      },
+    },
+    med_gallery_fixture: {
+      attested: true,
+      kind: "video",
+      state: "published",
+      durationSeconds: 19,
+      posterUrl: FIXTURE_POSTER,
+      listing: {
+        experienceId: "exp_cover",
+        title: "Coral wall (cover fixture)",
+        state: "published",
+        role: "gallery",
       },
     },
     /*
@@ -4436,7 +4509,14 @@ export const handlers = [
     if (failed) return failed;
 
     const asset = mediaAssets[String(params.id)];
-    if (!asset || asset.state !== "approved") {
+    /*
+      `published` is allowed as well as `approved`, since yuvoy-api#191: "`role`
+      is also how an existing pairing's role is changed", and an already
+      published item is exactly what a role change acts on. The guard refused
+      it, which made every promotion and demotion answer 404 and the portal say
+      "this one is not approved yet" about a reel a traveller could see.
+    */
+    if (!asset || (asset.state !== "approved" && asset.state !== "published")) {
       return envelope("not_found", "No approved clip.", 404);
     }
     const body = (await request.json()) as {
@@ -4449,11 +4529,46 @@ export const handlers = [
     if (!listing || !["hero", "gallery"].includes(body.role ?? "gallery")) {
       return envelope("not_found", "No such listing.", 404);
     }
+    const wanted = (body.role ?? "gallery") as "hero" | "gallery";
+
+    /*
+      ONE PAIRING PER LISTING, and `role` changes it rather than adding a second
+      — yuvoy-api#191. Publishing with the role it already has changes nothing.
+
+      `hero` while a DIFFERENT item is the cover is `409 hero_taken`, and the
+      refused request changes nothing. Modelled because it is the refusal the
+      sheet has a sentence for, and a mock that let two heroes exist would make
+      that sentence unreachable.
+    */
+    if (wanted === "hero") {
+      const currentCover = Object.entries(mediaAssets).find(
+        ([otherId, other]) =>
+          otherId !== String(params.id) &&
+          other.listing?.experienceId === listing.id &&
+          other.listing?.role === "hero",
+      );
+      if (currentCover) {
+        return envelope(
+          "hero_taken",
+          "This listing already has a cover. Make that one a gallery item first, then try again.",
+          409,
+          { role: "hero" },
+        );
+      }
+    }
+
     asset.state = "published";
     asset.listing = {
       experienceId: listing.id,
       title: listing.title,
       state: "published",
+      /*
+        Demoting the cover leaves the listing with NO cover: "this reads
+        `gallery` afterwards and the listing has no cover until another item is
+        published as `hero`." Nothing is promoted in its place, which is the
+        half an operator has to be warned about before they tap.
+      */
+      role: wanted,
     };
     return new HttpResponse(null, { status: 204 });
   }),

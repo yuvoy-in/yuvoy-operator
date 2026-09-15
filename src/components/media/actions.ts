@@ -565,7 +565,15 @@ function publishFailure(err: unknown, lead: string): string {
         they have not reached.
       */
       if (err.code === "hero_taken") {
-        return "This listing already has a cover. Choose Gallery, or move the current cover to the gallery first.";
+        /*
+          The API's own sentence, which changed with yuvoy-api#191 and is the
+          one to render: the way out is to publish the current cover as
+          `gallery`, which DEMOTES it, rather than to "move" it in some other
+          screen. Ours said "choose Gallery, or move the current cover to the
+          gallery first", which named the right act in words the API no longer
+          uses.
+        */
+        return "This listing already has a cover. Make that one a gallery item first, then try again.";
       }
       /*
         A ceiling, and there are TWO of them.
