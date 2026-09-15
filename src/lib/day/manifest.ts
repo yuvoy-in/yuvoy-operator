@@ -4,6 +4,7 @@ import type { Manifest, OperatorListing, OperatorSlot } from "./types";
 import { inMarketDays } from "./calendar";
 import type { Closure } from "./closures";
 import { dedash } from "@/lib/format/dedash";
+import type { MediaItem } from "@/lib/services/media";
 
 export * from "./types";
 
@@ -141,17 +142,16 @@ export async function listSlots(
 }
 
 /**
- * Every media item this operator holds, for the poster on a listing's tile.
+ * Every media item this operator holds.
  *
  * One read for the whole screen: Home shows a tile per listing and `posterFor`
  * picks each one out of this list, rather than asking per listing — the same
- * rule the fortnight of departures follows, and for the same reason.
+ * rule the fortnight of departures follows, and for the same reason. The
+ * profile's Reels tab draws the same list, and its sheet reads the rest of each
+ * row, which is why the type is the contract's own rather than the three fields
+ * a poster needs.
  */
-export async function listMedia(
-  token: string,
-): Promise<
-  { experienceId?: string; posterUrl?: string; situation?: string }[]
-> {
+export async function listMedia(token: string): Promise<MediaItem[]> {
   const { data, error } = await operatorApi(token).GET("/media", {});
   if (error) throw error;
   return data.items ?? [];
@@ -256,6 +256,9 @@ export async function listListings(
       title: e.title ?? "Untitled listing",
       ...(e.status ? { status: e.status } : {}),
       ...(typeof e.sellable === "boolean" ? { sellable: e.sellable } : {}),
+      // Presence IS the state, so it is carried rather than read. See the
+      // field's note on `OperatorListing`.
+      ...(e.sentBack ? { sentBack: e.sentBack } : {}),
     }))
     .sort((a, b) => a.title.localeCompare(b.title, "en"));
 }

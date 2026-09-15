@@ -44,6 +44,7 @@ export function ListingPicker({
   onRoleChange,
   disabled,
   noun,
+  fixedTitle,
 }: {
   id: string;
   /** `null` means the listings could not be read. See `listListings`. */
@@ -55,7 +56,42 @@ export function ListingPicker({
   disabled?: boolean;
   /** "photograph" or "clip" — this component words itself for both. */
   noun: string;
+  /**
+   * The listing is already decided, and this names it.
+   *
+   * Two callers: the Media step of the listing builder, where the draft IS the
+   * listing (#58 item 7), and Replace on a reel's sheet, which puts the new one
+   * where the old one is (#58 item 6). Neither may be changed here — offering a
+   * picker would let an operator replace a clip onto a different listing and
+   * wonder why the old one is still up.
+   */
+  fixedTitle?: string;
 }) {
+  /*
+    Decided already, so there is nothing to choose and the line says where it
+    is going. The role radios stay: a cover and a gallery item are different
+    things on the same listing, and that IS still a choice.
+  */
+  if (fixedTitle !== undefined) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm">
+          <span className="label text-forest/75 block">
+            Which listing this {noun} is for
+          </span>
+          <span className="mt-1 block font-bold">{fixedTitle}</span>
+        </p>
+        <RolePicker
+          id={id}
+          noun={noun}
+          role={role}
+          onRoleChange={onRoleChange}
+          disabled={disabled}
+        />
+      </div>
+    );
+  }
+
   if (listings === null) {
     return (
       <p className="text-terra-deep text-sm font-bold">
@@ -122,31 +158,57 @@ export function ListingPicker({
         ) : null}
       </div>
 
-      <fieldset disabled={disabled}>
-        <legend className="label">Where it appears</legend>
-        <div className="mt-2 flex gap-5 text-sm">
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name={`${id}-role`}
-              value="hero"
-              checked={role === "hero"}
-              onChange={() => onRoleChange("hero")}
-            />
-            First
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name={`${id}-role`}
-              value="gallery"
-              checked={role === "gallery"}
-              onChange={() => onRoleChange("gallery")}
-            />
-            Gallery
-          </label>
-        </div>
-        {/*
+      <RolePicker
+        id={id}
+        noun={noun}
+        role={role}
+        onRoleChange={onRoleChange}
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
+/** Cover or gallery, worded for whichever of the two things this is. */
+function RolePicker({
+  id,
+  noun,
+  role,
+  onRoleChange,
+  disabled,
+}: {
+  id: string;
+  noun: string;
+  role: "hero" | "gallery";
+  onRoleChange: (role: "hero" | "gallery") => void;
+  disabled?: boolean;
+}) {
+  return (
+    <fieldset disabled={disabled}>
+      <legend className="label">Where it appears</legend>
+      <div className="mt-2 flex gap-5 text-sm">
+        <label className="flex items-center gap-2">
+          <input
+            type="radio"
+            name={`${id}-role`}
+            value="hero"
+            checked={role === "hero"}
+            onChange={() => onRoleChange("hero")}
+          />
+          First
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="radio"
+            name={`${id}-role`}
+            value="gallery"
+            checked={role === "gallery"}
+            onChange={() => onRoleChange("gallery")}
+          />
+          Gallery
+        </label>
+      </div>
+      {/*
           A listing shows ONE hero, and migration 0058 made the database say
           so — a second attach answers `hero_taken` rather than letting a
           tie-break nobody set decide which picture headlines the listing.
@@ -154,13 +216,12 @@ export function ListingPicker({
           defaulted to hero, which made `hero_taken` the answer the second
           upload on any listing got.
         */}
-        {role === "hero" ? (
-          <p className="text-forest/70 mt-2 text-xs">
-            A listing shows one first {noun}. If it already has one, choose
-            Gallery, or move the existing one first.
-          </p>
-        ) : null}
-      </fieldset>
-    </div>
+      {role === "hero" ? (
+        <p className="text-forest/70 mt-2 text-xs">
+          A listing shows one first {noun}. If it already has one, choose
+          Gallery, or move the existing one first.
+        </p>
+      ) : null}
+    </fieldset>
   );
 }

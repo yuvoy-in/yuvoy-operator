@@ -177,7 +177,7 @@ test("the code finishes the job — signed in, in the portal, on an account that
     would be testing the fixture rather than the screen. What is asserted is
     that the status is no longer the heading.
   */
-  await page.goto("/account");
+  await page.goto("/account/verification");
   await expect(page.getByText("You cannot be booked yet")).toBeVisible();
   await expect(page.getByText("Your account is live")).toHaveCount(0);
   await expect(

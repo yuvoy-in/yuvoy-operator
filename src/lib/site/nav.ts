@@ -182,6 +182,13 @@ export const FOCUSED_ROUTE_PREFIXES = [
   // beside the logo (yuvoy-operator#41).
   "/story",
   "/team",
+  /*
+    Everything UNDER Business, with the slash — yuvoy-operator#58. `/account`
+    itself is the tab root: the business profile, which is where an operator
+    lands. Settings, verification and the listing screens are places they go
+    INTO from it and close back out of.
+  */
+  "/account/",
 ] as const;
 
 /**

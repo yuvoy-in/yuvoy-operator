@@ -13,7 +13,7 @@ import { Screen } from "@/components/chrome/screen";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
-import { PauseResume } from "@/app/services/activities/pause-resume";
+import { PauseResume } from "@/components/listings/pause-resume";
 import { ScheduleForm } from "./schedule-form";
 import { DepartureRow } from "./departure-row";
 

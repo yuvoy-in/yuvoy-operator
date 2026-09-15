@@ -36,10 +36,11 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     "The crew phone goes out on the boat and gets left on a bench. It should be
     able to tick people off a manifest and nothing else." Three of these are
     OWNER-or-MANAGER on the server, so offering them would be offering a 403.
-    The doors live behind the Business tab, so that is where the absence is
-    asserted.
+    The doors moved behind the gear on the business profile (#58 item 9), and a
+    group with no visible rows is not drawn at all — so a staff login sees no
+    Money and no Team heading, not headings over empty space.
   */
-  await page.goto("/account");
+  await page.goto("/account/settings");
   await expect(page.getByRole("link", { name: /Earnings/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Payout details/ })).toHaveCount(
     0,
@@ -57,10 +58,20 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     Forbidden and names no role.
   */
   await expect(page.getByRole("link", { name: /Add a reel/ })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Your logo/ })).toBeVisible();
+  /*
+    The logo is on the profile itself now — tapping it opens the screen that
+    sets it — and it is ungated: `PUT /logo` declares a generic Forbidden and
+    names no role. Settings carries the labelled row.
+  */
+  await expect(page.getByRole("link", { name: /Logo/ }).first()).toBeVisible();
 
-  // Home and Calendar are on the bar for every role, and there is no Listings
-  // stop for anybody.
+  /*
+    Home and Calendar are on the bar for every role, and there is no Listings
+    stop for anybody. Asserted on the day rather than here: everything under
+    `/account/` is a focused screen since #58, so the bar is deliberately not
+    drawn on settings at all.
+  */
+  await page.goto("/today");
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
   await expect(nav.getByRole("link", { name: "Home" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Calendar" })).toBeVisible();
@@ -71,7 +82,7 @@ test("a manager is offered all three, because the server allows them", async ({
   page,
 }) => {
   await signIn(page, MANAGER);
-  await page.goto("/account");
+  await page.goto("/account/settings");
 
   // The positive control. A test that only ever asserts an absence passes just
   // as well when the links have been deleted for everybody.

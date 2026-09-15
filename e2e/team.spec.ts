@@ -285,8 +285,8 @@ test("no screen explains a rule the missing control already stated", async ({
     "/team",
     "/account",
     "/payouts",
-    "/services/reels",
-    "/services/activities",
+    "/account?tab=reels",
+    "/today",
   ]) {
     await page.goto(route);
     const text = (await page.locator("body").innerText()).toLowerCase();

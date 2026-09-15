@@ -11,7 +11,7 @@ import {
 import { PRICING_UNITS } from "@/lib/services/listings";
 import { commissionPreview, formatRate } from "@/lib/services/commission";
 import { formatPaise } from "@/lib/format/money";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 
@@ -53,6 +53,7 @@ export function NewListingForm({
   destinations,
   market,
   commissionRateBps,
+  startOpen = false,
 }: {
   /** Every category the API accepts, labelled. Never empty. */
   categories: Choice[];
@@ -74,12 +75,22 @@ export function NewListingForm({
    * see the note beside the price field.
    */
   commissionRateBps: number | null;
+  /**
+   * Whether the form is already open.
+   *
+   * It collapsed behind its own button because it lived at the top of a LIST,
+   * where a permanently open form pushed the listings an operator came to read
+   * off the screen. On `/account/listings/new` the screen IS the form (#58),
+   * and a button repeating the heading is a second door into the room you are
+   * standing in.
+   */
+  startOpen?: boolean;
 }) {
   const [state, act, pending] = useActionState<CreateState, FormData>(
     createListing,
     {},
   );
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   // Drives the activity picker below, which narrows to the chosen category.
   const [category, setCategory] = useState<string | null>(null);
   const activities = activityChoices(vocabulary, category);
@@ -112,13 +123,27 @@ export function NewListingForm({
           It is on your list below and reaches nobody yet. Send it to us when it
           reads the way you want it to; approval is what puts it on sale.
         </p>
-        <Button
-          onClick={() => setOpen(false)}
-          variant="secondary"
-          className="mt-4"
-        >
-          Done
-        </Button>
+        {/*
+          On its own screen there is nowhere to collapse to, and the draft it
+          just made is the thing to open next.
+        */}
+        {startOpen ? (
+          <ButtonLink
+            href={`/account/listings/${state.created.id}`}
+            variant="secondary"
+            className="mt-4"
+          >
+            Open it
+          </ButtonLink>
+        ) : (
+          <Button
+            onClick={() => setOpen(false)}
+            variant="secondary"
+            className="mt-4"
+          >
+            Done
+          </Button>
+        )}
       </Panel>
     );
   }

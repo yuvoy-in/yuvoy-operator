@@ -66,6 +66,9 @@ describe("focused and bare routes", () => {
       the same question from both ends — and a back control that left the
       section would be in the way every time.
     */
+    // Redirects since #58, and still classified: the chrome renders for the
+    // instant before the redirect resolves, and an unlit bar flashing on the
+    // way through is the thing the classifier exists to prevent.
     ["/services/activities", "root"],
     ["/services/reels", "root"],
   ])("%s is %s", (pathname, kind) => {

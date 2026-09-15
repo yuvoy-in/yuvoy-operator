@@ -49,7 +49,8 @@ test("the bar reaches every destination", async ({ page }) => {
   for (const [name, path, heading] of [
     ["Bookings", "/bookings", "Bookings"],
     ["Calendar", "/calendar", "Calendar"],
-    ["Business", "/account", "Nemo Reef Watersports"],
+    // The profile is headed by `displayName` since #58, not the legal name.
+    ["Business", "/account", "Reef Divers Havelock"],
   ] as const) {
     await page
       .getByRole("navigation", { name: /Primary/i })
@@ -99,13 +100,12 @@ for (const route of [
   "/bookings",
   "/calendar",
   /*
-    `/services/*` are no longer stops on the bar (#56) and their content moves
-    under Business on #58. They keep their accessibility audit until then,
-    because they are still reachable by URL.
+    `/services/*` are redirects since #58: the listings are on Home and the
+    library is a tab of the profile, so the two tabs of `/account` are what
+    replaced them and are audited in their place.
   */
-  "/services/activities",
-  "/services/reels",
   "/account",
+  "/account?tab=reels",
 ]) {
   test(`${route} has no accessibility violations with the new chrome`, async ({
     page,
@@ -223,6 +223,18 @@ test("Business counts exactly the list it opens", async ({ page }) => {
 
   await business.click();
   await page.waitForURL("**/account");
+
+  /*
+    The profile carries the COUNT and the list lives one tap further in, on
+    Verification (#58 items 2 and 10). The badge and the strip agree because
+    both count `splitByWaitingOn(blocking).operator`; the list is what the strip
+    opens, and it is the list the badge is a count of.
+  */
+  const strip = page.getByRole("link", { name: /things? waiting on you/ });
+  await expect(strip).toContainText("2 things waiting on you");
+
+  await strip.click();
+  await page.waitForURL("**/account/verification");
   await expect(
     page.getByRole("region", { name: "Waiting on you" }).getByRole("listitem"),
   ).toHaveCount(2);

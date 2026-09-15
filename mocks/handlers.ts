@@ -628,6 +628,32 @@ function seedExperiences(): MockExperience[] {
       `exp_dive` is deliberately NOT used for it: other checks rely on that row
       still reading as plainly on sale.
     */
+    /*
+      A LIVE listing with nothing attached to it, and nothing else asserts on
+      it — yuvoy-operator#58.
+
+      The cross-link it proves is the one the two old section pages existed for:
+      "on sale with nothing to show", which renders as a black card in the
+      traveller app and is exactly what `yuvoy.in` showed for months. It needs a
+      listing that is selling AND has no media, and every other live fixture is
+      either attached to by `reels.spec.ts` or submitted against elsewhere.
+    */
+    {
+      id: "exp_nofootage",
+      slug: "blue-lagoon-no-footage",
+      title: "Blue lagoon (no footage fixture)",
+      summary: "A quiet hour in the lagoon.",
+      category: "nature_wildlife",
+      destination: "andaman/havelock",
+      status: "live",
+      publicationState: "published",
+      unitPricePaise: 150000,
+      pricingUnit: "per_person",
+      meetingPoint: "Havelock jetty 2",
+      upcomingDepartures: 1,
+      sellable: true,
+      review: { state: "applied" },
+    },
     {
       id: "exp_revision_a",
       slug: "revision-fixture-a",
@@ -831,7 +857,79 @@ function seedMediaAssets(): Record<string, MockMediaAsset> {
         state: "draft",
       },
     },
+    /*
+      A clip a reviewer refused, for the "why it was declined" half of the reel
+      sheet (#58 item 6). It carries `rejection`, which is the only reason the
+      sheet has anything to say: "a clip that disappears into rejected with no
+      reason is a support conversation."
+    */
+    med_declined_fixture: {
+      attested: true,
+      kind: "video",
+      state: "rejected",
+      durationSeconds: 22,
+      rejection: {
+        code: "NOT_THIS_EXPERIENCE",
+        note: "This looks like a different beach.",
+      },
+    },
+    /*
+      A clip already taken down. The one state that offers NOTHING — not even
+      a takedown — so it is what proves the sheet withholds a control rather
+      than offering one the API would refuse.
+    */
+    med_withdrawn_fixture: {
+      attested: true,
+      kind: "video",
+      state: "withdrawn",
+      durationSeconds: 15,
+    },
   };
+}
+
+/**
+ * The whole answer in one word, computed here because the API computes it.
+ *
+ * "`state` and `listing.state` are both still here and both still true, and
+ * since media can be approved, attached to a listing, and invisible all at once,
+ * deriving the situation from two enumerations client side gets it wrong in ways
+ * nobody notices for a month."
+ *
+ * A mock that omitted it left every tile in the portal badgeless and every reel
+ * sheet offering only the one action an unknown situation earns, which is the
+ * worst kind of green suite: the screens rendered, and none of them rendered
+ * what production sends.
+ */
+function situationOf(asset: MockMediaAsset): string {
+  switch (asset.state) {
+    case "uploaded":
+    case "processing":
+      return "processing";
+    case "ready":
+      return "needs_rights";
+    case "attested":
+    case "in_moderation":
+      return "in_review";
+    case "rejected":
+    case "quarantined":
+      return "changes_needed";
+    case "withdrawn":
+      return "withdrawn";
+    case "failed":
+      return "failed";
+    case "approved":
+      // Approved and on nothing at all. Only media that predates the listing
+      // being chosen at upload time can be here.
+      return asset.listing ? "waiting_on_listing" : "not_attached";
+    case "published":
+      return asset.listing?.state === "published"
+        ? "live"
+        : asset.listing?.state === "withdrawn"
+          ? "listing_withdrawn"
+          : "waiting_on_listing";
+    default:
+      return "processing";
+  }
 }
 
 /**
@@ -3682,6 +3780,7 @@ export const handlers = [
         durationSeconds: asset.durationSeconds,
         listing: asset.listing,
         rejection: asset.rejection,
+        situation: situationOf(asset),
         createdAt: new Date().toISOString(),
       })),
     });

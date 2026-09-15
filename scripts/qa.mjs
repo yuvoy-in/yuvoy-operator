@@ -1376,8 +1376,8 @@ for (const f of files) {
  */
 {
   const listings = join(SRC, "lib/services/listings.ts");
-  const createForm = join(APP, "services/activities/new-listing-form.tsx");
-  const editForm = join(APP, "services/activities/listing-row.tsx");
+  const createForm = join(SRC, "components/listings/new-listing-form.tsx");
+  const editForm = join(SRC, "components/listings/listing-row.tsx");
 
   /* Blocker keys that are deliberately not editable, and why. */
   const CREATE_ONLY = new Set(["category", "destination"]);
@@ -1397,7 +1397,7 @@ for (const f of files) {
         const control = CONTROL_NAME[key] ?? key;
         if (onCreate.has(control) && !onEdit.has(control)) {
           problems.push(
-            `src/app/services/activities/listing-row.tsx: \`${key}\` blocks ` +
+            `src/components/listings/listing-row.tsx: \`${key}\` blocks ` +
               `publication and is settable on the create form (as ` +
               `\`${control}\`) but not on the edit form. A listing that ` +
               `predates the field can then never clear it: the row names the ` +

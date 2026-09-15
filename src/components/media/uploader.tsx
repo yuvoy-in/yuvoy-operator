@@ -120,9 +120,15 @@ function readVideoFacts(file: File): Promise<LocalVideoFacts> {
 
 export function Uploader({
   listings,
+  fixedExperienceId,
 }: {
   /** `null` means the listings could not be read. */
   listings: ListingOption[] | null;
+  /**
+   * The listing is already decided: the draft being built (#58 item 7), or the
+   * listing a reel is being replaced on (#58 item 6). The picker is not drawn.
+   */
+  fixedExperienceId?: string;
 }) {
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
   /*
@@ -131,7 +137,7 @@ export function Uploader({
     yet is not locked out of uploading; the picker says so in its own words
     and the file input stays open.
   */
-  const [experienceId, setExperienceId] = useState("");
+  const [experienceId, setExperienceId] = useState(fixedExperienceId ?? "");
   const [role, setRole] = useState<"hero" | "gallery">("gallery");
   const abort = useRef<AbortController | null>(null);
 
@@ -480,6 +486,12 @@ export function Uploader({
             <ListingPicker
               id="reel"
               listings={listings}
+              fixedTitle={
+                fixedExperienceId
+                  ? ((listings ?? []).find((l) => l.id === fixedExperienceId)
+                      ?.title ?? "this listing")
+                  : undefined
+              }
               value={experienceId}
               onChange={setExperienceId}
               role={role}

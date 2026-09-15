@@ -63,14 +63,26 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
 
   /*
     The heading is the BUSINESS — yuvoy-operator#33 §3 — and the status is
-    said once, in the line beneath it. "Your account is live" as an `h1` with
-    a LIVE chip beside it was the same thing twice, and worse, that heading
-    was derived from `bookable` while an operator can be LIVE and not sellable
-    since migration 0053.
+    said once, on the screen that holds the list it describes. "Your account is
+    live" as an `h1` with a LIVE chip beside it was the same thing twice, and
+    worse, that heading was derived from `bookable` while an operator can be
+    LIVE and not sellable since migration 0053.
   */
   await expect(
-    page.getByRole("heading", { name: "Nemo Reef Watersports" }),
+    /*
+      `displayName`, not `legalName` — yuvoy-operator#58 item 2. The profile is
+      headed by what travellers see; the registered name is a detail on the
+      Business details screen.
+    */
+    page.getByRole("heading", { name: "Reef Divers Havelock" }),
   ).toBeVisible();
+
+  /*
+    The status, the documents and what is outstanding came off the profile in
+    #58 item 10 and are on Verification together. The profile keeps the name,
+    the logo, the three numbers and what the business sells.
+  */
+  await page.goto("/account/verification");
   await expect(page.getByText("Your account is live")).toBeVisible();
   await expect(page.getByRole("link", { name: "Go to today" })).toBeVisible();
 
@@ -149,7 +161,7 @@ test("a signed-up account that cannot sell is never told it is live", async ({
   */
   await signIn(page, PROSPECT);
   await page.waitForURL("**/today");
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   /*
     The heading is the BUSINESS, not the state — yuvoy-operator#33 §3. The
@@ -207,7 +219,7 @@ test("an account waiting on Yuvoy is told not to chase it", async ({
   */
   await signIn(page, AWAITING);
   await page.waitForURL("**/today");
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   await expect(page.getByText("You cannot be booked yet")).toBeVisible();
   await expect(page.getByRole("heading", { name: "With Yuvoy" })).toBeVisible();
@@ -246,7 +258,7 @@ test("a live account is still asked for what is outstanding", async ({
   */
   await signIn(page, LIVE_OUTSTANDING);
   await page.waitForURL("**/today");
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   // Open for business — the sentence yuvoy-api#139 exists to protect.
   await expect(page.getByText(/Your account is live/)).toBeVisible();
@@ -299,7 +311,7 @@ test("an account block the API did not send is unknown, not approval", async ({
   */
   await signIn(page, NO_STANDING);
   await page.waitForURL("**/today");
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   /*
     The heading is the BUSINESS, not the state — yuvoy-operator#33 §3. The
@@ -340,7 +352,7 @@ test("Home explains an empty day the account is the reason for", async ({
   await expect(banner).toBeVisible();
 
   await banner.click();
-  await page.waitForURL("**/account");
+  await page.waitForURL("**/account/verification");
   await expect(
     page.getByRole("heading", { name: "Waiting on you" }),
   ).toBeVisible();

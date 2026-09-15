@@ -254,7 +254,15 @@ export async function createListing(
       appears on it with its own state — and the id is what the screen uses to
       scroll to it and offer the next act, which is sending it for review.
     */
-    revalidatePath("/services/activities");
+    /*
+      `/today` and `/account`, which are the two screens that draw a listing's
+      state — the old Listings page is a redirect since #56. Neither is the
+      route these are called from (`/account/listings/...`), so the receipt
+      each of these returns survives the revalidation rather than being
+      unmounted by it.
+    */
+    revalidatePath("/today");
+    revalidatePath("/account");
     return { created: { id: data.id ?? "", title: parsed.data.title } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
@@ -566,9 +574,17 @@ export async function submitRevision(
     return { message: "It was not sent. Try again." };
   }
 
-  // The listing's own state changes — `draft` becomes `in_review`, `live`
-  // becomes `live_changes_in_review` — so the list says more than a message.
-  revalidatePath("/services/activities");
+  /*
+    NOTHING is revalidated here, and that is the fix rather than an omission.
+
+    `revalidatePath` invalidates the whole client router cache, so the route the
+    operator is standing on re-renders too. This one is called from
+    `/account/listings/{id}/edit`, which REDIRECTS as soon as the status becomes
+    `in_review` or `live_changes_in_review` (#58 item 6) — so the operator would
+    be moved to another screen before reading the one sentence that says who has
+    their change now. The listing's own screen shows the new state the moment
+    they go to it.
+  */
   return { submitted: true };
 }
 
@@ -701,7 +717,15 @@ export async function pauseListing(
       on sale immediately — but the row going quiet is not enough on its own,
       because what an operator most needs to know is what they still owe.
     */
-    revalidatePath("/services/activities");
+    /*
+      `/today` and `/account`, which are the two screens that draw a listing's
+      state — the old Listings page is a redirect since #56. Neither is the
+      route these are called from (`/account/listings/...`), so the receipt
+      each of these returns survives the revalidation rather than being
+      unmounted by it.
+    */
+    revalidatePath("/today");
+    revalidatePath("/account");
     return {
       done: {
         upcomingDepartures: data.upcomingDepartures,
@@ -835,7 +859,15 @@ export async function resumeListing(
 
     // The row's own label moves — Paused becomes Live, or Not selling — and
     // says more about the listing than a message could.
-    revalidatePath("/services/activities");
+    /*
+      `/today` and `/account`, which are the two screens that draw a listing's
+      state — the old Listings page is a redirect since #56. Neither is the
+      route these are called from (`/account/listings/...`), so the receipt
+      each of these returns survives the revalidation rather than being
+      unmounted by it.
+    */
+    revalidatePath("/today");
+    revalidatePath("/account");
     return {
       done: {
         state: data.state === "in_review" ? "in_review" : "published",

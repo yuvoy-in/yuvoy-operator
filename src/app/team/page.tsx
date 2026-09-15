@@ -74,7 +74,7 @@ export default async function TeamPage() {
 
   return (
     <Screen
-      nav={{ back: { href: "/account", label: "your business" } }}
+      nav={{ back: { href: "/account/settings", label: "settings" } }}
       stageLabel="Team access"
     >
       <p className="eyebrow text-terra-deep">Your account</p>

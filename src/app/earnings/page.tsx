@@ -30,7 +30,7 @@ export const metadata: Metadata = { title: "Earnings" };
 */
 export const dynamic = "force-dynamic";
 
-const BACK = { href: "/account", label: "your business" };
+const BACK = { href: "/account/settings", label: "settings" };
 
 /**
  * What the business is paid — yuvoy-operator#47.

@@ -126,11 +126,12 @@ export default async function HomePage({
 
       {/*
         The account, first, and only when it cannot sell. `headline` is the one
-        sentence the Business screen leads with, so the two cannot disagree
-        about what is wrong.
+        sentence Verification leads with, so the two cannot disagree about what
+        is wrong — and the strip opens that screen rather than the profile,
+        because the outstanding list is what it is promising.
       */}
       {standing && !standing.bookable ? (
-        <Link href="/account" className={stripClass("alert")}>
+        <Link href="/account/verification" className={stripClass("alert")}>
           <span className="text-base font-bold">
             {headline(standing).title}
           </span>

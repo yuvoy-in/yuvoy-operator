@@ -158,4 +158,17 @@ export interface OperatorListing {
    * but the operator should be told, not left to find out.
    */
   sellable?: boolean;
+  /**
+   * Present exactly while a reviewer has sent this listing back to its author.
+   *
+   * Carried because `changes_rejected` means two different things and only this
+   * field separates them: an edit declined on something still selling, and a
+   * first listing bounced back to draft. The tile badge says "Sent back" for
+   * one and "Changes declined" for the other (#56, #58 item 3), and without it
+   * every sent-back listing is mislabelled as the harmless one.
+   *
+   * `unknown` because it is an object on the wire and nothing here reads
+   * inside it. See `isSentBack` in `src/lib/services/home.ts`.
+   */
+  sentBack?: unknown;
 }
