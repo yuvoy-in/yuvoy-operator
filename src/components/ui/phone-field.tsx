@@ -96,9 +96,9 @@ export function PhoneField({
 
       <div
         className={cn(
-          "rounded-control border-cream-line bg-cream-deep mt-2 flex h-14 items-center border",
+          "rounded-control border-paper-line bg-paper-deep mt-2 flex h-14 items-center border",
           "ease-interaction transition-[border-color,background-color] duration-200",
-          "focus-within:border-forest/60 focus-within:bg-cream",
+          "focus-within:border-forest/60 focus-within:bg-paper",
           invalid && "border-terra-deep",
         )}
       >
@@ -110,7 +110,7 @@ export function PhoneField({
         */}
         <span
           aria-hidden="true"
-          className="border-cream-line text-forest/75 flex h-full shrink-0 items-center border-r px-3 text-base tabular-nums select-none"
+          className="border-paper-line text-forest/75 flex h-full shrink-0 items-center border-r px-3 text-base tabular-nums select-none"
         >
           {COUNTRY.dialCode}
         </span>

@@ -80,7 +80,7 @@ export function ChangePanel({
       <p className="text-forest/80 mt-2 text-sm">{body}</p>
 
       {/* Both clocks, always — the design is only trustworthy if it is visible. */}
-      <dl className="border-cream-line mt-4 space-y-2 border-t pt-4 text-sm">
+      <dl className="border-paper-line mt-4 space-y-2 border-t pt-4 text-sm">
         {requestedAt ? (
           <Row label="Raised" value={clock(requestedAt) ?? "-"} />
         ) : null}

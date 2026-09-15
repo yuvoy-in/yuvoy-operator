@@ -122,7 +122,7 @@ export default async function VerificationPage() {
           className={cn(
             "label mt-4",
             standing.bookable
-              ? "bg-forest text-cream"
+              ? "bg-forest text-paper"
               : "border-terra-deep text-terra-deep border bg-transparent",
           )}
         >

@@ -78,7 +78,7 @@ export default async function LogoPage() {
               <img
                 src={logoUrl}
                 alt="Your logo"
-                className="bg-cream-deep size-20 rounded-full object-contain"
+                className="bg-paper-deep size-20 rounded-full object-contain"
               />
             ) : null}
             <div className="min-w-0">

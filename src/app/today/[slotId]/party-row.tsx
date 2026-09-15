@@ -113,7 +113,7 @@ export function PartyRow({
         "rounded-card ease-interaction border p-4 transition-[border-color,background-color,box-shadow] duration-200",
         arrived
           ? "border-forest bg-forest/5 ring-forest ring-1"
-          : "border-cream-line bg-cream-deep",
+          : "border-paper-line bg-paper-deep",
         holding && "border-dashed",
       )}
     >
@@ -165,7 +165,7 @@ export function PartyRow({
         on a jetty.
       */}
       {answers.length > 0 ? (
-        <details className="border-cream-line mt-3 border-t pt-3">
+        <details className="border-paper-line mt-3 border-t pt-3">
           <summary className="label text-forest/75 tap-target cursor-pointer">
             What they answered
           </summary>
@@ -262,7 +262,7 @@ export function PartyRow({
           ) : null}
 
           {departed && armed ? (
-            <div className="border-cream-line mt-1 flex w-full flex-wrap gap-2 border-t pt-3">
+            <div className="border-paper-line mt-1 flex w-full flex-wrap gap-2 border-t pt-3">
               <p className="text-forest/80 w-full text-sm">
                 {armed === "no_show"
                   ? `Mark ${party.name} as a no-show? This cannot be changed afterwards.`

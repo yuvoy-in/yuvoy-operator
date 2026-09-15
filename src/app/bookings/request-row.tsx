@@ -164,8 +164,8 @@ export function RequestRow({
       className={cn(
         "rounded-card border p-5",
         urgency === "critical"
-          ? "border-terra-deep bg-cream-deep border-2"
-          : "border-cream-line bg-cream-deep",
+          ? "border-terra-deep bg-paper-deep border-2"
+          : "border-paper-line bg-paper-deep",
       )}
     >
       <div className="flex items-center justify-between gap-3">

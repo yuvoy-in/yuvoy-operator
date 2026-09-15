@@ -95,7 +95,7 @@ export default async function SignInPage({
         and useless. O5's accept flow is a different endpoint and mints no
         session, so it gets its own page.
       */}
-      <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
+      <p className="border-paper-line text-forest/70 mt-10 border-t pt-6 text-sm">
         Been invited to join a business?{" "}
         <Link
           href="/join"

@@ -65,7 +65,7 @@ export function DayGroup({
   return (
     <section
       aria-labelledby={headingId}
-      className="border-cream-line border-t pt-6"
+      className="border-paper-line border-t pt-6"
     >
       <div className="flex items-center justify-between gap-3">
         <h3 id={headingId} className="font-display text-2xl">

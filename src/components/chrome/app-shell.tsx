@@ -12,7 +12,7 @@ import { Wordmark } from "@/components/ui/wordmark";
  * The portal's chassis (v2.7).
  *
  * The forest stage is the ground on every viewport. On a phone each screen
- * stands a cream sheet on it and the floating bar sits over the foot; on a
+ * stands a paper sheet on it and the floating bar sits over the foot; on a
  * desktop the navigation moves to a rail and each sheet becomes a panel.
  *
  * The rail is PINNED to the window; only the column beside it scrolls. As an
@@ -65,13 +65,13 @@ export function AppShell({
     <div className="stage on-dark flex min-h-dvh flex-col lg:flex-row">
       <aside
         className={cn(
-          "app-chrome border-cream/10 hidden w-64 shrink-0 flex-col border-r",
+          "app-chrome border-paper/10 hidden w-64 shrink-0 flex-col border-r",
           !bare && "lg:sticky lg:top-0 lg:flex lg:h-dvh lg:overflow-y-auto",
         )}
       >
         <div className="px-6 py-7">
-          <Wordmark tone="cream" className="h-10" priority />
-          <p className="label text-cream/70 mt-3">For operators</p>
+          <Wordmark tone="paper" className="h-10" priority />
+          <p className="label text-paper/70 mt-3">For operators</p>
         </div>
         <nav aria-label="Primary" className="px-3">
           <NavList orientation="rail" badges={badges} />

@@ -84,7 +84,7 @@ export function Sheet({
         aria-labelledby={headingId}
         tabIndex={-1}
         className={cn(
-          "rounded-t-card border-cream-line bg-cream text-forest relative max-h-[88vh] w-full max-w-xl overflow-y-auto border p-5 pb-8 outline-none",
+          "rounded-t-card border-paper-line bg-paper text-forest relative max-h-[88vh] w-full max-w-xl overflow-y-auto border p-5 pb-8 outline-none",
           className,
         )}
       >
@@ -94,7 +94,7 @@ export function Sheet({
           </h2>
           <IconButton
             label="Close"
-            variant="onCream"
+            variant="onPaper"
             onClick={onClose}
             className="-mt-1 shrink-0"
           >

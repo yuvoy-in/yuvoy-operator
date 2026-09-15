@@ -31,7 +31,7 @@ export function TabBar({ badges }: { badges?: NavBadges }) {
       aria-label="Primary"
       className="tabbar-foot pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 lg:hidden"
     >
-      <div className="app-chrome ring-cream/12 no-scrollbar pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain rounded-full p-1.5 ring-1">
+      <div className="app-chrome ring-paper/12 no-scrollbar pointer-events-auto max-w-full overflow-x-auto overscroll-x-contain rounded-full p-1.5 ring-1">
         <NavList orientation="bar" badges={badges} />
       </div>
     </nav>

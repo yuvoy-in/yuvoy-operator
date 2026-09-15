@@ -234,7 +234,7 @@ export function InviteForm() {
                 Send them this link. Nothing is granted until they open it and
                 enter their own number.
               </p>
-              <p className="rounded-control border-cream-line bg-cream text-forest mt-2 border p-3 font-mono text-sm break-all select-all">
+              <p className="rounded-control border-paper-line bg-paper text-forest mt-2 border p-3 font-mono text-sm break-all select-all">
                 {state.joinUrl}
               </p>
             </div>

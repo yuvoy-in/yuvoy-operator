@@ -55,7 +55,7 @@ export function ScheduleStep({
         wanted to move on: "Next with no rows while `repeatsWeekly` is false
         sends nothing", and the simplest way to send nothing is not to call it.
       */}
-      <div className="border-cream-line mt-6 flex items-center gap-4 border-t pt-4">
+      <div className="border-paper-line mt-6 flex items-center gap-4 border-t pt-4">
         <Link
           href={next}
           className="text-forest tap-target text-sm font-bold underline underline-offset-4"

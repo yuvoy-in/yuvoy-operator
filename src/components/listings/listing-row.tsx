@@ -235,7 +235,7 @@ export function ListingRow({
         saying so on every row would train an operator to stop reading them.
       */}
       {status.selling && !hasFootage ? (
-        <p className="border-cream-line text-forest/80 mt-3 border-t pt-3 text-sm">
+        <p className="border-paper-line text-forest/80 mt-3 border-t pt-3 text-sm">
           On sale with nothing to show. Travellers see a blank card until a
           photograph or a reel is attached to it.{" "}
           <a href="/account?tab=reels" className="underline underline-offset-2">
@@ -263,14 +263,14 @@ export function ListingRow({
         */
         <p
           role="status"
-          className="border-cream-line text-forest/80 mt-4 border-t pt-3 text-sm font-bold"
+          className="border-paper-line text-forest/80 mt-4 border-t pt-3 text-sm font-bold"
         >
           {status.selling
             ? "Your change is with us. It stays on sale on the old terms until we answer."
             : "It is with us now. We will come back to you."}
         </p>
       ) : editing ? (
-        <form action={act} className="border-cream-line mt-4 border-t pt-4">
+        <form action={act} className="border-paper-line mt-4 border-t pt-4">
           <input type="hidden" name="id" value={listing.id ?? ""} />
 
           {/*
@@ -439,7 +439,7 @@ export function ListingRow({
               {PRICING_UNITS.map((unit) => (
                 <label
                   key={unit.value}
-                  className="border-cream-line rounded-control flex min-h-14 cursor-pointer items-start gap-3 border p-3"
+                  className="border-paper-line rounded-control flex min-h-14 cursor-pointer items-start gap-3 border p-3"
                 >
                   <input
                     type="radio"

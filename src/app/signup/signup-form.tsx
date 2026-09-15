@@ -292,7 +292,7 @@ export function SignUpForm() {
         {pending ? "Working…" : "Create the account"}
       </Button>
 
-      <p className="border-cream-line text-forest/70 border-t pt-5 text-sm">
+      <p className="border-paper-line text-forest/70 border-t pt-5 text-sm">
         Already have an account?{" "}
         <Link
           href="/sign-in"

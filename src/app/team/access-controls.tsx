@@ -94,7 +94,7 @@ export function AccessControls({
       only "The last owner or admin."
     */
     return reason ? (
-      <p className="border-cream-line text-forest/70 mt-4 border-t pt-3 text-xs">
+      <p className="border-paper-line text-forest/70 mt-4 border-t pt-3 text-xs">
         {reason}
       </p>
     ) : null;
@@ -201,7 +201,7 @@ function RoleForm({
   const [chosen, setChosen] = useState<string | undefined>(current);
 
   return (
-    <form action={act} className="border-cream-line border-t pt-4">
+    <form action={act} className="border-paper-line border-t pt-4">
       <input type="hidden" name="id" value={member.id} />
       <fieldset>
         <legend className="text-sm font-bold">What {member.name} can do</legend>
@@ -310,7 +310,7 @@ function HoldForm({
   useCloseOnDone(state, onClose);
 
   return (
-    <form action={act} className="border-cream-line border-t pt-4">
+    <form action={act} className="border-paper-line border-t pt-4">
       <input type="hidden" name="id" value={member.id} />
       <p className="text-sm font-bold">Pause {member.name}&rsquo;s access?</p>
       <p className="text-forest/80 mt-1.5 text-sm">
@@ -342,7 +342,7 @@ function RestoreForm({
   useCloseOnDone(state, onClose);
 
   return (
-    <form action={act} className="border-cream-line border-t pt-4">
+    <form action={act} className="border-paper-line border-t pt-4">
       <input type="hidden" name="id" value={member.id} />
       <p className="text-sm font-bold">Give {member.name} access back?</p>
       <p className="text-forest/80 mt-1.5 text-sm">
