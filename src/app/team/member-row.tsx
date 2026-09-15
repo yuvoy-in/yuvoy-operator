@@ -107,7 +107,7 @@ export function MemberRow({
             would quietly hide half of what somebody has been granted.
           */}
           {member.roles.map((role) => (
-            <Chip key={role} className="label text-forest/75 bg-cream">
+            <Chip key={role} className="label text-forest/75 bg-paper">
               {roleLabel(role)}
             </Chip>
           ))}
@@ -289,7 +289,7 @@ export function MemberRow({
             answers 409. Same call as the grant ceiling in O9: the refusal is
             knowable from what is already on screen, so it is said here.
           */
-          <p className="border-cream-line text-forest/70 mt-4 border-t pt-3 text-xs">
+          <p className="border-paper-line text-forest/70 mt-4 border-t pt-3 text-xs">
             {removability.reason}
           </p>
         )

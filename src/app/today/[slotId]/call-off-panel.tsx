@@ -54,7 +54,7 @@ export function CallOffPanel({
         <p className="text-forest/80 mt-2 text-sm">
           Everybody has been told and refunded in full.
         </p>
-        <dl className="border-cream-line mt-4 grid grid-cols-2 gap-4 border-t pt-4">
+        <dl className="border-paper-line mt-4 grid grid-cols-2 gap-4 border-t pt-4">
           <Figure
             label="Bookings cancelled"
             value={String(r.bookingsCancelled)}
@@ -93,7 +93,7 @@ export function CallOffPanel({
   }
 
   return (
-    <form action={act} className={panelClass("alert", "bg-cream mt-10")}>
+    <form action={act} className={panelClass("alert", "bg-paper mt-10")}>
       <h2 className="text-base font-bold">Call off this departure</h2>
       <p className="text-forest/80 mt-2 text-sm">
         Everybody on it is cancelled and refunded <strong>in full</strong>, the

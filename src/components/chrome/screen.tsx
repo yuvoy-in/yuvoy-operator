@@ -6,7 +6,7 @@ import { BackButton } from "./back-button";
 /**
  * The screen chassis — v2.7's stage and sheet, as the traveller app draws it.
  *
- * A forest STAGE, and a cream SHEET rising out of it with a 32px top. On a
+ * A forest STAGE, and a paper SHEET rising out of it with a 32px top. On a
  * phone the stage is the strip above the sheet: the mark on a tab root, a
  * back control and a small caption on a focused screen. On a desktop the
  * stage is the whole canvas and the sheet is a panel floating on it.
@@ -67,10 +67,10 @@ export function Screen({
           {back ? (
             <BackButton {...back} />
           ) : (
-            <Wordmark tone="cream" className="h-9" priority />
+            <Wordmark tone="paper" className="h-9" priority />
           )}
           {stageLabel ? (
-            <p className="label text-cream/70 absolute left-1/2 -translate-x-1/2">
+            <p className="label text-paper/70 absolute left-1/2 -translate-x-1/2">
               {stageLabel}
             </p>
           ) : null}

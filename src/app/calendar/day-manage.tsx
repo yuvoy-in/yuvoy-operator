@@ -108,7 +108,7 @@ export function DayManage({
             here to undo it, not to close it twice.
           */}
           {closures.length > 0 ? (
-            <div className="border-cream-line mt-5 border-t pt-4">
+            <div className="border-paper-line mt-5 border-t pt-4">
               <h4 className="label text-forest/75">Already closed</h4>
               <ul className="mt-2 space-y-3">
                 {closures.map((closure) => (
@@ -130,7 +130,7 @@ export function DayManage({
             </div>
           ) : null}
 
-          <div className="border-cream-line mt-5 border-t pt-4">
+          <div className="border-paper-line mt-5 border-t pt-4">
             <h4 className="label text-forest/75">Stop selling one departure</h4>
             {/*
               Replaces "set its seats to what is already sold", which worked and
@@ -163,7 +163,7 @@ export function DayManage({
             )}
           </div>
 
-          <div className="border-cream-line mt-5 border-t pt-4">
+          <div className="border-paper-line mt-5 border-t pt-4">
             <h4 className="label text-forest/75">Close the whole day</h4>
             <div className="mt-3">
               <BlackoutForm today={day} day={{ date: day, label, closed }} />

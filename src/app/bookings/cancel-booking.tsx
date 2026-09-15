@@ -126,7 +126,7 @@ export function CancelBooking({
   }
 
   return (
-    <form action={act} className="border-cream-line mt-4 border-t pt-4">
+    <form action={act} className="border-paper-line mt-4 border-t pt-4">
       <input type="hidden" name="bookingId" value={bookingId} />
 
       <p className="text-base font-bold">Cancel {reference}?</p>

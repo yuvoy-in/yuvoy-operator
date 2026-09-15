@@ -143,7 +143,7 @@ export function SlotCapacity({ slot }: { slot: OperatorSlot }) {
             max={200}
             defaultValue={seatsState.seats ?? slot.seats}
             required
-            className={inputClass("bg-cream w-28 text-lg")}
+            className={inputClass("bg-paper w-28 text-lg")}
           />
           <Button
             type="submit"
@@ -218,7 +218,7 @@ function CounterSale({
       and carries the incident id somebody will quote.
     */
     return (
-      <Panel tone="alert" className="bg-cream mt-5 p-4">
+      <Panel tone="alert" className="bg-paper mt-5 p-4">
         <p className="text-terra-deep text-base font-bold">
           This oversold the departure
         </p>
@@ -270,7 +270,7 @@ function CounterSale({
 
   if (sellingOpen) {
     return (
-      <form action={sell} className="border-cream-line mt-5 border-t pt-4">
+      <form action={sell} className="border-paper-line mt-5 border-t pt-4">
         <input type="hidden" name="slotId" value={slot.id} />
         <label htmlFor={`offline-${slot.id}`} className="label text-forest/75">
           Seats you sold at your counter
@@ -283,7 +283,7 @@ function CounterSale({
           min={1}
           max={200}
           required
-          className={inputClass("bg-cream mt-2 w-28 text-lg")}
+          className={inputClass("bg-paper mt-2 w-28 text-lg")}
         />
         <p className="text-forest/70 mt-1.5 text-xs">
           So we stop selling them. This is a report, not a request. It is

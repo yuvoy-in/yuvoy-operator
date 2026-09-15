@@ -71,7 +71,7 @@ export function ThreadList({
               href={`/bookings/${row.bookingId}#conversation`}
               className={panelClass(
                 "raised",
-                "ease-interaction hover:bg-cream flex items-center justify-between gap-4 transition-colors duration-200",
+                "ease-interaction hover:bg-paper flex items-center justify-between gap-4 transition-colors duration-200",
               )}
             >
               <span className="min-w-0">

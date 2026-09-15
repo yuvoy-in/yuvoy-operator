@@ -123,7 +123,7 @@ export default async function PayoutsPage() {
             Previously
           </h2>
           <Panel className="mt-3 p-0">
-            <ul className="divide-cream-line divide-y">
+            <ul className="divide-paper-line divide-y">
               {history.map((r) => (
                 <li
                   key={r.id}

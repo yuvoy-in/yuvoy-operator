@@ -373,7 +373,7 @@ function SettlementRow({ settlement }: { settlement: Settlement }) {
   return (
     <Link
       href={`/earnings/${settlement.id}`}
-      className="rounded-card border-cream-line bg-cream-deep hover:border-forest/40 ease-interaction flex items-center justify-between gap-4 border p-4 transition-colors duration-200"
+      className="rounded-card border-paper-line bg-paper-deep hover:border-forest/40 ease-interaction flex items-center justify-between gap-4 border p-4 transition-colors duration-200"
     >
       <div className="min-w-0">
         <p className="font-bold">

@@ -169,7 +169,7 @@ export default async function AccountPage({
                 aria-label="Settings"
                 className={panelClass(
                   "raised",
-                  "ease-interaction hover:bg-cream flex size-11 items-center justify-center p-0 transition-colors duration-200",
+                  "ease-interaction hover:bg-paper flex size-11 items-center justify-center p-0 transition-colors duration-200",
                 )}
               >
                 <SettingsIcon className="text-forest size-5" />
@@ -193,7 +193,7 @@ export default async function AccountPage({
                   className="size-16 rounded-full object-cover"
                 />
               ) : (
-                <span className="bg-cream-deep font-display text-forest flex size-16 items-center justify-center rounded-full text-2xl">
+                <span className="bg-paper-deep font-display text-forest flex size-16 items-center justify-center rounded-full text-2xl">
                   {name.slice(0, 1).toUpperCase()}
                 </span>
               )}
@@ -238,7 +238,7 @@ export default async function AccountPage({
               href="/account/verification"
               className={panelClass(
                 "alert",
-                "ease-interaction hover:bg-cream mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
+                "ease-interaction hover:bg-paper mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
               )}
             >
               <span className="text-base font-bold">
@@ -400,7 +400,7 @@ function ListingsGrid({
               ) : (
                 <span
                   aria-hidden
-                  className="rounded-card bg-cream-deep block aspect-square w-full"
+                  className="rounded-card bg-paper-deep block aspect-square w-full"
                 />
               )}
               <span className="mt-1 block truncate text-sm font-bold">

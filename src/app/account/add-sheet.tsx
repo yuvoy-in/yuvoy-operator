@@ -42,7 +42,7 @@ export function AddSheet({
         onClick={() => setOpen((was) => !was)}
         className={panelClass(
           "raised",
-          "ease-interaction hover:bg-cream flex size-11 items-center justify-center p-0 transition-colors duration-200",
+          "ease-interaction hover:bg-paper flex size-11 items-center justify-center p-0 transition-colors duration-200",
         )}
       >
         <PlusIcon className="text-forest size-5" />

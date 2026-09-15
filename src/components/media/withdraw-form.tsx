@@ -47,7 +47,7 @@ export function WithdrawForm({
     return (
       <p
         role="status"
-        className="border-cream-line text-forest/80 mt-4 border-t pt-3 text-sm font-bold"
+        className="border-paper-line text-forest/80 mt-4 border-t pt-3 text-sm font-bold"
       >
         {state.withdrawn.note ??
           "It is off Yuvoy. The original is deleted at the video provider shortly afterwards."}
@@ -68,7 +68,7 @@ export function WithdrawForm({
   }
 
   return (
-    <form action={act} className="border-cream-line mt-4 border-t pt-4">
+    <form action={act} className="border-paper-line mt-4 border-t pt-4">
       <input type="hidden" name="mediaAssetId" value={mediaAssetId} />
 
       <fieldset>

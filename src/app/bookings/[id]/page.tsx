@@ -146,7 +146,7 @@ export default async function BookingPage({
       ) : null}
 
       <Panel className="mt-8 p-0">
-        <dl className="divide-cream-line divide-y text-sm">
+        <dl className="divide-paper-line divide-y text-sm">
           <Row label="Experience">{booking.experience}</Row>
           {booking.startsAt ? (
             <Row label="Departs">
@@ -234,7 +234,7 @@ export default async function BookingPage({
           change today cannot restate what was earned last week.
         */
         <Panel className="mt-6 p-0">
-          <dl className="divide-cream-line divide-y text-sm">
+          <dl className="divide-paper-line divide-y text-sm">
             <Row label="Gross">{formatPaise(booking.money.grossPaise)}</Row>
             <Row label="Yuvoy's commission">
               − {formatPaise(booking.money.commissionPaise)}
@@ -246,7 +246,7 @@ export default async function BookingPage({
               <strong>{formatPaise(booking.money.netPaise)}</strong>
             </Row>
           </dl>
-          <p className="text-forest/70 border-cream-line border-t px-5 py-4 text-xs">
+          <p className="text-forest/70 border-paper-line border-t px-5 py-4 text-xs">
             These are the frozen figures Earnings sums, for this booking alone.
             Earnings counts by when the money moved and this list by when the
             trip runs, so a screenful of these will not add up to a month.
@@ -273,7 +273,7 @@ export default async function BookingPage({
             What they answered
           </h2>
           <Panel className="mt-3 p-0">
-            <dl className="divide-cream-line divide-y text-sm">
+            <dl className="divide-paper-line divide-y text-sm">
               {questions.map((question) => (
                 <div key={question.questionId} className="px-5 py-4">
                   <dt className="text-forest/75">
@@ -342,7 +342,7 @@ export default async function BookingPage({
         </section>
       )}
 
-      <p className="text-forest/70 border-cream-line mt-10 border-t pt-6 text-xs">
+      <p className="text-forest/70 border-paper-line mt-10 border-t pt-6 text-xs">
         We do not show traveller phone numbers, and neither side can type one
         into the conversation. Read the reference back to them at the jetty
         (they have it in every message we send), and to tell everybody on a

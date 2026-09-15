@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 /**
  * A panel: the raised card every sheet composes from.
  *
- *   raised  — the default, a cream-deep card on the sheet
+ *   raised  — the default, a paper-deep card on the sheet
  *   outline — a hairline only
  *   alert   — a warning or a failure: the accent hairline, never a red
  *   done    — a receipt: the forest hairline, the ink's own tint
@@ -15,9 +15,9 @@ import { cn } from "@/lib/cn";
 export type PanelTone = "raised" | "outline" | "alert" | "done";
 
 const TONE: Record<PanelTone, string> = {
-  raised: "border border-cream-line bg-cream-deep",
-  outline: "border border-cream-line bg-cream",
-  alert: "border-2 border-terra-deep bg-cream-deep",
+  raised: "border border-paper-line bg-paper-deep",
+  outline: "border border-paper-line bg-paper",
+  alert: "border-2 border-terra-deep bg-paper-deep",
   done: "border-2 border-forest bg-forest/5",
 };
 

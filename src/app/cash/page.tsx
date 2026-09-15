@@ -216,7 +216,7 @@ export default async function CashPage() {
         No "pay now", and this says why rather than leaving a silence somebody
         reads as an omission.
       */}
-      <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
+      <p className="border-paper-line text-forest/70 mt-10 border-t pt-6 text-sm">
         There is nothing to tap here. Settling up happens between us and a
         person, not through this screen. This is so the number is never a
         surprise when it does.

@@ -49,10 +49,10 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className={`${fraunces.variable} ${satoshi.variable}`}>
-      <body className="bg-forest text-cream">
+      <body className="bg-forest text-paper">
         <a
           href="#main"
-          className="label bg-cream text-forest sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-3"
+          className="label bg-paper text-forest sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-3"
         >
           Skip to content
         </a>

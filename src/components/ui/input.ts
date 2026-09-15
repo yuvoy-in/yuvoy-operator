@@ -10,9 +10,9 @@ import { cn } from "@/lib/cn";
  */
 export function inputClass(className?: string): string {
   return cn(
-    "rounded-control border-cream-line bg-cream-deep text-forest w-full border px-4 text-base outline-none",
+    "rounded-control border-paper-line bg-paper-deep text-forest w-full border px-4 text-base outline-none",
     "transition-[border-color,background-color] duration-200 ease-interaction",
-    "focus:border-forest/60 focus:bg-cream placeholder:text-forest/70",
+    "focus:border-forest/60 focus:bg-paper placeholder:text-forest/70",
     "h-14",
     className,
   );
@@ -21,9 +21,9 @@ export function inputClass(className?: string): string {
 /** A textarea: the same field, free-height. */
 export function textareaClass(className?: string): string {
   return cn(
-    "rounded-control border-cream-line bg-cream-deep text-forest w-full border p-4 text-base outline-none",
+    "rounded-control border-paper-line bg-paper-deep text-forest w-full border p-4 text-base outline-none",
     "transition-[border-color,background-color] duration-200 ease-interaction",
-    "focus:border-forest/60 focus:bg-cream",
+    "focus:border-forest/60 focus:bg-paper",
     className,
   );
 }
@@ -37,8 +37,8 @@ export function choiceClass(checked?: boolean, className?: string): string {
     "rounded-card flex min-h-14 cursor-pointer items-center gap-3 border px-4 py-3 text-sm",
     "transition-[border-color,background-color,box-shadow] duration-200 ease-interaction",
     checked
-      ? "border-forest bg-cream ring-1 ring-forest"
-      : "border-cream-line bg-cream hover:border-forest/40",
+      ? "border-forest bg-paper ring-1 ring-forest"
+      : "border-paper-line bg-paper hover:border-forest/40",
     className,
   );
 }

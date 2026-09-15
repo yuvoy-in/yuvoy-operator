@@ -52,7 +52,7 @@ export default function Error({ reset }: { reset: () => void }) {
         relay that reached eleven people twice is not a cosmetic failure, and
         this portal cannot tell them from here whether the tap landed.
       */}
-      <p className="border-cream-line text-forest/70 mt-10 border-t pt-6 text-sm">
+      <p className="border-paper-line text-forest/70 mt-10 border-t pt-6 text-sm">
         If you had just tapped something (accepted a request, sent a message,
         marked somebody off), check whether it took effect before doing it
         again.

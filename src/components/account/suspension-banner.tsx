@@ -47,12 +47,12 @@ export function SuspensionBanner({
   return (
     <div
       role="alert"
-      className="border-terra/40 bg-terra/10 text-cream border-b px-5 py-4 lg:px-8"
+      className="border-terra/40 bg-terra/10 text-paper border-b px-5 py-4 lg:px-8"
     >
       <p className="text-sm font-bold">{message}</p>
-      {admin ? <p className="text-cream/80 mt-2 text-sm">{admin}</p> : null}
+      {admin ? <p className="text-paper/80 mt-2 text-sm">{admin}</p> : null}
       {stillAllowed ? (
-        <p className="text-cream/70 mt-2 text-sm">{stillAllowed}</p>
+        <p className="text-paper/70 mt-2 text-sm">{stillAllowed}</p>
       ) : null}
     </div>
   );

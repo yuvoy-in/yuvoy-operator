@@ -52,7 +52,7 @@ export function DepartureRow({
   const calledOff = slot.status === "cancelled";
 
   return (
-    <li className="border-cream-line border-t pt-3 first:border-t-0 first:pt-0">
+    <li className="border-paper-line border-t pt-3 first:border-t-0 first:pt-0">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="flex items-baseline gap-3">
           <span className="font-mono text-sm tabular-nums">{time}</span>
@@ -200,7 +200,7 @@ function MoveTime({
   }
 
   return (
-    <form action={act} className="border-cream-line mt-3 border-t pt-3">
+    <form action={act} className="border-paper-line mt-3 border-t pt-3">
       <input type="hidden" name="slotId" value={slot.id} />
       <input type="hidden" name="day" value={day} />
 
@@ -279,7 +279,7 @@ function StopSelling({
   }
 
   return (
-    <form action={act} className="border-cream-line mt-3 border-t pt-3">
+    <form action={act} className="border-paper-line mt-3 border-t pt-3">
       <input type="hidden" name="slotId" value={slot.id} />
 
       <fieldset>
