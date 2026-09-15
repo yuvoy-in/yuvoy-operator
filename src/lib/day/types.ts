@@ -84,6 +84,15 @@ export function orderParties(parties: Party[]): Party[] {
 export interface OperatorSlot {
   id: string;
   title: string;
+  /**
+   * The listing this departure belongs to.
+   *
+   * Optional because a response that omits it must render as a departure that
+   * belongs to nothing rather than to the wrong listing. Home reads the
+   * fortnight ONCE and finds each listing's next departure in it
+   * (yuvoy-operator#56 item 5), which is only possible because rows carry this.
+   */
+  experienceId?: string;
   startsAt: string;
   timezone: string;
   seats: number;

@@ -1,43 +1,69 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
-import { listSlots } from "@/lib/day/manifest";
 import { listOpenRequests } from "@/lib/day/requests";
+import { listListings, listMedia, listSlots } from "@/lib/day/manifest";
+import { urgencyOf } from "@/lib/day/request-types";
+import { headline } from "@/lib/account/standing";
 import { totalUnread } from "@/lib/messages/fetch";
 import { unreadLabel } from "@/lib/messages/thread";
-import { urgencyOf } from "@/lib/day/request-types";
-import { dayCaption, marketDays, marketTime } from "@/lib/format/market-time";
-import { headline, splitByWaitingOn } from "@/lib/account/standing";
-import { Empty } from "@/components/ui/states";
-import { Screen } from "@/components/chrome/screen";
+import {
+  dayLine,
+  listingLabel,
+  nextDeparture,
+  orderListings,
+  posterFor,
+  requestsLine,
+  seatsLine,
+} from "@/lib/services/home";
+import { shiftDay } from "@/lib/day/calendar";
+import {
+  dayCaption,
+  marketDays,
+  marketTime,
+  now,
+} from "@/lib/format/market-time";
+import { ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
-import { Panel, panelClass } from "@/components/ui/panel";
 import { ChevronRightIcon } from "@/components/ui/icons";
+import { panelClass } from "@/components/ui/panel";
+import { Screen } from "@/components/chrome/screen";
+import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { cn } from "@/lib/cn";
+import type { OperatorSlot } from "@/lib/day/types";
 
-export const metadata: Metadata = { title: "Today" };
+export const metadata: Metadata = { title: "Home" };
 
 /*
-  Never prerendered, never cached. This page is the live answer to "what am I
-  running today" — a build-time copy would show the deploy day's departures,
-  and a cached one would show a seat count that was true a minute ago. The
-  brief's warning is exactly this: a manifest kept from memory disagrees with
-  the boat.
+  Never prerendered, never cached: every number here is a live seat count or a
+  request with a clock on it.
 */
 export const dynamic = "force-dynamic";
 
 /**
- * O10 — the day, as a list of departures.
+ * Home — yuvoy-operator#56.
  *
- * The screen an operator opens at 6am. Today only: a portal that opens on a
- * week makes somebody find today, and at 6am on a jetty the answer to "what is
- * on" is never next Thursday. Tomorrow is one tap away for the operator who is
- * checking ahead.
+ * ## What this screen is for
  *
- * The day carries nothing but the day. Money, people, footage and the account
- * live behind the Business tab, and capacity has a tab of its own.
+ * One glance, at six in the morning, on one bar of signal: what is waiting on
+ * an answer, what is running today, and every listing with its state. It was
+ * Today, which showed the day and nothing else, while the listings lived behind
+ * a tab nobody found and the requests behind another.
+ *
+ * ## Nothing here explains itself
+ *
+ * One heading per block, and body text only for an error or an empty day
+ * (`Do not build`). The previous screen opened with the operator's own name and
+ * a paragraph about what a manifest is. Neither is information; both are
+ * between an operator and the boat.
+ *
+ * ## The fortnight is read ONCE
+ *
+ * "Never one call per listing", and the issue says it twice. Nine listings
+ * would otherwise be nine slot requests on the screen somebody opens first.
+ * `nextDeparture` finds each listing's next boat inside the one read.
  */
-export default async function TodayPage({
+export default async function HomePage({
   searchParams,
 }: {
   searchParams: Promise<{ day?: string }>;
@@ -45,127 +71,99 @@ export default async function TodayPage({
   const { token, me } = await requireOperator();
   const { day } = await searchParams;
 
-  // Started before the slots are awaited, so the two overlap. A failure is
-  // kept as a failure rather than folded into "no requests" — a queue nobody
-  // sees is a queue that expires, and a 500 used to look exactly like empty.
-  const openRequests = listOpenRequests(token).then(
-    (items) => ({ ok: true as const, items }),
-    () => ({ ok: false as const, items: [] }),
-  );
-
-  /*
-    Started alongside the requests, for the same reason: on one bar of signal a
-    serial fetch doubles the wait, and neither of these depends on the other.
-    `totalUnread` soft-fails to zero of its own accord, so there is nothing to
-    catch here and nothing that can take the day down.
-  */
-  const unread = totalUnread(token);
-
   const { today, tomorrow } = await marketDays();
   // Only ever today or tomorrow from the UI, but the value arrives in a URL,
   // so it is validated rather than trusted.
   const date = /^\d{4}-\d{2}-\d{2}$/.test(day ?? "") ? day! : today;
-  const slots = await listSlots(token, date, date);
+  const fortnightEnd = shiftDay(today, 13);
 
   /*
-    Requests are fetched here too, because the day is the screen an operator
-    opens and a request nobody sees is a request that expires. Deliberately
-    not awaited in sequence with the slots — the two are independent, and on
-    one bar of signal a serial fetch doubles the wait for no reason.
+    Six reads, in parallel, and none of them can take the screen down on its
+    own: every one degrades to a line of its own rather than an error page.
+
+    The fortnight covers BOTH the day's rows and every listing's next
+    departure, which is why it is asked for once and sliced twice.
   */
-  const requestsResult = await openRequests;
-  const requests = requestsResult.items;
-  const urgent = requests.filter(
-    (r) => urgencyOf(r.minutesToAnswer) === "critical",
+  const [daySlots, fortnight, listings, media, requests, unreadTotal, at] =
+    await Promise.all([
+      listSlots(token, date, date).then(
+        (rows) => ({ ok: true as const, rows }),
+        () => ({ ok: false as const, rows: [] }),
+      ),
+      listSlots(token, today, fortnightEnd).catch(() => []),
+      listListings(token).catch(() => []),
+      listMedia(token).catch(() => []),
+      listOpenRequests(token).catch(() => null),
+      totalUnread(token),
+      now(),
+    ]);
+
+  /*
+    `me.account` is already a narrowed `Standing | null` — `null` when the API
+    sent no account block at all, which the contract says is "unknown, never
+    everything is fine". A screen that read that as fine would tell somebody who
+    cannot sell that they can.
+  */
+  const standing = me.account;
+  const urgent = (requests ?? []).filter(
+    (r) => urgencyOf(r.minutesToAnswer ?? 0) === "critical",
   ).length;
-  const unreadTotal = await unread;
+  const waiting = requestsLine((requests ?? []).length, urgent);
+  const ordered = orderListings(listings ?? []);
+  const caption = dayCaption(date, today, tomorrow);
 
   return (
     <Screen>
-      <p className="eyebrow text-terra-deep">{me.name || "Your day"}</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-        {dayCaption(date, today, tomorrow)}
-      </h1>
+      <RefreshOnFocus />
 
       {/*
-        The account cannot sell, said on the screen where the question is
-        actually asked.
-
-        A brand-new operator signs in and lands here — `/` redirects to
-        `/today` — and after self-signup (D-029) they are a PROSPECT with no
-        departures and nothing to run. Without this they meet "Nothing
-        scheduled", which reads as "you have not added anything" rather than
-        "you cannot sell yet". The Business door has the detail; this is the
-        pointer to it.
-
-        `account` is null when the API did not say. Nothing is claimed then —
-        an unknown standing must not produce a warning any more than it may
-        produce reassurance.
+        One `h1`, and it is not on screen. The heading an operator needs is the
+        day's line below; a second one saying "Home" above it is the screen
+        naming itself. It stays in the document because a page without one is a
+        page a screen reader cannot orient in.
       */}
-      {me.account && !me.account.bookable ? (
-        <Link
-          href="/account"
-          className={panelClass(
-            "alert",
-            "ease-interaction hover:bg-cream mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
-          )}
-        >
-          <span>
-            <span className="block text-base font-bold">
-              {headline(me.account).title}
-            </span>
-            <span className="text-forest/80 mt-1 block text-sm">
-              {splitByWaitingOn(me.account.blocking).operator.length > 0
-                ? "See what is outstanding"
-                : "See where it stands"}
-            </span>
+      <h1 className="sr-only">Home</h1>
+
+      {/*
+        The account, first, and only when it cannot sell. `headline` is the one
+        sentence the Business screen leads with, so the two cannot disagree
+        about what is wrong.
+      */}
+      {standing && !standing.bookable ? (
+        <Link href="/account" className={stripClass("alert")}>
+          <span className="text-base font-bold">
+            {headline(standing).title}
           </span>
           <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
         </Link>
       ) : null}
 
-      {!requestsResult.ok ? (
-        <Panel role="status" className="mt-6 px-4 py-3 text-sm">
-          Requests could not be loaded just now.{" "}
-          <Link href="/bookings" className="text-terra-deep underline">
-            Open the queue
-          </Link>{" "}
-          to check. One may be waiting.
-        </Panel>
-      ) : null}
-
-      {requests.length > 0 ? (
-        <Link
-          href="/bookings"
-          className={panelClass(
-            "alert",
-            "ease-interaction hover:bg-cream mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
-          )}
-        >
+      {/*
+        Requests, which are the only thing on this screen with a clock on them.
+        A failed read says so rather than showing nothing: an empty strip and a
+        broken one look identical, and one of them is a queue expiring.
+      */}
+      {requests === null ? (
+        <Link href="/bookings?view=requests" className={stripClass("alert")}>
           <span className="text-base font-bold">
-            {requests.length} request{requests.length === 1 ? "" : "s"} waiting
+            Requests did not load. Open Bookings
           </span>
-          <span className="label text-terra-deep flex shrink-0 items-center gap-1">
-            {urgent > 0 ? `${urgent} within the hour` : "Answer"}
-            <ChevronRightIcon className="size-4" />
-          </span>
+          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+        </Link>
+      ) : waiting ? (
+        <Link href="/bookings?view=requests" className={stripClass("alert")}>
+          <span className="text-base font-bold">{waiting}</span>
+          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
         </Link>
       ) : null}
 
       {/*
-        Directly under the requests strip, by the owner's decision of 14
-        September (yuvoy-operator#52 item 4), and drawn only when there is a
-        number to draw. Quieter than requests on purpose: a request expires and
-        a message waits, so this must not compete with the thing that dies.
+        Unread messages, directly under the requests strip, by the owner's
+        decision of 14 September (yuvoy-operator#52 item 4). Quieter on purpose:
+        a request expires and a message waits.
       */}
       {unreadTotal > 0 ? (
-        <Link
-          href="/messages"
-          className={panelClass(
-            "raised",
-            "ease-interaction hover:bg-cream mt-3 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
-          )}
-        >
+        <Link href="/messages" className={stripClass("raised")}>
           <span className="text-base font-bold">
             {unreadLabel(unreadTotal)}
           </span>
@@ -182,55 +180,162 @@ export default async function TodayPage({
         />
       </nav>
 
-      <div className="mt-8">
-        {slots.length === 0 ? (
-          <Empty
-            title="Nothing scheduled"
-            body={
-              date === today
-                ? "No departures today. If that is wrong, check your slots. A departure that is not here is one Yuvoy cannot sell."
-                : date === tomorrow
-                  ? "Nothing on the books for tomorrow yet."
-                  : "Nothing on the books for that day."
-            }
-          />
+      <section className="mt-5" aria-labelledby="the-day">
+        <h2 id="the-day" className="label text-forest/75">
+          {dayLine(caption, daySlots.rows)}
+        </h2>
+
+        {!daySlots.ok ? (
+          <div className="mt-3">
+            <p className="text-terra-deep text-base font-bold">
+              Departures did not load. Try again.
+            </p>
+            <ButtonLink
+              href={date === today ? "/today" : `/today?day=${date}`}
+              variant="secondary"
+              block={false}
+              className="mt-3"
+            >
+              Try again
+            </ButtonLink>
+          </div>
+        ) : daySlots.rows.length === 0 ? (
+          /*
+            One line. The panel that stood here explained what a departure is
+            and what to do about not having one, on the screen an operator opens
+            when they already know.
+          */
+          <p className="text-forest/70 mt-2 text-base">
+            {date === tomorrow
+              ? "Nothing running tomorrow"
+              : "Nothing running today"}
+          </p>
         ) : (
-          <ul className="space-y-3">
-            {slots.map((slot) => (
+          <ul className="mt-3 space-y-2">
+            {daySlots.rows.map((slot: OperatorSlot) => (
               <li key={slot.id}>
                 <Link
                   href={`/today/${slot.id}`}
                   className={panelClass(
                     "raised",
-                    "hover:border-forest/40 ease-interaction flex items-center gap-4 transition-colors duration-200",
+                    "ease-interaction hover:bg-cream flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
                   )}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="font-display text-2xl leading-none">
-                        {marketTime(slot.startsAt, slot.timezone)}
-                      </span>
-                      <Chip tone={slot.remaining === 0 ? "accent" : "neutral"}>
-                        {slot.sold} of {slot.seats} sold
-                      </Chip>
-                    </div>
-                    <p className="mt-2 text-base font-bold">{slot.title}</p>
-                    {slot.status !== "open" ? (
-                      <p className="text-terra-deep mt-1.5 text-sm font-bold">
-                        {slot.status === "cancelled"
-                          ? "Called off"
-                          : "Closed to new bookings"}
-                      </p>
-                    ) : null}
-                  </div>
-                  <ChevronRightIcon className="text-forest/70 size-5 shrink-0" />
+                  <span className="flex min-w-0 items-baseline gap-3">
+                    <span className="shrink-0 font-mono text-sm tabular-nums">
+                      {marketTime(slot.startsAt, slot.timezone)}
+                    </span>
+                    <span className="truncate text-base font-bold">
+                      {slot.title}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "label",
+                        slot.status === "cancelled"
+                          ? "text-terra-deep"
+                          : "text-forest/75",
+                      )}
+                    >
+                      {seatsLine(slot)}
+                    </span>
+                    <ChevronRightIcon className="text-terra-deep size-5" />
+                  </span>
                 </Link>
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </section>
+
+      <section className="mt-10" aria-labelledby="listings">
+        <h2 id="listings" className="label text-forest/75">
+          Your listings
+        </h2>
+
+        {ordered.length === 0 ? (
+          <Link
+            href="/account"
+            className="text-terra-deep tap-target mt-2 block text-base font-bold underline underline-offset-4"
+          >
+            No listings yet
+          </Link>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {ordered.map((listing) => {
+              const id = listing.id ?? "";
+              const next = nextDeparture(fortnight, id, at);
+              const poster = posterFor(media, id);
+              return (
+                <li key={id}>
+                  <Link
+                    href={`/today/listing/${id}`}
+                    className={panelClass(
+                      "raised",
+                      "ease-interaction hover:bg-cream flex items-center gap-3 px-4 py-3 transition-colors duration-200",
+                    )}
+                  >
+                    {/*
+                      A blank tile rather than a placeholder photograph.
+                      `OperatorMedia` has no hero field yet, and a stand-in
+                      picture on a listing is a picture of somebody else's boat.
+                    */}
+                    {poster ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={poster}
+                        alt=""
+                        className="rounded-control size-12 shrink-0 object-cover"
+                      />
+                    ) : (
+                      <span
+                        aria-hidden
+                        className="rounded-control bg-cream-deep size-12 shrink-0"
+                      />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-base font-bold">
+                        {listing.title}
+                      </span>
+                      {next ? (
+                        <span className="text-forest/70 block truncate text-sm">
+                          Next:{" "}
+                          {dayCaption(
+                            marketDayOfSlot(next.startsAt, next.timezone),
+                            today,
+                            tomorrow,
+                          )}{" "}
+                          {marketTime(next.startsAt, next.timezone)} ·{" "}
+                          {next.sold}/{next.seats}
+                        </span>
+                      ) : null}
+                    </span>
+                    <Chip>{listingLabel(listing)}</Chip>
+                    <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </Screen>
+  );
+}
+
+/** The market day a departure falls on, for its caption. */
+function marketDayOfSlot(startsAt: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(
+    new Date(startsAt),
+  );
+}
+
+/** A full-width strip: one line, a chevron, and the whole thing a tap target. */
+function stripClass(tone: "alert" | "raised"): string {
+  return panelClass(
+    tone,
+    "ease-interaction hover:bg-cream mt-3 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
   );
 }
 
@@ -244,17 +349,14 @@ function DayLink({
   active: boolean;
 }) {
   return (
-    <Link
+    <ButtonLink
       href={href}
+      variant={active ? "primary" : "secondary"}
+      size="sm"
+      block={false}
       aria-current={active ? "page" : undefined}
-      className={cn(
-        "dock-target ease-interaction rounded-full border px-6 text-sm transition-colors duration-200",
-        active
-          ? "border-forest bg-forest text-cream font-bold"
-          : "border-cream-line bg-cream-deep hover:border-forest/40",
-      )}
     >
       {label}
-    </Link>
+    </ButtonLink>
   );
 }

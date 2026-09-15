@@ -315,20 +315,29 @@ test("an account block the API did not send is unknown, not approval", async ({
   ).toBeVisible();
 });
 
-test("the day screen explains an empty day the account is the reason for", async ({
+test("Home explains an empty day the account is the reason for", async ({
   page,
 }) => {
   /*
     Where the question is actually asked. A new operator signs in and lands
-    here — `/` redirects to `/today` — and "Nothing scheduled" reads as "you
+    here — `/` redirects to `/today` — and "Nothing running today" reads as "you
     have not added anything" rather than "you cannot sell yet".
+
+    The strip is the first thing on Home since #56, above the requests, and it
+    carries `headline(account).title` so it cannot disagree with the sentence
+    the Business screen leads with.
   */
   await signIn(page, PROSPECT);
   await page.waitForURL("**/today");
 
+  /*
+    ONE line and a chevron since #56 item 3. It carried a second line saying
+    "See what is outstanding", which is what a chevron already says: Home is
+    four blocks an operator scans at six in the morning, and every extra line is
+    one between them and the boat.
+  */
   const banner = page.getByRole("link", { name: /You cannot be booked yet/ });
   await expect(banner).toBeVisible();
-  await expect(banner).toContainText("See what is outstanding");
 
   await banner.click();
   await page.waitForURL("**/account");

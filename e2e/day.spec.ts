@@ -23,10 +23,17 @@ async function signIn(page: Page) {
   await page.waitForURL("**/today");
 }
 
-test("an operator signs in and lands on today", async ({ page }) => {
+test("an operator signs in and lands on Home", async ({ page }) => {
   await signIn(page);
-  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
-  await expect(page.getByText("Try-dive at Nemo Reef")).toBeVisible();
+  /*
+    The day's own line is the heading now (#56). The screen's `h1` says "Home"
+    and is visually hidden: a heading naming the screen is the screen naming
+    itself, and the useful heading is what is running today.
+  */
+  await expect(
+    page.getByRole("heading", { name: /^Today · \d+ departures?/ }),
+  ).toBeVisible();
+  await expect(page.getByText("Try-dive at Nemo Reef").first()).toBeVisible();
 });
 
 test("the session token never reaches JavaScript", async ({ page }) => {
@@ -171,7 +178,13 @@ test("the manifest is in the HTML, not only the RSC payload", async ({
   request,
 }) => {
   await signIn(page);
-  await page.getByText("Try-dive at Nemo Reef").click();
+  // The departure row, not the listing tile: Home carries both since #56 and
+  // they share a title. Only the row goes to a manifest.
+  await page
+    .getByRole("region", { name: /departures?/ })
+    .getByRole("link")
+    .first()
+    .click();
   await page.waitForURL("**/today/slot_dawn");
 
   // Fetched with the browser's cookies but without running JavaScript — which

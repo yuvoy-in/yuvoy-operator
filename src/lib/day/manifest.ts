@@ -89,6 +89,7 @@ export async function listSlots(
       sold?: number;
       remaining?: number;
       bookingMode?: string;
+      experienceId?: string;
       status?: string;
       onSale?: boolean;
       notOnSaleReason?: string;
@@ -97,6 +98,9 @@ export async function listSlots(
     return {
       id: s.id ?? "",
       title: s.title ?? "Departure",
+      // Left out when absent rather than defaulted: a departure attributed to
+      // the wrong listing would put somebody else's boat on a listing's row.
+      ...(s.experienceId ? { experienceId: s.experienceId } : {}),
       startsAt: s.startsAt ?? "",
       timezone: s.timezone ?? "Asia/Kolkata",
       seats: s.seats ?? 0,
@@ -134,6 +138,23 @@ export async function listSlots(
   return inMarketDays(slots, from, to).sort((a, b) =>
     a.startsAt.localeCompare(b.startsAt),
   );
+}
+
+/**
+ * Every media item this operator holds, for the poster on a listing's tile.
+ *
+ * One read for the whole screen: Home shows a tile per listing and `posterFor`
+ * picks each one out of this list, rather than asking per listing — the same
+ * rule the fortnight of departures follows, and for the same reason.
+ */
+export async function listMedia(
+  token: string,
+): Promise<
+  { experienceId?: string; posterUrl?: string; situation?: string }[]
+> {
+  const { data, error } = await operatorApi(token).GET("/media", {});
+  if (error) throw error;
+  return data.items ?? [];
 }
 
 /**

@@ -50,27 +50,21 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     What they DO get: the day, the seats they may look at but not change, and
     the media upload the contract puts no role on.
 
-    The "Add a reel" door came off this screen with yuvoy-operator#33 §4 — it
-    opened what is now Listings, which is its own tab, and one screen should
-    not live in two places. The Listings stop in the bar is the way there, and
-    it is not role-gated. What replaced it here is the LOGO, which is mandatory before an
-    operator can be booked and is also ungated: `PUT /logo` declares a generic
+    The "Add a reel" door came off this screen with yuvoy-operator#33 §4, and
+    the Listings TAB that replaced it came off the bar with #56: every listing
+    is on Home now. What is here instead is the LOGO, which is mandatory before
+    an operator can be booked and is ungated — `PUT /logo` declares a generic
     Forbidden and names no role.
   */
   await expect(page.getByRole("link", { name: /Add a reel/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Your logo/ })).toBeVisible();
-  await expect(
-    page
-      .getByRole("navigation", { name: /Primary/i })
-      .first()
-      .getByRole("link", { name: "Listings" }),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("navigation", { name: /Primary/i })
-      .first()
-      .getByRole("link", { name: "Calendar" }),
-  ).toBeVisible();
+
+  // Home and Calendar are on the bar for every role, and there is no Listings
+  // stop for anybody.
+  const nav = page.getByRole("navigation", { name: /Primary/i }).first();
+  await expect(nav.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Calendar" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Listings" })).toHaveCount(0);
 });
 
 test("a manager is offered all three, because the server allows them", async ({

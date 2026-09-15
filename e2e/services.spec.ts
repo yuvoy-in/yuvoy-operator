@@ -25,21 +25,32 @@ async function signIn(page: Page, phone = "+919000000101") {
   await page.waitForURL("**/today");
 }
 
-test("Listings is a stop on the bar, and both its pages light it", async ({
+test("Listings is no longer a stop, and its pages light Business", async ({
   page,
 }) => {
+  /*
+    D-036, yuvoy-operator#56. The tab had two pages under it and pointed at the
+    first, so the footage was a stop nobody found. Every listing is on Home now,
+    and creating or editing one moves to the Business profile (#58).
+
+    These two URLs still work, and still light Business rather than nothing: an
+    old bookmark must not flash an unlit bar on its way through.
+  */
   await signIn(page);
 
   for (const route of ["/services/activities", "/services/reels"]) {
     await page.goto(route);
     const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-    const current = nav.getByRole("link", { name: "Listings" });
-    await expect(current).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("link", { name: "Listings" })).toHaveCount(0);
+    await expect(nav.getByRole("link", { name: "Business" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
 
     /*
       And exactly one stop is current. Two lit pills would make
       `aria-current="page"` a lie, which is what happened while `/reels` was
-      still in the Business prefix list.
+      still in the Business prefix list AND a stop of its own.
     */
     await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
   }

@@ -349,6 +349,17 @@ type MockExperience = {
   publishBlockers?: string[];
   upcomingDepartures?: number;
   sellable?: boolean;
+  /**
+   * The weekly schedule the hub edits — yuvoy-operator#56 item 8.
+   *
+   * `repeatsWeekly` is the half that decides whether an empty save is a
+   * question: clearing a schedule that exists closes every departure it made,
+   * and clearing one that never existed does nothing.
+   */
+  schedule?: {
+    repeatsWeekly: boolean;
+    weekly: { weekday: number; startTime: string; seats: number }[];
+  };
   review?: {
     state: string;
     since?: string;
@@ -396,6 +407,18 @@ function seedExperiences(): MockExperience[] {
       publishBlockers: [],
       sellable: true,
       upcomingDepartures: 6,
+      /*
+        A schedule that exists, so clearing it is the branch the form asks
+        about. A listing with none can be saved empty without a question, which
+        is the other half and is what every other fixture here covers.
+      */
+      schedule: {
+        repeatsWeekly: true,
+        weekly: [
+          { weekday: 2, startTime: "09:00", seats: 8 },
+          { weekday: 4, startTime: "09:00", seats: 8 },
+        ],
+      },
     },
     {
       id: "exp_snorkel",
@@ -868,6 +891,14 @@ let photoIntentsById: Record<string, { imageId: string }> = {};
  */
 let createdSlots: MockSlot[] = [];
 /**
+ * Departures moved this session, by id — yuvoy-operator#56 item 9.
+ *
+ * Kept beside the fixtures rather than written into them: `SLOTS` is a `const`
+ * every other handler reads, and a test that moved one would leak into the next
+ * through a module nothing resets.
+ */
+let movedTimes: Record<string, string> = {};
+/**
  * Cash recorded as taken this session, by booking id — yuvoy-operator#40 §1.
  *
  * The fixture's own `collected` rows stay read-only; this is what a tap adds.
@@ -1326,6 +1357,7 @@ export function __resetOperatorMocks() {
   filedCredentials = {};
   mockExperiences = seedExperiences();
   createdSlots = [];
+  movedTimes = {};
   cashTaken = {};
   story = seedStory();
   resetMockUploads();
@@ -3362,6 +3394,214 @@ export const handlers = [
       { id: created.id, status: "draft", next: "submit_for_review" },
       { status: 201 },
     );
+  }),
+
+  /**
+   * One listing and everything attached to it — yuvoy-operator#56 item 6.
+   *
+   * The whole point of the endpoint is that it is ONE request: "building a
+   * listing meant fetching the whole calendar and the whole media library to
+   * find the handful of rows that belong to it. On island 4G that is three
+   * requests and most of a business's data to render one screen."
+   */
+  http.get(url("/experiences/:id/workspace"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const listing = mockExperiences.find((e) => e.id === id);
+    // Gone and belonging-to-somebody-else are one answer, as everywhere else.
+    if (!listing) return envelope("not_found", "No such listing.", 404);
+
+    /*
+      "Its own departures that have NOT YET LEFT, soonest first." A departure
+      that has gone is read from `GET /slots` with a date range, so a mock that
+      sent them here would let the hub ship a list of boats nobody can act on.
+    */
+    const departures = allSlots()
+      .filter(
+        (slot) =>
+          slot.experienceId === id && Date.parse(slot.startsAt) > Date.now(),
+      )
+      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+      .slice(0, 200)
+      .map((slot) => {
+        const seats = capacity[slot.id] ?? slot.seats;
+        const sold = slot.sold + (offlineSold[slot.id] ?? 0);
+        return {
+          id: slot.id,
+          experienceId: slot.experienceId,
+          title: slot.title,
+          startsAt: slot.startsAt,
+          timezone: slot.timezone,
+          seats,
+          sold,
+          remaining: Math.max(0, seats - sold),
+          ...(slot.bookingMode ? { bookingMode: slot.bookingMode } : {}),
+          status: slotStatusOf(slot),
+          ...saleVerdictOf(slot, seats, sold),
+        };
+      });
+
+    return HttpResponse.json({
+      listing,
+      departures,
+      /*
+        The listing's own media, matched on the NESTED `listing.experienceId`
+        that `OperatorMedia` actually carries.
+      */
+      media: Object.entries(mediaAssets)
+        .filter(([, asset]) => asset.listing?.experienceId === id)
+        .map(([mediaId, asset]) => ({
+          id: mediaId,
+          kind: asset.kind,
+          state: asset.state,
+          ...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
+          listing: asset.listing,
+        })),
+      questions: [],
+    });
+  }),
+
+  /**
+   * Save the whole weekly schedule — yuvoy-operator#56 item 8.
+   *
+   * Whole, which is what makes an empty save dangerous: a row left out is a row
+   * removed. The mock records it so the hub reads back what it saved, and
+   * answers the `note` the screen renders verbatim.
+   */
+  http.put(url("/experiences/:id/schedule"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+
+    const listing = mockExperiences.find((e) => e.id === String(params.id));
+    if (!listing) return envelope("not_found", "No such listing.", 404);
+
+    const body = (await request.json()) as {
+      weekly?: { weekday?: number; startTime?: string; seats?: number }[];
+    };
+    const weekly = body.weekly ?? [];
+
+    /*
+      `details` names the row AND the field — keys like `weekly[2].startTime` —
+      so a form can mark that row rather than printing one sentence above seven
+      of them. Modelled, because a mock that answered a bare 400 would let the
+      portal ship without ever rendering a row problem.
+    */
+    const details: Record<string, string> = {};
+    weekly.forEach((row, i) => {
+      if (
+        !Number.isInteger(row.weekday) ||
+        (row.weekday ?? -1) < 0 ||
+        (row.weekday ?? 7) > 6
+      ) {
+        details[`weekly[${i}].weekday`] = "Sunday to Saturday, as 0 to 6.";
+      }
+      if (!/^\d{2}:\d{2}$/.test(String(row.startTime))) {
+        details[`weekly[${i}].startTime`] = "Times look like 07:00.";
+      }
+      if (
+        !Number.isInteger(row.seats) ||
+        (row.seats ?? 0) < 1 ||
+        (row.seats ?? 0) > 200
+      ) {
+        details[`weekly[${i}].seats`] = "Seats are 1 to 200.";
+      }
+    });
+    if (Object.keys(details).length > 0) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message: "Some rows need fixing.",
+            details,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const before = listing.schedule?.weekly.length ?? 0;
+    listing.schedule = {
+      repeatsWeekly: weekly.length > 0,
+      weekly: weekly.map((row) => ({
+        weekday: row.weekday!,
+        startTime: row.startTime!,
+        seats: row.seats!,
+      })),
+    };
+
+    return HttpResponse.json({
+      onSale: listing.sellable !== false,
+      note:
+        weekly.length === 0
+          ? `The weekly schedule is removed. ${before} ${before === 1 ? "departure it made is" : "departures it made are"} closed to new bookings, and the bookings on them stay.`
+          : `${weekly.length} ${weekly.length === 1 ? "day" : "days"} a week, from now on.`,
+      ...(listing.sellable === false
+        ? {
+            notOnSaleDetail:
+              "This listing is not selling, so none of these departures can be booked yet.",
+          }
+        : {}),
+    });
+  }),
+
+  /**
+   * Move one departure — yuvoy-operator#56 item 9.
+   *
+   * All three refusals are modelled, because each is a different sentence on
+   * screen and none of them would ever render against a permissive mock: too
+   * close to its start, a different day, and a time this listing already has.
+   */
+  http.patch(url("/slots/:id/time"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+
+    const id = String(params.id);
+    const slot = allSlots().find((s) => s.id === id);
+    if (!slot) return envelope("not_found", "No such departure.", 404);
+
+    const { startsAt } = (await request.json()) as { startsAt?: string };
+    const when = Date.parse(String(startsAt));
+    if (Number.isNaN(when)) {
+      return envelope("invalid_input", "startsAt must be an instant.", 400);
+    }
+
+    if (calledOff[id] || Date.parse(slot.startsAt) <= Date.now()) {
+      return envelope("departure_started", "It has already left.", 409);
+    }
+    /*
+      "The new time has to be on the same day", compared in the departure's own
+      market clock: an instant sent as UTC would read as the previous evening
+      for a 05:00 boat, which is exactly the mistake this refusal exists for.
+    */
+    const dayOf = (iso: string) =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: slot.timezone }).format(
+        new Date(iso),
+      );
+    if (dayOf(String(startsAt)) !== dayOf(slot.startsAt)) {
+      return envelope("different_day", "Same day only.", 409);
+    }
+    const clash = allSlots().some(
+      (other) =>
+        other.id !== id &&
+        other.experienceId === slot.experienceId &&
+        Date.parse(other.startsAt) === when,
+    );
+    if (clash) {
+      return envelope("time_taken", "Already a departure at that time.", 409);
+    }
+
+    movedTimes[id] = new Date(when).toISOString();
+    return HttpResponse.json({
+      id,
+      startsAt: movedTimes[id],
+      note: `Moved. ${slot.parties.length} ${slot.parties.length === 1 ? "traveller has" : "travellers have"} been told, and each can cancel for a full refund until it leaves.`,
+    });
   }),
 
   http.get(url("/experiences/:id"), async ({ request, params }) => {

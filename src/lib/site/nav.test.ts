@@ -119,35 +119,42 @@ describe("focused and bare routes", () => {
     expect(business.match("/today")).toBe(false);
   });
 
-  it("calls the catalogue Listings, for both of its pages, and Business neither", () => {
+  it("has no Listings stop, and Business answers for what it held", () => {
     /*
-      Owner ruling on yuvoy-operator#42: the stop was "Services" while the
-      screen under it said "Listings" — one word per thing (D-031 C10), broken
-      in the most visible place there is. The URLs stay: they are in histories.
+      D-036, yuvoy-operator#56. Listings had two pages under it and the tab
+      pointed at the first, so the footage was a stop nobody found. Every
+      listing is on Home now, and creating and editing them moved to the
+      Business profile.
+
+      The old URLs still light Business rather than nothing, for the instant
+      their redirect is on screen: an old bookmark must not flash an unlit bar
+      on its way through.
     */
-    const listings = NAV.find((n) => n.icon === "listings")!;
-    const business = NAV.find((n) => n.icon === "business")!;
-    expect(listings.label).toBe("Listings");
+    expect(NAV.map((n) => n.label)).not.toContain("Listings");
     expect(NAV.map((n) => n.label)).not.toContain("Services");
+
+    const business = NAV.find((n) => n.icon === "business")!;
     for (const path of [
       "/services",
       "/services/activities",
       "/services/reels",
     ]) {
-      expect(listings.match(path)).toBe(true);
-      expect(business.match(path)).toBe(false);
+      expect(business.match(path)).toBe(true);
     }
-    expect(listings.match("/account")).toBe(false);
   });
 
-  it("keeps Today, and names exactly five stops", () => {
-    // The owner's ruling kept Today as the landing screen; Earnings waits for
-    // its API (yuvoy-operator#47) as a door inside Business.
+  it("names exactly four stops, in the order D-036 sets", () => {
+    /*
+      Four since yuvoy-operator#56: Today became **Home** and took the
+      listings with it. Earnings is still a door inside Business.
+
+      The ORDER is asserted, not just the set. The tab bar is muscle memory on
+      a phone at six in the morning, and a stop that moves is a mis-tap.
+    */
     expect(NAV.map((n) => n.label)).toEqual([
-      "Today",
+      "Home",
       "Bookings",
       "Calendar",
-      "Listings",
       "Business",
     ]);
   });

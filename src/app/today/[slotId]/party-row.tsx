@@ -5,6 +5,7 @@ import { markAttendance, type AttendanceState } from "./actions";
 import { isHolding, type PartyForClient } from "@/lib/day/types";
 import type { ScreeningSignal } from "@/lib/day/screening";
 import { answerFor, toQuestions } from "@/lib/bookings/ending";
+import { CancelBooking } from "@/app/bookings/cancel-booking";
 import type { BookingCash } from "@/lib/money/bookings";
 import { cn } from "@/lib/cn";
 import { RelayPanel } from "./relay-panel";
@@ -28,6 +29,7 @@ export function PartyRow({
   screening,
   cash,
   timezone,
+  canManage,
 }: {
   /**
    * The screener is NOT on this type. It is decided on the server and arrives
@@ -61,6 +63,15 @@ export function PartyRow({
   cash: BookingCash | null | undefined;
   /** The departure's own zone, for when the cash was taken. */
   timezone: string;
+  /**
+   * The signed-in person may cancel a booking — yuvoy-operator#56 item 10.
+   *
+   * `POST /bookings/{id}/cancel` "requires OWNER, ADMIN or MANAGER, the roles
+   * that may call a departure off", and a STAFF login gets no control rather
+   * than a refusal after the tap. It stays drawn for a SUSPENDED business,
+   * which can still stop the trips it has already sold (#50).
+   */
+  canManage: boolean;
 }) {
   const [state, act, pending] = useActionState<AttendanceState, FormData>(
     markAttendance,
@@ -167,6 +178,27 @@ export function PartyRow({
             ))}
           </dl>
         </details>
+      ) : null}
+
+      {/*
+        Cancelling this one party — yuvoy-operator#56 item 10, and the same
+        component the booking's own screen uses (#43 item 4), because the act is
+        the same and a second confirmation written for the manifest would be a
+        second chance to get the reference check wrong.
+
+        Withheld on a departure that has left and on a booking that has already
+        ended: the API answers `409 departure_started` and `409 booking_ended`,
+        and both are knowable from what is on this row.
+      */}
+      {canManage &&
+      !departed &&
+      party.bookingId &&
+      (party.state === "confirmed" || party.state === "paid_pending_ops") ? (
+        <CancelBooking
+          bookingId={party.bookingId}
+          reference={party.reference ?? ""}
+          isCash={Boolean(cash)}
+        />
       ) : null}
 
       {holding ? (

@@ -25,23 +25,23 @@ test("the sign-in door draws no navigation", async ({ page }) => {
   );
 });
 
-test("a tab root names exactly five destinations, and says where you are", async ({
+test("a tab root names exactly four destinations, and says where you are", async ({
   page,
 }) => {
   /*
-    Five since yuvoy-operator#22. Listings joined the bar because the catalogue
-    — what a business sells and the footage that sells it — is the work rather
-    than the back office, and burying it behind the Business door is what made
-    it unreachable.
+    FOUR since D-036 (yuvoy-operator#56). Listings had two pages under it and
+    the tab pointed at the first, so the footage was a stop nobody found. Every
+    listing is on Home now, where an operator already looks, and creating or
+    editing one moved to the Business profile.
 
-    The count is asserted rather than left loose: a sixth stop is a width
-    decision, not a routing one, and the bar is already about 330px at its
-    longest.
+    The count is asserted rather than left loose: a fifth stop is a width
+    decision, not a routing one, and the bar was already about 330px at its
+    longest with five.
   */
   await signIn(page);
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-  await expect(nav.getByRole("link")).toHaveCount(5);
-  await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Today/i);
+  await expect(nav.getByRole("link")).toHaveCount(4);
+  await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Home/i);
 });
 
 test("the bar reaches every destination", async ({ page }) => {
@@ -49,7 +49,6 @@ test("the bar reaches every destination", async ({ page }) => {
   for (const [name, path, heading] of [
     ["Bookings", "/bookings", "Bookings"],
     ["Calendar", "/calendar", "Calendar"],
-    ["Listings", "/services/activities", "Listings"],
     ["Business", "/account", "Nemo Reef Watersports"],
   ] as const) {
     await page
@@ -58,11 +57,8 @@ test("the bar reaches every destination", async ({ page }) => {
       .getByRole("link", { name })
       .click();
     await page.waitForURL(`**${path}`);
-    /*
-      `exact`, because Listings carries a section heading counting them and a
-      substring match resolves to both. The page's own h1 is what says you
-      arrived.
-    */
+    // `exact`: a page may carry a section heading whose words overlap its own,
+    // and the `h1` is what says you arrived.
     await expect(
       page.getByRole("heading", { name: heading, exact: true }),
     ).toBeVisible();
@@ -74,7 +70,16 @@ test("a focused screen hides the bar and offers a way back", async ({
   isMobile,
 }) => {
   await signIn(page);
-  await page.getByText("Try-dive at Nemo Reef").click();
+  /*
+    The DEPARTURE row, not the listing tile. Home carries both since #56, and
+    they share a title: the row goes to that day's manifest and the tile goes to
+    the listing hub. Scoped by the region rather than by the words.
+  */
+  await page
+    .getByRole("region", { name: /departures?/ })
+    .getByRole("link")
+    .first()
+    .click();
   await page.waitForURL(/\/today\/.+/);
 
   await expect(
@@ -85,7 +90,7 @@ test("a focused screen hides the bar and offers a way back", async ({
   if (isMobile) {
     await expect(primary).toHaveCount(0);
   } else {
-    await expect(primary.getByRole("link")).toHaveCount(5);
+    await expect(primary.getByRole("link")).toHaveCount(4);
   }
 });
 
@@ -93,6 +98,11 @@ for (const route of [
   "/today",
   "/bookings",
   "/calendar",
+  /*
+    `/services/*` are no longer stops on the bar (#56) and their content moves
+    under Business on #58. They keep their accessibility audit until then,
+    because they are still reachable by URL.
+  */
   "/services/activities",
   "/services/reels",
   "/account",
@@ -163,7 +173,7 @@ test("the rail stays put while the page scrolls", async ({
   // And it is still a usable navigation once you are down the page.
   await expect(
     page.getByRole("navigation", { name: /Primary/i }).getByRole("link"),
-  ).toHaveCount(5);
+  ).toHaveCount(4);
 });
 
 /*
