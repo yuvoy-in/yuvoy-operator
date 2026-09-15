@@ -1376,7 +1376,18 @@ for (const f of files) {
  */
 {
   const listings = join(SRC, "lib/services/listings.ts");
-  const createForm = join(SRC, "components/listings/new-listing-form.tsx");
+  /*
+    THE BUILDER, not a create form. `new-listing-form.tsx` was one screen and is
+    gone (yuvoy-operator#58 item 7); the fields it asked for are spread across
+    the builder's steps, so the set to compare is their union. Repointed rather
+    than dropped: the guard is gated on `existsSync`, so leaving it aimed at a
+    deleted file would have made it pass by never running.
+  */
+  const builderSteps = [
+    join(SRC, "app/account/listings/steps/basics.tsx"),
+    join(SRC, "app/account/listings/steps/selling.tsx"),
+    join(SRC, "app/account/listings/steps/location.tsx"),
+  ];
   const editForm = join(SRC, "components/listings/listing-row.tsx");
 
   /* Blocker keys that are deliberately not editable, and why. */
@@ -1384,12 +1395,12 @@ for (const f of files) {
   /* Wire spelling → the form control's name, where they differ. */
   const CONTROL_NAME = { unitPricePaise: "unitPrice" };
 
-  if ([listings, createForm, editForm].every((f) => existsSync(f))) {
+  if ([listings, editForm, ...builderSteps].every((f) => existsSync(f))) {
     const block = /BLOCKER_LABELS[^{]*\{([\s\S]*?)\n\};/.exec(code(listings));
     const names = (f) =>
       new Set([...code(f).matchAll(/name="([\w-]+)"/g)].map((m) => m[1]));
     if (block) {
-      const onCreate = names(createForm);
+      const onCreate = new Set(builderSteps.flatMap((f) => [...names(f)]));
       const onEdit = names(editForm);
       for (const m of block[1].matchAll(/^\s*(\w+):/gm)) {
         const key = m[1];
@@ -1398,7 +1409,7 @@ for (const f of files) {
         if (onCreate.has(control) && !onEdit.has(control)) {
           problems.push(
             `src/components/listings/listing-row.tsx: \`${key}\` blocks ` +
-              `publication and is settable on the create form (as ` +
+              `publication and is settable in the builder (as ` +
               `\`${control}\`) but not on the edit form. A listing that ` +
               `predates the field can then never clear it: the row names the ` +
               `blocker, submit succeeds because the API defers it, and ` +

@@ -58,9 +58,33 @@ async function openHub(page: Page, title: string) {
   await page.waitForURL(/\/today\/listing\//);
 }
 
-/** The one row the edit screen draws. */
+/**
+ * Step 1 of the builder, filled in and saved. Returns the draft's id.
+ *
+ * `/account/listings/new` is the builder's first step since #58 item 7, and the
+ * one-screen create form it replaced is deleted. Everything that used to fill
+ * that form in one go now fills Basics and walks on.
+ */
+async function startDraft(page: Page, title: string, category = "adventure") {
+  await page.goto("/account/listings/new");
+  await page.getByLabel("What is it called").fill(title);
+  await page.getByLabel("What kind of thing it is").selectOption(category);
+  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/\/account\/listings\/[^/]+\/edit\?step=selling/);
+  return /\/listings\/([^/]+)\/edit/.exec(page.url())?.[1] ?? "";
+}
+
+/**
+ * The one row the edit screen draws.
+ *
+ * Scoped to `main`, because on the desktop project the primary nav is a rail of
+ * list items and `getByRole("listitem").first()` matches "Home" in it. That is
+ * the shape of bug that passes on one project and fails on the other, which is
+ * the worst way for a check to be wrong.
+ */
 function row(page: Page) {
-  return page.getByRole("listitem").first();
+  return page.getByRole("main").getByRole("listitem").first();
 }
 
 test("the two old section URLs land where their content went", async ({
@@ -105,9 +129,14 @@ test("every listing says where it is, including the ones that are not selling", 
   await openEdit(page, "Reef dive");
   await expect(row(page).getByText("Live", { exact: true })).toBeVisible();
 
-  await openEdit(page, "Island boat day");
-  await expect(row(page).getByText("Draft", { exact: true })).toBeVisible();
-  await expect(row(page).getByText(/sent to nobody/i)).toBeVisible();
+  /*
+    A DRAFT opens the builder, not the row: a draft is built and a published
+    listing is amended, and #58 item 7 made them two screens. Its state is on
+    the listing screen, which is where an operator meets it.
+  */
+  await openListing(page, "Island boat day");
+  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Still missing/)).toBeVisible();
 
   /*
     An edit under review does NOT take a live listing off sale, and the badge
@@ -145,11 +174,19 @@ test("a listing with no price says so while it is being written", async ({
     pretends that is the whole list.
   */
   await signIn(page);
+
+  // On the listing, which leads with what is missing on a draft (#58 item 4).
+  await openListing(page, "Island boat day");
+  await expect(page.getByText(/Still missing:.*a price/)).toBeVisible();
+
+  /*
+    And in the builder, where it can be answered: the step holding the price is
+    marked, and Review says the same thing in full.
+  */
   await openEdit(page, "Island boat day");
-  await expect(row(page).getByText("a price")).toBeVisible();
-  await expect(
-    row(page).getByText(/missing before we can approve it/),
-  ).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Steps" })).toBeVisible();
+  await page.goto(`${page.url().split("?")[0]}?step=review`);
+  await expect(page.getByText(/Still missing:.*a price/)).toBeVisible();
 });
 
 test("nothing on this screen ever says a listing was saved and is selling", async ({
@@ -184,25 +221,18 @@ test("an operator writes a listing, and it lands as a draft", async ({
   const title = `Mangrove kayak ${suffix}`;
 
   await signIn(page);
-  await page.goto("/account/listings/new");
+  await startDraft(page, title, "nature_wildlife");
 
-  await page.getByLabel("What is it called").fill(title);
-  await page
-    .getByLabel("What kind of thing it is")
-    .selectOption("nature_wildlife");
-  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
-  await page.getByLabel("Price", { exact: true }).fill("2200");
   // A price has to state its basis now — yuvoy-operator#30 §1.
-  await page.getByRole("radio", { name: /For the group/ }).check();
-  await page.getByRole("button", { name: "Save as a draft" }).click();
+  await page.getByLabel("Price").fill("2200");
+  await page.getByRole("radio", { name: "For the group" }).check();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=schedule/);
 
-  // A draft, and the screen says what that is NOT.
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
-  await expect(page.getByText(/reaches nobody yet/)).toBeVisible();
-
-  // And it is on the profile, badged for what it is.
+  // It is on the profile, badged for what it is, and reaching nobody.
   await openListing(page, title);
   await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Still missing/)).toBeVisible();
 });
 
 test("another market's destination cannot be chosen at all", async ({
@@ -347,15 +377,19 @@ test("the price says what the business receives, at its own rate", async ({
     ₹4,500 at the fixture's 1500 bps is ₹675 to Yuvoy and ₹3,825 to them.
   */
   await signIn(page);
-  await page.goto("/account/listings/new");
+  // On the Selling step, which is where the price is asked for since #58.
+  await startDraft(
+    page,
+    `Split check ${Math.random().toString(36).slice(2, 7)}`,
+  );
 
   await expect(page.getByText(/You receive/)).toHaveCount(0);
-  await page.getByLabel("Price", { exact: true }).fill("4500");
+  await page.getByLabel("Price").fill("4500");
   await expect(page.getByText(/You receive/)).toContainText("₹3,825");
   await expect(page.getByText(/You receive/)).toContainText("15%");
 
   // Nothing at all with no price: there is nothing to split.
-  await page.getByLabel("Price", { exact: true }).fill("");
+  await page.getByLabel("Price").fill("");
   await expect(page.getByText(/You receive/)).toHaveCount(0);
 });
 
@@ -369,7 +403,12 @@ test("a listing can be given a health check, from the API's own list", async ({
     option would be refused with a 400 the day one changed.
   */
   await signIn(page);
-  await page.goto("/account/listings/new");
+  const id = await startDraft(
+    page,
+    `Waiver check ${Math.random().toString(36).slice(2, 7)}`,
+  );
+  // On Location and safety, which is where the waiver is asked for since #58.
+  await page.goto(`/account/listings/${id}/edit?step=location`);
 
   const picker = page.getByLabel("Health check before booking");
   await expect(picker).toBeVisible();
@@ -416,27 +455,29 @@ test("the waiver picked on the form is what the listing is saved with", async ({
   const title = `Deep reef ${suffix}`;
 
   await signIn(page);
-  await page.goto("/account/listings/new");
+  const id = await startDraft(page, title);
+  await page.goto(`/account/listings/${id}/edit?step=location`);
 
-  await page.getByLabel("What is it called").fill(title);
-  await page.getByLabel("What kind of thing it is").selectOption("adventure");
-  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
-  await page.getByLabel("Price", { exact: true }).fill("4500");
-  await page.getByRole("radio", { name: /Per person/ }).check();
+  await page.getByLabel("Where to meet").fill("Beach 3 dive hut");
 
   // The key is the API's, from the vocabulary, not a literal typed here.
   const picker = page.getByLabel("Health check before booking");
   await picker.selectOption("diving_rstc");
   await expect(picker).toHaveValue("diving_rstc");
 
-  await page.getByRole("button", { name: "Save as a draft" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=questions/);
 
-  // Saved rather than refused. A key the API does not know answers 400 with
-  // `details.screenerKey`, so a listing landing at all says the key was one it
-  // accepted.
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
-  await openListing(page, title);
-  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+  /*
+    And it comes BACK, which the one-screen create form could never show: the
+    step is read from the draft, so a `screenerKey` that was dropped on the way
+    out would be blank on the way in. That is the #60 defect, visible in a
+    browser at last.
+  */
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  await expect(page.getByLabel("Health check before booking")).toHaveValue(
+    "diving_rstc",
+  );
 });
 
 test("leaving the waiver at None saves a listing with no health check", async ({
@@ -451,21 +492,19 @@ test("leaving the waiver at None saves a listing with no health check", async ({
   const title = `Sunset sail ${suffix}`;
 
   await signIn(page);
-  await page.goto("/account/listings/new");
-
-  await page.getByLabel("What is it called").fill(title);
-  await page
-    .getByLabel("What kind of thing it is")
-    .selectOption("nature_wildlife");
-  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
-  await page.getByLabel("Price", { exact: true }).fill("2200");
-  await page.getByRole("radio", { name: /For the group/ }).check();
+  const id = await startDraft(page, title, "nature_wildlife");
+  await page.goto(`/account/listings/${id}/edit?step=location`);
 
   // Untouched, and that is the point: the default is None.
   await expect(page.getByLabel("Health check before booking")).toHaveValue("");
 
-  await page.getByRole("button", { name: "Save as a draft" }).click();
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
+  await page.getByLabel("Where to meet").fill("Havelock jetty 1");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=questions/);
+
+  // Still None, rather than a key nobody chose.
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  await expect(page.getByLabel("Health check before booking")).toHaveValue("");
 });
 
 test("a first listing sent back says so, and says it is a draft again", async ({
@@ -611,7 +650,7 @@ test("an edit can change the fields that were only ever defaults", async ({
   await signIn(page);
   await openEdit(page, "Reef dive");
 
-  const row = page.getByRole("listitem").first();
+  const row = page.getByRole("main").getByRole("listitem").first();
   await row.getByRole("button", { name: "Propose a change" }).click();
 
   await expect(row.getByLabel("How long, in minutes")).toHaveValue("180");
@@ -645,17 +684,20 @@ test("a draft names everything still missing, not just the price", async ({
     phrase beside the price.
   */
   await signIn(page);
-  await openEdit(page, "Island boat day");
 
-  const row = page.getByRole("listitem").first();
-  await expect(row.getByText(/things are missing/)).toBeVisible();
-  await expect(row.getByText("a price")).toBeVisible();
-  await expect(row.getByText("a short summary")).toBeVisible();
-  await expect(
-    row.getByText("whether that price is per person or for the group"),
-  ).toBeVisible();
+  /*
+    On the listing screen, which leads with it for a draft (#58 item 4), and in
+    the builder's Review, which says the same list beside the steps that own it.
+  */
+  await openListing(page, "Island boat day");
+  const missing = page.getByText(/Still missing:/);
+  await expect(missing).toContainText("a price");
+  await expect(missing).toContainText("a short summary");
+  await expect(missing).toContainText(
+    "whether that price is per person or for the group",
+  );
   // The wire spelling never reaches the operator.
-  await expect(row.getByText("unitPricePaise")).toBeHidden();
+  await expect(page.getByText("unitPricePaise")).toHaveCount(0);
 });
 
 test("the activity picker narrows to the chosen category", async ({ page }) => {
@@ -716,7 +758,7 @@ test("a listing that predates the taxonomy can be given an activity type", async
   await signIn(page);
   await openEdit(page, who);
 
-  const row = page.getByRole("listitem").first();
+  const row = page.getByRole("main").getByRole("listitem").first();
 
   // The row names it as outstanding — that half already worked.
   await expect(row.getByText("what kind of activity it is")).toBeVisible();
@@ -761,7 +803,7 @@ test("a listing's own name can be corrected", async ({ page }) => {
   await signIn(page);
   await openEdit(page, "Reef dive");
 
-  const row = page.getByRole("listitem").first();
+  const row = page.getByRole("main").getByRole("listitem").first();
   await row.getByRole("button", { name: "Propose a change" }).click();
 
   /*

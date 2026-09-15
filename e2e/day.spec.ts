@@ -178,11 +178,20 @@ test("the manifest is in the HTML, not only the RSC payload", async ({
   request,
 }) => {
   await signIn(page);
-  // The departure row, not the listing tile: Home carries both since #56 and
-  // they share a title. Only the row goes to a manifest.
+  /*
+    The departure row, not the listing tile: Home carries both since #56 and
+    they share a title. Only the row goes to a manifest.
+
+    Named rather than taken as `.first()`. The rows are sorted by time and
+    `slot_dawn` is `earlierToday()`, which is now minus three hours: after 18:30
+    it overtakes the 15:30 fixture and the first row becomes a different
+    departure. That is the same class of bug the comment on `earlierToday`
+    already describes, one layer along, and the fix is not to depend on the
+    order at all.
+  */
   await page
     .getByRole("region", { name: /departures?/ })
-    .getByRole("link")
+    .getByRole("link", { name: /Try-dive at Nemo Reef/ })
     .first()
     .click();
   await page.waitForURL("**/today/slot_dawn");
@@ -390,9 +399,9 @@ test("another operator's departure is a 404, never a 403", async ({ page }) => {
 
 test("signing out ends the session on the server too", async ({ page }) => {
   await signIn(page);
-  // Sign out lives behind the Business door, with everything else about the
-  // account. The day carries nothing but the day.
-  await page.goto("/account");
+  // Sign out lives in Settings, behind the gear on the business profile, with
+  // everything else about the account. The day carries nothing but the day.
+  await page.goto("/account/settings");
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("**/sign-in");
 

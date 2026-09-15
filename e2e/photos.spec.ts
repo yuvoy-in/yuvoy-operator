@@ -364,12 +364,26 @@ test("a listing can be created straight from the pickers", async ({
   await page
     .getByLabel("Where it runs")
     .selectOption({ label: "Neil (Shaheed Dweep)" });
-  await page.getByLabel("Price", { exact: true }).fill("1800");
-  // A price now has to say what it means — yuvoy-operator#30 §1.
-  await page.getByRole("radio", { name: /Per person/ }).check();
-  await page.getByRole("button", { name: "Save as a draft" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
 
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
+  /*
+    The draft exists the moment Basics saves, and the URL is replaced with its
+    id. That is the end to end this test is about: the pickers send keys the
+    closed enum accepts, and a mismatch is a 400 rather than anything the form
+    could show.
+  */
+  await page.waitForURL(/\/account\/listings\/[^/]+\/edit\?step=selling/);
+
+  // A price now has to say what it means — yuvoy-operator#30 §1.
+  await page.getByLabel("Price").fill("1800");
+  await page.getByRole("radio", { name: "Per person" }).check();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=schedule/);
+
+  await page.goto("/account");
+  await expect(
+    page.getByRole("link", { name: new RegExp(`^${title}`) }),
+  ).toBeVisible();
 });
 
 test("a price must say whether it is per person or for the group", async ({
@@ -399,25 +413,26 @@ test("a price must say whether it is per person or for the group", async ({
   await page
     .getByLabel("Where it runs")
     .selectOption({ label: "Neil (Shaheed Dweep)" });
-  await page.getByLabel("Price", { exact: true }).fill("12000");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=selling/);
+
+  await page.getByLabel("Price").fill("12000");
 
   // Neither option preselected — that is the whole point of the control.
   await expect(
-    page.getByRole("radio", { name: /Per person/ }),
+    page.getByRole("radio", { name: "Per person" }),
   ).not.toBeChecked();
   await expect(
-    page.getByRole("radio", { name: /For the group/ }),
+    page.getByRole("radio", { name: "For the group" }),
   ).not.toBeChecked();
 
-  await page.getByRole("button", { name: "Save as a draft" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
 
-  await expect(
-    page.getByText(/per person or for the whole group/i),
-  ).toBeVisible();
-  // And nothing was created behind the refusal.
-  await expect(
-    page.getByText(`Unstated basis ${suffix} is a draft`),
-  ).toBeHidden();
+  await expect(page.getByRole("alert").first()).toContainText(
+    /per person or for the whole group/i,
+  );
+  // And the step did not move on behind the refusal.
+  await expect(page).toHaveURL(/step=selling/);
 });
 
 test("a listing with no price is not asked for a basis", async ({
@@ -443,7 +458,18 @@ test("a listing with no price is not asked for a basis", async ({
   await page
     .getByLabel("Where it runs")
     .selectOption({ label: "Neil (Shaheed Dweep)" });
-  await page.getByRole("button", { name: "Save as a draft" }).click();
 
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
+  /*
+    Basics asks for no price at all, which is the point one step along: the
+    price is deliberately optional, a listing without one "saves but cannot be
+    approved", and an operator should be able to write the rest first.
+  */
+  await expect(page.getByLabel("Price")).toHaveCount(0);
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=selling/);
+
+  await page.goto("/account");
+  await expect(
+    page.getByRole("link", { name: new RegExp(`^${title}`) }),
+  ).toBeVisible();
 });

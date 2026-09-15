@@ -62,7 +62,7 @@ test("the document count comes from the API, and names what is missing", async (
     suites read as "a live account with nothing waiting on you".
   */
   await signIn(page, LIVE_OUTSTANDING);
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   await expect(
     page.getByText("4 of 5 required documents are verified"),
@@ -92,7 +92,7 @@ test("a business with everything met says so, counting what the API requires", a
     "5" rather than "4".
   */
   await signIn(page);
-  await page.goto("/account");
+  await page.goto("/account/verification");
   await expect(
     page.getByText("4 of 4 required documents are verified"),
   ).toBeVisible();
@@ -102,7 +102,7 @@ test("a document says whether we hold a file, and only a pending one takes one",
   page,
 }) => {
   await signIn(page);
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   // Verified, with a file: the name, and nothing to send.
   const boat = page.locator("li").filter({ hasText: "Boat papers" }).first();
@@ -136,7 +136,7 @@ test("a file over 10 MB is refused before anything is uploaded", async ({
     connection and then turned away.
   */
   await signIn(page);
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   const oxygen = page
     .locator("li")
@@ -157,7 +157,7 @@ test("a kind we cannot take names the three we can", async ({ page }) => {
   // An operator holding a HEIC from an iPhone can act on "send a PDF, a JPEG or
   // a PNG" and cannot act on "unsupported file type".
   await signIn(page);
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   const oxygen = page
     .locator("li")
@@ -191,7 +191,7 @@ test("the file goes to the bucket, and the row then names it", async ({
   );
 
   await signIn(page);
-  await page.goto("/account");
+  await page.goto("/account/verification");
 
   /*
     The GST row, which nothing else reads. `cred_oxygen_pending` is asserted

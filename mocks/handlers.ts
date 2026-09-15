@@ -341,6 +341,15 @@ type MockExperience = {
     test could not tell the fixed form from the broken one.
   */
   screenerKey?: string;
+  /**
+   * Whether anybody has SAID what the price means — yuvoy-operator#30 §1.
+   *
+   * `experiences.pricing_unit` is NOT NULL, so `pricingUnit` alone cannot carry
+   * the answer: a listing nobody has asked still has a value in that column.
+   * The API records the difference separately and reports it as a publish
+   * blocker; this is the mock's version of that column.
+   */
+  pricingUnitStated?: boolean;
   /*
     The mandatory fields still empty — yuvoy-operator#30 §3. Computed rather
     than stored, so a fixture cannot claim a listing is ready while missing
@@ -770,7 +779,80 @@ function seedExperiences(): MockExperience[] {
   ];
 }
 
-let mockExperiences: MockExperience[] = seedExperiences();
+/**
+ * The mandatory fields a draft is still without.
+ *
+ * Computed, never stored, so a fixture cannot claim a listing is ready while
+ * missing something the API would refuse — and so a save that fills a field
+ * clears the mark the builder draws from it.
+ *
+ * `pricingUnit` is the subtle one: the column is NOT NULL, so its value cannot
+ * say whether anybody chose it. The mock models the same thing with an explicit
+ * `pricingUnitStated` flag set only by a write that named it.
+ */
+function draftBlockers(listing: MockExperience): string[] {
+  const missing: string[] = [];
+  if (!listing.title) missing.push("title");
+  if (!listing.category) missing.push("category");
+  if (!listing.summary) missing.push("summary");
+  if (!listing.activityType) missing.push("activityType");
+  if (!listing.destination) missing.push("destination");
+  if (
+    typeof listing.unitPricePaise !== "number" ||
+    listing.unitPricePaise <= 0
+  ) {
+    missing.push("unitPricePaise");
+  }
+  if (!listing.pricingUnitStated) missing.push("pricingUnit");
+  if (!listing.meetingPoint) missing.push("meetingPoint");
+  if (!listing.durationMinutes) missing.push("durationMinutes");
+  if (!listing.maxPartySize) missing.push("maxPartySize");
+  return missing;
+}
+
+/** One question a listing asks, as the mock stores it. */
+type MockQuestion = {
+  id: string;
+  text: string;
+  answerType: string;
+  options: string[];
+  required: boolean;
+};
+
+/**
+ * The questions per listing, empty until somebody saves some.
+ *
+ * Seeded on `exp_boat` so the builder's Questions step has a list to edit
+ * rather than only an empty one: keeping an existing question's id across a
+ * save is the behaviour that is easy to get wrong, and it cannot be exercised
+ * against a listing that has never had one.
+ */
+const listingQuestions: Record<string, MockQuestion[]> = {
+  exp_boat: [
+    {
+      id: "q_seed_swim",
+      text: "Can everyone in your party swim?",
+      answerType: "yes_no",
+      options: [],
+      required: true,
+    },
+  ],
+};
+
+/*
+  The seeded listings state their basis unless their own `publishBlockers` say
+  they do not. Written once here rather than on twenty fixtures, so the two can
+  never disagree: a fixture claiming a blocker it does not have is a fixture that
+  tests nothing.
+*/
+function seedWithBasis(): MockExperience[] {
+  return seedExperiences().map((e) => ({
+    ...e,
+    pricingUnitStated: !(e.publishBlockers ?? []).includes("pricingUnit"),
+  }));
+}
+
+let mockExperiences: MockExperience[] = seedWithBasis();
 
 function seedMediaAssets(): Record<string, MockMediaAsset> {
   return {
@@ -1453,7 +1535,7 @@ export function __resetOperatorMocks() {
   mediaAssets = seedMediaAssets();
   profile = seedProfile();
   filedCredentials = {};
-  mockExperiences = seedExperiences();
+  mockExperiences = seedWithBasis();
   createdSlots = [];
   movedTimes = {};
   cashTaken = {};
@@ -1503,8 +1585,23 @@ async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
-function envelope(code: string, message: string, status: number) {
-  return HttpResponse.json({ error: { code, message } }, { status });
+function envelope(
+  code: string,
+  message: string,
+  status: number,
+  /*
+    `details` is how a refusal names WHICH field it is about, and several
+    screens branch on it: `unknownFields` and `screenerKey` on a draft save,
+    `missing` on a submit, `questions[0].text` on a question list. A mock that
+    could not carry it would let a client ship a details reader that has never
+    once been given details.
+  */
+  details?: unknown,
+) {
+  return HttpResponse.json(
+    { error: { code, message, ...(details ? { details } : {}) } },
+    { status },
+  );
 }
 
 /**
@@ -3461,6 +3558,15 @@ export const handlers = [
       destination,
       summary: body.summary ? String(body.summary) : undefined,
       description: body.description ? String(body.description) : undefined,
+      /*
+        Stored, which it was not. The create form has sent `activityType` since
+        yuvoy-operator#30 §2 and this handler dropped it on the floor, so a
+        listing created here came back without one and `publishBlockers` named
+        it forever. Invisible until the builder started deriving which step to
+        open from that list, and then it opened Basics over a field the operator
+        had already answered.
+      */
+      activityType: body.activityType ? String(body.activityType) : undefined,
       status: "draft",
       publicationState: "draft",
       bookingMode: String(body.bookingMode ?? "request"),
@@ -3468,6 +3574,10 @@ export const handlers = [
       maxPartySize: Number(body.maxPartySize ?? 6),
       unitPricePaise,
       pricingUnit: String(body.pricingUnit ?? "per_person"),
+      // Stated only when somebody said so. The column has a default; the answer
+      // does not.
+      pricingUnitStated:
+        typeof body.pricingUnit === "string" && !!body.pricingUnit,
       inclusions: Array.isArray(body.inclusions)
         ? (body.inclusions as string[])
         : undefined,
@@ -3486,6 +3596,13 @@ export const handlers = [
       // approved, which the response reports as `sellable: false`."
       sellable: unitPricePaise !== null,
     };
+    /*
+      What it is still missing, from the moment it exists. It was left off, and
+      the consequence was invisible until the builder read it: a brand-new draft
+      reported nothing outstanding, so reopening it landed on Review with five
+      mandatory fields empty.
+    */
+    created.publishBlockers = draftBlockers(created);
     mockExperiences.push(created);
 
     return HttpResponse.json(
@@ -3556,8 +3673,15 @@ export const handlers = [
           state: asset.state,
           ...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
           listing: asset.listing,
+          situation: situationOf(asset),
         })),
-      questions: [],
+      /*
+        The listing's own questions, "exactly as `GET /experiences/{id}/questions`
+        returns it". It was a hardcoded empty list, which meant the builder's
+        Questions step could never show a question it had just saved and the
+        Review step counted none no matter what was there.
+      */
+      questions: listingQuestions[id] ?? [],
     });
   }),
 
@@ -3699,6 +3823,324 @@ export const handlers = [
       id,
       startsAt: movedTimes[id],
       note: `Moved. ${slot.parties.length} ${slot.parties.length === 1 ? "traveller has" : "travellers have"} been told, and each can cancel for a full refund until it leaves.`,
+    });
+  }),
+
+  /**
+   * Save a draft in place — the builder's every step but the schedule and the
+   * questions (yuvoy-operator#58 item 7).
+   *
+   * "On a draft there is no completeness check and no review." So this writes
+   * whatever it is given and recomputes `publishBlockers`, which is the field
+   * the builder marks its steps from: a mock that stored the fields without
+   * recomputing them would leave a step marked unfinished after it was
+   * finished, and no test would catch the builder never clearing a mark.
+   *
+   * **Only a draft.** A submitted listing is what a reviewer is reading and a
+   * published one is what travellers are booking against, so both answer `409`.
+   */
+  http.patch(url("/experiences/:id"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner, admin or manager can change a listing",
+        403,
+      );
+    }
+
+    const found = mockExperiences.find((e) => e.id === String(params.id));
+    if (!found) return envelope("not_found", "No such listing.", 404);
+    if (found.status !== "draft") {
+      return envelope(
+        "conflict",
+        "This listing is no longer a draft. Change it through a revision.",
+        409,
+      );
+    }
+
+    const body = (await request.json()) as Record<string, unknown>;
+
+    /*
+      The closed set. "Unknown fields are refused", and the refusal names them
+      in `details.unknownFields` with `details.allowed` beside it, because a
+      client sending a field we renamed should be able to say which one.
+    */
+    const allowed = [
+      "title",
+      "summary",
+      "description",
+      "category",
+      "activityType",
+      "destination",
+      "meetingPoint",
+      "meetingLandmark",
+      "inclusions",
+      "requirements",
+      "safetyNotes",
+      "screenerKey",
+      "durationMinutes",
+      "maxPartySize",
+      "unitPricePaise",
+      "bookingMode",
+      "pricingUnit",
+    ];
+    const unknownFields = Object.keys(body).filter((k) => !allowed.includes(k));
+    if (unknownFields.length > 0) {
+      return envelope(
+        "invalid_input",
+        "We do not know one of those fields.",
+        400,
+        { unknownFields, allowed },
+      );
+    }
+
+    /*
+      A destination outside the market, refused exactly as create refuses it.
+      It is the single most likely 400 the builder will meet, and the step
+      renders the API's own sentence for it.
+    */
+    if (
+      typeof body.destination === "string" &&
+      !body.destination.startsWith("andaman/")
+    ) {
+      return envelope(
+        "invalid_input",
+        `"${body.destination}" is not a place in your market. Yours all start with "andaman/".`,
+        400,
+      );
+    }
+
+    /*
+      A screener that is not current. "Not an enum: a screener is a row, added
+      or retired on medical advice rather than by a release", so the refusal
+      names the keys that ARE current rather than a fixed list.
+    */
+    if (body.screenerKey && String(body.screenerKey) !== "diving_rstc") {
+      return envelope(
+        "invalid_input",
+        "That health check is not one we run.",
+        400,
+        { screenerKey: ["diving_rstc"] },
+      );
+    }
+
+    for (const key of allowed) {
+      if (!(key in body)) continue;
+      const value = body[key];
+      /*
+        An empty optional is stored as absent, as the API stores it: "an absent
+        key and an empty string mean the same thing". Storing "" would clear a
+        blocker with a value nobody typed.
+      */
+      (found as Record<string, unknown>)[key] =
+        value === "" ? undefined : value;
+    }
+
+    if (typeof body.pricingUnit === "string" && body.pricingUnit) {
+      found.pricingUnitStated = true;
+    }
+    found.publishBlockers = draftBlockers(found);
+    found.sellable =
+      typeof found.unitPricePaise === "number" && found.unitPricePaise > 0;
+
+    return HttpResponse.json(found);
+  }),
+
+  /**
+   * Send a listing to a person at Yuvoy — yuvoy-operator#58 items 4 and 7.
+   *
+   * The submit gate demands everything mandatory EXCEPT `activityType` and
+   * `pricingUnit`, which is the contract's own asymmetry and the reason the
+   * Review step disables its button over two fields the server would accept.
+   * Modelled rather than smoothed over: a mock that refused them too would hide
+   * the gap the builder exists to cover.
+   *
+   * "A double tap is safe: an `in_review` listing answers `200`."
+   */
+  http.post(url("/experiences/:id/submit"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner, admin or manager can send a listing for review",
+        403,
+      );
+    }
+
+    const found = mockExperiences.find((e) => e.id === String(params.id));
+    if (!found) return envelope("not_found", "No such listing.", 404);
+    if (found.status === "in_review") {
+      return HttpResponse.json({ id: found.id, status: "in_review" });
+    }
+    if (found.status !== "draft" && found.status !== "changes_rejected") {
+      return envelope("conflict", "This listing is no longer a draft.", 409);
+    }
+
+    const missing = draftBlockers(found).filter(
+      (key) => key !== "activityType" && key !== "pricingUnit",
+    );
+    if (missing.length > 0) {
+      return envelope("invalid_input", "Something is still missing.", 400, {
+        missing,
+      });
+    }
+
+    found.status = "in_review";
+    found.review = { state: "submitted", since: new Date().toISOString() };
+    found.sentBack = undefined;
+    return HttpResponse.json({ id: found.id, status: "in_review" });
+  }),
+
+  /** The questions a listing asks travellers. */
+  http.get(url("/experiences/:id/questions"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const found = mockExperiences.find((e) => e.id === String(params.id));
+    if (!found) return envelope("not_found", "No such listing.", 404);
+    return HttpResponse.json({ questions: listingQuestions[found.id] ?? [] });
+  }),
+
+  /**
+   * Replace them. It is the WHOLE list, in order, and it takes effect at once.
+   *
+   * "A question sent back with its `id` and the same `text`, `answerType` and
+   * `options` keeps that id and every answer to it. Changing its `text`,
+   * `answerType` or `options` makes it a new question with a new id." Modelled,
+   * because a client that re-sent an id with new wording would keep answers
+   * against words nobody saw, and only a mock that reissues the id can catch it.
+   */
+  http.put(url("/experiences/:id/questions"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner, admin or manager can change the questions",
+        403,
+      );
+    }
+    const found = mockExperiences.find((e) => e.id === String(params.id));
+    if (!found) return envelope("not_found", "No such listing.", 404);
+
+    const body = (await request.json()) as {
+      questions?: Record<string, unknown>[];
+    };
+    const rows = body.questions ?? [];
+    if (rows.length > 10) {
+      return envelope("invalid_input", "Ten questions is the most.", 400, {
+        questions: ["at most 10"],
+      });
+    }
+
+    const existing = listingQuestions[found.id] ?? [];
+    const saved: MockQuestion[] = [];
+    for (const [i, row] of rows.entries()) {
+      const text = String(row.text ?? "").trim();
+      const answerType = String(row.answerType ?? "");
+      if (!text || text.length > 200) {
+        return envelope("invalid_input", "A question we can ask.", 400, {
+          [`questions[${i}].text`]: ["1 to 200 characters"],
+        });
+      }
+      if (!["short_text", "choice", "yes_no"].includes(answerType)) {
+        return envelope("invalid_input", "An answer type we know.", 400, {
+          [`questions[${i}].answerType`]: ["short_text, choice or yes_no"],
+        });
+      }
+      const options = Array.isArray(row.options)
+        ? (row.options as string[]).map((o) => String(o).trim()).filter(Boolean)
+        : [];
+      if (answerType === "choice") {
+        const unique = new Set(options.map((o) => o.toLowerCase()));
+        if (
+          options.length < 2 ||
+          options.length > 10 ||
+          unique.size !== options.length
+        ) {
+          return envelope(
+            "invalid_input",
+            "Two to ten different choices.",
+            400,
+            {
+              [`questions[${i}].options`]: ["2 to 10, all different"],
+            },
+          );
+        }
+      } else if (options.length > 0) {
+        return envelope(
+          "invalid_input",
+          "Only a choice question has options.",
+          400,
+          {
+            [`questions[${i}].options`]: ["only on a choice question"],
+          },
+        );
+      }
+
+      const sameAsBefore = existing.find(
+        (q) =>
+          q.id === row.id &&
+          q.text === text &&
+          q.answerType === answerType &&
+          q.options.join("\u0000") === options.join("\u0000"),
+      );
+      saved.push({
+        id: sameAsBefore
+          ? sameAsBefore.id
+          : `q_${Math.random().toString(36).slice(2, 10)}`,
+        text,
+        answerType,
+        options,
+        required: row.required === true,
+      });
+    }
+
+    listingQuestions[found.id] = saved;
+    return HttpResponse.json({ questions: saved });
+  }),
+
+  /**
+   * What a listing in this category needs the business to hold.
+   *
+   * `satisfied` is read from the same credential state the account screens use,
+   * so the Review step and Verification cannot disagree about whether a
+   * document is in place.
+   */
+  http.get(url("/credential-requirements"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const asked = new URL(request.url);
+    const category = asked.searchParams.get("category") ?? "";
+    if (!category) {
+      return envelope("invalid_input", "A category.", 400);
+    }
+    /*
+      Water categories need the documents a boat needs; everything else needs
+      the two every business needs. Not a real taxonomy, and not pretending to
+      be: what the screen has to render is a list with both states in it.
+    */
+    const water = category === "adventure" || category === "nature_wildlife";
+    const types = water
+      ? ["directorate_registration", "insurance", "boat", "oxygen"]
+      : ["directorate_registration", "insurance"];
+    return HttpResponse.json({
+      category,
+      ...(asked.searchParams.get("activityType")
+        ? { activityType: asked.searchParams.get("activityType") }
+        : {}),
+      documents: types.map((type) => ({
+        type,
+        satisfied: type !== "boat" && type !== "oxygen",
+      })),
     });
   }),
 

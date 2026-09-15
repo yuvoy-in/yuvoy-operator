@@ -1,32 +1,27 @@
 import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
 import { operatorApi } from "@/lib/api/server-client";
-import {
-  categoryChoices,
-  destinationChoices,
-  marketName,
-} from "@/lib/services/vocabulary";
+import { categoryChoices, destinationChoices } from "@/lib/services/vocabulary";
 import { Screen } from "@/components/chrome/screen";
 import { Problem } from "@/components/ui/states";
-import { NewListingForm } from "@/components/listings/new-listing-form";
+import { Stepper } from "../steps/stepper";
+import { BasicsStep } from "../steps/basics";
 
 export const metadata: Metadata = { title: "Add a listing" };
 export const dynamic = "force-dynamic";
 
 /**
- * Add a listing, from the + on the business profile — yuvoy-operator#58.
+ * Where a listing starts — yuvoy-operator#58 item 7.
  *
- * ## What this is, and what it is not
+ * The builder's first step with no draft behind it. Saving here is the only
+ * moment `POST /experiences` is called, and the URL is replaced with
+ * `/account/listings/{id}/edit?step=selling` the instant it answers, so
+ * everything from then on is a draft being amended rather than a form being
+ * filled in.
  *
- * It is the existing create form on a focused screen of its own, reachable from
- * where an operator now goes to add things. It is NOT the seven-step builder
- * item 7 describes: one draft saved step by step, with Basics, Selling,
- * Schedule, Location and safety, Questions, Media and Review. That is a
- * separate piece of work and is not built.
- *
- * The capability is here either way — a listing can be created, edited and sent
- * for review without touching the old Listings pages — and the wizard is a
- * better shape for the same act rather than a different act.
+ * Nothing is created before then. An operator who opens this and changes their
+ * mind leaves nothing behind, which is the difference between a builder and a
+ * screen that litters drafts.
  */
 export default async function NewListingPage() {
   const { token, me } = await requireOperator();
@@ -56,14 +51,14 @@ export default async function NewListingPage() {
     .catch(() => null);
 
   const categories = categoryChoices(vocabulary);
-  const destinations = destinationChoices(vocabulary);
 
   return (
     <Screen
       nav={{ back: { href: "/account", label: "your business" } }}
       stageLabel="Add a listing"
     >
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <p className="eyebrow text-terra-deep">Step Basics</p>
+      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
         Add a listing
       </h1>
 
@@ -81,16 +76,21 @@ export default async function NewListingPage() {
           />
         </div>
       ) : (
-        <div className="mt-6">
-          <NewListingForm
-            categories={categories}
+        <>
+          {/*
+            The seven, with none of them reachable yet. There is no draft to
+            link to, and a step list that goes nowhere is still worth drawing:
+            it says how long this is before somebody starts.
+          */}
+          <Stepper id="" current="basics" unfinished={new Set()} />
+          <BasicsStep
+            id=""
             vocabulary={vocabulary}
-            destinations={destinations}
-            market={marketName(vocabulary)}
-            commissionRateBps={me.commissionRateBps}
-            startOpen
+            categories={categories}
+            destinations={destinationChoices(vocabulary)}
+            listing={{}}
           />
-        </div>
+        </>
       )}
     </Screen>
   );

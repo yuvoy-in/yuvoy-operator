@@ -37,7 +37,8 @@ async function signIn(page: Page, phone = MANAGER) {
 
 test("the business door links to earnings", async ({ page }) => {
   await signIn(page);
-  await page.goto("/account");
+  // The doors moved behind the gear on the profile, #58 item 9.
+  await page.goto("/account/settings");
   await page.getByRole("link", { name: /^Earnings/ }).click();
   await page.waitForURL("**/earnings");
   await expect(page.getByRole("heading", { name: "Earnings" })).toBeVisible();

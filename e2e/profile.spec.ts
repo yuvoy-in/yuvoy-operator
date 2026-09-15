@@ -33,7 +33,8 @@ test("the business door leads to it, and it is not gated on a role", async ({
     their account that cannot sell until somebody does.
   */
   await signIn(page, "+919000000102"); // a MANAGER
-  await page.goto("/account");
+  // The doors moved behind the gear on the profile, #58 item 9.
+  await page.goto("/account/settings");
   await page.getByRole("link", { name: /Business details/ }).click();
   await page.waitForURL("**/profile");
   await expect(
