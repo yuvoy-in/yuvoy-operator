@@ -127,7 +127,17 @@ export function ReelSheet({
           {can.coverOrGallery && id ? (
             <div>
               <p className="label text-forest/75">Where it appears</p>
-              <RoleForm mediaAssetId={id} experienceId={attachedTo} />
+              <RoleForm
+                mediaAssetId={id}
+                experienceId={attachedTo}
+                /*
+                  `listing.role`, not a top-level one. The role belongs to the
+                  PAIRING between this media and that listing, which is why it
+                  sits beside `experienceId` — the same asset can be a cover on
+                  one listing and a gallery item on another.
+                */
+                role={item.listing?.role}
+              />
             </div>
           ) : null}
 

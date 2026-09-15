@@ -171,6 +171,6 @@ path=contracts/operator-openapi.yaml
 # issue. It was re-read immediately before pinning, because api master moves
 # several times a day.
 
-ref=80668e7f1fd4740529a5f5d88787236508b6a014
+ref=0dffd253854785c5c4b62bd8c1df9bb1699c96c5
 branch=master
-pinned_on=2026-09-14
+pinned_on=2026-09-15
