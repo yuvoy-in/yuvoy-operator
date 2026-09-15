@@ -38,6 +38,9 @@ import {
   REQUESTS,
   SLOTS,
   TEAM,
+  MESSAGE_THREADS,
+  type MockMessage,
+  type MockThread,
   type MockParty,
   WIDE_READ_FAILS_ID,
   type MockSlot,
@@ -177,6 +180,14 @@ let team: MockTeamMember[] = TEAM.map((m) => ({ ...m }));
  * subject is who can get into your business.
  */
 let signups: MockTeamMember[] = [];
+/** Conversations, by booking. Written to by `POST /bookings/{id}/messages`. */
+let threads: MockThread[] = seedThreads();
+function seedThreads(): MockThread[] {
+  return MESSAGE_THREADS.map((t) => ({
+    ...t,
+    messages: t.messages.map((m) => ({ ...m })),
+  }));
+}
 /** Upload intents in flight, by operator. One at a time, as the API enforces. */
 let uploadIntents: Record<
   string,
@@ -941,6 +952,65 @@ function saleVerdictOf(
   return { onSale: true };
 }
 
+/**
+ * What the API refuses to store, and the mock has to refuse too.
+ *
+ * "A message with a phone number, an email address or a link in it is refused
+ * `400 invalid_input` … The rule is the traveller's too, and it is D-018 kept
+ * in the conversation: you do not see a traveller's number, and neither side
+ * can type one."
+ *
+ * Modelled rather than waved through, because this is the one branch of the
+ * composer somebody will actually hit and the portal does NO filtering of its
+ * own — the issue says so in `Do not build`. A permissive mock would let the
+ * portal ship with the refusal never once rendered, which is exactly how this
+ * repo ended up with a `requireOperator()` that threw to an error boundary
+ * that did not exist.
+ *
+ * The date exception is the subtle half and it is in the contract: "except the
+ * digits of a date written like 14.09.2026 or 2026-09-14". An operator saying
+ * when to turn up must not be told they typed a phone number.
+ */
+function contactDetailIn(text: string): "phone" | "email" | "link" | null {
+  // Email first: an address contains something the link rule would also match.
+  if (/[^\s@]+@[^\s@]+\.[^\s@]{2,}/.test(text)) return "email";
+  if (/(^|\s)(https?:\/\/|www\.)/i.test(text)) return "link";
+  if (/\b[a-z0-9][a-z0-9-]*\.(com|in|net|org|io|co|me)\b/i.test(text))
+    return "link";
+
+  const withoutDates = text
+    .replace(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g, " ")
+    .replace(/\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/g, " ");
+  // Seven or more digits "counted through the spaces, dashes, brackets and
+  // dots between them".
+  if (/\d(?:[\s().-]*\d){6,}/.test(withoutDates)) return "phone";
+  return null;
+}
+
+/** The thread for a booking, or `null` for one that has never been written in. */
+function threadFor(id: string): MockThread | null {
+  return threads.find((t) => t.bookingId === id) ?? null;
+}
+
+/**
+ * The booking behind a thread, so the conversations list can carry a
+ * reference, an experience and a departure. A thread whose booking has gone is
+ * dropped rather than rendered with blanks.
+ */
+function bookingOf(id: string) {
+  for (const slot of SLOTS) {
+    const party = slot.parties.find((p) => p.bookingId === id);
+    if (party) {
+      return {
+        reference: party.reference,
+        experience: slot.title,
+        slot: { startsAt: slot.startsAt, timezone: slot.timezone },
+      };
+    }
+  }
+  return null;
+}
+
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
   blackouts = [];
@@ -955,6 +1025,7 @@ export function __resetOperatorMocks() {
   stoppedChanges = [];
   team = TEAM.map((m) => ({ ...m }));
   signups = [];
+  threads = seedThreads();
   uploadIntents = {};
   mediaAssets = seedMediaAssets();
   profile = seedProfile();
@@ -3520,6 +3591,249 @@ export const handlers = [
    * exactly what somebody probing ids wants to learn" — and a mock that
    * answered 403 would let a client ship a branch the real API never takes.
    */
+  /* ------------------------------------------------ conversations ------- */
+
+  http.get(url("/bookings/:id/messages"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const thread = threadFor(id);
+    /*
+      A booking with no conversation is an EMPTY one, not a 404 — nobody has
+      written in it yet, and the composer belongs there. Only a booking that is
+      not this operator's is missing, and that is what `bookingOf` decides.
+    */
+    if (!bookingOf(id)) return envelope("not_found", "No such booking.", 404);
+
+    const all = thread?.messages ?? [];
+    const limitRaw = Number(new URL(request.url).searchParams.get("limit"));
+    const limit =
+      Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 50;
+    const cursor = new URL(request.url).searchParams.get("cursor");
+
+    /*
+      The cursor is the index one past the oldest message already sent, so
+      paging walks BACKWARDS through a list stored oldest-first. Opaque to the
+      client by contract, and this is a mock, so a number is honest enough —
+      what matters is that a cursor this conversation did not issue is a 400,
+      which is the branch a client that constructs one would hit.
+    */
+    let end = all.length;
+    if (cursor !== null) {
+      const parsed = Number(cursor);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > all.length) {
+        return envelope("invalid_input", "Not a cursor we issued.", 400);
+      }
+      end = parsed;
+    }
+    const start = Math.max(0, end - limit);
+    const page = all.slice(start, end);
+
+    const closed = thread?.closedReason;
+    return HttpResponse.json({
+      messages: page,
+      complete: start === 0,
+      ...(start > 0 ? { nextCursor: String(start) } : {}),
+      unreadCount: thread?.unread ?? 0,
+      canWrite: !closed,
+      ...(closed ? { closedReason: closed } : {}),
+      /*
+        Absent on a cancelled or declined booking, by the contract: there is no
+        moment writing stops on its own, because it has already stopped.
+      */
+      ...(closed
+        ? {}
+        : {
+            writableUntil: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+          }),
+    });
+  }),
+
+  http.post(url("/bookings/:id/messages"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    /*
+      NOT `requireWritable`. "It still works while the business is suspended"
+      (#50): a suspended business must still be able to answer the travellers it
+      already has, and a mock that refused would let the portal hide the composer
+      from exactly the operator who most needs it.
+
+      And no role gate: "any role can write: whoever is holding the phone answers
+      the question."
+    */
+
+    const id = String(params.id);
+    if (!bookingOf(id)) return envelope("not_found", "No such booking.", 404);
+
+    const thread = threadFor(id);
+    if (thread?.closedReason) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "messages_closed",
+            message:
+              thread.closedReason === "cancelled"
+                ? "This booking was cancelled, so no more messages can be sent."
+                : thread.closedReason === "declined"
+                  ? "This booking was declined, so no more messages can be sent."
+                  : "Messages for this trip are closed.",
+            details: { reason: thread.closedReason },
+          },
+        },
+        { status: 409 },
+      );
+    }
+
+    const body = (await request.json()) as { text?: string };
+    const text = (body.text ?? "").trim();
+
+    if (text.length === 0) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message: "Write something first.",
+            details: { text: "required" },
+          },
+        },
+        { status: 400 },
+      );
+    }
+    if (text.length > 1000) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message: "That is longer than 1000 characters. Shorten it.",
+            details: { text: "too long" },
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const kind = contactDetailIn(text);
+    if (kind) {
+      /*
+        The message names the KIND and never repeats any of the text — "nothing
+        is stored, and the refusal names the kind without repeating any of it".
+        A refusal that echoed the number back would put it on a screen, which is
+        the thing the rule exists to prevent.
+      */
+      return HttpResponse.json(
+        {
+          error: {
+            code: "invalid_input",
+            message:
+              kind === "phone"
+                ? "Messages cannot contain a phone number. Travellers reach you through Yuvoy, and this keeps it that way."
+                : kind === "email"
+                  ? "Messages cannot contain an email address. Travellers reach you through Yuvoy, and this keeps it that way."
+                  : "Messages cannot contain a link. Travellers reach you through Yuvoy, and this keeps it that way.",
+            details: { text: "contact details", contactDetail: kind },
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const message: MockMessage = {
+      id: `msg_${Math.random().toString(36).slice(2, 10)}`,
+      from: "operator",
+      // "Signed with the name of whoever is signed in."
+      senderName: sessionUser(request)!.name,
+      text,
+      sentAt: new Date().toISOString(),
+    };
+    if (thread) {
+      thread.messages.push(message);
+    } else {
+      threads.push({ bookingId: id, messages: [message], unread: 0 });
+    }
+    return HttpResponse.json(message, { status: 201 });
+  }),
+
+  http.post(url("/bookings/:id/messages/read"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const id = String(params.id);
+    const thread = threadFor(id);
+    if (!thread) return envelope("not_found", "No such conversation.", 404);
+
+    const { upTo } = (await request.json()) as { upTo?: string };
+    const at = thread.messages.findIndex((m) => m.id === upTo);
+    /*
+      "No such booking for this operator, or that message is not in its
+      conversation. Deliberately indistinguishable." One answer, and the mock
+      does not tell them apart either.
+    */
+    if (at < 0) return envelope("not_found", "No such message.", 404);
+
+    /*
+      The marker moves to this message "and so to everything before it", and
+      NEVER back. What stays unread is the traveller's messages after it — which
+      is the whole reason the endpoint is named by a message rather than being
+      "all of it, now": one that arrived while somebody read stays unread.
+    */
+    const after = thread.messages
+      .slice(at + 1)
+      .filter((m) => m.from === "traveller").length;
+    thread.unread = Math.min(thread.unread, after);
+    return HttpResponse.json({ unreadCount: thread.unread });
+  }),
+
+  http.get(url("/message-threads"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const rows = threads
+      .map((t) => {
+        const booking = bookingOf(t.bookingId);
+        const last = t.messages.at(-1);
+        if (!booking || !last) return null;
+        return {
+          bookingId: t.bookingId,
+          reference: booking.reference,
+          experience: booking.experience,
+          slot: booking.slot,
+          lastMessageAt: last.sentAt,
+          lastFrom: last.from,
+          unreadCount: t.unread,
+        };
+      })
+      .filter((r) => r !== null)
+      // "The one with the latest message first."
+      .sort(
+        (a, b) => Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt),
+      );
+
+    const params = new URL(request.url).searchParams;
+    const limitRaw = Number(params.get("limit"));
+    const limit =
+      Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 50;
+    const cursor = params.get("cursor");
+    let start = 0;
+    if (cursor !== null) {
+      const parsed = Number(cursor);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > rows.length) {
+        return envelope("invalid_input", "Not a cursor we issued.", 400);
+      }
+      start = parsed;
+    }
+    const page = rows.slice(start, start + limit);
+    const end = start + page.length;
+
+    return HttpResponse.json({
+      threads: page,
+      // "Told rather than inferred", so the client never has to guess from a
+      // page's length whether a full one was the last.
+      complete: end >= rows.length,
+      ...(end < rows.length ? { nextCursor: String(end) } : {}),
+    });
+  }),
+
   http.get(url("/bookings/:id"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;

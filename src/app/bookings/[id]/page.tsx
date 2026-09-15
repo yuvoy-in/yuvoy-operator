@@ -12,6 +12,8 @@ import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { Screen } from "@/components/chrome/screen";
 import { CashCollect } from "@/app/bookings/cash-collect";
+import { getBookingThread } from "@/lib/messages/fetch";
+import { Conversation } from "./conversation";
 
 export const metadata: Metadata = { title: "Booking" };
 export const dynamic = "force-dynamic";
@@ -68,6 +70,24 @@ export default async function BookingPage({
   }
 
   const state = describeBookingState(booking.state, booking.cash);
+
+  /*
+    The conversation, fetched here rather than in the client so the first page is
+    in the server-rendered HTML. An operator opening a booking to find out what
+    was agreed should not watch a spinner on the one part of the screen they came
+    for.
+
+    Soft-failing, and it is the only read on this page that does: the booking
+    itself is the screen, and a conversation that could not load must not take
+    the departure time and the guest count down with it. `null` is "we could not
+    load it", which is a different sentence from "nothing has been said".
+  */
+  let thread = null;
+  try {
+    thread = await getBookingThread(token, id);
+  } catch {
+    thread = null;
+  }
 
   return (
     <Screen
@@ -180,11 +200,37 @@ export default async function BookingPage({
         </p>
       )}
 
+      {thread ? (
+        <Conversation bookingId={booking.id || id} initial={thread} />
+      ) : (
+        <section
+          className="mt-10"
+          aria-labelledby="conversation-heading"
+          id="conversation"
+        >
+          <h2
+            id="conversation-heading"
+            className="font-display tracking-display text-2xl leading-tight"
+          >
+            Conversation
+          </h2>
+          {/*
+            "Did not load", never "nothing was said". The second is a claim about
+            this booking, and an operator who acts on it walks to a jetty without
+            the thing the traveller asked for.
+          */}
+          <p className="text-forest/70 mt-2 text-sm">
+            The conversation did not load. Reload the page to try again.
+          </p>
+        </section>
+      )}
+
       <p className="text-forest/70 border-cream-line mt-10 border-t pt-6 text-xs">
-        We do not show traveller phone numbers. Read the reference back to them
-        at the jetty (they have it in every message we send) and to tell
-        everybody on a departure something, use the message box on that day
-        under Today.
+        We do not show traveller phone numbers, and neither side can type one
+        into the conversation. Read the reference back to them at the jetty
+        (they have it in every message we send), and to tell everybody on a
+        departure something at once, use the message box on that day under
+        Today.
       </p>
     </Screen>
   );

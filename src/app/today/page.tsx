@@ -3,6 +3,8 @@ import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import { listSlots } from "@/lib/day/manifest";
 import { listOpenRequests } from "@/lib/day/requests";
+import { totalUnread } from "@/lib/messages/fetch";
+import { unreadLabel } from "@/lib/messages/thread";
 import { urgencyOf } from "@/lib/day/request-types";
 import { dayCaption, marketDays, marketTime } from "@/lib/format/market-time";
 import { headline, splitByWaitingOn } from "@/lib/account/standing";
@@ -51,6 +53,14 @@ export default async function TodayPage({
     () => ({ ok: false as const, items: [] }),
   );
 
+  /*
+    Started alongside the requests, for the same reason: on one bar of signal a
+    serial fetch doubles the wait, and neither of these depends on the other.
+    `totalUnread` soft-fails to zero of its own accord, so there is nothing to
+    catch here and nothing that can take the day down.
+  */
+  const unread = totalUnread(token);
+
   const { today, tomorrow } = await marketDays();
   // Only ever today or tomorrow from the UI, but the value arrives in a URL,
   // so it is validated rather than trusted.
@@ -68,6 +78,7 @@ export default async function TodayPage({
   const urgent = requests.filter(
     (r) => urgencyOf(r.minutesToAnswer) === "critical",
   ).length;
+  const unreadTotal = await unread;
 
   return (
     <Screen>
@@ -138,6 +149,27 @@ export default async function TodayPage({
             {urgent > 0 ? `${urgent} within the hour` : "Answer"}
             <ChevronRightIcon className="size-4" />
           </span>
+        </Link>
+      ) : null}
+
+      {/*
+        Directly under the requests strip, by the owner's decision of 14
+        September (yuvoy-operator#52 item 4), and drawn only when there is a
+        number to draw. Quieter than requests on purpose: a request expires and
+        a message waits, so this must not compete with the thing that dies.
+      */}
+      {unreadTotal > 0 ? (
+        <Link
+          href="/messages"
+          className={panelClass(
+            "raised",
+            "ease-interaction hover:bg-cream mt-3 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
+          )}
+        >
+          <span className="text-base font-bold">
+            {unreadLabel(unreadTotal)}
+          </span>
+          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
         </Link>
       ) : null}
 
