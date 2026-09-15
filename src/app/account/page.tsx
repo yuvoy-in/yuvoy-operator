@@ -10,7 +10,6 @@ import {
   blockerText,
   byDocumentType,
   byGatingFirst,
-  credentialName,
   credentialText,
   documentAction,
   expirySentences,
@@ -28,6 +27,7 @@ import { Screen } from "@/components/chrome/screen";
 import { ButtonLink } from "@/components/ui/button";
 import {
   BankIcon,
+  BellIcon,
   BriefcaseIcon,
   ChevronRightIcon,
   CoinsIcon,
@@ -38,6 +38,14 @@ import {
 import { Chip } from "@/components/ui/chip";
 import { Panel, panelClass } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
+import {
+  blockerFor,
+  documentCount,
+  fileLine,
+  takesFile,
+} from "@/lib/account/documents";
+import { credentialTypeLabel } from "@/lib/profile/credentials";
+import { SendDocument } from "./send-document";
 
 export const metadata: Metadata = { title: "Your business" };
 
@@ -294,6 +302,19 @@ export default async function AccountPage() {
                   />
                 </>
               ) : null}
+              {/*
+                Notifications, for EVERY role and not inside the manage-only
+                block above. "Every person sees every switch", and a staff
+                member reading that a payout summary goes to the owner has
+                learned something true about why they never see one
+                (yuvoy-operator#46 item 5).
+              */}
+              <Door
+                href="/notifications"
+                icon={BellIcon}
+                title="Notifications"
+                body="Which messages about the business reach you."
+              />
               {/*
                 THE LOGO, which is mandatory before an operator can be booked
                 and had nowhere to be set (yuvoy-operator#35 §2). It is also
@@ -566,11 +587,61 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
   );
   const offered = new Set<string>();
 
+  /*
+    How many of the required documents are verified — yuvoy-operator#46 item 1.
+
+    Read from `requiredDocuments` and never counted from the rows below. The
+    contract is explicit about why: the set is "what your market requires of
+    every business, plus what the categories and activities you have published
+    listings in require, so it can grow when a listing in a new category is
+    approved." Counting the rows answers a different question and goes wrong the
+    day a listing is approved in a new category.
+  */
+  const required = standing.requiredDocuments;
+  const count = documentCount(required);
+
   return (
     <section className="mt-10" aria-labelledby="documents">
       <h2 id="documents" className="label text-forest/75">
         Your documents
       </h2>
+      {count ? <p className="mt-2 text-base font-bold">{count}</p> : null}
+
+      {/*
+        Every required document that is NOT met, with the blocker that says why.
+        Above the list of what we hold, because the list is a history — last
+        year's certificate sits beside this year's — and what is missing does not
+        appear in it at all.
+      */}
+      {required.some((d) => !d.satisfied) ? (
+        <ul className="mt-3 space-y-2">
+          {required
+            .filter((d) => !d.satisfied)
+            .map((doc) => {
+              const blocker = blockerFor(doc.type, standing.blocking);
+              return (
+                <li key={doc.type}>
+                  <Panel tone="alert" className="p-4">
+                    <p className="text-sm font-bold">
+                      {credentialTypeLabel(doc.type)}
+                    </p>
+                    {/*
+                      "A document that is not satisfied always has a
+                      `CREDENTIAL_*` entry in `blocking` saying why." Rendered
+                      verbatim; when nothing matches, the type alone is said
+                      rather than a reason nobody gave.
+                    */}
+                    {blocker ? (
+                      <p className="text-forest/80 mt-1 text-sm">
+                        {blocker.label}
+                      </p>
+                    ) : null}
+                  </Panel>
+                </li>
+              );
+            })}
+        </ul>
+      ) : null}
       {expiring.length > 0 ? (
         <Panel tone="alert" className="mt-3">
           <ul className="space-y-2">
@@ -591,7 +662,23 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
           return (
             <li key={`${c.type}-${i}`} className={panelClass()}>
               <div className="flex items-baseline justify-between gap-3">
-                <p className="text-base font-bold">{credentialName(c)}</p>
+                {/*
+                  `credentialTypeLabel`, not `credentialName`. The latter
+                  title-cases the raw type, so this row read "Oxygen" and "Boat"
+                  while the required-documents list above it said "Oxygen
+                  certificate" and "Boat papers" — the same screen naming the
+                  same document two ways, and the vaguer of the two is the one
+                  `CREDENTIAL_TYPES` exists to replace: "'Oxygen' alone is not a
+                  document anybody recognises."
+
+                  Done at the call site rather than inside `credentialName`,
+                  because `credentials.ts` already imports from `standing.ts`
+                  and reaching back the other way for a value would make that a
+                  runtime cycle.
+                */}
+                <p className="text-base font-bold">
+                  {credentialTypeLabel(c.type)}
+                </p>
                 {/*
                   `mandatory` is what separates "the account cannot go live
                   without this" from "nice to have on file", and an operator
@@ -628,6 +715,30 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
               ) : c.issuer ? (
                 <p className="text-forest/70 mt-1 text-sm">{c.issuer}</p>
               ) : null}
+              {/*
+                The file behind this document, and never a blank. `hasFile`
+                decides it rather than the name being present: a response
+                carrying a name without the flag is one disagreeing with itself,
+                and showing the name would say we hold a file we may not.
+              */}
+              <p className="text-forest/70 mt-1 text-sm break-all">
+                {fileLine(c)}
+              </p>
+
+              {/*
+                Sending a file is offered on a PENDING document only. "Once
+                somebody at Yuvoy has verified or rejected a document, a new file
+                behind it would change the evidence under a decision nobody
+                re-made", which answers `409 document_locked` — so the control is
+                withheld rather than offered and refused.
+              */}
+              {takesFile(c.state) && c.id ? (
+                <SendDocument
+                  credentialId={c.id}
+                  label={credentialTypeLabel(c.type)}
+                />
+              ) : null}
+
               {action ? (
                 <ButtonLink
                   href={action.href}

@@ -1378,6 +1378,15 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
 export const ACCOUNT_LIVE = {
   state: "LIVE",
   bookable: true,
+  /*
+    NOTHING outstanding, and this stays that way.
+
+    An unmet required document was put here at first, with the
+    `CREDENTIAL_MISSING` that explains it — and it broke two suites that read
+    this identity as "a live account with nothing waiting on you", which is what
+    it is for. The unmet case lives on `ACCOUNT_LIVE_OUTSTANDING`, which already
+    has blockers and its own identity.
+  */
   blocking: [],
   credentials: [
     {
@@ -1404,6 +1413,75 @@ export const ACCOUNT_LIVE = {
       expiresOn: marketDay(21),
       verifiedAt: todayAt("10:00", -60),
     },
+    {
+      /*
+        PENDING, with an id and no file — the one state that takes one
+        (yuvoy-operator#46 items 2 and 3).
+
+        "Only a pending document takes a file. Once somebody at Yuvoy has
+        verified or rejected a document, a new file behind it would change the
+        evidence under a decision nobody re-made." The two above are verified
+        and must therefore offer nothing, which is half of what makes this
+        fixture worth having.
+      */
+      id: "cred_oxygen_pending",
+      type: "oxygen",
+      state: "pending",
+      mandatory: true,
+      issuer: "Andaman Divers Supply",
+      hasFile: false,
+      filedAt: todayAt("11:00", -2),
+    },
+    {
+      /*
+        A SECOND pending document, and the only one a test uploads to.
+
+        `cred_oxygen_pending` above is read by both Playwright projects, which
+        assert it has no file and offers the control; a successful upload is not
+        reversible and the mock's state is shared, so the project that uploaded
+        first would take both assertions away from the other. This row is the
+        one that receives a file, and nothing asserts it is empty.
+      */
+      id: "cred_gst_pending",
+      type: "gst",
+      state: "pending",
+      mandatory: false,
+      issuer: "GST Network",
+      hasFile: false,
+      filedAt: todayAt("11:00", -2),
+    },
+    {
+      /*
+        VERIFIED and carrying a file, so the row that names one is exercised and
+        the row that offers to send one is proved absent on the same screen.
+      */
+      id: "cred_boat_verified",
+      type: "boat",
+      state: "verified",
+      mandatory: true,
+      issuer: "Port Blair Harbour Master",
+      hasFile: true,
+      filename: "boat-survey-2026.pdf",
+      sizeBytes: 480_000,
+      expiresOn: marketDay(300),
+      verifiedAt: todayAt("10:00", -30),
+    },
+  ],
+  /*
+    Four required, four met — yuvoy-operator#46 item 1.
+
+    `bank` is in the set and has NO credential row, which is the whole reason
+    the count is read rather than counted: a portal totalling the rows it can
+    see would answer "5" here, and the set is "what your market requires of
+    every business, plus what the categories you have published listings in
+    require". The unmet case is on `ACCOUNT_LIVE_OUTSTANDING`, so this identity
+    keeps its empty `blocking`.
+  */
+  requiredDocuments: [
+    { type: "directorate_registration", satisfied: true },
+    { type: "insurance", satisfied: true },
+    { type: "boat", satisfied: true },
+    { type: "bank", satisfied: true },
   ],
 };
 
@@ -1496,8 +1574,30 @@ export const ACCOUNT_LIVE_OUTSTANDING = {
       gates: false,
       since: todayAt("09:00", -9),
     },
+    {
+      /*
+        The blocker that explains an unmet required document — yuvoy-operator#46
+        item 1. "A document that is not satisfied always has a `CREDENTIAL_*`
+        entry in `blocking` saying why", and without one the row would name a
+        document and no reason.
+      */
+      code: "CREDENTIAL_MISSING",
+      label: "We have no equipment inspection on file.",
+      waitingOn: "operator",
+      gates: false,
+      since: todayAt("09:00", -5),
+    },
   ],
   credentials: ACCOUNT_LIVE.credentials,
+  /*
+    Five required, four met. `equipment` is required and has no credential row
+    at all, so a portal counting the rows it can see would answer "4 of 4" and
+    tell an operator they were finished.
+  */
+  requiredDocuments: [
+    ...ACCOUNT_LIVE.requiredDocuments,
+    { type: "equipment", satisfied: false },
+  ],
 };
 
 export const SUSPENDED_ID = "usr_suspended";

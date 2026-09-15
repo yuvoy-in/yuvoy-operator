@@ -136,6 +136,7 @@ export default async function TeamPage() {
                 canHoldThem={canHold(member, me.id, me.roles, team.people)}
                 canRestoreThem={canRestore(member, me.id, me.roles)}
                 iAmOnlyAdmin={iAmOnlyAdmin}
+                canSeeNotifications={canManageAccess(me.roles)}
               />
             ))}
           </ul>
@@ -168,6 +169,7 @@ export default async function TeamPage() {
                 canHoldThem={canHold(invite, me.id, me.roles, team.people)}
                 canRestoreThem={canRestore(invite, me.id, me.roles)}
                 iAmOnlyAdmin={iAmOnlyAdmin}
+                canSeeNotifications={canManageAccess(me.roles)}
                 /*
                   The link, on the row somebody is actually chasing. `joinUrl`
                   is "present only for a caller who can invite", so the server

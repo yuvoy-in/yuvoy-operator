@@ -107,8 +107,21 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
     out, offers nothing: the API would refuse a new copy of it.
   */
   const replace = page.getByRole("link", { name: "Replace it" });
-  await expect(replace).toHaveCount(1);
-  await expect(replace).toHaveAttribute("href", "/profile#documents");
+  /*
+    Three now, not one. The insurance twenty-one days out, plus the two PENDING
+    documents #46 added to this fixture so the file controls have something to
+    act on — a pending document is one `POST /credentials` will take a fresh
+    copy of, so it offers the same link.
+
+    The property this asserts is unchanged and is the one that matters: the
+    registration 400 days out offers NOTHING, because the API would refuse a
+    renewal of it.
+  */
+  await expect(replace).toHaveCount(3);
+  await expect(replace.first()).toHaveAttribute("href", "/profile#documents");
+  await expect(
+    page.locator("li").filter({ hasText: "Directorate registration" }).first(),
+  ).not.toContainText("Replace it");
 
   // The sentence that said no document could be sent here at all is gone —
   // false since `POST /credentials`, and contradicted by the Replace above.
@@ -240,8 +253,13 @@ test("a live account is still asked for what is outstanding", async ({
   await expect(page.getByRole("link", { name: "Go to today" })).toBeVisible();
   await expect(page.getByText("You cannot be booked yet")).toHaveCount(0);
 
-  // AND still outstanding — the half that vanished.
-  await expect(page.getByText("2 things are still outstanding")).toBeVisible();
+  /*
+    AND still outstanding — the half that vanished. Three since #46, which added
+    the `CREDENTIAL_MISSING` that explains this fixture's one unmet required
+    document: "a document that is not satisfied always has a `CREDENTIAL_*`
+    entry in `blocking` saying why."
+  */
+  await expect(page.getByText("3 things are still outstanding")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Waiting on you" }),
   ).toBeVisible();
@@ -255,7 +273,7 @@ test("a live account is still asked for what is outstanding", async ({
     logo sit in the same red panel as a lapsed licence. An operator who cannot
     tell the difference learns to ignore all of it.
   */
-  await expect(page.getByText("Not stopping sales")).toHaveCount(2);
+  await expect(page.getByText("Not stopping sales")).toHaveCount(3);
   await expect(page.getByText(/These are not blocking you/)).toBeVisible();
 
   // And each one still carries the way out of it — yuvoy-operator#33.

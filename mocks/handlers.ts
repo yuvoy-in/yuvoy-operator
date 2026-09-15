@@ -4,6 +4,8 @@ import {
   MOCK_TUS_PORT,
   mockPhotoArrived,
   resetMockPhotos,
+  mockDocumentArrived,
+  resetMockDocuments,
   createMockUpload,
   mockUploadDone,
   resetMockUploads,
@@ -180,6 +182,46 @@ let team: MockTeamMember[] = TEAM.map((m) => ({ ...m }));
  * subject is who can get into your business.
  */
 let signups: MockTeamMember[] = [];
+/**
+ * Upload intents for a document's file, by intent id — yuvoy-operator#46.
+ *
+ * Kept as state because `complete` is specified to CHECK rather than trust:
+ * "the browser saying it finished is a reason to look, not a fact … that it is
+ * the size declared, and that its first bytes are the kind its label claims."
+ * A mock that recorded nothing at intent time would have nothing to check
+ * against, and the portal's whole failure surface would ship unexercised.
+ */
+let documentIntents: Record<
+  string,
+  {
+    credentialId: string;
+    filename: string;
+    contentType: string;
+    sizeBytes: number;
+    /** Refused or already used. A closed intent answers `upload_closed`. */
+    closed?: boolean;
+  }
+> = {};
+/** Files on record, by credential id. What `hasFile` and `filename` read. */
+let documentFiles: Record<
+  string,
+  { filename: string; sizeBytes: number; contentType: string }
+> = {};
+/**
+ * Notification switches somebody has changed, by user id then group.
+ *
+ * Absent means ON, which is the contract's own default: "every switch is on
+ * until somebody turns it off." Stored as the change rather than as the whole
+ * set for the same reason the endpoint takes one switch at a time — two people
+ * on two phones must not overwrite each other.
+ *
+ * `by` is what makes item 6 testable: an owner turning off a staff member's
+ * switch has to show up, by name, on that person's own screen.
+ */
+let switchState: Record<
+  string,
+  Record<string, { on: boolean; at: string; by: { id: string; name: string } }>
+> = {};
 /**
  * Bookings this team cancelled, by id — yuvoy-operator#43 item 4.
  *
@@ -1086,6 +1128,178 @@ function bookingOf(id: string) {
   return null;
 }
 
+/**
+ * One credential by its id, across every account fixture.
+ *
+ * Needed because the intent endpoint refuses a document that is not pending,
+ * and "pending" is a fact about the fixture rather than about the intent.
+ */
+function credentialOf(
+  id: string,
+): { id?: string; type?: string; state?: string } | undefined {
+  for (const account of [
+    ACCOUNT_LIVE,
+    ACCOUNT_LIVE_OUTSTANDING,
+    ACCOUNT_SUSPENDED,
+    ACCOUNT_PROSPECT,
+    ACCOUNT_AWAITING,
+  ]) {
+    const hit = (
+      account.credentials as { id?: string; type?: string; state?: string }[]
+    ).find((c) => c.id === id);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/**
+ * An account block with this session's uploaded files overlaid.
+ *
+ * The fixtures are `const` and every handler reads them, so a file recorded by
+ * an upload is kept beside them and merged on the way out — the same call
+ * `createdSlots` and `cashTaken` make. Without this the row would still say "no
+ * file sent" after a successful upload, and the walkthrough would be proving
+ * the message rendered and nothing about the screen.
+ */
+function accountWithFiles<T extends { credentials: readonly unknown[] }>(
+  account: T,
+): T {
+  const anyFiles = Object.keys(documentFiles).length > 0;
+  if (!anyFiles) return account;
+  return {
+    ...account,
+    credentials: (account.credentials as { id?: string }[]).map((c) => {
+      const file = c.id ? documentFiles[c.id] : undefined;
+      return file
+        ? {
+            ...c,
+            hasFile: true,
+            filename: file.filename,
+            sizeBytes: file.sizeBytes,
+          }
+        : c;
+    }),
+  };
+}
+
+/**
+ * The five switches, as the API declares them — yuvoy-operator#46 item 5.
+ *
+ * `label` and `description` are the API's words, and the descriptions say who
+ * each kind of message goes to. That is load-bearing rather than decorative:
+ * "every person sees every switch, so this is how a staff member can tell that
+ * a payout summary was never going to reach them."
+ */
+const SWITCHES = [
+  {
+    group: "new_bookings",
+    label: "New bookings",
+    description:
+      "A booking, a seat request that needs an answer, and a message a traveller writes about their trip. Everybody at the business.",
+  },
+  {
+    group: "guest_cancellations",
+    label: "Guest cancellations",
+    description:
+      "A traveller cancelled a booking they made. Everybody at the business.",
+  },
+  {
+    group: "todays_departures",
+    label: "Today's departures",
+    description: "The 06:00 summary of the day's booked departures.",
+  },
+  {
+    group: "settlement_summary",
+    label: "Payout sent",
+    description:
+      "A payout has been sent to the business's bank. Owners, admins and managers only, so a staff login never receives one.",
+  },
+  {
+    group: "document_expiry",
+    label: "Documents running out",
+    description:
+      "A document we require of the business expires within 30 days. The owner and any admin.",
+  },
+] as const;
+
+const ALWAYS_SENT =
+  "Some messages have no switch: a booking being cancelled by us, a bank change being raised or stopped, and anything about your account being suspended. Those reach the owner whatever is set here.";
+
+/** One person's switches, with anything changed overlaid. */
+function switchesFor(user: MockTeamMember) {
+  const changes = switchState[user.id] ?? {};
+  return {
+    userId: user.id,
+    name: user.name,
+    switches: SWITCHES.map((s) => {
+      const change = changes[s.group];
+      return {
+        ...s,
+        // Absent is ON: "every switch is on until somebody turns it off".
+        on: change ? change.on : true,
+        ...(change ? { changedAt: change.at, changedBy: change.by } : {}),
+      };
+    }),
+    alwaysSent: ALWAYS_SENT,
+  };
+}
+
+/**
+ * Apply a change, or answer the `400` the contract describes.
+ *
+ * "No switch named, one named twice, one without `on`, or a name that is not a
+ * switch. The message lists the switches that exist." Every one of those is
+ * modelled: a mock that took anything would let the portal ship a body the API
+ * refuses, and the operator would meet a refusal nobody could read.
+ */
+function applySwitches(
+  actor: MockTeamMember,
+  target: MockTeamMember,
+  changes: { group?: string; on?: unknown }[] | undefined,
+) {
+  const names = SWITCHES.map((s) => s.group);
+  const listed = `The switches are ${names.join(", ")}.`;
+
+  if (!Array.isArray(changes) || changes.length === 0) {
+    return envelope("invalid_input", `Name a switch. ${listed}`, 400);
+  }
+  const seen = new Set<string>();
+  for (const change of changes) {
+    const group = String(change.group ?? "");
+    if (!names.includes(group as (typeof names)[number])) {
+      return envelope("invalid_input", `No such switch. ${listed}`, 400);
+    }
+    if (seen.has(group)) {
+      return envelope("invalid_input", `${group} is named twice.`, 400);
+    }
+    seen.add(group);
+    if (typeof change.on !== "boolean") {
+      /*
+        "A switch sent without it is refused rather than read as off." Read as
+        off, a body with a typo in the field name would silence somebody.
+      */
+      return envelope(
+        "invalid_input",
+        `${group} needs on: true or false.`,
+        400,
+      );
+    }
+  }
+
+  const at = new Date().toISOString();
+  switchState[target.id] = switchState[target.id] ?? {};
+  for (const change of changes) {
+    switchState[target.id][String(change.group)] = {
+      on: change.on as boolean,
+      at,
+      // Who did it, which is the whole of item 6: an owner turning somebody
+      // else's switch off shows up by name on that person's own screen.
+      by: { id: actor.id, name: actor.name },
+    };
+  }
+  return null;
+}
+
 /** Reset between tests so one case cannot make the next pass. */
 export function __resetOperatorMocks() {
   blackouts = [];
@@ -1101,6 +1315,9 @@ export function __resetOperatorMocks() {
   team = TEAM.map((m) => ({ ...m }));
   signups = [];
   threads = seedThreads();
+  documentIntents = {};
+  documentFiles = {};
+  switchState = {};
   cancelled = {};
   cashReturned = {};
   uploadIntents = {};
@@ -1113,6 +1330,7 @@ export function __resetOperatorMocks() {
   story = seedStory();
   resetMockUploads();
   resetMockPhotos();
+  resetMockDocuments();
   photoIntents = {};
   photoIntentsById = {};
 }
@@ -1981,7 +2199,7 @@ export const handlers = [
       slug: OPERATOR.slug,
       commissionRateBps: OPERATOR.commissionRateBps,
       canManage: canManage(me),
-      ...(account ? { account } : {}),
+      ...(account ? { account: accountWithFiles(account) } : {}),
     });
   }),
 
@@ -2425,6 +2643,241 @@ export const handlers = [
       { status: 201 },
     );
   }),
+
+  /* ------------------------------------------------- notifications ------ */
+
+  http.get(url("/me/notifications"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json(switchesFor(sessionUser(request)!));
+  }),
+
+  http.put(url("/me/notifications"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const me = sessionUser(request)!;
+    const body = (await request.json()) as {
+      switches?: { group?: string; on?: unknown }[];
+    };
+    const refusal = applySwitches(me, me, body.switches);
+    return refusal ?? HttpResponse.json(switchesFor(me));
+  }),
+
+  http.get(url("/team/:id/notifications"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    /*
+      OWNER or ADMIN, and NOT `canManage` — the narrowest gate on these routes.
+      "An owner and an admin control everybody's switches, and each person
+      controls their own." A MANAGER has `canManage` and is refused here, which
+      is why the mock cannot reuse `requireManager`.
+    */
+    const roles = sessionUser(request)!.roles;
+    if (!roles.includes("OWNER") && !roles.includes("ADMIN")) {
+      return envelope(
+        "forbidden",
+        "Only an owner or an admin can see somebody else's notifications.",
+        403,
+      );
+    }
+    const target = team.find((m) => m.id === String(params.id) && !m.pending);
+    // A pending row is an invitation, not a person, and answers 404 like any
+    // other id that names nobody.
+    if (!target) return envelope("not_found", "No such member.", 404);
+    return HttpResponse.json(switchesFor(target));
+  }),
+
+  http.put(url("/team/:id/notifications"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const me = sessionUser(request)!;
+    if (!me.roles.includes("OWNER") && !me.roles.includes("ADMIN")) {
+      return envelope(
+        "forbidden",
+        "Only an owner or an admin can change somebody else's notifications.",
+        403,
+      );
+    }
+    const target = team.find((m) => m.id === String(params.id) && !m.pending);
+    if (!target) return envelope("not_found", "No such member.", 404);
+
+    const body = (await request.json()) as {
+      switches?: { group?: string; on?: unknown }[];
+    };
+    const refusal = applySwitches(me, target, body.switches);
+    return refusal ?? HttpResponse.json(switchesFor(target));
+  }),
+
+  /* ------------------------------------------------- document files ----- */
+
+  /**
+   * Sign a URL for the file behind a document — yuvoy-operator#46 item 3.
+   *
+   * "Only a pending document takes a file", which is the refusal the portal
+   * withholds the control for; modelled anyway, because the control is withheld
+   * on a render and the decision can change between that and the tap.
+   */
+  http.post(
+    url("/credentials/:id/upload-intents"),
+    async ({ request, params }) => {
+      const failed = requireSession(request);
+      if (failed) return failed;
+      /*
+        NOT `requireWritable`. A suspended business may still send a document
+        (#50), and refusing here would hold an operator at a state they are
+        being asked to clear.
+      */
+
+      const credentialId = String(params.id);
+      const body = (await request.json()) as {
+        filename?: string;
+        contentType?: string;
+        sizeBytes?: number;
+      };
+
+      const KINDS = ["application/pdf", "image/jpeg", "image/png"];
+      if (!KINDS.includes(String(body.contentType))) {
+        return envelope("invalid_input", "PDF, JPEG or PNG.", 400);
+      }
+      if (
+        !Number.isInteger(body.sizeBytes) ||
+        (body.sizeBytes ?? 0) <= 0 ||
+        (body.sizeBytes ?? 0) > 10 * 1024 * 1024
+      ) {
+        return envelope("invalid_input", "Up to 10 MB.", 400);
+      }
+
+      /*
+        A document already verified or rejected is locked, whether it was so
+        when the page rendered or became so while the operator was picking a
+        file: "a new file behind it would change the evidence under a decision
+        nobody re-made."
+      */
+      const credential = credentialOf(credentialId);
+      if (credential && credential.state !== "pending") {
+        return envelope(
+          "document_locked",
+          "This document has already been checked, so its file cannot change. File it again to send a different one.",
+          409,
+        );
+      }
+
+      const intentId = `int_${Math.random().toString(36).slice(2, 10)}`;
+      documentIntents[intentId] = {
+        credentialId,
+        filename: String(body.filename ?? "document"),
+        contentType: String(body.contentType),
+        sizeBytes: Number(body.sizeBytes),
+      };
+
+      return HttpResponse.json(
+        {
+          intentId,
+          /*
+            A DIFFERENT ORIGIN, as production is: "the file never passes through
+            this API". MSW runs in the Next process here, so a same-origin URL
+            would be intercepted and the browser's cross-origin upload — the
+            one the CSP's `connect-src` actually governs — would never happen.
+          */
+          uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/documents/${intentId}`,
+          method: "PUT",
+          /*
+            Signed headers, sent back "exactly as given". The metadata is what
+            `complete` looks for to know a URL minted here signed this file.
+          */
+          headers: {
+            "Content-Type": String(body.contentType),
+            "x-amz-meta-intent": intentId,
+            "x-amz-meta-credential": credentialId,
+          },
+          expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+          maxBytes: 10 * 1024 * 1024,
+          next: "send_the_file",
+        },
+        { status: 201 },
+      );
+    },
+  ),
+
+  /**
+   * Ask the bucket what actually arrived — yuvoy-operator#46 item 3.
+   *
+   * Every refusal here is modelled, because each is a different next step on
+   * screen and none of them would ever run against a mock that took the
+   * browser's word: the file that never arrived, the intent already used, and
+   * the file that is not the size it declared.
+   */
+  http.post(
+    url("/credentials/:id/upload-intents/:intentId/complete"),
+    async ({ request, params }) => {
+      const failed = requireSession(request);
+      if (failed) return failed;
+
+      const credentialId = String(params.id);
+      const intentId = String(params.intentId);
+      const intent = documentIntents[intentId];
+      if (!intent || intent.credentialId !== credentialId) {
+        return envelope("not_found", "No such upload.", 404);
+      }
+      if (intent.closed) {
+        return envelope(
+          "upload_closed",
+          "That upload was refused or replaced. Start a new one.",
+          409,
+        );
+      }
+
+      const arrived = mockDocumentArrived(intentId);
+      if (!arrived) {
+        // "The file has not reached the bucket yet, so send it first."
+        return envelope(
+          "upload_not_arrived",
+          "The file has not reached us yet.",
+          409,
+        );
+      }
+      if (arrived.bytes !== intent.sizeBytes) {
+        /*
+          Closed, and the retention sweep deletes it: "a file this refuses is
+          closed … start a new upload to send another." So the intent cannot be
+          completed a second time, which is what makes `upload_closed` reachable.
+        */
+        intent.closed = true;
+        return HttpResponse.json(
+          {
+            error: {
+              code: "document_refused",
+              message: "That file is not the size it said it was.",
+              details: { reason: "size_mismatch" },
+            },
+          },
+          { status: 400 },
+        );
+      }
+
+      const replacedPrevious = Boolean(documentFiles[credentialId]);
+      documentFiles[credentialId] = {
+        filename: intent.filename,
+        sizeBytes: intent.sizeBytes,
+        contentType: intent.contentType,
+      };
+
+      /*
+        "Called again after it succeeded, it answers the same thing again." The
+        intent is NOT closed here, so a retry on a dropped response is answered
+        rather than refused.
+      */
+      return HttpResponse.json({
+        credentialId,
+        hasFile: true,
+        filename: intent.filename,
+        sizeBytes: intent.sizeBytes,
+        contentType: intent.contentType,
+        replacedPrevious,
+        next: "we_check_it",
+      });
+    },
+  ),
 
   /* ------------------------------------------------------------ story --- */
 
@@ -4509,6 +4962,39 @@ export const handlers = [
   http.post(url("/auth/step-up"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+
+    /*
+      `sent: false` when there is NOBODY to send it to — yuvoy-operator#46
+      item 4.
+
+      "A business with no active owner, whose first person runs it (D15), has
+      nobody to send it to. The code goes to no number, `sent` is `false`, and
+      no session there can be elevated until an owner has joined."
+
+      Modelled by looking at the team, because the portal had been returning
+      `sent: true` whatever the API said — so somebody at such a business was
+      handed a code field and left typing into it. A mock that always sent one
+      would have kept that invisible.
+    */
+    const me = sessionUser(request)!;
+    /*
+      Whose business, and therefore whose owners. An identity created through
+      `POST /auth/signup` is a business of its own with exactly one person on
+      it, so asking Reef Divers' team about it would answer for somebody else's
+      shop — and the one business that can have no owner is precisely the solo
+      one whose first person answered "I run it for the owner".
+    */
+    const onReef = team.some((m) => m.id === me.id);
+    const hasActiveOwner = onReef
+      ? team.some(
+          (m) =>
+            !m.pending && m.state !== "suspended" && m.roles.includes("OWNER"),
+        )
+      : me.roles.includes("OWNER");
+    if (!hasActiveOwner) {
+      return HttpResponse.json({ sent: false }, { status: 202 });
+    }
+
     // Sent to the OWNER's number whoever asks. The mock does not model a
     // second user, but it does model that asking is not the same as receiving.
     return HttpResponse.json(
