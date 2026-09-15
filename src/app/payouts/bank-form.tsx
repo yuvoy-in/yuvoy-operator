@@ -148,6 +148,22 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
               </p>
             ) : null}
           </>
+        ) : step.nobodyToSendTo ? (
+          /*
+            No code field, because there is no code and there is not going to be
+            one (yuvoy-operator#46 item 4). A business whose first person runs it
+            has no owner (D15), and "the code goes to no number, `sent` is
+            `false`, and no session there can be elevated until an owner has
+            joined."
+
+            This screen used to draw the field anyway, because the action
+            returned `sent: true` whatever the API said — so somebody at such a
+            business typed into a box waiting for a message nobody sent.
+          */
+          <p className="text-terra-deep mt-4 text-sm font-bold">
+            No code was sent. An owner has to join before the bank details can
+            change.
+          </p>
         ) : (
           <Button
             disabled={sending}

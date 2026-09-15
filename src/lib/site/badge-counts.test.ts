@@ -7,6 +7,7 @@ const standing = (blocking: Standing["blocking"]): Standing => ({
   bookable: true,
   blocking,
   credentials: [],
+  requiredDocuments: [],
 });
 
 describe("the counts on the bar — yuvoy-operator#42", () => {

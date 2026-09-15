@@ -85,12 +85,29 @@ const nextConfig: NextConfig = {
    */
   async redirects() {
     return [
+      /*
+        The Listings tab is gone — D-036, yuvoy-operator#56.
+
+        Every listing is on Home now, and creating or editing one moved to the
+        Business profile (#58). All three old URLs forward rather than 404:
+        they are in operators' histories and in messages we have sent. 307 like
+        every other redirect here, because a tab structure this new is not
+        settled enough to cache in somebody's browser forever.
+      */
       { source: "/reels", destination: "/services/reels", permanent: false },
       {
         source: "/services",
         destination: "/services/activities",
         permanent: false,
       },
+      /*
+        `/services/activities` and `/services/reels` are NOT redirected yet, and
+        that is deliberate. Their content is what #58 moves under the Business
+        profile, and redirecting them before it lands would leave an operator
+        with no way to create or edit a listing at all. The tab is gone from the
+        bar either way, which is what #56 asks for; the pages stay reachable by
+        URL until the screens that replace them exist.
+      */
       /*
         The two renamed tabs — yuvoy-operator#32.
 

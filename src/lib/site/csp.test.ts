@@ -119,4 +119,26 @@ describe("Content-Security-Policy", () => {
     const names = cspDirectives(PROD).map((d) => d.split(" ")[0]);
     expect(new Set(names).size).toBe(names.length);
   });
+
+  it("lets the browser send a document to its bucket, and nowhere else on S3", () => {
+    /*
+      One exact origin, no wildcard (yuvoy-operator#46 item 3). A document is a
+      business's registration and insurance certificates, and `*.amazonaws.com`
+      would name every bucket on the platform as somewhere a browser on this
+      origin may POST to.
+    */
+    const connect = cspDirectives({}).find((d) => d.startsWith("connect-src"))!;
+    expect(connect).toContain(
+      "https://yuvoy-operator-documents-prod.s3.ap-south-1.amazonaws.com",
+    );
+    expect(connect).not.toContain("*.amazonaws.com");
+  });
+
+  it("does not let a document be read BACK from a page", () => {
+    // The bucket is private and a file goes one way. Nothing in this portal
+    // renders a document, so naming it in `img-src` would widen the policy for
+    // a capability that does not exist.
+    const img = cspDirectives({}).find((d) => d.startsWith("img-src"))!;
+    expect(img).not.toContain("amazonaws.com");
+  });
 });

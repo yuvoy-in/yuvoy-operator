@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import type { BookingLine } from "@/lib/money/bookings";
 import type { OperatorSlot } from "./types";
 import {
-  BOOKINGS_PAGE,
   CLOSING_SENTENCE,
   alreadyConfirmedSentence,
   apiWindow,
@@ -10,7 +9,7 @@ import {
   confirmedGuestsByDay,
   departuresOn,
   inMarketDays,
-  isClosedDay,
+  everyDepartureClosed,
   soldOn,
   startTimeCount,
 } from "./calendar";
@@ -99,17 +98,29 @@ describe("what a day says about itself", () => {
     ).toBe(7);
   });
 
-  it("reads as closed only when every running departure is closed", () => {
-    expect(isClosedDay([slot({ status: "closed" })])).toBe(true);
+  it("says every running departure is closed, which is not the same as the day being closed", () => {
+    /*
+      Renamed in #45, because the name was the bug. "Closed" on the day row now
+      comes from `GET /blackouts`: a day with NO departures can be closed, and
+      this rule could never see it, so a fortnight closed in January showed
+      fourteen ordinary empty days. It also could never say why.
+    */
+    expect(everyDepartureClosed([slot({ status: "closed" })])).toBe(true);
     expect(
-      isClosedDay([slot({ status: "closed" }), slot({ status: "open" })]),
+      everyDepartureClosed([
+        slot({ status: "closed" }),
+        slot({ status: "open" }),
+      ]),
     ).toBe(false);
     // A call-off is its own act, and an empty day is not a closed one.
     expect(
-      isClosedDay([slot({ status: "closed" }), slot({ status: "cancelled" })]),
+      everyDepartureClosed([
+        slot({ status: "closed" }),
+        slot({ status: "cancelled" }),
+      ]),
     ).toBe(true);
-    expect(isClosedDay([slot({ status: "cancelled" })])).toBe(false);
-    expect(isClosedDay([])).toBe(false);
+    expect(everyDepartureClosed([slot({ status: "cancelled" })])).toBe(false);
+    expect(everyDepartureClosed([])).toBe(false);
   });
 });
 
@@ -132,15 +143,20 @@ describe("who is already confirmed on a day", () => {
     expect(counts?.get("2026-09-12")).toBe(0);
   });
 
-  it("will not give a number it cannot stand behind", () => {
-    // A failed read, and a full page that may have been cut short.
+  it("will not give a number it cannot stand behind, and now only for that reason", () => {
+    /*
+      `null` is a FAILED READ and nothing else. It used to mean that too, and
+      also "a hundred rows came back and may have been cut short" — which threw
+      the count away exactly when an operator had most bookings to lose by
+      closing the day. `listBookings` pages until the API says `complete`, so a
+      hundred rows is a hundred bookings (yuvoy-operator#45 item 3).
+    */
     expect(confirmedGuestsByDay(null, days)).toBeNull();
-    expect(
-      confirmedGuestsByDay(
-        Array.from({ length: BOOKINGS_PAGE }, (_, i) => line({ id: `b${i}` })),
-        days,
-      ),
-    ).toBeNull();
+
+    const hundred = Array.from({ length: 100 }, (_, i) =>
+      line({ id: `b${i}`, guests: 1, startsAt: DAWN_ON_THE_11TH }),
+    );
+    expect(confirmedGuestsByDay(hundred, days)?.get("2026-09-11")).toBe(100);
   });
 
   it("says both of the issue's sentences word for word", () => {

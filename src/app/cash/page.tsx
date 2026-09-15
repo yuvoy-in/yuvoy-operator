@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Cash you've collected" };
 */
 export const dynamic = "force-dynamic";
 
-const BACK = { href: "/account", label: "your business" };
+const BACK = { href: "/account/settings", label: "settings" };
 
 /**
  * What the operator owes Yuvoy on cash we never handled — yuvoy-operator#40 §2.

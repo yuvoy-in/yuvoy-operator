@@ -12,6 +12,18 @@ import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { Screen } from "@/components/chrome/screen";
 import { CashCollect } from "@/app/bookings/cash-collect";
+import { CancelBooking } from "@/app/bookings/cancel-booking";
+import { CashBack } from "@/app/bookings/cash-back";
+import {
+  answerFor,
+  canCancelBooking,
+  canReturnCash,
+  endingLine,
+  needsReview,
+} from "@/lib/bookings/ending";
+import { now } from "@/lib/format/market-time";
+import { getBookingThread } from "@/lib/messages/fetch";
+import { Conversation } from "./conversation";
 
 export const metadata: Metadata = { title: "Booking" };
 export const dynamic = "force-dynamic";
@@ -68,6 +80,27 @@ export default async function BookingPage({
   }
 
   const state = describeBookingState(booking.state, booking.cash);
+  const at = await now();
+  const ended = endingLine(booking.cancellation, booking.timezone);
+  const questions = booking.questions ?? [];
+
+  /*
+    The conversation, fetched here rather than in the client so the first page is
+    in the server-rendered HTML. An operator opening a booking to find out what
+    was agreed should not watch a spinner on the one part of the screen they came
+    for.
+
+    Soft-failing, and it is the only read on this page that does: the booking
+    itself is the screen, and a conversation that could not load must not take
+    the departure time and the guest count down with it. `null` is "we could not
+    load it", which is a different sentence from "nothing has been said".
+  */
+  let thread = null;
+  try {
+    thread = await getBookingThread(token, id);
+  } catch {
+    thread = null;
+  }
 
   return (
     <Screen
@@ -78,15 +111,38 @@ export default async function BookingPage({
         <h1 className="font-display tracking-display text-4xl leading-[1.05]">
           {booking.name || booking.reference}
         </h1>
-        {state ? (
-          <Chip tone={state.live ? "accent" : "neutral"}>{state.label}</Chip>
-        ) : null}
+        <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+          {state ? (
+            <Chip tone={state.live ? "accent" : "neutral"}>{state.label}</Chip>
+          ) : null}
+          {/*
+            The server's flag, and nothing else from screening ever. It means
+            somebody has to be checked before the trip; it does NOT mean anything
+            about what they disclosed, and it is not derivable from the answers
+            below — the manifest carries a party the API flagged with `clear:
+            true` beside it (O12, D-018).
+          */}
+          {needsReview(booking.screening) ? (
+            <Chip tone="accent">Needs review</Chip>
+          ) : null}
+        </div>
       </div>
 
       {booking.reference ? (
         <p className="text-forest/70 mt-3 font-mono text-lg tracking-wider">
           {booking.reference}
         </p>
+      ) : null}
+
+      {/*
+        Why it ended, above everything else about it. An operator opening a
+        cancelled booking is asking one question, and reading the departure time
+        and the guest count first is reading the answer to a different one.
+      */}
+      {ended ? (
+        <Panel tone="alert" className="mt-6 p-4">
+          <p className="text-sm font-bold">{ended}</p>
+        </Panel>
       ) : null}
 
       <Panel className="mt-8 p-0">
@@ -142,6 +198,33 @@ export default async function BookingPage({
               cash={booking.cash}
               timezone={booking.timezone}
             />
+
+            {/*
+              Cancelled, and the notes are still in the till. We refunded
+              nothing because nothing reached us, so the only thing that closes
+              this out is the business handing it over and saying so.
+            */}
+            {/*
+              `me.canManage`, exactly as with cancelling: `POST
+              /bookings/{id}/cash-returned` answers 403 to STAFF. Left off at
+              first, and an e2e caught it — a staff login was being offered a
+              one-way write it could never make.
+            */}
+            {me.canManage && canReturnCash(booking.state, booking.cash) ? (
+              <CashBack
+                bookingId={booking.id || id}
+                amountPaise={
+                  booking.cash.collectedPaise ?? booking.cash.collectPaise
+                }
+              />
+            ) : null}
+            {booking.cash.returnedAt &&
+            booking.cash.returnedPaise !== undefined ? (
+              <p className="text-forest/80 mt-3 text-sm">
+                Given back {formatPaise(booking.cash.returnedPaise)} on{" "}
+                {marketDay(booking.cash.returnedAt, booking.timezone)}.
+              </p>
+            ) : null}
           </Panel>
         </section>
       ) : booking.money ? (
@@ -180,11 +263,91 @@ export default async function BookingPage({
         </p>
       )}
 
+      {/*
+        What the listing asked, and what this party said. In the order sent, and
+        never a blank: a question with nothing under it reads as an answer.
+      */}
+      {questions.length > 0 ? (
+        <section className="mt-8" aria-labelledby="answers">
+          <h2 id="answers" className="label text-forest/75">
+            What they answered
+          </h2>
+          <Panel className="mt-3 p-0">
+            <dl className="divide-cream-line divide-y text-sm">
+              {questions.map((question) => (
+                <div key={question.questionId} className="px-5 py-4">
+                  <dt className="text-forest/75">
+                    {question.text}
+                    {/*
+                      "Only an answered question appears with `current: false`",
+                      and it is kept "so an answer to a reworded question stays
+                      readable with the words it answered". Marked, because an
+                      operator comparing two parties needs to know why one of
+                      them was asked something the listing no longer asks.
+                    */}
+                    {!question.current ? (
+                      <span className="text-forest/70"> · no longer asked</span>
+                    ) : null}
+                  </dt>
+                  <dd className="mt-1 font-bold">{answerFor(question)}</dd>
+                </div>
+              ))}
+            </dl>
+          </Panel>
+        </section>
+      ) : null}
+
+      {/*
+        Cancelling one booking. Withheld rather than offered and refused: the
+        API takes it only on a booking that is still on, on a departure that has
+        not left, and both are knowable from what is already on this screen.
+        `me.canManage` is the role gate — STAFF never sees it — and it stays
+        drawn while the business is suspended (#50).
+      */}
+      {me.canManage && canCancelBooking(booking.state, booking.startsAt, at) ? (
+        <section className="mt-8" aria-labelledby="cancel">
+          <h2 id="cancel" className="label text-forest/75">
+            Cannot run this one
+          </h2>
+          <CancelBooking
+            bookingId={booking.id || id}
+            reference={booking.reference}
+            isCash={Boolean(booking.cash)}
+          />
+        </section>
+      ) : null}
+
+      {thread ? (
+        <Conversation bookingId={booking.id || id} initial={thread} />
+      ) : (
+        <section
+          className="mt-10"
+          aria-labelledby="conversation-heading"
+          id="conversation"
+        >
+          <h2
+            id="conversation-heading"
+            className="font-display tracking-display text-2xl leading-tight"
+          >
+            Conversation
+          </h2>
+          {/*
+            "Did not load", never "nothing was said". The second is a claim about
+            this booking, and an operator who acts on it walks to a jetty without
+            the thing the traveller asked for.
+          */}
+          <p className="text-forest/70 mt-2 text-sm">
+            The conversation did not load. Reload the page to try again.
+          </p>
+        </section>
+      )}
+
       <p className="text-forest/70 border-cream-line mt-10 border-t pt-6 text-xs">
-        We do not show traveller phone numbers. Read the reference back to them
-        at the jetty (they have it in every message we send) and to tell
-        everybody on a departure something, use the message box on that day
-        under Today.
+        We do not show traveller phone numbers, and neither side can type one
+        into the conversation. Read the reference back to them at the jetty
+        (they have it in every message we send), and to tell everybody on a
+        departure something at once, use the message box on that day under
+        Today.
       </p>
     </Screen>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { removeMember, type RemoveState } from "./actions";
 import { describeRole, roleLabel, strongestRole } from "@/lib/team/roles";
 import type { Allowed } from "@/lib/team/access";
@@ -29,6 +30,8 @@ export function MemberRow({
   canRole,
   canHoldThem,
   canRestoreThem,
+  iAmOnlyAdmin,
+  canSeeNotifications,
   joinUrl,
 }: {
   member: TeamPerson;
@@ -39,6 +42,16 @@ export function MemberRow({
   canRole: Allowed;
   canHoldThem: Allowed;
   canRestoreThem: Allowed;
+  /** Passed through to the role picker, which warns an admin about one choice. */
+  iAmOnlyAdmin: boolean;
+  /**
+   * The signed-in person is an OWNER or an ADMIN.
+   *
+   * Its own prop rather than derived from the access controls: `PUT
+   * /team/{id}/notifications` is OWNER-or-ADMIN and not `canManage`, so a
+   * MANAGER meets a 403 here while being allowed plenty elsewhere.
+   */
+  canSeeNotifications: boolean;
   /**
    * The business's join link, on a PENDING row only.
    *
@@ -199,11 +212,30 @@ export function MemberRow({
         to THIS person, which the server states per endpoint and this screen
         does not re-argue after a 403.
       */}
+      {/*
+        Their notification switches — yuvoy-operator#46 item 6.
+
+        NOT on a pending row: "that `id` is an invitation, not a person", so the
+        endpoint has nobody to answer for. And not for a MANAGER: this is OWNER
+        or ADMIN only, which is narrower than every other control on this row,
+        so it is gated on its own signal rather than on `canManage` or on
+        whatever the access controls happen to allow.
+      */}
+      {canSeeNotifications && !member.pending ? (
+        <Link
+          href={`/team/${member.id}/notifications`}
+          className="text-forest tap-target mt-4 block text-sm underline underline-offset-2"
+        >
+          Their notifications
+        </Link>
+      ) : null}
+
       <AccessControls
         member={member}
         canRole={canRole}
         canHoldThem={canHoldThem}
         canRestoreThem={canRestoreThem}
+        iAmOnlyAdmin={iAmOnlyAdmin}
       />
 
       {removability.removable || removability.reason ? (

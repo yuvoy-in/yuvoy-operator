@@ -13,6 +13,7 @@ import type { Allowed } from "@/lib/team/access";
 import type { TeamPerson } from "@/lib/team/members";
 import { Button } from "@/components/ui/button";
 import { choiceClass } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 
 /**
  * Changing somebody's access from the row they are on — yuvoy-operator#25 §3.
@@ -63,11 +64,22 @@ export function AccessControls({
   canRole,
   canHoldThem,
   canRestoreThem,
+  iAmOnlyAdmin,
 }: {
   member: TeamPerson;
   canRole: Allowed;
   canHoldThem: Allowed;
   canRestoreThem: Allowed;
+  /**
+   * The signed-in person is an ADMIN and not also an OWNER.
+   *
+   * It changes one sentence, and the sentence matters: `PUT /team/{id}/role`
+   * says "an ADMIN who makes somebody an owner cannot change that person's
+   * access afterwards." Handing the role on is a one-way door for an admin and
+   * not for an owner, so only one of them is warned about it
+   * (yuvoy-operator#51 item 3).
+   */
+  iAmOnlyAdmin: boolean;
 }) {
   const [open, setOpen] = useState<Open>(null);
 
@@ -79,7 +91,7 @@ export function AccessControls({
     /*
       No controls. Usually nothing is said — "not offering it says so" — and
       the one exception is a reason that survived the §4 cut, which today is
-      only "The only owner."
+      only "The last owner or admin."
     */
     return reason ? (
       <p className="border-cream-line text-forest/70 mt-4 border-t pt-3 text-xs">
@@ -132,7 +144,11 @@ export function AccessControls({
         form again, with no way to reach "Give access back" without reloading.
       */}
       {open === "role" ? (
-        <RoleForm member={member} onClose={() => setOpen(null)} />
+        <RoleForm
+          member={member}
+          iAmOnlyAdmin={iAmOnlyAdmin}
+          onClose={() => setOpen(null)}
+        />
       ) : null}
       {open === "hold" ? (
         <HoldForm member={member} onClose={() => setOpen(null)} />
@@ -148,9 +164,14 @@ export function AccessControls({
  * The role picker.
  *
  * `ASSIGNABLE_ROLES` rather than a hand-written list, so the radios, the
- * validator and the request body cannot disagree about a set whose whole point
- * is that OWNER is not in it. Each option carries what it can and cannot do,
- * because "Manager" alone is a word, not a decision.
+ * validator and the request body cannot disagree about which four roles exist.
+ * Each option carries what it can and cannot do, because "Manager" alone is a
+ * word, not a decision.
+ *
+ * OWNER is one of the four now (D31, yuvoy-operator#51 item 3): "an OWNER or an
+ * ADMIN may make somebody already on the team an owner, rather than removing them
+ * and inviting them back." It is the only option with a consequence panel, for
+ * the reason the contract gives it one.
  *
  * **Replaced, not added to.** The picker's semantics are the API's, so there
  * is nothing to explain about what happens to a second role — there is never
@@ -158,9 +179,11 @@ export function AccessControls({
  */
 function RoleForm({
   member,
+  iAmOnlyAdmin,
   onClose,
 }: {
   member: TeamPerson;
+  iAmOnlyAdmin: boolean;
   onClose: () => void;
 }) {
   const [state, act, pending] = useActionState<AccessState, FormData>(
@@ -169,6 +192,13 @@ function RoleForm({
   );
   useCloseOnDone(state, onClose);
   const current = ASSIGNABLE_ROLES.find((r) => member.roles.includes(r));
+  /*
+    What is selected right now, so the Owner consequence can be shown while it is
+    being chosen rather than after it is saved. Seeded to the role they hold, so
+    the panel is not drawn for an owner who is already one and nothing is being
+    changed.
+  */
+  const [chosen, setChosen] = useState<string | undefined>(current);
 
   return (
     <form action={act} className="border-cream-line border-t pt-4">
@@ -181,7 +211,7 @@ function RoleForm({
             return (
               <label
                 key={role}
-                className={choiceClass(false, "items-start py-4")}
+                className={choiceClass(role === chosen, "items-start py-4")}
               >
                 <input
                   type="radio"
@@ -189,6 +219,7 @@ function RoleForm({
                   value={role}
                   required
                   defaultChecked={role === current}
+                  onChange={() => setChosen(role)}
                   className="accent-terra-deep mt-0.5 size-5 shrink-0"
                 />
                 <span>
@@ -209,6 +240,33 @@ function RoleForm({
           })}
         </div>
       </fieldset>
+
+      {/*
+        What making somebody an owner actually hands over, said while it is being
+        chosen (yuvoy-operator#51 item 3).
+
+        "A new owner gains every owner power, including changing where the
+        business is paid" — that is the one nobody guesses from the word "Owner",
+        and it is the one that moves a season's takings. Drawn only when Owner is
+        selected AND they are not one already, so it reads as a consequence of the
+        choice rather than as a description of the row.
+
+        The second sentence is for an ADMIN only: "an ADMIN who makes somebody an
+        owner cannot change that person's access afterwards." For an admin this is
+        a one-way door, and the API will refuse them the way back.
+      */}
+      {chosen === "OWNER" && !member.roles.includes("OWNER") ? (
+        <Panel tone="alert" className="mt-3 p-4">
+          <p className="text-sm font-bold">
+            They will be able to change where the business is paid.
+          </p>
+          {iAmOnlyAdmin ? (
+            <p className="text-forest/80 mt-1.5 text-sm">
+              You will not be able to change their access afterwards.
+            </p>
+          ) : null}
+        </Panel>
+      ) : null}
 
       {/*
         Kept copy, by §4's own test: it changes what somebody does. Whoever is

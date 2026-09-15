@@ -56,8 +56,27 @@ export interface InviteState {
      * while the owner still remembers what they meant to type.
      */
     phone: string;
-    role: InvitableRole;
+    /**
+     * What accepting will make them, **from the response** rather than from what
+     * was asked for.
+     *
+     * `POST /team` answers `role` as `OWNER` or `STAFF` and nothing else: an
+     * invitation for ADMIN or MANAGER is "sent, not refused", downgraded to
+     * STAFF, and carries a `note` saying so. Echoing the request back would tell
+     * the inviter they had made somebody an admin when they had not.
+     */
+    role: string;
   };
+  /**
+   * The server's own sentence about a role it did not grant as asked.
+   *
+   * "Present when `role` is not the role that was asked for … Show it to the
+   * person inviting." This form only ever asks for OWNER or STAFF, so it should
+   * never arrive — which is exactly why it is rendered rather than dropped: if it
+   * does, something about this build's idea of the roles is wrong, and the
+   * operator is the one who needs to know before they hand a phone over.
+   */
+  note?: string;
   /**
    * The business's join link, to hand over directly.
    *
@@ -88,9 +107,11 @@ const inviteSchema = z.object({
   phone: phoneSchema,
   name: z.string().trim().min(2, "Who is this? A name they will recognise."),
   /*
-    Derived from INVITABLE_ROLES rather than retyped, so the select, the
-    validator and the request body cannot disagree about a set whose whole
-    point is that OWNER is not in it.
+    Derived from INVITABLE_ROLES rather than retyped, so the radios, the
+    validator and the request body cannot disagree about which two roles an
+    invitation may ask for. The endpoint's own enum is all four and downgrades
+    the middle two to STAFF; sending one of those would be asking for a role and
+    being told, in a `note`, that we did not get it.
   */
   role: z.enum(
     INVITABLE_ROLES as unknown as [InvitableRole, ...InvitableRole[]],
@@ -135,8 +156,14 @@ export async function inviteMember(
       sent: {
         name: parsed.data.name,
         phone: parsed.data.phone,
-        role: parsed.data.role,
+        /*
+          The response's role, falling back to what was asked only if the field
+          is absent. `role` is optional in the schema, and a receipt with no role
+          on it is worse than the one thing we did ask for.
+        */
+        role: data.role ?? parsed.data.role,
       },
+      note: data.note,
       /*
         The link, carried back so the inviter can pass it on themselves.
 
@@ -160,31 +187,52 @@ export async function inviteMember(
     if (err instanceof OperatorApiError) {
       if (err.code === "cannot_invite") {
         /*
-          ONE message, and no attempt to work out which failure it was.
+          The SERVER's sentence, and no attempt to work out which failure it was.
 
           "A number already belonging to any operator is refused with the same
           message as any other failure, so this endpoint cannot be used to find
           out which businesses are on Yuvoy — the same reason sign-in answers
           identically for known and unknown numbers." A client that guessed
-          between "already on another operator" and "cannot invite an owner"
-          would rebuild exactly the oracle the server refuses to be.
+          between the possible causes would rebuild exactly the oracle the
+          endpoint refuses to be, and the one message it does send is the only one
+          that stays true as the causes change.
+
+          It is rendered rather than reworded for a second reason: our own
+          sentence carried "an owner cannot be invited. The first one is set up by
+          Yuvoy", which stopped being true on 14 September (D15,
+          yuvoy-operator#51 item 2). An owner IS invitable now, so the copy was
+          telling operators the opposite of what the form in front of them does.
         */
-        return {
-          message:
-            "We could not send that invitation. Check the number, and note that an owner cannot be invited. The first one is set up by Yuvoy.",
-        };
+        return { message: err.message || "The invitation was not sent." };
       }
       // A suspended business is refused with 403 too, and the role
       // sentence would be the wrong one. See `suspendedMessage`.
       const refusal = suspendedMessage(err);
       if (refusal) return { message: refusal };
+      /*
+        403 and 400 both come through as the server said them. The hand-written
+        403 read "only the owner can add people", which an ADMIN would read on a
+        screen whose invite form they are allowed to use: `POST /team` is "OWNER
+        or ADMIN". The fallbacks stay for an empty message, never as a rewrite.
+      */
       if (err.status === 403) {
         return {
           message:
-            "Only the owner can add people. Ask them to do it from their own login.",
+            err.message ||
+            "You cannot add people to this account. An owner or an admin can.",
         };
       }
-      if (err.status === 400) return { message: err.message };
+      if (err.status === 400) {
+        /*
+          `invalid_input` is the number, and it belongs ON the number. Anything
+          else 400 can be here is `invalid_role`, which is not a field somebody
+          can fix by typing, so it is said once at the bottom.
+        */
+        return {
+          field: err.code === "invalid_input" ? "phone" : undefined,
+          message: err.message || "Something in that invitation needs fixing.",
+        };
+      }
     }
     return { message: "The invitation was not sent. Try again." };
   }
@@ -235,29 +283,34 @@ export async function removeMember(
       };
     }
     if (err instanceof OperatorApiError) {
-      if (err.code === "cannot_remove") {
-        /*
-          The screen already disables both cases beside the row, so reaching
-          this means the account changed under the operator — the other owner
-          was removed a minute ago on somebody else's phone.
-        */
-        return {
-          message:
-            "That cannot be removed. It is either you, or the last owner. Refresh to see who is on the account now.",
-        };
-      }
       // A suspended business is refused with 403 too, and the role
       // sentence would be the wrong one. See `suspendedMessage`.
       const refusal = suspendedMessage(err);
       if (refusal) return { message: refusal };
-      if (err.status === 403) {
-        return { message: "Only the owner can remove people." };
-      }
-      if (err.isNotFound) {
-        // 404 and 403-for-another-tenant are one case: the server does not
-        // distinguish them, and neither does this.
+      /*
+        `cannot_change_access`, 403 and 404, each as the server said it.
+
+        `cannot_remove` used to be branched on here and is GONE from the
+        contract: `DELETE /team/{id}` answers `409 cannot_change_access`, and the
+        issue is explicit that "`cannot_remove` is never sent"
+        (yuvoy-operator#51 item 4). A branch on a code nobody sends is a branch
+        that never runs, and the sentence it held — "it is either you, or the
+        last owner" — had also stopped being true, since the refusal counts
+        owners and admins together.
+
+        The hand-written 403 was worse than dead: "Only the owner can remove
+        people" is false. An ADMIN may remove people, and reads it on a row whose
+        Remove button they were just offered.
+      */
+      if (
+        err.code === "cannot_change_access" ||
+        err.status === 403 ||
+        err.isNotFound
+      ) {
         return {
-          message: "They are no longer on this account. Refresh the list.",
+          message:
+            err.message ||
+            "They were not removed. Refresh to see who is on the account now.",
         };
       }
     }
@@ -291,39 +344,39 @@ function accessFailure(err: unknown, verb: string): AccessState {
     };
   }
   if (err instanceof OperatorApiError) {
-    if (err.code === "cannot_change_access") {
-      /*
-        The screen already withholds both cases beside the row, so reaching
-        here means the account changed underneath — the other owner was
-        removed a minute ago on somebody else's phone.
-      */
-      return {
-        message:
-          "That cannot be changed. It is either your own access, or the last owner. Refresh to see who is on the account now.",
-      };
-    }
     // A suspended business is refused with 403 too, and the role
     // sentence would be the wrong one. See `suspendedMessage`.
     const refusal = suspendedMessage(err);
     if (refusal) return { message: refusal };
-    if (err.status === 403) {
-      return {
-        message: "You cannot change this person's access. An owner can.",
-      };
-    }
-    if (err.isNotFound) {
-      /*
-        404 covers three different things — not on this team, not currently
-        working, not on hold — and the contract deliberately does not tell
-        "gone" from "belongs to somebody else" apart. One message, and it says
-        the only useful thing: what you are looking at is out of date.
-      */
+    /*
+      `cannot_change_access`, 403, 404 and 400, each rendered as the server said
+      it (yuvoy-operator#51 item 4).
+
+      Three sentences were written here by hand and two of them had gone wrong in
+      the same direction. "It is either your own access, or the last owner"
+      counts owners alone; the refusal is "your own access, or the last active
+      OWNER or ADMIN". "You cannot change this person's access. An owner can" is
+      false for an ADMIN acting on another ADMIN, which each of these four
+      endpoints now allows — and it would be read by the very admin who was just
+      offered the control.
+
+      The server's own sentence tracks the rule as the rule moves. 404 in
+      particular covers three states the contract deliberately does not tell
+      apart — not on this team, not currently working, not on hold — and it is
+      the one that knows which.
+    */
+    if (
+      err.code === "cannot_change_access" ||
+      err.status === 403 ||
+      err.isNotFound ||
+      err.status === 400
+    ) {
       return {
         message:
-          "That is not what this account looks like now. Refresh the list.",
+          err.message ||
+          `That did not work: ${verb} again once you have refreshed the list.`,
       };
     }
-    if (err.status === 400 && err.message) return { message: err.message };
   }
   return { message: `That did not work. Try again.` };
 }

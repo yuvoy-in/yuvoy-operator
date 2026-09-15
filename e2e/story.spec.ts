@@ -31,7 +31,8 @@ test("Business opens the story, and the checked facts are facts rather than inpu
   page,
 }) => {
   await signIn(page);
-  await page.goto("/account");
+  // The doors moved behind the gear on the profile, #58 item 9.
+  await page.goto("/account/settings");
   await page.getByRole("link", { name: /Your story/ }).click();
   await page.waitForURL("**/story");
   await expect(

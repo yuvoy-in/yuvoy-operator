@@ -25,51 +25,99 @@ async function signIn(page: Page, phone = "+919000000101") {
   await page.waitForURL("**/today");
 }
 
-test("Listings is a stop on the bar, and both its pages light it", async ({
-  page,
-}) => {
-  await signIn(page);
+/**
+ * A listing's tile, by its title, wherever tiles are drawn.
+ *
+ * The accessible name of a tile is its title followed by its badge, so this
+ * anchors at the start and stops at a word boundary: "Reef dive" must not also
+ * match a "Reef dive 4kf2s" some other test created.
+ */
+function tile(page: Page, title: string) {
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return page.getByRole("link", { name: new RegExp(`^${escaped}(?![\\w])`) });
+}
 
-  for (const route of ["/services/activities", "/services/reels"]) {
-    await page.goto(route);
-    const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-    const current = nav.getByRole("link", { name: "Listings" });
-    await expect(current).toHaveAttribute("aria-current", "page");
+/** One listing, as the profile opens it — #58 item 4. */
+async function openListing(page: Page, title: string) {
+  await page.goto("/account");
+  await tile(page, title).first().click();
+  await page.waitForURL(/\/account\/listings\/[^/]+$/);
+}
 
-    /*
-      And exactly one stop is current. Two lit pills would make
-      `aria-current="page"` a lie, which is what happened while `/reels` was
-      still in the Business prefix list.
-    */
-    await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
-  }
-});
+/** Its edit form: the profile, the listing, then Edit — #58 items 4 and 6. */
+async function openEdit(page: Page, title: string) {
+  await openListing(page, title);
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
+  await page.waitForURL(/\/edit$/);
+}
 
-test("neither half is a focused screen, so nothing sends you out of the section", async ({
+/** Where a listing is RUN, from Home — #56. Pause and resume live here. */
+async function openHub(page: Page, title: string) {
+  await page.goto("/today");
+  await tile(page, title).first().click();
+  await page.waitForURL(/\/today\/listing\//);
+}
+
+/**
+ * Step 1 of the builder, filled in and saved. Returns the draft's id.
+ *
+ * `/account/listings/new` is the builder's first step since #58 item 7, and the
+ * one-screen create form it replaced is deleted. Everything that used to fill
+ * that form in one go now fills Basics and walks on.
+ */
+async function startDraft(page: Page, title: string, category = "adventure") {
+  await page.goto("/account/listings/new");
+  await page.getByLabel("What is it called").fill(title);
+  await page.getByLabel("What kind of thing it is").selectOption(category);
+  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/\/account\/listings\/[^/]+\/edit\?step=selling/);
+  return /\/listings\/([^/]+)\/edit/.exec(page.url())?.[1] ?? "";
+}
+
+/**
+ * The one row the edit screen draws.
+ *
+ * Scoped to `main`, because on the desktop project the primary nav is a rail of
+ * list items and `getByRole("listitem").first()` matches "Home" in it. That is
+ * the shape of bug that passes on one project and fails on the other, which is
+ * the worst way for a check to be wrong.
+ */
+function row(page: Page) {
+  return page.getByRole("main").getByRole("listitem").first();
+}
+
+test("the two old section URLs land where their content went", async ({
   page,
 }) => {
   /*
-    Reels was focused while it lived behind the Business door — a back disc and
-    no tab bar. The two lists are now halves of one job an operator moves
-    between constantly, so both are roots.
+    D-036, yuvoy-operator#56 and #58. The tab had two pages under it and pointed
+    at the first, so the footage was a stop nobody found. Every listing is on
+    Home now, the library is a tab of the business profile, and both old URLs
+    are redirects: operators have them in a browser history and on a printed
+    onboarding note, and a dead link is how somebody decides the portal is
+    broken.
   */
   await signIn(page);
+
+  await page.goto("/services/activities");
+  await page.waitForURL("**/today");
+
   await page.goto("/services/reels");
-  await expect(
-    page.getByRole("link", { name: /Back to your business/i }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("navigation", { name: /Primary/i }).first(),
-  ).toBeVisible();
+  await page.waitForURL(/\/account\?tab=reels/);
+  await expect(page.getByRole("link", { name: "Reels" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
 });
 
 test("the old /reels URL still works", async ({ page }) => {
-  // Operators have it in a browser history and on a printed onboarding note.
+  // Two redirects deep: `/reels` to `/services/reels` to the Reels tab.
   await signIn(page);
   await page.goto("/reels");
-  await page.waitForURL("**/services/reels");
+  await page.waitForURL(/\/account\?tab=reels/);
   await expect(
-    page.getByRole("heading", { level: 1, name: "Photos & reels" }),
+    page.getByRole("heading", { level: 1, name: "Reef Divers Havelock" }),
   ).toBeVisible();
 });
 
@@ -77,31 +125,38 @@ test("every listing says where it is, including the ones that are not selling", 
   page,
 }) => {
   await signIn(page);
-  await page.goto("/services/activities");
 
-  const live = page.locator("li").filter({ hasText: "Reef dive" });
-  await expect(live.getByText("Live", { exact: true })).toBeVisible();
-
-  const draft = page.locator("li").filter({ hasText: "Island boat day" });
-  await expect(draft.getByText("Draft", { exact: true })).toBeVisible();
-  await expect(draft.getByText(/sent to nobody/i)).toBeVisible();
+  await openEdit(page, "Reef dive");
+  await expect(row(page).getByText("Live", { exact: true })).toBeVisible();
 
   /*
-    The state the contract calls out, because "the obvious assumption is the
-    opposite": an edit under review does NOT take a live listing off sale, and
-    travellers who already booked keep the price and terms they booked on.
+    A DRAFT opens the builder, not the row: a draft is built and a published
+    listing is amended, and #58 item 7 made them two screens. Its state is on
+    the listing screen, which is where an operator meets it.
   */
-  const editing = page.locator("li").filter({ hasText: "Sunset cruise" });
+  await openListing(page, "Island boat day");
+  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Still missing/)).toBeVisible();
+
+  /*
+    An edit under review does NOT take a live listing off sale, and the badge
+    is the whole of what #58 item 4 says such a listing shows: "the badge only",
+    and no buttons. So the claim is read from the label, and from the absence of
+    anything to press — there is nothing an operator can usefully do while
+    somebody is reading their change.
+  */
+  await openListing(page, "Sunset cruise");
+  await expect(page.getByText("Live · edit in review")).toBeVisible();
   await expect(
-    editing.getByText(/still on sale on the old terms/i),
-  ).toBeVisible();
+    page.getByRole("link", { name: "Edit", exact: true }),
+  ).toHaveCount(0);
 
   // Why we came back, from the contract's closed set rather than paraphrased.
-  const rejected = page.locator("li").filter({ hasText: "Night fishing" });
+  await openListing(page, "Night fishing");
   await expect(
-    rejected.getByText(/could not find the meeting point/i),
+    page.getByText(/could not find the meeting point/i),
   ).toBeVisible();
-  await expect(rejected.getByText(/Which jetty gate/)).toBeVisible();
+  await expect(page.getByText(/Which jetty gate/)).toBeVisible();
 });
 
 test("a listing with no price says so while it is being written", async ({
@@ -119,12 +174,19 @@ test("a listing with no price says so while it is being written", async ({
     pretends that is the whole list.
   */
   await signIn(page);
-  await page.goto("/services/activities");
-  const draft = page.locator("li").filter({ hasText: "Island boat day" });
-  await expect(draft.getByText("a price")).toBeVisible();
-  await expect(
-    draft.getByText(/missing before we can approve it/),
-  ).toBeVisible();
+
+  // On the listing, which leads with what is missing on a draft (#58 item 4).
+  await openListing(page, "Island boat day");
+  await expect(page.getByText(/Still missing:.*a price/)).toBeVisible();
+
+  /*
+    And in the builder, where it can be answered: the step holding the price is
+    marked, and Review says the same thing in full.
+  */
+  await openEdit(page, "Island boat day");
+  await expect(page.getByRole("navigation", { name: "Steps" })).toBeVisible();
+  await page.goto(`${page.url().split("?")[0]}?step=review`);
+  await expect(page.getByText(/Still missing:.*a price/)).toBeVisible();
 });
 
 test("nothing on this screen ever says a listing was saved and is selling", async ({
@@ -135,12 +197,16 @@ test("nothing on this screen ever says a listing was saved and is selling", asyn
     will assume they are selling, and will ring us on the day nobody books."
   */
   await signIn(page);
-  await page.goto("/services/activities");
-  const text = (await page.locator("body").innerText()).toLowerCase();
-  expect(text).not.toContain("saved ✓");
-  expect(text).not.toContain("published successfully");
+  await openEdit(page, "Reef dive");
+  const edit = (await page.locator("body").innerText()).toLowerCase();
+  expect(edit).not.toContain("saved ✓");
+  expect(edit).not.toContain("published successfully");
+
   // An edit being read is named for what it is — in review — never "saved".
-  expect(text).toContain("in review");
+  await openListing(page, "Sunset cruise");
+  const reading = (await page.locator("body").innerText()).toLowerCase();
+  expect(reading).not.toContain("saved ✓");
+  expect(reading).toContain("in review");
 });
 
 test("an operator writes a listing, and it lands as a draft", async ({
@@ -155,25 +221,18 @@ test("an operator writes a listing, and it lands as a draft", async ({
   const title = `Mangrove kayak ${suffix}`;
 
   await signIn(page);
-  await page.goto("/services/activities");
+  await startDraft(page, title, "nature_wildlife");
 
-  await page.getByRole("button", { name: "Add a listing" }).click();
-  await page.getByLabel("What is it called").fill(title);
-  await page
-    .getByLabel("What kind of thing it is")
-    .selectOption("nature_wildlife");
-  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
-  await page.getByLabel("Price", { exact: true }).fill("2200");
   // A price has to state its basis now — yuvoy-operator#30 §1.
-  await page.getByRole("radio", { name: /For the group/ }).check();
-  await page.getByRole("button", { name: "Save as a draft" }).click();
+  await page.getByLabel("Price").fill("2200");
+  await page.getByRole("radio", { name: "For the group" }).check();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=schedule/);
 
-  // A draft, and the screen says what that is NOT.
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
-  await expect(page.getByText(/reaches nobody yet/)).toBeVisible();
-
-  const row = page.locator("li").filter({ hasText: title });
-  await expect(row.getByText("Draft", { exact: true })).toBeVisible();
+  // It is on the profile, badged for what it is, and reaching nobody.
+  await openListing(page, title);
+  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Still missing/)).toBeVisible();
 });
 
 test("another market's destination cannot be chosen at all", async ({
@@ -193,8 +252,7 @@ test("another market's destination cannot be chosen at all", async ({
     the submit — but nothing in the UI can reach it on purpose any more.
   */
   await signIn(page);
-  await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add a listing" }).click();
+  await page.goto("/account/listings/new");
 
   const destination = page.getByLabel("Where it runs");
   const values = await destination
@@ -230,9 +288,9 @@ test("sending a change on a live listing says it keeps selling", async ({
       : "Lagoon snorkel (revision fixture B)";
 
   await signIn(page);
-  await page.goto("/services/activities");
+  await openEdit(page, who);
 
-  const live = page.locator("li").filter({ hasText: who });
+  const live = row(page);
   await live.getByRole("button", { name: "Propose a change" }).click();
 
   // Said before the tap, because "the obvious assumption is the opposite".
@@ -263,35 +321,48 @@ test("the two screens answer the same question from both ends", async ({
     Next server — so asserting "no video" against the whole page passed alone
     and failed in a full run, which is the worst way for a check to be wrong.
   */
-  await page.goto("/services/activities");
-  const blank = page.locator("li").filter({ hasText: "Sunset cruise" });
-  await expect(blank.getByText(/on sale with nothing to show/i)).toBeVisible();
+  await openListing(page, "Blue lagoon (no footage fixture)");
+  await expect(page.getByText("Nothing on it yet")).toBeVisible();
+
+  await openEdit(page, "Blue lagoon (no footage fixture)");
   await expect(
-    blank.getByRole("link", { name: "Photos & reels" }),
+    row(page).getByText(/on sale with nothing to show/i),
+  ).toBeVisible();
+  await expect(
+    row(page).getByRole("link", { name: "Your reels" }),
   ).toBeVisible();
 
-  await page.goto("/services/reels");
-  await expect(page.getByText(/not on any listing/i).first()).toBeVisible();
+  // And from the footage's end: a clip approved and on no listing at all.
+  await page.goto("/account?tab=reels");
+  await expect(page.getByText("Not on a listing").first()).toBeVisible();
 });
 
-test("the switcher counts both halves, including at zero", async ({ page }) => {
+test("the two tabs of the profile are one tap apart, and say which is open", async ({
+  page,
+}) => {
+  /*
+    What the section switcher did, where it went. `SectionSwitch` counted two
+    lists that were two pages; the profile draws the same two as tabs, and
+    `aria-current` is the claim that used to be worth a test then and is worth
+    one now.
+  */
   await signIn(page);
-  await page.goto("/services/activities");
+  await page.goto("/account");
 
-  const section = page.getByRole("navigation", { name: "What you sell" });
-  await expect(section.getByRole("link", { name: /Listings/ })).toHaveAttribute(
+  const tabs = page.getByRole("navigation", { name: "What to show" });
+  await expect(tabs.getByRole("link", { name: "Listings" })).toHaveAttribute(
     "aria-current",
     "page",
   );
-  await expect(
-    section.getByRole("link", { name: /Photos & reels/ }),
-  ).toBeVisible();
 
-  await section.getByRole("link", { name: /Photos & reels/ }).click();
-  await page.waitForURL("**/services/reels");
-  await expect(
-    section.getByRole("link", { name: /Photos & reels/ }),
-  ).toHaveAttribute("aria-current", "page");
+  await tabs.getByRole("link", { name: "Reels" }).click();
+  await page.waitForURL(/tab=reels/);
+  await expect(tabs.getByRole("link", { name: "Reels" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  // Exactly one. Two lit pills make `aria-current="page"` a lie.
+  await expect(tabs.locator('[aria-current="page"]')).toHaveCount(1);
 });
 
 test("the price says what the business receives, at its own rate", async ({
@@ -306,18 +377,19 @@ test("the price says what the business receives, at its own rate", async ({
     ₹4,500 at the fixture's 1500 bps is ₹675 to Yuvoy and ₹3,825 to them.
   */
   await signIn(page);
-  await page.goto("/services/activities");
-  await page
-    .getByRole("button", { name: /Add a listing|New listing/i })
-    .click();
+  // On the Selling step, which is where the price is asked for since #58.
+  await startDraft(
+    page,
+    `Split check ${Math.random().toString(36).slice(2, 7)}`,
+  );
 
   await expect(page.getByText(/You receive/)).toHaveCount(0);
-  await page.getByLabel("Price", { exact: true }).fill("4500");
+  await page.getByLabel("Price").fill("4500");
   await expect(page.getByText(/You receive/)).toContainText("₹3,825");
   await expect(page.getByText(/You receive/)).toContainText("15%");
 
   // Nothing at all with no price: there is nothing to split.
-  await page.getByLabel("Price", { exact: true }).fill("");
+  await page.getByLabel("Price").fill("");
   await expect(page.getByText(/You receive/)).toHaveCount(0);
 });
 
@@ -331,10 +403,12 @@ test("a listing can be given a health check, from the API's own list", async ({
     option would be refused with a 400 the day one changed.
   */
   await signIn(page);
-  await page.goto("/services/activities");
-  await page
-    .getByRole("button", { name: /Add a listing|New listing/i })
-    .click();
+  const id = await startDraft(
+    page,
+    `Waiver check ${Math.random().toString(36).slice(2, 7)}`,
+  );
+  // On Location and safety, which is where the waiver is asked for since #58.
+  await page.goto(`/account/listings/${id}/edit?step=location`);
 
   const picker = page.getByLabel("Health check before booking");
   await expect(picker).toBeVisible();
@@ -372,32 +446,38 @@ test("the waiver picked on the form is what the listing is saved with", async ({
     as far as a browser can see it: the picker carries the API's own keys, a
     save with one chosen goes through, and the listing lands.
   */
+  /*
+    "Deep reef", not "Reef dive {suffix}". Tiles are found by title now, and a
+    created listing whose name begins with a fixture's name is a tile two tests
+    can both match.
+  */
   const suffix = Math.random().toString(36).slice(2, 7);
-  const title = `Reef dive ${suffix}`;
+  const title = `Deep reef ${suffix}`;
 
   await signIn(page);
-  await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add a listing" }).click();
+  const id = await startDraft(page, title);
+  await page.goto(`/account/listings/${id}/edit?step=location`);
 
-  await page.getByLabel("What is it called").fill(title);
-  await page.getByLabel("What kind of thing it is").selectOption("adventure");
-  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
-  await page.getByLabel("Price", { exact: true }).fill("4500");
-  await page.getByRole("radio", { name: /Per person/ }).check();
+  await page.getByLabel("Where to meet").fill("Beach 3 dive hut");
 
   // The key is the API's, from the vocabulary, not a literal typed here.
   const picker = page.getByLabel("Health check before booking");
   await picker.selectOption("diving_rstc");
   await expect(picker).toHaveValue("diving_rstc");
 
-  await page.getByRole("button", { name: "Save as a draft" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=questions/);
 
-  // Saved rather than refused. A key the API does not know answers 400 with
-  // `details.screenerKey`, so a listing landing at all says the key was one it
-  // accepted.
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
-  const row = page.locator("li").filter({ hasText: title });
-  await expect(row.getByText("Draft", { exact: true })).toBeVisible();
+  /*
+    And it comes BACK, which the one-screen create form could never show: the
+    step is read from the draft, so a `screenerKey` that was dropped on the way
+    out would be blank on the way in. That is the #60 defect, visible in a
+    browser at last.
+  */
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  await expect(page.getByLabel("Health check before booking")).toHaveValue(
+    "diving_rstc",
+  );
 });
 
 test("leaving the waiver at None saves a listing with no health check", async ({
@@ -412,22 +492,19 @@ test("leaving the waiver at None saves a listing with no health check", async ({
   const title = `Sunset sail ${suffix}`;
 
   await signIn(page);
-  await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add a listing" }).click();
-
-  await page.getByLabel("What is it called").fill(title);
-  await page
-    .getByLabel("What kind of thing it is")
-    .selectOption("nature_wildlife");
-  await page.getByLabel("Where it runs").selectOption("andaman/havelock");
-  await page.getByLabel("Price", { exact: true }).fill("2200");
-  await page.getByRole("radio", { name: /For the group/ }).check();
+  const id = await startDraft(page, title, "nature_wildlife");
+  await page.goto(`/account/listings/${id}/edit?step=location`);
 
   // Untouched, and that is the point: the default is None.
   await expect(page.getByLabel("Health check before booking")).toHaveValue("");
 
-  await page.getByRole("button", { name: "Save as a draft" }).click();
-  await expect(page.getByText(`${title} is a draft`)).toBeVisible();
+  await page.getByLabel("Where to meet").fill("Havelock jetty 1");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=questions/);
+
+  // Still None, rather than a key nobody chose.
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  await expect(page.getByLabel("Health check before booking")).toHaveValue("");
 });
 
 test("a first listing sent back says so, and says it is a draft again", async ({
@@ -439,23 +516,34 @@ test("a first listing sent back says so, and says it is a draft again", async ({
     rejected EDIT to something already live, which is a different thing.
   */
   await signIn(page);
-  await page.goto("/services/activities");
 
-  const row = page.getByRole("listitem").filter({ hasText: "Night fishing" });
-  await expect(row.getByText(/We sent this back to you/)).toBeVisible();
-  await expect(row.getByText(/Which jetty gate/)).toBeVisible();
-  await expect(row.getByText(/It is a draft again/)).toBeVisible();
+  /*
+    On the listing screen, which leads with the reason — #58 item 4: a sent-back
+    listing shows "Sent back: {reason}" and offers Edit and Send again. The
+    profile tile carries the same word as its badge, so the two cannot disagree.
+  */
+  await page.goto("/account");
+  await expect(tile(page, "Night fishing")).toContainText("Sent back");
 
-  // ONE panel, not two. The row carries a `review.rejectionCode` as well, and
-  // two panels about one rejection read as two rejections.
-  await expect(row.getByText(/Which jetty gate/)).toHaveCount(1);
+  await openListing(page, "Night fishing");
+  await expect(
+    page.getByText(/could not find the meeting point/i),
+  ).toBeVisible();
+  await expect(page.getByText(/Which jetty gate/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send again" })).toBeVisible();
+
+  // ONE panel, not two. The listing carries a `review.rejectionCode` as well,
+  // and two panels about one rejection read as two rejections.
+  await expect(page.getByText(/Which jetty gate/)).toHaveCount(1);
+
+  // And the edit form says the same thing, in the row's own words.
+  await openEdit(page, "Night fishing");
+  await expect(row(page).getByText(/It is a draft again/)).toBeVisible();
 });
 
-test("/services/activities has no accessibility violations", async ({
-  page,
-}) => {
+test("the edit screen has no accessibility violations", async ({ page }) => {
   await signIn(page);
-  await page.goto("/services/activities");
+  await openEdit(page, "Reef dive");
   await page.waitForLoadState("networkidle");
 
   const results = await new AxeBuilder({ page })
@@ -484,56 +572,64 @@ test("a clip can be taken down from the library, with a reason", async ({
   );
 
   await signIn(page);
-  await page.goto("/services/reels");
 
   /*
-    The clip that is live on a listing — its own fixture, attached to a listing
-    nothing else asserts on. Taking down an ATTACHED clip is the half of this
-    that matters: it empties the card a traveller is looking at, and the form
-    has to name the listing before asking why.
+    From the listing's own grid — #58 item 4 — so the clip under test is the one
+    attached to a listing nothing else asserts on. Taking down an ATTACHED clip
+    is the half of this that matters: it empties the card a traveller is looking
+    at, and the form has to name the listing before asking why.
   */
-  const clip = page.locator("li").filter({ hasText: "Listing: Night fishing" });
-  await clip.getByRole("button", { name: "Take it down" }).click();
+  await openListing(page, "Night fishing");
+  await page
+    .getByRole("region", { name: "Its reels and photographs" })
+    .getByRole("button")
+    .first()
+    .click();
+
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toContainText("On Night fishing");
+  await sheet.getByRole("button", { name: "Take it down" }).click();
   await expect(
-    clip.getByText("It is on Night fishing. That listing loses this video."),
+    sheet.getByText("It is on Night fishing. That listing loses this video."),
   ).toBeVisible();
 
   // A reason, and the set is closed on purpose: two of the four are not about
   // the video at all, and those are the ones Yuvoy has to act on.
-  await clip.getByRole("radio", { name: /Somebody in it objected/ }).check();
-  await clip.getByRole("button", { name: "Take it down" }).click();
+  await sheet.getByRole("radio", { name: /Somebody in it objected/ }).check();
+  await sheet.getByRole("button", { name: "Take it down" }).click();
 
   /*
-    The row itself, not a panel. Withdrawing revalidates — the list must stop
-    showing a clip as live the moment it is not — and that re-render unmounts
-    the form's own success state, so the sentence lives on the row instead.
-
-    The half that has happened, and not the half that has not: "it comes off
-    Yuvoy immediately, and the original is deleted at the video provider
-    shortly afterwards by a job."
+    The receipt stays on screen, which is the whole reason nothing here
+    revalidates: a re-render would unmount the sheet before the operator read
+    it. The half that has happened, and not the half that has not: "it comes off
+    Yuvoy immediately, and the original is deleted at the video provider shortly
+    afterwards by a job."
   */
-  const gone = page.locator("li").filter({ hasText: "Taken down" });
-  await expect(gone.getByText(/off Yuvoy/i).first()).toBeVisible();
+  await expect(sheet.getByText(/off Yuvoy/i).first()).toBeVisible();
   await expect(
-    gone.getByText(/deleted at the video provider shortly/).first(),
+    sheet.getByText(/deleted at the video provider shortly/).first(),
   ).toBeVisible();
 });
 
-test("a clip nobody can act on is offered no way down", async ({ page }) => {
-  // A button that answers 404 teaches an operator to distrust the screen.
+test("a reel already down is offered no way down again", async ({ page }) => {
+  /*
+    A button that answers 404 teaches an operator to distrust the screen.
+    `situation` decides it and nothing else — `sheetActions` in
+    `src/lib/services/reel-sheet.ts`, which is unit tested for all eleven
+    values. What this proves is the wiring: the sheet a tile opens really is
+    drawn from that decision.
+  */
   await signIn(page);
-  await page.goto("/services/reels");
-  const waiting = page
-    .locator("li")
-    .filter({ hasText: "A person at Yuvoy will watch it." })
-    .first();
-  await expect(waiting).toBeVisible();
-  // Attested and waiting IS actionable — it is on Yuvoy. A failed upload is
-  // not, and carries nothing to take down.
-  const failed = page.locator("li").filter({ hasText: "Upload failed" });
-  await expect(
-    failed.getByRole("button", { name: "Take it down" }),
-  ).toHaveCount(0);
+  await page.goto("/account?tab=reels");
+
+  const down = page.getByRole("button", { name: "Taken down" }).first();
+  await expect(down).toBeVisible();
+  await down.click();
+
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByRole("button", { name: "Take it down" })).toHaveCount(
+    0,
+  );
 });
 
 test("an edit can change the fields that were only ever defaults", async ({
@@ -552,9 +648,9 @@ test("an edit can change the fields that were only ever defaults", async ({
     direction only.
   */
   await signIn(page);
-  await page.goto("/services/activities");
+  await openEdit(page, "Reef dive");
 
-  const row = page.locator("li").filter({ hasText: "Reef dive" });
+  const row = page.getByRole("main").getByRole("listitem").first();
   await row.getByRole("button", { name: "Propose a change" }).click();
 
   await expect(row.getByLabel("How long, in minutes")).toHaveValue("180");
@@ -588,17 +684,20 @@ test("a draft names everything still missing, not just the price", async ({
     phrase beside the price.
   */
   await signIn(page);
-  await page.goto("/services/activities");
 
-  const row = page.locator("li").filter({ hasText: "Island boat day" });
-  await expect(row.getByText(/things are missing/)).toBeVisible();
-  await expect(row.getByText("a price")).toBeVisible();
-  await expect(row.getByText("a short summary")).toBeVisible();
-  await expect(
-    row.getByText("whether that price is per person or for the group"),
-  ).toBeVisible();
+  /*
+    On the listing screen, which leads with it for a draft (#58 item 4), and in
+    the builder's Review, which says the same list beside the steps that own it.
+  */
+  await openListing(page, "Island boat day");
+  const missing = page.getByText(/Still missing:/);
+  await expect(missing).toContainText("a price");
+  await expect(missing).toContainText("a short summary");
+  await expect(missing).toContainText(
+    "whether that price is per person or for the group",
+  );
   // The wire spelling never reaches the operator.
-  await expect(row.getByText("unitPricePaise")).toBeHidden();
+  await expect(page.getByText("unitPricePaise")).toHaveCount(0);
 });
 
 test("the activity picker narrows to the chosen category", async ({ page }) => {
@@ -608,8 +707,7 @@ test("the activity picker narrows to the chosen category", async ({ page }) => {
     moves the refusal to after the form is filled in.
   */
   await signIn(page);
-  await page.goto("/services/activities");
-  await page.getByRole("button", { name: "Add a listing" }).click();
+  await page.goto("/account/listings/new");
 
   // Nothing before a category is chosen: an unfiltered list would let somebody
   // pick a pair the API refuses.
@@ -658,9 +756,9 @@ test("a listing that predates the taxonomy can be given an activity type", async
       : "Mangrove drift (taxonomy fixture B)";
 
   await signIn(page);
-  await page.goto("/services/activities");
+  await openEdit(page, who);
 
-  const row = page.locator("li").filter({ hasText: who });
+  const row = page.getByRole("main").getByRole("listitem").first();
 
   // The row names it as outstanding — that half already worked.
   await expect(row.getByText("what kind of activity it is")).toBeVisible();
@@ -703,9 +801,9 @@ test("a listing's own name can be corrected", async ({ page }) => {
     console — the concierge path this portal exists to remove.
   */
   await signIn(page);
-  await page.goto("/services/activities");
+  await openEdit(page, "Reef dive");
 
-  const row = page.locator("li").filter({ hasText: "Reef dive" });
+  const row = page.getByRole("main").getByRole("listitem").first();
   await row.getByRole("button", { name: "Propose a change" }).click();
 
   /*
@@ -743,10 +841,13 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
   );
 
   await signIn(page);
-  await page.goto("/services/activities");
+  /*
+    On the hub, which is where #56 item 7 moved Pause and Resume: a listing is
+    RUN from Home, and taking it off sale for a month is part of running it.
+  */
+  await openHub(page, "Sunrise paddle");
 
-  const row = page.locator("li").filter({ hasText: "Sunrise paddle" });
-  await expect(row.getByText("Live", { exact: true })).toBeVisible();
+  const row = page.locator("body");
   await row.getByRole("button", { name: "Pause", exact: true }).click();
 
   // Warned BEFORE the decision, too.
@@ -819,21 +920,20 @@ test("a paused listing that is missing something says what, and stays paused", a
     "something is missing". Nothing changes, so both projects may run it.
   */
   await signIn(page);
-  await page.goto("/services/activities");
+  await openHub(page, "Dusk paddle");
 
-  const row = page.locator("li").filter({ hasText: "Dusk paddle" });
-  await expect(row.getByText("Paused", { exact: true })).toBeVisible();
-  await row.getByRole("button", { name: "Resume", exact: true }).click();
-  await row.getByRole("button", { name: "Yes, resume it" }).click();
-  await expect(row.getByRole("alert")).toContainText(
+  await expect(page.getByText("Paused", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Resume", exact: true }).click();
+  await page.getByRole("button", { name: "Yes, resume it" }).click();
+  /*
+    `.first()`, because the hub draws two alerts now: the refusal, and the
+    listing's own "still missing" panel. Both are true and the refusal is the
+    one this test is about.
+  */
+  await expect(page.getByRole("alert").first()).toContainText(
     "Still missing: where to meet",
   );
 
   await page.reload();
-  await expect(
-    page
-      .locator("li")
-      .filter({ hasText: "Dusk paddle" })
-      .getByText("Paused", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Paused", { exact: true }).first()).toBeVisible();
 });

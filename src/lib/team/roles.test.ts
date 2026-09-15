@@ -13,17 +13,28 @@ import {
  * about what the copy is allowed to say rather than about formatting.
  */
 describe("who may be invited", () => {
-  it("never offers OWNER", () => {
+  it("offers an owner or staff, and nothing in between", () => {
     /*
-      "OWNER cannot be invited, because the owner is the person whose bank
+      Reversed on 14 September (D15, yuvoy-operator#51). It used to be the three
+      non-owner roles, on the reasoning that an owner "is the person whose bank
       account this is, and that is not a thing one login should be able to hand
-      to a phone number." The API refuses it; the form must not offer it.
+      to a phone number."
+
+      `POST /team` now says "**Everybody joins as `STAFF`, except an owner**".
+      ADMIN and MANAGER are reached by CHANGING a role after somebody has joined.
+      Asking for either here is not refused, which is worse than a refusal: the
+      invitation is sent, answers `role: STAFF`, and carries a `note` saying so.
+      A form offering four options would quietly grant two of them differently.
+
+      Order is asserted as well as membership. STAFF is first because it is the
+      preselected answer, and the form checks it by name — reordering this must
+      not be able to preselect Owner.
     */
-    expect(INVITABLE_ROLES).toEqual(["ADMIN", "MANAGER", "STAFF"]);
-    expect(isInvitableRole("OWNER")).toBe(false);
-    expect(isInvitableRole("ADMIN")).toBe(true);
-    expect(isInvitableRole("MANAGER")).toBe(true);
+    expect(INVITABLE_ROLES).toEqual(["STAFF", "OWNER"]);
+    expect(isInvitableRole("OWNER")).toBe(true);
     expect(isInvitableRole("STAFF")).toBe(true);
+    expect(isInvitableRole("ADMIN")).toBe(false);
+    expect(isInvitableRole("MANAGER")).toBe(false);
   });
 
   it("refuses anything that is not one of the three", () => {
@@ -92,10 +103,19 @@ describe("what each role is told it can do", () => {
     expect(admin.cannot).not.toMatch(/seats/);
     expect(admin.cannot).not.toMatch(/remove anybody/);
 
-    // What genuinely remains: the bank change is OWNER-only, and an admin may
-    // not act on an owner or another admin.
+    /*
+      What genuinely remains, and it is narrower again since 14 September: the
+      bank change is OWNER-only, and an admin may not act on an OWNER. The
+      "or another admin" half is gone, because each of the four access endpoints
+      now says only "an ADMIN cannot change an OWNER".
+
+      Asserted as an ABSENCE too, because an owner appointing an admin reads
+      this line to decide whether two admins can lock each other out. They can,
+      and the sentence must not imply otherwise.
+    */
     expect(admin.cannot).toMatch(/payout details/);
-    expect(admin.cannot).toMatch(/owner or another admin/);
+    expect(admin.cannot).toMatch(/cannot change the owner/);
+    expect(admin.cannot).not.toMatch(/another admin/);
   });
 
   it("ranks ADMIN above MANAGER, which is a superset again", () => {

@@ -82,7 +82,7 @@ export default async function ProfilePage() {
 
   return (
     <Screen
-      nav={{ back: { href: "/account", label: "your business" } }}
+      nav={{ back: { href: "/account/settings", label: "settings" } }}
       stageLabel="Business details"
     >
       <p className="eyebrow text-terra-deep">Your account</p>

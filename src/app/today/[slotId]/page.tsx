@@ -320,6 +320,7 @@ export default async function ManifestPage({
                 screening={signal}
                 cash={cashOf(party)}
                 timezone={timezone}
+                canManage={me.canManage}
               />
             ))}
           </ul>
@@ -350,6 +351,7 @@ export default async function ManifestPage({
                 screening={signal}
                 cash={cashOf(party)}
                 timezone={timezone}
+                canManage={me.canManage}
               />
             ))}
           </ul>

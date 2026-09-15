@@ -43,8 +43,17 @@ export interface CapacityState {
  * is the role at the moment of the tap. The contract's own 403 stays handled
  * below it, for the day the two disagree.
  */
+/*
+  ONE sentence for every refusal on this screen — yuvoy-operator#45 item 7.
+
+  Three others were written inline beside it, each opening "Your role cannot
+  …": a shape that tells the reader what they are rather than who to ask.
+  Capacity, closed dates, counter sales, reopening and closing a departure are
+  one `canManage` gate as far as the API is concerned, so they are one sentence,
+  and every one of them now uses this.
+*/
 const ROLE_REFUSAL =
-  "Seats, closed dates and counter sales need an owner, an admin or a manager. Nothing was changed.";
+  "Only owners, admins and managers can change seats, close dates or record counter sales.";
 
 const seatsSchema = z.object({
   slotId: z.string().min(1),
@@ -106,8 +115,7 @@ export async function setCapacity(
       if (err.status === 403) {
         return {
           slotId,
-          message:
-            "Your role cannot change capacity. An owner, admin or manager has to.",
+          message: ROLE_REFUSAL,
         };
       }
       if (err.isNotFound) {
@@ -202,8 +210,7 @@ export async function addBlackout(
       if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
-          message:
-            "Your role cannot close dates. An owner, admin or manager has to.",
+          message: ROLE_REFUSAL,
         };
       }
       if (err.status === 400) return { message: err.message };
@@ -476,8 +483,7 @@ export async function addDepartures(
       if (refusal) return { message: refusal };
       if (err.status === 403) {
         return {
-          message:
-            "Your role cannot add departures. An owner, admin or manager has to.",
+          message: ROLE_REFUSAL,
         };
       }
       if (err.isNotFound) {
@@ -496,5 +502,180 @@ export async function addDepartures(
       if (err.status === 400) return { message: err.message };
     }
     return { message: "Nothing was added. Try again." };
+  }
+}
+
+/* --------------------------------------------------------------- reopen -- */
+
+export interface ReopenState {
+  message?: string;
+  /** The API's own sentence, which gives both counts in words. */
+  note?: string;
+  /** Reopened, by this tap or before it. Either way, the day is refreshed. */
+  done?: boolean;
+}
+
+/**
+ * Put back on sale what one closure took off — yuvoy-operator#45 item 2.
+ *
+ * ## What it does NOT promise
+ *
+ * "Whether a reopened departure then sells is decided as for any departure, so
+ * read `onSale` on `GET /slots` rather than assuming it." A called-off
+ * departure is never reopened, and one held by a second closure still in force
+ * stays closed. So this revalidates and lets the re-read say what actually
+ * happened, rather than reporting success and drawing the day as open.
+ *
+ * The API's `note` "gives both counts in words" and is rendered verbatim: it is
+ * the only thing on screen that can say "two went back and one did not".
+ */
+export async function reopenClosure(
+  _prev: ReopenState,
+  form: FormData,
+): Promise<ReopenState> {
+  const id = String(form.get("id") ?? "");
+  if (!id) return { message: "Nothing to reopen." };
+
+  const { token } = await requireOperator();
+
+  try {
+    const { data, error } = await operatorApi(token).POST(
+      "/blackouts/{id}/reopen",
+      { params: { path: { id } } },
+    );
+    if (error) throw error;
+
+    /*
+      NOT revalidated, and the note is why.
+
+      A re-render is the truth about what is on sale now — and it takes the
+      counts with it, because a reopened closure drops out of the day's list and
+      unmounts the row that was holding them. The API says "say this out loud.
+      It gives both counts in words", and it is the ONLY place "two went back and
+      one did not" exists. So the sentence stays and the day is refreshed on the
+      operator's own tap, which is `router.refresh()` in `ReopenClosure`.
+
+      The same trap `cancelBooking` hit: revalidate only when the re-render
+      shows more than the returned value, and here it shows less.
+    */
+    return { done: true, note: data.note };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return { message: "No signal. Nothing was reopened. Try again." };
+    }
+    if (err instanceof OperatorApiError) {
+      if (err.code === "already_reopened" || err.isNotFound) {
+        /*
+          Both mean the same thing to somebody looking at this screen: what you
+          are reading is out of date. Reported as done rather than as an error,
+          and the day is refreshed from the component.
+        */
+        return { done: true };
+      }
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
+      if (err.status === 403) return { message: ROLE_REFUSAL };
+    }
+    return { message: "Nothing was reopened. Try again." };
+  }
+}
+
+/* ----------------------------------------------- close one departure ----- */
+
+export interface CloseDepartureState {
+  message?: string;
+  /** The API's sentence about the bookings still on it. Rendered verbatim. */
+  note?: string;
+  done?: boolean;
+}
+
+const closeDepartureSchema = z.object({
+  slotId: z.string().min(1),
+  reasonCode: z.enum(
+    BLACKOUT_REASONS.map((r) => r.code) as [
+      BlackoutReason,
+      ...BlackoutReason[],
+    ],
+  ),
+  note: z.string().trim().max(500, "That note is longer than 500 characters."),
+});
+
+/**
+ * Stop selling one departure — yuvoy-operator#45 item 4.
+ *
+ * "The departure-sized version of closing dates: this departure stops selling
+ * and the rest of its day does not. **Closing is not cancelling people.** The
+ * bookings on it still stand, and `note` says so when there are any."
+ *
+ * That sentence is the whole reason the receipt is rendered rather than
+ * summarised. An operator who believes closing cancelled the bookings does not
+ * turn up, and the people who paid are standing on a jetty.
+ */
+export async function closeDeparture(
+  _prev: CloseDepartureState,
+  form: FormData,
+): Promise<CloseDepartureState> {
+  const parsed = closeDepartureSchema.safeParse({
+    slotId: String(form.get("slotId") ?? ""),
+    reasonCode: String(form.get("reasonCode") ?? ""),
+    note: String(form.get("note") ?? ""),
+  });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return {
+      message:
+        String(issue.path[0]) === "note"
+          ? issue.message
+          : "Choose why it is not selling.",
+    };
+  }
+
+  const { token } = await requireOperator();
+  const { slotId, reasonCode, note } = parsed.data;
+
+  try {
+    const { data, error } = await operatorApi(token).POST("/slots/{id}/close", {
+      params: { path: { id: slotId } },
+      // Omitted when empty: an empty note is an absence, and storing one puts a
+      // blank line on a closure where somebody will later look for a reason.
+      body: { reasonCode, ...(note ? { note } : {}) },
+    });
+    if (error) throw error;
+
+    /*
+      Not revalidated, for the reason `reopenClosure` gives above.
+
+      `note` is "present when `existingBookings` is above zero, and clients must
+      render it verbatim" — it is the sentence that stops an operator believing
+      closing cancelled the bookings, and a re-render drops the closed departure
+      out of the list it was in and unmounts the panel holding it. The receipt
+      stays; the day catches up on the operator's tap.
+    */
+    return { done: true, ...(data.note ? { note: data.note } : {}) };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return { message: "No signal. It is still selling. Try again." };
+    }
+    if (err instanceof OperatorApiError) {
+      if (
+        err.code === "already_called_off" ||
+        err.code === "departure_started"
+      ) {
+        /*
+          Two different facts and two different next steps: it was called off,
+          so there is nothing to close, or it has already left. The API writes
+          both, and one sentence of ours would lose whichever it was.
+        */
+        return { message: err.message };
+      }
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
+      if (err.status === 403) return { message: ROLE_REFUSAL };
+      if (err.isNotFound) {
+        return { message: "That departure is no longer here." };
+      }
+      if (err.status === 400) return { message: dedash(err.message) };
+    }
+    return { message: "It is still selling. Try again." };
   }
 }

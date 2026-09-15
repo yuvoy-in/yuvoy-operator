@@ -25,23 +25,23 @@ test("the sign-in door draws no navigation", async ({ page }) => {
   );
 });
 
-test("a tab root names exactly five destinations, and says where you are", async ({
+test("a tab root names exactly four destinations, and says where you are", async ({
   page,
 }) => {
   /*
-    Five since yuvoy-operator#22. Listings joined the bar because the catalogue
-    — what a business sells and the footage that sells it — is the work rather
-    than the back office, and burying it behind the Business door is what made
-    it unreachable.
+    FOUR since D-036 (yuvoy-operator#56). Listings had two pages under it and
+    the tab pointed at the first, so the footage was a stop nobody found. Every
+    listing is on Home now, where an operator already looks, and creating or
+    editing one moved to the Business profile.
 
-    The count is asserted rather than left loose: a sixth stop is a width
-    decision, not a routing one, and the bar is already about 330px at its
-    longest.
+    The count is asserted rather than left loose: a fifth stop is a width
+    decision, not a routing one, and the bar was already about 330px at its
+    longest with five.
   */
   await signIn(page);
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-  await expect(nav.getByRole("link")).toHaveCount(5);
-  await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Today/i);
+  await expect(nav.getByRole("link")).toHaveCount(4);
+  await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Home/i);
 });
 
 test("the bar reaches every destination", async ({ page }) => {
@@ -49,8 +49,8 @@ test("the bar reaches every destination", async ({ page }) => {
   for (const [name, path, heading] of [
     ["Bookings", "/bookings", "Bookings"],
     ["Calendar", "/calendar", "Calendar"],
-    ["Listings", "/services/activities", "Listings"],
-    ["Business", "/account", "Nemo Reef Watersports"],
+    // The profile is headed by `displayName` since #58, not the legal name.
+    ["Business", "/account", "Reef Divers Havelock"],
   ] as const) {
     await page
       .getByRole("navigation", { name: /Primary/i })
@@ -58,11 +58,8 @@ test("the bar reaches every destination", async ({ page }) => {
       .getByRole("link", { name })
       .click();
     await page.waitForURL(`**${path}`);
-    /*
-      `exact`, because Listings carries a section heading counting them and a
-      substring match resolves to both. The page's own h1 is what says you
-      arrived.
-    */
+    // `exact`: a page may carry a section heading whose words overlap its own,
+    // and the `h1` is what says you arrived.
     await expect(
       page.getByRole("heading", { name: heading, exact: true }),
     ).toBeVisible();
@@ -74,7 +71,16 @@ test("a focused screen hides the bar and offers a way back", async ({
   isMobile,
 }) => {
   await signIn(page);
-  await page.getByText("Try-dive at Nemo Reef").click();
+  /*
+    The DEPARTURE row, not the listing tile. Home carries both since #56, and
+    they share a title: the row goes to that day's manifest and the tile goes to
+    the listing hub. Scoped by the region rather than by the words.
+  */
+  await page
+    .getByRole("region", { name: /departures?/ })
+    .getByRole("link")
+    .first()
+    .click();
   await page.waitForURL(/\/today\/.+/);
 
   await expect(
@@ -85,7 +91,7 @@ test("a focused screen hides the bar and offers a way back", async ({
   if (isMobile) {
     await expect(primary).toHaveCount(0);
   } else {
-    await expect(primary.getByRole("link")).toHaveCount(5);
+    await expect(primary.getByRole("link")).toHaveCount(4);
   }
 });
 
@@ -93,9 +99,13 @@ for (const route of [
   "/today",
   "/bookings",
   "/calendar",
-  "/services/activities",
-  "/services/reels",
+  /*
+    `/services/*` are redirects since #58: the listings are on Home and the
+    library is a tab of the profile, so the two tabs of `/account` are what
+    replaced them and are audited in their place.
+  */
   "/account",
+  "/account?tab=reels",
 ]) {
   test(`${route} has no accessibility violations with the new chrome`, async ({
     page,
@@ -163,7 +173,7 @@ test("the rail stays put while the page scrolls", async ({
   // And it is still a usable navigation once you are down the page.
   await expect(
     page.getByRole("navigation", { name: /Primary/i }).getByRole("link"),
-  ).toHaveCount(5);
+  ).toHaveCount(4);
 });
 
 /*
@@ -213,6 +223,18 @@ test("Business counts exactly the list it opens", async ({ page }) => {
 
   await business.click();
   await page.waitForURL("**/account");
+
+  /*
+    The profile carries the COUNT and the list lives one tap further in, on
+    Verification (#58 items 2 and 10). The badge and the strip agree because
+    both count `splitByWaitingOn(blocking).operator`; the list is what the strip
+    opens, and it is the list the badge is a count of.
+  */
+  const strip = page.getByRole("link", { name: /things? waiting on you/ });
+  await expect(strip).toContainText("2 things waiting on you");
+
+  await strip.click();
+  await page.waitForURL("**/account/verification");
   await expect(
     page.getByRole("region", { name: "Waiting on you" }).getByRole("listitem"),
   ).toHaveCount(2);

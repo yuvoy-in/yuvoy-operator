@@ -99,41 +99,58 @@ export function soldOn(departures: readonly OperatorSlot[]): number {
 }
 
 /**
- * Whether the whole day is closed to new bookings.
+ * Whether every departure on the day is closed — which is NOT the same question
+ * as whether the day is closed.
  *
- * Every departure still running is `closed` — the status `POST /blackouts`
- * sets. A called-off departure is `cancelled`, a different and heavier act,
- * and neither it nor an empty day makes a day read as closed.
+ * It was, until #45. "Closed" came from this and nothing else, and it is wrong
+ * in the direction an operator notices: a day with no departures on it cannot
+ * satisfy it, so a shop that closed a fortnight in January saw fourteen
+ * ordinary empty days and no sign that anything had been done. It also could
+ * never say WHY, because a status carries no reason.
+ *
+ * The badge now comes from `GET /blackouts` (`wholeDayClosures`). This stays for
+ * the narrower question it actually answers: whether there is anything left to
+ * sell on a day that has departures, which is what decides whether the day's
+ * own row looks live.
+ *
+ * A called-off departure is `cancelled`, a different and heavier act, and
+ * neither it nor an empty day counts.
  */
-export function isClosedDay(departures: readonly OperatorSlot[]): boolean {
+export function everyDepartureClosed(
+  departures: readonly OperatorSlot[],
+): boolean {
   const live = running(departures);
   return live.length > 0 && live.every((s) => s.status === "closed");
 }
-
-/** The most rows `GET /bookings` returns. It sends no cursor past them. */
-export const BOOKINGS_PAGE = 100;
 
 /** A booking that is a promise already made. */
 const CONFIRMED = new Set(["confirmed", "paid_pending_ops"]);
 
 /**
- * Guests already confirmed on each day — or `null` when that cannot be known.
+ * Guests already confirmed on each day — or `null` when the read failed.
  *
- * `GET /bookings` returns at most 100 rows and no cursor, so a full page may be
- * a cut-short one. A count that quietly lost the last bookings would be the
- * number in the one sentence on this screen that has to be true — "4 guests
- * are already confirmed" — so a full page, like a failed read, is "not known"
- * rather than a smaller number.
+ * ## The 100-row fallback is gone
  *
- * `paid_pending_ops` counts: a traveller paying at the counter sits in it
- * until the cash is recorded, and closing the day moves them no more than
- * anybody else.
+ * `GET /bookings` used to answer at most 100 rows with no cursor, so a full
+ * page might have been a cut-short one and this returned `null` for it: the
+ * screen then said "anybody already confirmed" instead of "4 guests are already
+ * confirmed". A fortnight of a busy operator's bookings passes 100 easily,
+ * which meant the number went missing exactly when there was most to lose by
+ * closing the day.
+ *
+ * `listBookings` now pages until `complete`, so a short list is a short list.
+ * `null` still means the read failed, and the sentence is still said without a
+ * number rather than with a smaller one (yuvoy-operator#45 item 3).
+ *
+ * `paid_pending_ops` counts: a traveller paying at the counter sits in it until
+ * the cash is recorded, and closing the day moves them no more than anybody
+ * else.
  */
 export function confirmedGuestsByDay(
   bookings: readonly BookingLine[] | null,
   days: readonly string[],
 ): Map<string, number> | null {
-  if (bookings === null || bookings.length >= BOOKINGS_PAGE) return null;
+  if (bookings === null) return null;
   const counts = new Map(days.map((day) => [day, 0]));
   for (const booking of bookings) {
     if (!CONFIRMED.has(booking.state.trim().toLowerCase())) continue;

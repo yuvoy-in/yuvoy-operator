@@ -85,12 +85,15 @@ type Phase =
 
 export function PhotoUploader({
   listings,
+  fixedExperienceId,
 }: {
   /** `null` means the listings could not be read. */
   listings: ListingOption[] | null;
+  /** The listing is already decided. See `Uploader`. */
+  fixedExperienceId?: string;
 }) {
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
-  const [experienceId, setExperienceId] = useState("");
+  const [experienceId, setExperienceId] = useState(fixedExperienceId ?? "");
   const [role, setRole] = useState<"hero" | "gallery">("gallery");
   const inputRef = useRef<HTMLInputElement>(null);
   const canChoose = experienceId.length > 0;
@@ -232,6 +235,12 @@ export function PhotoUploader({
           <ListingPicker
             id="photo"
             listings={listings}
+            fixedTitle={
+              fixedExperienceId
+                ? ((listings ?? []).find((l) => l.id === fixedExperienceId)
+                    ?.title ?? "this listing")
+                : undefined
+            }
             value={experienceId}
             onChange={setExperienceId}
             role={role}
