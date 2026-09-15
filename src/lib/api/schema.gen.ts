@@ -2093,7 +2093,9 @@ export interface paths {
          * Put approved media on a listing
          * @description Both the media and the listing must belong to this operator; otherwise `404`. Media that has not been approved also answers `404` — it is not yet a thing that can be published.
          *
-         *     **This is no longer the primary route.** Media names its listing at upload and is attached when a moderator approves it, so this endpoint is for the two cases that remain: putting the same clip or photograph on a SECOND listing, and attaching media that predates the choice being made at upload. Its `role` field is also how the role of an existing pairing is changed.
+         *     **This is no longer the primary route.** Media names its listing at upload and is attached when a moderator approves it, so this endpoint is for the two cases that remain: putting the same clip or photograph on a SECOND listing, and attaching media that predates the choice being made at upload.
+         *
+         *     **`role` is also how an existing pairing's role is changed.** An asset has one pairing per listing. Publishing it with a different role from the one it has changes that pairing rather than adding a second: `hero` to `gallery` demotes it to the end of the gallery and leaves the listing with no cover until another item is made `hero`; `gallery` to `hero` promotes it, and answers `409 hero_taken` while a different item is the listing's cover. Publishing with the role it already has changes nothing. An asset that holds both a `hero` and a `gallery` pairing on one listing, which only data written before this rule can, is left with the one pairing whose role was asked for.
          *
          *     **Being attached is not being public.** Media on a listing that is a draft or has been withdrawn stays invisible to travellers and stays private at the video host; it becomes public when the listing is published, and goes private again when the listing comes down. That is D-031 C5, and it means an operator can attach with confidence before a listing is finished.
          *
@@ -2507,6 +2509,13 @@ export interface components {
                  * @enum {string}
                  */
                 listingState?: "draft" | "in_review" | "published" | "withdrawn";
+                /**
+                 * @description Whether this media is the listing's cover. `hero` is the picture or reel the listing leads with; `gallery` is one of the rest. `null` when no role is known. Always sent (since 2026-09-14).
+                 *
+                 *     It reads `hero` whenever this media is the listing's published cover, which is what travellers see. Sending `POST /media/{id}/publish` with `role: gallery` for a published hero takes the cover away, so this reads `gallery` afterwards and the listing has no cover until another item is published as `hero`.
+                 * @enum {string|null}
+                 */
+                role?: "hero" | "gallery" | null;
             };
         };
         OperatorExperience: {
@@ -7617,7 +7626,7 @@ export interface operations {
             403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
             /**
-             * @description `hero_taken` — this listing already has a hero, and a listing shows one. Move the existing one to the gallery first, or attach this as a gallery item; `details.role` is `hero`.
+             * @description `hero_taken`: this listing already has a cover (a published `hero`), and a listing shows one. Publish the current cover with role `gallery` first, which demotes it, then try again; or attach this item as `gallery`. `details.role` is `hero`. The message reads "This listing already has a cover. Make that one a gallery item first, then try again." Nothing is changed by the refused request.
              *
              *     Otherwise: this listing already shows as many of that kind as we display. **Photographs and clips have separate ceilings — 20 each — so a full gallery never blocks a reel and a full reel library never blocks a photograph.** They do different jobs and rationing one against the other helps nobody.
              *

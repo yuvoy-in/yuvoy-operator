@@ -5825,8 +5825,19 @@ paths:
         upload and is attached when a moderator approves it, so this endpoint is
         for the two cases that remain: putting the same clip or photograph on a
         SECOND listing, and attaching media that predates the choice being made
-        at upload. Its `role` field is also how the role of an existing pairing
-        is changed.
+        at upload.
+
+
+        **`role` is also how an existing pairing's role is changed.** An asset
+        has one pairing per listing. Publishing it with a different role from the
+        one it has changes that pairing rather than adding a second: `hero` to
+        `gallery` demotes it to the end of the gallery and leaves the listing
+        with no cover until another item is made `hero`; `gallery` to `hero`
+        promotes it, and answers `409 hero_taken` while a different item is the
+        listing's cover. Publishing with the role it already has changes
+        nothing. An asset that holds both a `hero` and a `gallery` pairing on one
+        listing, which only data written before this rule can, is left with the
+        one pairing whose role was asked for.
 
 
         **Being attached is not being public.** Media on a listing that is a
@@ -5862,9 +5873,12 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: >-
-            `hero_taken` — this listing already has a hero, and a listing shows
-            one. Move the existing one to the gallery first, or attach this as a
-            gallery item; `details.role` is `hero`.
+            `hero_taken`: this listing already has a cover (a published `hero`),
+            and a listing shows one. Publish the current cover with role
+            `gallery` first, which demotes it, then try again; or attach this
+            item as `gallery`. `details.role` is `hero`. The message reads "This
+            listing already has a cover. Make that one a gallery item first,
+            then try again." Nothing is changed by the refused request.
 
 
             Otherwise: this listing already shows as many of that kind as we
@@ -6682,6 +6696,22 @@ components:
                 question. "Approved, and waiting for a draft
                 listing to go live" cannot be told from
                 "approved and forgotten about" without it.
+            role:
+              type: [string, "null"]
+              enum: [hero, gallery, null]
+              description: >-
+                Whether this media is the listing's cover. `hero` is
+                the picture or reel the listing leads with; `gallery`
+                is one of the rest. `null` when no role is known.
+                Always sent (since 2026-09-14).
+
+
+                It reads `hero` whenever this media is the listing's
+                published cover, which is what travellers see. Sending
+                `POST /media/{id}/publish` with `role: gallery` for a
+                published hero takes the cover away, so this reads
+                `gallery` afterwards and the listing has no cover until
+                another item is published as `hero`.
     OperatorExperience:
       type: object
       properties:
@@ -7045,8 +7075,8 @@ components:
                 # made the database say so; before that a second hero was
                 # accepted and which picture headlined the listing was decided
                 # by a tie-break nobody set. Distinguished from plain `conflict`
-                # because it is a CHOICE — move the existing hero to the gallery
-                # or attach this one there — and because the shipped operator
+                # because it is a CHOICE (publish the existing hero as gallery,
+                # which demotes it, or attach this one there) and because the shipped operator
                 # screen defaults its role radio to hero, so this is the answer
                 # the second attach on any listing gets.
                 - hero_taken

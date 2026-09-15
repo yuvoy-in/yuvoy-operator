@@ -611,6 +611,105 @@ test("a clip can be taken down from the library, with a reason", async ({
   ).toBeVisible();
 });
 
+test("a reel that is the cover says so, and warns what demoting costs", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#67, finishing what #58 item 6 parked. `OperatorMedia` carries
+    `listing.role` since yuvoy-api#191, so the sheet no longer offers both
+    buttons blindly: it says which one this reel is and offers only the move
+    that changes something.
+
+    The warning is the half that matters. "Sending `role: gallery` for a
+    published hero takes the cover away, so the listing has no cover until
+    another item is published as `hero`." An operator tidying a gallery should
+    not find that out from the traveller app.
+
+    Its own listing, because `med_published_fixture` is consumed by the takedown
+    walk above and this would pass alone and fail in a full run.
+  */
+  await signIn(page);
+  await openListing(page, "Coral wall (cover fixture)");
+
+  const grid = page.getByRole("region", { name: "Its reels and photographs" });
+  await grid.getByRole("button", { name: "Reel, Live" }).first().click();
+
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByText(/This is the listing.s cover/)).toBeVisible();
+  await expect(
+    sheet.getByRole("button", { name: "Move to gallery" }),
+  ).toBeVisible();
+  // Not offered: it already IS the cover, and the API would change nothing.
+  await expect(
+    sheet.getByRole("button", { name: "Make it the cover" }),
+  ).toHaveCount(0);
+  await expect(
+    sheet.getByText(/leaves this listing with no cover/),
+  ).toBeVisible();
+});
+
+test("a reel in the gallery is offered the promotion and not the demotion", async ({
+  page,
+}) => {
+  /*
+    The other side of the same field. Read only: promoting would answer
+    `hero_taken` while the cover fixture beside it is still the cover, which is
+    the next test.
+  */
+  await signIn(page);
+  await openListing(page, "Coral wall (cover fixture)");
+
+  const grid = page.getByRole("region", { name: "Its reels and photographs" });
+  await grid.getByRole("button", { name: "Reel, Live" }).nth(1).click();
+
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByText("This is in the gallery.")).toBeVisible();
+  await expect(
+    sheet.getByRole("button", { name: "Make it the cover" }),
+  ).toBeVisible();
+  await expect(
+    sheet.getByRole("button", { name: "Move to gallery" }),
+  ).toHaveCount(0);
+  /*
+    And no warning, because moving a gallery item to the gallery is the no-op
+    that is not drawn at all.
+  */
+  await expect(
+    sheet.getByText(/leaves this listing with no cover/),
+  ).toHaveCount(0);
+});
+
+test("promoting a second reel while one is already the cover is refused in the API's words", async ({
+  page,
+}, testInfo) => {
+  /*
+    `409 hero_taken`, and the sentence is the API's own since yuvoy-api#191: the
+    way out is to publish the current cover as `gallery`, which demotes it.
+    Ours used to say "choose Gallery, or move the current cover to the gallery
+    first", which named the right act in words the API no longer uses.
+
+    Single-tenant: a successful promotion would move the fixture's roles, and
+    the two projects share one Next server.
+  */
+  test.skip(
+    testInfo.project.name !== "mobile",
+    "asserts against a shared pair of role fixtures",
+  );
+
+  await signIn(page);
+  await openListing(page, "Coral wall (cover fixture)");
+
+  const grid = page.getByRole("region", { name: "Its reels and photographs" });
+  await grid.getByRole("button", { name: "Reel, Live" }).nth(1).click();
+
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("button", { name: "Make it the cover" }).click();
+
+  await expect(sheet.getByRole("alert")).toContainText(
+    "This listing already has a cover. Make that one a gallery item first, then try again.",
+  );
+});
+
 test("a reel already down is offered no way down again", async ({ page }) => {
   /*
     A button that answers 404 teaches an operator to distrust the screen.
