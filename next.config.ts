@@ -42,6 +42,64 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  /**
+   * The client router cache, switched on for a short window.
+   *
+   * Next 15 changed `staleTimes.dynamic` from 30s to **0**, and every route in
+   * this portal is dynamic — so leaving a screen threw its payload away, and
+   * coming back re-ran the whole server render. Home alone is seven reads.
+   * Bouncing Home -> Bookings -> Home, which is most of what an operator does
+   * with this thing, paid for all of it twice in about four seconds.
+   *
+   * **Five seconds, not the thirty the traveller app uses.** The numbers on
+   * these screens are live seat counts, open requests with a clock on them,
+   * and money. Five covers the gesture that actually feels broken — go in,
+   * glance, come straight back — and is short enough that nobody can read a
+   * seat count here, act on it, and be wrong.
+   *
+   * It is also well inside the freshness this portal already promises:
+   * `RefreshOnFocus` re-reads the live screens on focus and otherwise every
+   * 60 seconds, so a five-second window is an order of magnitude tighter than
+   * the staleness those screens already tolerate by design. The reason it is
+   * not simply set to 60 to match is that `RefreshOnFocus` refreshes on focus
+   * and on an interval, never on mount — so a cached screen is only as fresh
+   * as the cache that served it until the next tick.
+   *
+   * A Server Action that revalidates still clears this cache, so accepting a
+   * request and landing back on the queue shows the answer immediately. The
+   * window only ever covers a plain navigation.
+   *
+   * ## Why this is the ONLY half of the fix that shipped
+   *
+   * The other half was `loading.tsx` on every screen, which is what actually
+   * makes a tap paint in the first frame and what makes Next prefetch a
+   * dynamic route at all. It was built, it worked, and it was removed before
+   * it shipped, because a loading boundary makes the route STREAM and the HTTP
+   * status goes out with the first flushed byte — so `redirect()` runs too
+   * late, exactly like `notFound()`.
+   *
+   * Every one of the 24 authenticated routes here redirects through
+   * `requireOperator()`. Measured against a production build with a dead
+   * session cookie:
+   *
+   *     with a boundary:     /calendar /today /bookings  ->  200, no Location
+   *     without one:         /earnings /team             ->  307 -> /sign-in
+   *
+   * So the boundaries turned every server-side auth redirect into a 200 with a
+   * client-side redirect inside the streamed payload. No operator data leaks —
+   * `requireOperator` throws before anything renders — but a protected page
+   * answering 200 to a signed-out request is wrong, it races (it flaked
+   * `day.spec.ts`'s "bounced off a page" test), and it puts a skeleton on
+   * screen before the bounce.
+   *
+   * **The unlock is moving the session check into middleware**, which runs
+   * before the response starts and can still issue a real 307 no matter what
+   * the route does afterwards. This repo already has middleware. Until that
+   * lands, no authenticated route here may have a `loading.tsx`.
+   */
+  experimental: {
+    staleTimes: { dynamic: 5, static: 180 },
+  },
   async headers() {
     /*
       Two CSP headers, deliberately — yuvoy-operator#37. A small enforced
