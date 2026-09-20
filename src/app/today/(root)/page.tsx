@@ -1,3 +1,21 @@
+/*
+  This page sits in a `(root)` route group, and the group exists for exactly
+  one reason: to SCOPE the loading boundary beside it.
+
+  `/today` is a tab root and wants a fallback, so its tap paints in the first
+  frame. Its children do not: /today/[slotId] and /today/listing/[id] call `notFound()`, and a loading
+  boundary makes a route stream — the shell flushes with HTTP 200 before the
+  page can set a status, so the 404 becomes a 200 with the not-found screen
+  inside it. That was measured, not assumed: the first version of this change
+  turned five detail routes into 200s and eleven e2e tests caught it.
+
+  A route group is not part of the URL, so `/today` is unchanged, and
+  `loading.tsx` in here covers this page alone rather than the whole subtree.
+  Sibling components stay in `app/today/` because several are shared with those
+  child routes; they are imported by their absolute path from here.
+
+  `loading.test.ts` pins all of it.
+*/
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";

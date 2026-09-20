@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { fraunces, satoshi } from "@/lib/fonts";
 import { AppShell } from "@/components/chrome/app-shell";
 import { chromeData } from "@/lib/site/nav-badges";
+import { gateSession } from "@/lib/auth/session";
 import { SuspensionBanner } from "@/components/account/suspension-banner";
 import { THEME_COLOR } from "@/lib/site/theme";
 import "./globals.css";
@@ -39,6 +40,12 @@ export const viewport: Viewport = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  /*
+    The session is resolved HERE, above the loading boundaries, and that
+    position is the whole point. See `lib/auth/gate.ts`.
+  */
+  await gateSession();
+
   /*
     The bar's two counts — yuvoy-operator#42. Read here because the chrome is
     a client component and the counts come from `/operator/v1`, which a

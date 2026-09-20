@@ -69,33 +69,37 @@ const nextConfig: NextConfig = {
    * request and landing back on the queue shows the answer immediately. The
    * window only ever covers a plain navigation.
    *
-   * ## Why this is the ONLY half of the fix that shipped
+   * ## The other half of this fix now ships too
    *
-   * The other half was `loading.tsx` on every screen, which is what actually
-   * makes a tap paint in the first frame and what makes Next prefetch a
-   * dynamic route at all. It was built, it worked, and it was removed before
-   * it shipped, because a loading boundary makes the route STREAM and the HTTP
-   * status goes out with the first flushed byte — so `redirect()` runs too
-   * late, exactly like `notFound()`.
+   * A `loading.tsx` on every screen is what makes a tap paint in the first
+   * frame, and what makes Next prefetch a dynamic route at all. It was built
+   * on 19 September, pulled the same day, and is back — because the reason it
+   * was pulled has been fixed rather than worked around.
    *
-   * Every one of the 24 authenticated routes here redirects through
-   * `requireOperator()`. Measured against a production build with a dead
-   * session cookie:
+   * A boundary makes the route STREAM, and the status ships with the first
+   * flushed byte, so a `redirect()` from inside the page runs too late.
+   * Measured then, with a dead session cookie:
    *
-   *     with a boundary:     /calendar /today /bookings  ->  200, no Location
-   *     without one:         /earnings /team             ->  307 -> /sign-in
+   *     with a boundary:  /calendar /today /bookings  ->  200, no Location
+   *     without one:      /earnings /team             ->  307 -> /sign-in
    *
-   * So the boundaries turned every server-side auth redirect into a 200 with a
-   * client-side redirect inside the streamed payload. No operator data leaks —
-   * `requireOperator` throws before anything renders — but a protected page
-   * answering 200 to a signed-out request is wrong, it races (it flaked
-   * `day.spec.ts`'s "bounced off a page" test), and it puts a skeleton on
-   * screen before the bounce.
+   * The session is now resolved in the LAYOUT (`lib/auth/gate.ts`), which
+   * renders above every boundary, so nothing has flushed when the redirect
+   * fires. Re-measured with the boundaries in place: `/calendar` answers
+   * `307 -> /sign-in?next=%2Fcalendar`, and so does every other screen.
    *
-   * **The unlock is moving the session check into middleware**, which runs
-   * before the response starts and can still issue a real 307 no matter what
-   * the route does afterwards. This repo already has middleware. Until that
-   * lands, no authenticated route here may have a `loading.tsx`.
+   * **The earlier note here recommended moving the check into middleware.
+   * That was wrong** and is corrected rather than left for somebody to follow:
+   * `pnpm qa` §13b fails the build if `src/proxy.ts` so much as mentions the
+   * session cookie, and the reason is sound — middleware can only see that a
+   * cookie EXISTS, and a session revoked an hour ago leaves a cookie exactly
+   * as real as a live one. The layout gate is not that check: it calls the
+   * same `requireOperator()` every page calls, so it moves WHEN the question
+   * is asked, never WHO answers it.
+   *
+   * What a boundary still cannot sit above is a `notFound()`, which runs in
+   * the page and has no layout to hoist it into. Those eight routes stay
+   * unstreamed; `loading.test.ts` pins it.
    */
   experimental: {
     staleTimes: { dynamic: 5, static: 180 },
