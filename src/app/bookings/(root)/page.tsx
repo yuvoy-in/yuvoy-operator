@@ -1,3 +1,21 @@
+/*
+  This page sits in a `(root)` route group, and the group exists for exactly
+  one reason: to SCOPE the loading boundary beside it.
+
+  `/bookings` is a tab root and wants a fallback, so its tap paints in the first
+  frame. Its children do not: /bookings/[id] call `notFound()`, and a loading
+  boundary makes a route stream — the shell flushes with HTTP 200 before the
+  page can set a status, so the 404 becomes a 200 with the not-found screen
+  inside it. That was measured, not assumed: the first version of this change
+  turned five detail routes into 200s and eleven e2e tests caught it.
+
+  A route group is not part of the URL, so `/bookings` is unchanged, and
+  `loading.tsx` in here covers this page alone rather than the whole subtree.
+  Sibling components stay in `app/bookings/` because several are shared with those
+  child routes; they are imported by their absolute path from here.
+
+  `loading.test.ts` pins all of it.
+*/
 import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
 import { listOpenRequests } from "@/lib/day/requests";
@@ -21,9 +39,9 @@ import { marketDays, now } from "@/lib/format/market-time";
 import { ButtonLink } from "@/components/ui/button";
 import { Problem } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
-import { BookingFilters } from "./filters";
-import { BookingList } from "./booking-list";
-import { RequestQueue } from "./request-queue";
+import { BookingFilters } from "@/app/bookings/filters";
+import { BookingList } from "@/app/bookings/booking-list";
+import { RequestQueue } from "@/app/bookings/request-queue";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
 

@@ -1,3 +1,21 @@
+/*
+  This page sits in a `(root)` route group, and the group exists for exactly
+  one reason: to SCOPE the loading boundary beside it.
+
+  `/account` is a tab root and wants a fallback, so its tap paints in the first
+  frame. Its children do not: /account/listings/[id] and its edit screen call `notFound()`, and a loading
+  boundary makes a route stream — the shell flushes with HTTP 200 before the
+  page can set a status, so the 404 becomes a 200 with the not-found screen
+  inside it. That was measured, not assumed: the first version of this change
+  turned five detail routes into 200s and eleven e2e tests caught it.
+
+  A route group is not part of the URL, so `/account` is unchanged, and
+  `loading.tsx` in here covers this page alone rather than the whole subtree.
+  Sibling components stay in `app/account/` because several are shared with those
+  child routes; they are imported by their absolute path from here.
+
+  `loading.test.ts` pins all of it.
+*/
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -27,11 +45,11 @@ import { SignOutButton } from "@/components/chrome/sign-out-button";
 import { ButtonLink } from "@/components/ui/button";
 import { Panel, panelClass } from "@/components/ui/panel";
 import { ChevronRightIcon, SettingsIcon } from "@/components/ui/icons";
-import { ProfileActions } from "./profile-actions";
-import { AddSheet } from "./add-sheet";
-import { About } from "./about";
-import { ReviewsTab } from "./reviews-tab";
-import { ReelsTab } from "./reels-tab";
+import { ProfileActions } from "@/app/account/profile-actions";
+import { AddSheet } from "@/app/account/add-sheet";
+import { About } from "@/app/account/about";
+import { ReviewsTab } from "@/app/account/reviews-tab";
+import { ReelsTab } from "@/app/account/reels-tab";
 
 export const metadata: Metadata = { title: "Your business" };
 
