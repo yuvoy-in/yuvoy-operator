@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { operatorApi } from "@/lib/api/server-client";
 import { signInPathFor } from "@/lib/auth/return-to";
 import { SESSION_PATH_HEADER } from "@/proxy";
+import { isBareRoute } from "@/lib/site/nav";
 
 import { classifyMeFailure } from "@/lib/account/status";
 import {
@@ -249,4 +250,97 @@ export async function requireOperator(): Promise<{
 
     throw err;
   }
+}
+
+/**
+ * Resolve the session in the LAYOUT, above every loading boundary.
+ *
+ * ## Why position is the entire point
+ *
+ * A `loading.tsx` makes its route stream, and the HTTP status ships with the
+ * first flushed byte. A `redirect()` from inside the page therefore runs too
+ * late to set one: measured on a production build with a dead session cookie,
+ * every boundaried route answered **200 with no Location** where an
+ * unboundaried one answered **307 -> /sign-in?next=...**. That is why the
+ * boundaries were built, measured and pulled on 19 September, and why the
+ * portal shipped with only half its navigation fix.
+ *
+ * A layout renders ABOVE the boundary it contains. Awaiting the session here
+ * means nothing has flushed when `requireOperator()` redirects, so the 307
+ * survives and the boundaries can stay. Verified: `/calendar` with a
+ * `loading.tsx` present answers `307 -> /sign-in?next=%2Fcalendar`.
+ *
+ * ## Why this is not the middleware check, and must not become it
+ *
+ * `src/proxy.ts` is forbidden from making this decision, and `pnpm qa` §13b
+ * fails the build if it tries. The reason is sound and unchanged: middleware
+ * can only see that a cookie EXISTS, and a session revoked an hour ago leaves
+ * a cookie exactly as real as a live one. This file is not that check. It runs
+ * in the Node server render, calls `requireOperator()` — the same function
+ * every page calls — and so asks the API the same question with the same
+ * answer. It moves WHEN the question is asked, never WHO answers it.
+ *
+ * (An earlier note in `next.config.ts` recommended moving the check into
+ * middleware. That recommendation was wrong, for the reason above, and has
+ * been corrected rather than left for somebody to follow into a qa failure.)
+ *
+ * ## It costs nothing
+ *
+ * `readMe` is `cache()`d per request, and the layout already calls
+ * `chromeData()` which reads the same `/me`. Every page still calls
+ * `requireOperator()` for the token and identity it needs, and hits the same
+ * memoised answer. This adds a call site, not a request.
+ *
+ * ## It is additive, never a replacement
+ *
+ * Pages keep their own `requireOperator()`. This is a second lock on the same
+ * door: a page that somehow renders without one is still refused by its own
+ * call. Nothing here may ever be the only thing standing between a signed-out
+ * request and an operator's bookings.
+ */
+export async function gateSession(): Promise<void> {
+  /*
+    The three doors draw no chrome and must not be gated — sign-in redirecting
+    to sign-in is an infinite loop, and `/join/<token>` is reached by somebody
+    who has no session yet by definition.
+  */
+  let here: string | null = null;
+  try {
+    here = (await headers()).get(SESSION_PATH_HEADER);
+  } catch {
+    /*
+      No header means the proxy matcher skipped this request, or something
+      stripped it. Degrade to NOT gating: the pages still hold the door, and a
+      gate that guesses is worse than one that stands aside. Same posture
+      `signInRedirect()` takes when the header is missing.
+    */
+    return;
+  }
+  if (!here) return;
+
+  const path = here.split("?")[0];
+  // `/` is a redirect stub to /today and resolves before any session matters.
+  if (path === "/" || isBareRoute(path)) return;
+
+  /*
+    `sessionState()`, NOT `requireOperator()`, and the difference is the whole
+    correctness of this function.
+
+    `requireOperator()` THROWS on a failure it cannot classify — a 500, a
+    dropped connection. In a PAGE that is exactly right: the route's error
+    boundary catches it and renders "That did not load" with a Try again, which
+    is what somebody on a jetty at 0.5 Mbps needs. From a LAYOUT the same throw
+    escapes that boundary entirely, and the retry screen is replaced by a
+    generic failure. `account.spec.ts` calls that test "the single most
+    important line in this file", and it caught this.
+
+    So the gate acts on the two states that need a REDIRECT and stands aside
+    for everything else. `unknown` falls through to the page, whose own
+    `requireOperator()` throws into the boundary that can render it properly.
+    `readMe` is `cache()`d, so asking here costs no extra request.
+  */
+  const state = await sessionState();
+
+  if (state === "none" || state === "dead") redirect(await signInRedirect());
+  if (state === "not-active") redirect(ACCOUNT_PATH);
 }
