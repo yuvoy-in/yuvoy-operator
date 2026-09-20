@@ -32,5 +32,56 @@ if [ "$SKIP_VERIFY" = "1" ]; then
   exit 0
 fi
 
+# The toolchain has to BE here for the gate to mean anything.
+#
+# `core.hooksPath` points at `.husky/_`, a directory husky GENERATES during
+# `pnpm install`. A worktree that was created but never installed in therefore
+# has no hook directory at all: git finds nothing to run and the push succeeds
+# **silently**. No output, no failure, no verification, and it looks exactly
+# like a clean gated push.
+#
+# That is not hypothetical. PR #74 reached `dev` that way on 20 Sep carrying an
+# unformatted file. `format:check` is repo-wide, so the next person to push
+# anything was blocked by a file they had never touched until somebody fixed
+# it. One ungated commit stopped everybody else landing.
+#
+# This check cannot catch that worst case: if `.husky/_` is absent nothing here
+# runs at all, by construction. What it catches is the other half, a hook
+# directory that exists while the dependencies it needs do not, which is what a
+# pruned store or an interrupted install leaves behind. There `pnpm verify`
+# would die with `tsc: not found` and read as a broken change rather than a
+# broken setup, so this says which it is.
+#
+# A fresh worktree here needs `pnpm install` and NOTHING ELSE.
+#
+# Specifically it must NOT be given an `.env.local`. This repo's main checkout
+# deliberately has none: the e2e config supplies its own API and upload origins,
+# and an `.env.local` copied from `.env.example` sets `OPERATOR_API_URL` to a
+# port nothing is serving. The symptom is narrow and misleading, which is what
+# makes it worth writing down: `story.spec.ts`'s photo upload fails while 603
+# other tests pass, so it reads as a broken feature rather than a broken
+# worktree. Measured on 20 Sep, after doing exactly that.
+#
+# yuvoy-app and yuvoy-web are the other way round. They DO keep an `.env.local`
+# in the main checkout, and a worktree without it fails their e2e suites around
+# 46 times. So the rule is per repo and it is "match the main checkout", never
+# "always copy an env file".
+if [ ! -d node_modules ]; then
+  echo ""
+  echo "pre-push: REFUSING. node_modules is missing, so nothing can be verified."
+  echo ""
+  echo "  This is almost certainly a fresh worktree. In THIS directory run:"
+  echo ""
+  echo "      pnpm install"
+  echo ""
+  echo "  Do NOT create an .env.local here. This repo does not use one, and"
+  echo "  copying .env.example over it breaks the upload e2e."
+  echo ""
+  echo "  Then push again. Do not reach for SKIP_VERIFY=1 to get past this."
+  echo "  It would push code that has never been built, tested or type-checked."
+  echo ""
+  exit 1
+fi
+
 echo "pre-push: running pnpm verify (CI does not run this on push any more)"
 pnpm verify
