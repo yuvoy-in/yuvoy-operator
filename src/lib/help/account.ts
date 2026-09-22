@@ -69,4 +69,22 @@ export const ACCOUNT_HELP: readonly HelpTopic[] = [
       "Settling up happens between you and a person at Yuvoy, not through the portal, so the number is never a surprise when it does.",
     ],
   },
+  {
+    id: "bank-change-two-days",
+    area: "Money",
+    question: "Why does changing the bank account take two days?",
+    answer: [
+      "It is slow on purpose. A stolen login plus one convincing phone call would otherwise be enough to redirect a season's takings.",
+      "Raising a change changes nothing that day. For 24 hours an owner or an admin can stop it from Payout details. A person at Yuvoy then reviews it, and it goes live 24 hours after they approve it, still stoppable the whole time.",
+      "Only an owner can raise one, and the code it needs is emailed to the owner, whoever asks. While a change is open, payouts wait until it is settled.",
+    ],
+  },
+  {
+    id: "bank-last-four",
+    area: "Money",
+    question: "Why does Yuvoy keep only the last four digits of my account?",
+    answer: [
+      "Nothing in the portal pays anybody, so holding the whole account number would be a risk with nothing gained. We will call you to confirm the account number.",
+    ],
+  },
 ];

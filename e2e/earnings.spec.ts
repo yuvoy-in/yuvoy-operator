@@ -307,9 +307,15 @@ test("the latest statement downloads from the tab itself", async ({ page }) => {
 });
 
 test("the bank details are the last door on the tab", async ({ page }) => {
+  /*
+    Bank details are one of the things Money holds (op#96): the account on
+    file is said on its door, as the Payout details screen says it.
+  */
   await signIn(page);
   await page.goto("/earnings");
-  await page.getByRole("link", { name: "Payout details" }).last().click();
+  const door = page.getByRole("link", { name: /^Payout details/ }).last();
+  await expect(door).toContainText("HDFC0001234 · account ending 4412");
+  await door.click();
   await page.waitForURL("**/payouts");
 });
 

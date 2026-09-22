@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { cancelChange, type CancelState } from "./actions";
 import { describeChange, type ChangeState } from "@/lib/account/bank";
 import { marketTime, marketDay } from "@/lib/format/market-time";
@@ -14,9 +14,18 @@ import { Panel } from "@/components/ui/panel";
  * operator can see it working: one window before approval so the real owner
  * can stop it, one after, so even an approved change is still catchable.
  *
- * "This wasn't me" is prominent at every stoppable stage — a stolen login plus
- * one convincing phone call is otherwise enough to redirect a season's
+ * "This wasn't me" is on the panel at every stoppable stage: a stolen login
+ * plus one convincing phone call is otherwise enough to redirect a season's
  * takings, and the brake must be closer to hand than the accelerator.
+ *
+ * ## Two taps, and why that is still closer to hand
+ *
+ * Stopping cannot be undone: an owner who did ask for the change has to raise
+ * it again, with a new code and both clocks from the start. So it follows the
+ * rule every destructive action in the portal now follows (yuvoy-operator#81):
+ * the words in the warning colour, and a confirm that says what happens, whose
+ * button carries the danger pill. It is still no code and no waiting, which
+ * raising a change never is.
  */
 export function ChangePanel({
   id,
@@ -53,6 +62,7 @@ export function ChangePanel({
     cancelChange,
     {},
   );
+  const [confirming, setConfirming] = useState(false);
   const { title, body, stoppable } = describeChange(state);
 
   if (result.stopped) {
@@ -112,23 +122,55 @@ export function ChangePanel({
       ) : null}
 
       {stoppable && canStop ? (
-        <form action={act} className="mt-5">
-          <input type="hidden" name="id" value={id} />
-          <p className="text-terra-deep text-sm font-bold">
-            Did you not ask for this?
-          </p>
-          <p className="text-forest/80 mt-1 text-sm">
-            Stop it now. It takes no code and no waiting. That is deliberate.
-          </p>
-          <Button
-            type="submit"
-            disabled={pending}
-            variant="danger"
-            className="mt-3"
-          >
-            {pending ? "Stopping…" : "This wasn't me. Stop it"}
-          </Button>
-        </form>
+        confirming ? (
+          <form action={act} className="border-paper-line mt-5 border-t pt-4">
+            <input type="hidden" name="id" value={id} />
+            <p className="text-sm font-bold">Stop this change?</p>
+            {/* What happens, named before the tap that does it. */}
+            <p className="text-forest/80 mt-1.5 text-sm">
+              Payouts keep going to the account you have. If you did ask for it,
+              you will need to raise it again.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <Button
+                type="submit"
+                disabled={pending}
+                variant="danger"
+                block={false}
+                className="flex-1"
+              >
+                {pending ? "Stopping…" : "Stop the change"}
+              </Button>
+              <Button
+                onClick={() => setConfirming(false)}
+                disabled={pending}
+                variant="secondary"
+                block={false}
+                className="flex-1"
+              >
+                Back
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <div className="mt-5">
+            <p className="text-terra-deep text-sm font-bold">
+              Did you not ask for this?
+            </p>
+            <p className="text-forest/80 mt-1 text-sm">
+              Stop it now. It takes no code and no waiting.
+            </p>
+            <Button
+              onClick={() => setConfirming(true)}
+              variant="danger-quiet"
+              size="md"
+              block={false}
+              className="mt-2"
+            >
+              {"This wasn't me. Stop it"}
+            </Button>
+          </div>
+        )
       ) : null}
 
       {result.message ? (

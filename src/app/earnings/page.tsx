@@ -9,6 +9,7 @@ import {
   readCommissionOwed,
 } from "@/lib/money/fetch";
 import { payoutHold, type ChangeRequest } from "@/lib/money/earnings";
+import { accountOnFile } from "@/lib/account/bank";
 import {
   SETTLEMENT_STATE_LABEL,
   isOwedBack,
@@ -128,6 +129,8 @@ export default async function MoneyPage({
   ]);
 
   const hold = payoutHold(changes);
+  // The bank details, said on their door: "account ending 4412" (op#96).
+  const onFile = accountOnFile(changes);
   const { nextSettlement, pipeline, paidAtCounter, seasonToDate } = overview;
   const cash = cashOnTheTab(paidAtCounter, commission);
   // What is real is drawn first; see `moneyBlocks` for the order and why.
@@ -270,7 +273,12 @@ export default async function MoneyPage({
             label="Cash you've collected"
           />
         ) : null}
-        <Door href="/payouts" icon={BankIcon} label="Payout details" />
+        <Door
+          href="/payouts"
+          icon={BankIcon}
+          label="Payout details"
+          detail={onFile?.line}
+        />
       </div>
     </Screen>
   );
@@ -565,11 +573,14 @@ function Door({
   href,
   icon: Icon,
   label,
+  detail,
   className,
 }: {
   href: string;
   icon: ComponentType<{ className?: string }>;
   label: string;
+  /** A fact about what is behind it, under the label: the account on file. */
+  detail?: string;
   className?: string;
 }) {
   return (
@@ -585,7 +596,14 @@ function Door({
     >
       <span className="flex min-w-0 items-center gap-3">
         <Icon className="text-terra-deep size-5 shrink-0" />
-        <span className="truncate text-base font-bold">{label}</span>
+        <span className="min-w-0">
+          <span className="block truncate text-base font-bold">{label}</span>
+          {detail ? (
+            <span className="text-forest/70 block truncate text-sm">
+              {detail}
+            </span>
+          ) : null}
+        </span>
       </span>
       <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
     </Link>

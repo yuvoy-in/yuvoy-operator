@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
+  accountOnFile,
   bankProblem,
   describeChange,
+  historyLabel,
   isOpen,
   maskAccount,
+  parseBankSummary,
   type ChangeState,
 } from "./bank";
 
@@ -121,5 +124,111 @@ describe("describeChange", () => {
       expect(d.title.length, s).toBeGreaterThan(2);
       expect(d.body, s).toMatch(/\.$/);
     }
+  });
+});
+
+/*
+  What is on file, as text (yuvoy-operator#87 s14): "Show what is on file as
+  text ('HDFC0001234 · account ending 4412'), with one Change button." No
+  endpoint reads the payout account; the newest APPLIED bank change is it.
+*/
+describe("the account on file", () => {
+  const applied = (
+    id: string,
+    requestedAt: string,
+    summary = "HDFC Bank ····4412 (HDFC0001234)",
+  ) => ({ id, kind: "bank", state: "applied", summary, requestedAt });
+
+  it("reads the API's own summary as the IFSC and the last four", () => {
+    expect(accountOnFile([applied("chg_a", "2026-08-01T09:00:00Z")])).toEqual({
+      id: "chg_a",
+      line: "HDFC0001234 · account ending 4412",
+      bankName: "HDFC Bank",
+    });
+  });
+
+  it("is the newest applied change, whatever order the list came in", () => {
+    const onFile = accountOnFile([
+      applied("older", "2026-05-01T09:00:00Z", "SBI ····1111 (SBIN0000123)"),
+      applied("newer", "2026-08-01T09:00:00Z"),
+    ]);
+    expect(onFile?.id).toBe("newer");
+  });
+
+  it("ignores a change that is not live, and one that is not a bank change", () => {
+    /*
+      A change in flight is not on file: payouts do not go to it until it is
+      applied. A logo or details change files in the same table (kind "logo",
+      "profile") and says nothing about where the money goes.
+    */
+    expect(
+      accountOnFile([
+        { ...applied("flight", "2026-09-01T09:00:00Z"), state: "cooling" },
+        { ...applied("stopped", "2026-09-02T09:00:00Z"), state: "withdrawn" },
+        { ...applied("logo", "2026-09-03T09:00:00Z"), kind: "logo" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("is nothing for a business that never changed its account here", () => {
+    expect(accountOnFile([])).toBeNull();
+    // An applied row with no summary has nothing to show either.
+    expect(
+      accountOnFile([applied("blank", "2026-08-01T09:00:00Z", "  ")]),
+    ).toBeNull();
+  });
+
+  it("shows a summary it cannot read as the API wrote it, never a guess", () => {
+    const onFile = accountOnFile([
+      applied("odd", "2026-08-01T09:00:00Z", "Account ending in four-four"),
+    ]);
+    expect(onFile?.line).toBe("Account ending in four-four");
+    expect(onFile?.bankName).toBeNull();
+  });
+});
+
+describe("reading a masked summary", () => {
+  it("reads the API's shape, with and without a bank name", () => {
+    expect(parseBankSummary("HDFC Bank ····4412 (HDFC0001234)")).toEqual({
+      ifsc: "HDFC0001234",
+      last4: "4412",
+      bankName: "HDFC Bank",
+    });
+    expect(parseBankSummary("····4412 (HDFC0001234)")).toEqual({
+      ifsc: "HDFC0001234",
+      last4: "4412",
+      bankName: null,
+    });
+  });
+
+  it("reads the shape the portal's own mock writes", () => {
+    expect(parseBankSummary("HDFC Bank ••••4417 · HDFC0001234")).toEqual({
+      ifsc: "HDFC0001234",
+      last4: "4417",
+      bankName: "HDFC Bank",
+    });
+    // "Bank" is the stand-in for no name, and says nothing.
+    expect(parseBankSummary("Bank ••••6789 · HDFC0001234").bankName).toBeNull();
+  });
+
+  it("never takes the IFSC's own digits for the account's", () => {
+    // HDFC0001234 ends in four digits; only digits after a mask are the account.
+    expect(parseBankSummary("(HDFC0001234)").last4).toBeNull();
+  });
+});
+
+describe("a decided change, in the history", () => {
+  it("says a replaced account was replaced, not live", () => {
+    // The one on file is left out of the history, so an applied row there is
+    // an account that has since been replaced.
+    expect(historyLabel("applied")).toBe("Replaced");
+    expect(historyLabel("withdrawn")).toBe("Stopped");
+    expect(historyLabel("rejected")).toBe("Rejected");
+  });
+
+  it("says an unknown state in plain words rather than throwing", () => {
+    expect(historyLabel("reversed_by_bank" as ChangeState)).toBe(
+      "reversed by bank",
+    );
   });
 });

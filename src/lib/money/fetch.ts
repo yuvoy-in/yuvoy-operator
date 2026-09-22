@@ -30,6 +30,30 @@ export async function getChangeRequests(
 }
 
 /**
+ * The same list, for the one screen whose subject it is: Payout details.
+ *
+ * `null` when the read failed, where `getChangeRequests` answers `[]`. On the
+ * screens that borrow the list for a warning, a failed read is a missing
+ * warning; on Payout details an empty list means "nothing on file, nothing in
+ * flight" and draws the form straight away, which is the wrong thing to show
+ * an owner whose account and open change simply did not load.
+ */
+export async function readChangeRequests(
+  token: string,
+): Promise<ChangeRequest[] | null> {
+  try {
+    const { data, error } = await operatorApi(token).GET(
+      "/change-requests",
+      {},
+    );
+    if (error) throw error;
+    return data.requests ?? [];
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The bookings departing in a window, with what each contributed.
  *
  * Soft-failing, but not the way `getChangeRequests` is. That one degrades to
