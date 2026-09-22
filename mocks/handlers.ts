@@ -2573,14 +2573,39 @@ export const handlers = [
     const body = (await request.json()) as {
       phone?: string;
       name?: string;
+      email?: string;
       role?: string;
     };
     const phone = (body.phone ?? "").trim();
     const name = (body.name ?? "").trim();
     const role = body.role ?? "";
+    // Trimmed and lowered, as the API does before it checks the shape.
+    const email = (body.email ?? "").trim().toLowerCase();
 
+    /*
+      One code, two fields, and `details` says which: the API answers
+      `invalid_input` with `{ phone: … }` or `{ email: … }`, and the portal puts
+      the sentence on the field it names. The messages are the API's own, lower
+      case and all, so the screen's capitalising is exercised.
+    */
     if (!/^\+[1-9]\d{7,14}$/.test(phone) || name.length < 2) {
-      return envelope("invalid_input", "A name and an E.164 number.", 400);
+      return envelope(
+        "invalid_input",
+        "we need their number with the country code",
+        400,
+        { phone: "for example +919000000101" },
+      );
+    }
+    if (
+      email !== "" &&
+      (email.length > 254 || !/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(email))
+    ) {
+      return envelope(
+        "invalid_input",
+        "that email address does not look right",
+        400,
+        { email: "for example ramesh@example.com" },
+      );
     }
 
     /*
@@ -2648,16 +2673,31 @@ export const handlers = [
     });
 
     /*
-      `joinUrl` alongside the queued message, because there is no delivery yet
-      and "on an island the person doing the inviting is usually standing next
-      to the person being invited". The portal used to drop this, which made
-      inviting somebody a dead end for the invitee.
+      `sent` read back, not asserted (yuvoy-api 67e3213, yuvoy-operator#91).
+
+      There is no WhatsApp sender, so the only thing that can carry an
+      invitation is the email address, and with none the message is written
+      suppressed: `sent: false`, and a `note` saying to pass the link on. The
+      API's own words, and the same override it makes: a role it did not grant
+      as asked replaces the note, because that is the sentence the inviter
+      must not miss. It asserted `true` for every invitation before, which is
+      how an owner came to believe a colleague had been told.
+    */
+    const sent = email !== "";
+    const notSent =
+      "We could not send that invitation to them. Give them the join link and the code yourself, or add them again with an email address.";
+
+    /*
+      `joinUrl` alongside the queued message, because "on an island the person
+      doing the inviting is usually standing next to the person being
+      invited". The portal used to drop this, which made inviting somebody a
+      dead end for the invitee.
     */
     return HttpResponse.json(
       {
-        sent: true,
+        sent,
         role: granted,
-        ...(note ? { note } : {}),
+        ...(note ? { note } : sent ? {} : { note: notSent }),
         joinUrl: JOIN_URL,
         devCode: DEV_CODE,
       },

@@ -37,14 +37,37 @@ const OTHER_ADMIN_NAME = "Ravi Menon";
 /** The business's one join link, the same for everybody it adds. */
 const JOIN_TOKEN = "jn_reefdivers";
 
-type Slot = "echo" | "revoke" | "accept" | "remove" | "owner";
-const SLOTS: Slot[] = ["echo", "revoke", "accept", "remove", "owner"];
+type Slot =
+  | "echo"
+  | "revoke"
+  | "accept"
+  | "remove"
+  | "owner"
+  | "emailed"
+  | "unsent"
+  | "typo"
+  | "listed";
+const SLOTS: Slot[] = [
+  "echo",
+  "revoke",
+  "accept",
+  "remove",
+  "owner",
+  "emailed",
+  "unsent",
+  "typo",
+  "listed",
+];
 const NAMES: Record<Slot, string> = {
   echo: "Kiran",
   revoke: "Meera",
   accept: "Nikhil",
   remove: "Omar",
   owner: "Pallavi",
+  emailed: "Qadir",
+  unsent: "Rhea",
+  typo: "Sana",
+  listed: "Tara",
 };
 
 /**
@@ -84,12 +107,14 @@ async function signIn(page: Page, phone = OWNER) {
 /** Invite somebody, and leave the page on /team with the form answered. */
 async function invite(
   page: Page,
-  who: { phone: string; name: string },
+  who: { phone: string; name: string; email?: string },
   role: "Owner" | "Staff" = "Staff",
 ) {
   await page.goto("/team");
   await page.getByLabel("Their name").fill(who.name);
   await page.getByLabel("Their phone number").fill(who.phone);
+  // Optional, and where the invitation goes while there is no WhatsApp sender.
+  if (who.email) await page.getByLabel(/^Their email/).fill(who.email);
   await page.getByRole("radio", { name: role, exact: false }).check();
   await page.getByRole("button", { name: "Send the invitation" }).click();
   await expect(page.getByText(`${who.name} is invited`)).toBeVisible();
@@ -413,6 +438,108 @@ test("inviting echoes the whole number once, and the pending row keeps its last 
   await expect(
     row.getByText(`Sent to ••••${who.phone.slice(-4)}`),
   ).toBeVisible();
+});
+
+test("an invitation with no email says nothing was sent, and leads with the link", async ({
+  page,
+}, testInfo) => {
+  /*
+    yuvoy-operator#91 f20. The form promised "We message them a code", the only
+    channel was WhatsApp, and there is no WhatsApp sender: the owner believed
+    their colleague had been told and nothing arrived. `sent` is read back now,
+    and with no email it is false, with the API's note saying what to do.
+  */
+  const who = invitee("unsent", testInfo);
+  await signIn(page);
+  await invite(page, who);
+
+  const receipt = page.getByRole("status").filter({ hasText: "is invited" });
+  await expect(receipt.getByText("Send them this link")).toBeVisible();
+  await expect(receipt.getByText(/\/join\/jn_reefdivers/)).toBeVisible();
+  await expect(
+    receipt.getByRole("button", { name: "Copy the link" }),
+  ).toBeVisible();
+  await expect(
+    receipt.getByText(
+      "We could not send that invitation to them. Give them the join link and the code yourself, or add them again with an email address.",
+    ),
+  ).toBeVisible();
+  await expect(receipt.getByText(/We also sent them/)).toHaveCount(0);
+  await expect(page.getByText(/We message them/)).toHaveCount(0);
+});
+
+test("an invitation with an email says it was sent, and still leads with the link", async ({
+  page,
+}, testInfo) => {
+  const who = invitee("emailed", testInfo);
+  await signIn(page);
+  await invite(page, {
+    ...who,
+    email: `${who.name.split(" ")[0]}@example.com`,
+  });
+
+  const receipt = page.getByRole("status").filter({ hasText: "is invited" });
+  await expect(
+    receipt.getByText(
+      "We also sent them the invitation, with the link and their code.",
+    ),
+  ).toBeVisible();
+  await expect(receipt.getByText(/We could not send/)).toHaveCount(0);
+  await expect(receipt.getByText("Send them this link")).toBeVisible();
+});
+
+test("a mistyped email is refused on its own field, and nothing typed is lost", async ({
+  page,
+}, testInfo) => {
+  const who = invitee("typo", testInfo);
+  await signIn(page);
+  await page.goto("/team");
+  await page.getByLabel("Their name").fill(who.name);
+  await page.getByLabel("Their phone number").fill(who.phone);
+  await page.getByLabel(/^Their email/).fill("sana@");
+  await page.getByRole("button", { name: "Send the invitation" }).click();
+
+  const alert = page.locator("form").getByRole("alert");
+  await expect(alert).toContainText("does not look like an email address");
+  const email = page.getByLabel(/^Their email/);
+  await expect(email).toHaveAttribute("aria-invalid", "true");
+  await expect(email).toHaveValue("sana@");
+  // One character to fix, not three fields to retype.
+  await expect(page.getByLabel("Their name")).toHaveValue(who.name);
+  await expect(page.getByLabel("Their phone number")).toHaveValue(who.phone);
+  await expect(page.getByText(`${who.name} is invited`)).toHaveCount(0);
+});
+
+test("a new invitation is on the pending list at once, beside its receipt", async ({
+  page,
+}, testInfo) => {
+  /*
+    yuvoy-operator#89 f16: "the new invitation did not appear until a reload",
+    so an owner could invite twice. Reached the way an owner reaches it, by the
+    link on Settings rather than a fresh page load, and asserted without a
+    reload: the receipt with its link stays, and the pending row is there too.
+  */
+  const who = invitee("listed", testInfo);
+  await signIn(page);
+  await page.goto("/account/settings");
+  await page.getByRole("link", { name: /Team access/ }).click();
+  await page.waitForURL("**/team");
+
+  await page.getByLabel("Their name").fill(who.name);
+  await page.getByLabel("Their phone number").fill(who.phone);
+  await page.getByRole("button", { name: "Send the invitation" }).click();
+
+  await expect(page.getByText(`${who.name} is invited as Staff`)).toBeVisible();
+  const row = page.locator("li").filter({ hasText: who.name });
+  await expect(row.getByText(/They have not signed in yet/)).toBeVisible();
+  await expect(
+    row.getByText(`Sent to ••••${who.phone.slice(-4)}`),
+  ).toBeVisible();
+  await expect(
+    row.getByRole("button", { name: "Copy invite link" }),
+  ).toBeVisible();
+  // And the receipt is still on screen, not unmounted by the list catching up.
+  await expect(page.getByText("Send them this link")).toBeVisible();
 });
 
 test("a number already on the account is refused with one message", async ({

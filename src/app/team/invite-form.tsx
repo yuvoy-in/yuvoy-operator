@@ -1,8 +1,11 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
 import { inviteMember, type InviteState } from "./actions";
+import { JoinLink } from "./join-link";
 import { INVITABLE_ROLES, describeRole, roleLabel } from "@/lib/team/roles";
+import { EMAIL_MAX_LENGTH } from "@/lib/auth/email";
 import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -10,9 +13,11 @@ import { Panel } from "@/components/ui/panel";
 /**
  * Adding the new skipper before the 6am boat.
  *
- * Three fields and a role, because that is the whole of `POST /team`. The work
- * this form does beyond collecting them is explaining what each role grants **at
- * the moment of choosing**, rather than in a help page nobody opens: the crew
+ * Three fields and a role, because that is the whole of `POST /team`: a name, a
+ * number, and since yuvoy-operator#91 an optional email, which is where the
+ * invitation goes while no phone channel can carry it. The work this form does
+ * beyond collecting them is explaining what each role grants **at the moment of
+ * choosing**, rather than in a help page nobody opens: the crew
  * phone goes out on the boat and gets left on a bench, and somebody deciding
  * between Staff and Owner is deciding what a lost phone can do.
  *
@@ -31,18 +36,84 @@ import { Panel } from "@/components/ui/panel";
  * the send.
  */
 export function InviteForm() {
+  const router = useRouter();
   const [state, act, pending] = useActionState<InviteState, FormData>(
-    inviteMember,
+    async (prev, form) => {
+      const next = await inviteMember(prev, form);
+      /*
+        The pending list, made current as the receipt lands (yuvoy-operator#89
+        f16: "the new invitation did not appear until a reload").
+
+        The action already revalidates `/team`, which re-renders the list in
+        the same round trip, and on the live portal the list still stayed as it
+        was. So the route is refreshed from here as well, the way
+        `SendDocument` refreshes after its own revalidating action: one more
+        read of the team, and the list no longer depends on one mechanism.
+        The receipt survives it, because a refresh keeps client state and this
+        form is not unmounted by the page re-rendering around it.
+
+        Only on success. A refusal changed nothing on the server, and a refresh
+        then would be a round trip on one bar of signal to redraw the same list.
+      */
+      if (next.sent) router.refresh();
+      return next;
+    },
     {},
   );
+  return (
+    /*
+      Remounted per submission, so the uncontrolled fields re-read what was
+      typed after a refusal and come up empty after a success, and the role
+      mirror below resets with them. Without it a refusal about one character
+      of an email emptied all three fields, and a successful Owner invitation
+      left the Owner warning on screen over a form reset to Staff.
+    */
+    <form key={state.attempt ?? 0} action={act} className="space-y-5">
+      <InviteFields state={state} />
+
+      {state.message ? (
+        <p
+          id="invite-error"
+          role="alert"
+          className="text-terra-deep text-sm font-bold"
+        >
+          {state.message}
+        </p>
+      ) : null}
+
+      {state.sent ? <Receipt state={state} /> : null}
+
+      <Button type="submit" disabled={pending}>
+        {pending ? "Sending…" : "Send the invitation"}
+      </Button>
+    </form>
+  );
+}
+
+/**
+ * The fields, with the role mirrored out of the form.
+ *
+ * Its own component so it remounts with the form's `key`: the mirror is state,
+ * and state that outlives the inputs it mirrors is how the Owner warning came
+ * to sit over a form that had been reset to Staff.
+ */
+function InviteFields({ state }: { state: InviteState }) {
+  const was = state.values;
   /**
    * Which role is selected, mirrored out of the form so the screen can say what
-   * the Owner choice means before it is sent. Seeded to the preselected STAFF.
+   * the Owner choice means before it is sent. Seeded from what was typed when a
+   * refusal hands it back, and otherwise the preselected STAFF.
    */
-  const [role, setRole] = useState<string>("STAFF");
+  const [role, setRole] = useState<string>(
+    was?.role && (INVITABLE_ROLES as readonly string[]).includes(was.role)
+      ? was.role
+      : "STAFF",
+  );
+  const describedBy = (field: InviteState["field"], help: string) =>
+    state.field === field ? `invite-error ${help}` : help;
 
   return (
-    <form action={act} className="space-y-5">
+    <>
       <div>
         <label htmlFor="invite-name" className="label text-forest/75">
           Their name
@@ -53,6 +124,8 @@ export function InviteForm() {
           type="text"
           autoComplete="off"
           required
+          defaultValue={was?.name ?? ""}
+          autoFocus={state.field === "name"}
           className={inputClass("mt-2")}
           aria-invalid={state.field === "name" || undefined}
           aria-describedby={state.field === "name" ? "invite-error" : undefined}
@@ -71,6 +144,8 @@ export function InviteForm() {
           autoComplete="off"
           required
           placeholder="+919000000101"
+          defaultValue={was?.phone ?? ""}
+          autoFocus={state.field === "phone"}
           className={inputClass("mt-2 font-mono")}
           aria-invalid={state.field === "phone" || undefined}
           /*
@@ -78,15 +153,55 @@ export function InviteForm() {
             "with the country code" hint at exactly the moment somebody has got
             the country code wrong.
           */
-          aria-describedby={
-            state.field === "phone"
-              ? "invite-error invite-phone-help"
-              : "invite-phone-help"
-          }
+          aria-describedby={describedBy("phone", "invite-phone-help")}
         />
+        {/*
+          It said "We message them a code" (yuvoy-operator#91 f20), and nothing
+          was ever messaged: the only channel was WhatsApp and there is no
+          WhatsApp sender. What is true of the number is that it is the one
+          they accept with, whatever carries the invitation.
+        */}
         <p id="invite-phone-help" className="text-forest/70 mt-1.5 text-xs">
-          With the country code. We message them a code. Nothing is granted
-          until they use it.
+          With the country code. They accept with this number, and nothing is
+          granted until they do.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="invite-email" className="label text-forest/75">
+          Their email address <span className="text-forest/70">(optional)</span>
+        </label>
+        <input
+          id="invite-email"
+          name="email"
+          /*
+            `text` with an email keyboard, NOT `type="email"`, the call
+            `/signup` makes: native validation would answer a typo with a
+            browser tooltip, and the sentence worth reading is ours, on the
+            field, with what was typed still in it.
+          */
+          type="text"
+          inputMode="email"
+          autoComplete="off"
+          maxLength={EMAIL_MAX_LENGTH}
+          placeholder="ramesh@example.com"
+          defaultValue={was?.email ?? ""}
+          autoFocus={state.field === "email"}
+          className={inputClass("mt-2")}
+          aria-invalid={state.field === "email" || undefined}
+          aria-describedby={describedBy("email", "invite-email-help")}
+        />
+        {/*
+          What the field is FOR, said before it is left out. `POST /team`: it
+          is "where the invitation goes when no phone channel can carry it,
+          which today is always: there is no WhatsApp sender. Leave it out and
+          the invitation is still created; `sent` is then `false`." So leaving
+          it out is allowed and has a cost, and the owner should know the cost
+          before the receipt tells them.
+        */}
+        <p id="invite-email-help" className="text-forest/70 mt-1.5 text-xs">
+          We can only send an invitation by email for now. Leave it out and
+          nothing is sent: you pass the link on yourself.
         </p>
       </div>
 
@@ -108,11 +223,12 @@ export function InviteForm() {
                   /*
                     STAFF by name, not by position. It used to be "the last one
                     in the list", which was STAFF only because of how
-                    `INVITABLE_ROLES` happened to be ordered — and that list has
-                    just been rewritten once. Reordering it must not silently
-                    preselect Owner.
+                    `INVITABLE_ROLES` happened to be ordered, and that list has
+                    been rewritten once. Reordering it must not silently
+                    preselect Owner. `role` is seeded to STAFF by name, or to
+                    what a refusal handed back.
                   */
-                  defaultChecked={option === "STAFF"}
+                  defaultChecked={option === role}
                   onChange={() => setRole(option)}
                   className="accent-terra-deep mt-0.5 size-5 shrink-0"
                 />
@@ -171,92 +287,103 @@ export function InviteForm() {
           </p>
         </Panel>
       ) : null}
+    </>
+  );
+}
 
-      {state.message ? (
-        <p
-          id="invite-error"
-          role="alert"
-          className="text-terra-deep text-sm font-bold"
-        >
-          {state.message}
-        </p>
-      ) : null}
+/**
+ * The receipt: who is invited, the link to hand over, and whether anything was
+ * actually sent to them (yuvoy-operator#91 f20).
+ *
+ * ## The link leads
+ *
+ * "Send them this link", with the copy control, is the first thing under the
+ * name, because it is the one part that works whether or not a message went.
+ * The owner is usually standing next to the person they are adding.
+ *
+ * ## Sent, or not, said plainly
+ *
+ * `sent` is read back from the queued message, not asserted. When it is true
+ * a message is carrying the invitation, the link and their code to them, and
+ * the receipt says so without naming a channel it has not been told. When it
+ * is false, or absent, NOTHING went, and the receipt says that instead, in
+ * the API's own words (`note`) when it sent any: pass the link on yourself,
+ * or add them again with an email address. Ours stand in only when it did
+ * not.
+ *
+ * On a receipt that WAS delivered, `note` can only be the other thing the API
+ * puts there, a role it did not grant as asked, and it is shown for the reason
+ * `InviteState.note` gives.
+ */
+function Receipt({ state }: { state: InviteState }) {
+  const sent = state.sent;
+  if (!sent) return null;
 
-      {state.sent ? (
-        <Panel tone="done" role="status" className="p-4">
-          {/*
-            "Invited", not "code sent". Nothing is delivered — there is no
-            WhatsApp account yet (yuvoy-api#68) — so a screen that says a code
-            went out is a screen the owner will believe, and then wait on.
-          */}
-          <p className="text-base font-bold">
-            {state.sent.name} is invited as {roleLabel(state.sent.role)}
+  return (
+    <Panel tone="done" role="status" className="p-4">
+      {/*
+        "Invited", not "code sent": the invitation exists either way, and
+        whether anything reached them is the line below, not this one.
+      */}
+      <p className="text-base font-bold">
+        {sent.name} is invited as {roleLabel(sent.role)}
+      </p>
+
+      {/*
+        The link, at the moment it is needed rather than only on the list
+        behind this receipt. It is the same URL `GET /team` shows, so somebody
+        who closes this has not lost anything, which matters, because
+        re-inviting to see it again would replace the code the invitee holds.
+      */}
+      <div className="mt-3">
+        {state.joinUrl ? (
+          <JoinLink url={state.joinUrl} />
+        ) : (
+          <p className="text-forest/80 text-sm">
+            They accept at{" "}
+            <span className="font-bold">operators.yuvoy.in/join</span>, then
+            sign in as usual. Nothing is granted until they do.
           </p>
-          {/*
-            The server's sentence about a role it did not grant as asked. This
-            form only asks for OWNER or STAFF, so it should never arrive — which
-            is why it is shown rather than dropped: if it does, this build and the
-            API disagree about what an invitation grants, and the person handing
-            a phone over is the one who needs to know.
-          */}
+        )}
+      </div>
+
+      {sent.delivered ? (
+        <>
+          <p className="text-forest/80 mt-3 text-sm">
+            We also sent them the invitation, with the link and their code.
+          </p>
           {state.note ? (
             <p className="text-terra-deep mt-2 text-sm font-bold">
               {state.note}
             </p>
           ) : null}
-          {/*
-            The whole number, echoed once, at the moment it matters most. The
-            pending row now shows its last four digits (`phoneMasked`,
-            yuvoy-api#62) — that catches a transposition a day later, when
-            somebody looks at the list; this catches it a minute later, while
-            the owner still remembers what they meant to type. Both stay.
-          */}
-          <p className="text-forest/80 mt-2 font-mono text-sm">
-            {state.sent.phone}
-          </p>
-          <p className="text-forest/80 mt-2 text-sm">
-            Check that number. If it is wrong, invite the right one. A new
-            invitation to the same person replaces the old code rather than
-            adding a second.
-          </p>
-          {/*
-            The link, at the moment it is needed rather than only on the screen
-            behind this panel. `POST /team` returns it precisely so the inviter
-            can pass it on themselves, and this action used to drop it.
+        </>
+      ) : (
+        <p className="text-terra-deep mt-3 text-sm font-bold">
+          {state.note ??
+            "We could not send this invitation to them. Give them the link yourself, and add them again with their email address so their code can reach them."}
+        </p>
+      )}
 
-            It is the same URL `GET /team` shows, so somebody who closes this
-            has not lost anything — which matters, because re-inviting to see
-            it again would replace the code the invitee is holding.
-          */}
-          {state.joinUrl ? (
-            <div className="mt-3">
-              <p className="text-forest/80 text-sm">
-                Send them this link. Nothing is granted until they open it and
-                enter their own number.
-              </p>
-              <p className="rounded-control border-paper-line bg-paper text-forest mt-2 border p-3 font-mono text-sm break-all select-all">
-                {state.joinUrl}
-              </p>
-            </div>
-          ) : (
-            <p className="text-forest/70 mt-2 text-sm">
-              They accept at{" "}
-              <span className="font-bold">operators.yuvoy.in/join</span>, then
-              sign in as usual. Nothing is granted until they do.
-            </p>
-          )}
-          {state.devCode ? (
-            <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
-              Development build: their code is{" "}
-              <strong className="font-mono">{state.devCode}</strong>.
-            </p>
-          ) : null}
-        </Panel>
+      {/*
+        The whole number, echoed once, at the moment it matters most. The
+        pending row shows its last four digits (`phoneMasked`, yuvoy-api#62):
+        that catches a transposition a day later, when somebody looks at the
+        list; this catches it a minute later, while the owner still remembers
+        what they meant to type. Both stay.
+      */}
+      <p className="text-forest/80 mt-3 font-mono text-sm">{sent.phone}</p>
+      <p className="text-forest/80 mt-2 text-sm">
+        Check that number. If it is wrong, invite the right one. A new
+        invitation to the same person replaces the old code rather than adding a
+        second.
+      </p>
+      {state.devCode ? (
+        <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
+          Development build: their code is{" "}
+          <strong className="font-mono">{state.devCode}</strong>.
+        </p>
       ) : null}
-
-      <Button type="submit" disabled={pending}>
-        {pending ? "Sending…" : "Send the invitation"}
-      </Button>
-    </form>
+    </Panel>
   );
 }
