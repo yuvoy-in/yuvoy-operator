@@ -170,7 +170,59 @@ path=contracts/operator-openapi.yaml
 # which served a five-minute-stale SHA twice on 8 Sep and cost a retracted
 # issue. It was re-read immediately before pinning, because api master moves
 # several times a day.
+#
+# ---
+#
+# 22 Sep 2026. Forward from 0dffd2538547 to e7291e354307, the API that answers
+# the two reviews of the live portal (op#89 to #96, yuvoy-api#200 to #212 and
+# #221). Nothing is removed.
+#
+# The diff was read for REMOVALS first, by set difference over the whole
+# document rather than by reading it:
+#   - No path, no operation and no schema disappears. One operation is new,
+#     `POST /slots/confirm-seats`, and three schemas: `CounterCash`,
+#     `CashTripLine` and `CashToGiveBack`.
+#   - `CounterCash` and `CashTripLine` are the inline objects that
+#     `OperatorBooking.cash` and the `/commission-owed` lines already were,
+#     named so the manifest and the held and unrecorded lists can share them.
+#     Same fields and same `required:`, so `OperatorBooking["cash"]` resolves
+#     to the shape it always had.
+#   - `GET /media` gains `required: [items, complete]` and a `400`. It pages
+#     now (`limit`, `cursor` in; `complete`, `nextCursor` out). With neither
+#     parameter it still answers the 50 newest.
+#
+# Breaking for the typechecker, and the reason test fixtures change with this
+# pin: `GET /commission-owed` now REQUIRES `collectedPaise` and the `held*`
+# and `unrecorded*` figures, and `PaidAtCounter` requires `heldBookings`,
+# `heldCollectedPaise` and the three `unrecorded*` ones. A fixture without
+# them is a response the API cannot send. They are still READ as optional
+# (yuvoy-api#126): against an older API each screen degrades to what it shows
+# today.
+#
+# Consumed in the changes that follow this pin:
+#   - `RelayResult.notReached`, `notReachedNote` and `byChannel`, and
+#     `bookingsNotReached` on a moved departure (op#89). Both count the people
+#     a message is going to, never the bookings it was written for.
+#   - `email` on `POST /team` (op#91).
+#   - `seat_confirmations` on `NotificationGroup`, and cash held, owed and
+#     unrecorded on `/commission-owed` and `paidAtCounter` (op#94).
+#   - `RequestAnswer.toldBy` and `receipt`, media paging, `parties[].cash` and
+#     `cashToGiveBack` on the manifest and on a call-off, and
+#     `bookableDatesNext30Days` on a listing (op#95).
+#   - `departuresNotOnSale`, `departuresGoingOffSaleSoon` and
+#     `POST /slots/confirm-seats`, on Home (op#94, op#96).
+#
+# Read but NOT taken at face value:
+#   - The `202 in_review` that a LIVE account's logo and business-details
+#     writes answer is declared under `GET /logo` and `GET /profile`, not under
+#     the `PUT`s that send it (read in the handlers at this ref). The portal
+#     branches on the status it receives, not on this document
+#     (yuvoy-api#222). `409 details_locked` is still declared on `PUT /profile`
+#     and is no longer returned: the handler queues the change instead.
+#
+# `git ls-remote` was the check for this ref, re-read immediately before
+# pinning.
 
-ref=0dffd253854785c5c4b62bd8c1df9bb1699c96c5
+ref=e7291e3543072083cff851714b97fabe3cd4f111
 branch=master
-pinned_on=2026-09-15
+pinned_on=2026-09-22

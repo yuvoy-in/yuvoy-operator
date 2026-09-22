@@ -11,9 +11,27 @@ const line = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/*
+  What the contract requires beside the owed figures since the 22 Sep pin: cash
+  held for trips still to run, and trips that ran with no cash recorded. Zero
+  here, because these tests are about what is owed.
+*/
+const NOTHING_ELSE = {
+  collectedPaise: 0,
+  heldBookings: 0,
+  heldFarePaise: 0,
+  heldCollectedPaise: 0,
+  heldCommissionPaise: 0,
+  heldLines: [],
+  unrecordedBookings: 0,
+  unrecordedFarePaise: 0,
+  unrecordedLines: [],
+};
+
 describe("what is owed on cash — yuvoy-operator#40 §2", () => {
   it("carries the totals and every line through", () => {
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 1,
       farePaise: 1_000_000,
       commissionPaise: 150_000,
@@ -33,6 +51,7 @@ describe("what is owed on cash — yuvoy-operator#40 §2", () => {
       Three trips in, three trips out.
     */
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 3,
       farePaise: 3_000_000,
       commissionPaise: 450_000,
@@ -47,6 +66,7 @@ describe("what is owed on cash — yuvoy-operator#40 §2", () => {
 
   it("puts the most recent trip first, so two loads agree", () => {
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 3,
       farePaise: 0,
       commissionPaise: 0,
@@ -67,6 +87,7 @@ describe("what is owed on cash — yuvoy-operator#40 §2", () => {
     // Money owed is money owed. Dropping it would stop the lines adding up to
     // the total above them, which is the one thing this screen promises.
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 2,
       farePaise: 0,
       commissionPaise: 0,
@@ -84,6 +105,7 @@ describe("what is owed on cash — yuvoy-operator#40 §2", () => {
       nothing" — a statement about an operator's honesty, not a missing number.
     */
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 1,
       farePaise: 0,
       commissionPaise: 0,
@@ -106,6 +128,7 @@ describe("whether the lines account for the total", () => {
     expect(
       linesReconcile(
         toCommission({
+          ...NOTHING_ELSE,
           bookings: 2,
           farePaise: 1_500_000,
           commissionPaise: 225_000,
@@ -126,6 +149,7 @@ describe("whether the lines account for the total", () => {
     expect(
       linesReconcile(
         toCommission({
+          ...NOTHING_ELSE,
           bookings: 2,
           farePaise: 1_500_000,
           commissionPaise: 300_000,
@@ -142,6 +166,7 @@ describe("whether the lines account for the total", () => {
     expect(
       linesReconcile(
         toCommission({
+          ...NOTHING_ELSE,
           bookings: 9,
           farePaise: 1_000_000,
           commissionPaise: 150_000,
@@ -155,6 +180,7 @@ describe("whether the lines account for the total", () => {
     expect(
       linesReconcile(
         toCommission({
+          ...NOTHING_ELSE,
           bookings: 0,
           farePaise: 0,
           commissionPaise: 0,
@@ -172,6 +198,7 @@ describe("whether the lines account for the total", () => {
       the screen must not read that as an error.
     */
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 1,
       farePaise: 1_500_000,
       commissionPaise: 225_000,

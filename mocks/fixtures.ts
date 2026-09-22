@@ -992,6 +992,8 @@ TOTAL,,3,54000.00,5400.00,9000.00,38350.00
 export const COMMISSION_OWED = {
   bookings: 3,
   farePaise: 3_000_000,
+  // What was recorded taken on the three: the fares, less the shortfall below.
+  collectedPaise: 2_700_000,
   commissionPaise: 450_000,
   lines: [
     {
@@ -1020,6 +1022,14 @@ export const COMMISSION_OWED = {
       commissionPaise: 225_000,
     },
   ],
+  heldBookings: 0,
+  heldFarePaise: 0,
+  heldCollectedPaise: 0,
+  heldCommissionPaise: 0,
+  heldLines: [],
+  unrecordedBookings: 0,
+  unrecordedFarePaise: 0,
+  unrecordedLines: [],
 };
 
 export const CHANGE_REQUESTS = [

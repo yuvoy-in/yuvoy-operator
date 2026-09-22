@@ -5817,6 +5817,11 @@ export const handlers = [
         farePaise: 2700000,
         commissionPaise: 405000,
         netPaise: 2295000,
+        heldBookings: 0,
+        heldCollectedPaise: 0,
+        unrecordedBookings: 0,
+        unrecordedFarePaise: 0,
+        unrecordedLines: [],
       },
       seasonToDate: {
         from: "2026-04-01",
@@ -5954,8 +5959,17 @@ export const handlers = [
       return HttpResponse.json({
         bookings: 0,
         farePaise: 0,
+        collectedPaise: 0,
         commissionPaise: 0,
         lines: [],
+        heldBookings: 0,
+        heldFarePaise: 0,
+        heldCollectedPaise: 0,
+        heldCommissionPaise: 0,
+        heldLines: [],
+        unrecordedBookings: 0,
+        unrecordedFarePaise: 0,
+        unrecordedLines: [],
       });
     }
 

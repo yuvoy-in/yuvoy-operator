@@ -1335,6 +1335,17 @@ paths:
               properties:
                 phone: { type: string }
                 name:  { type: string }
+                email:
+                  type: string
+                  description: >-
+                    Optional. Where the invitation goes when no phone channel
+                    can carry it, which today is always: there is no WhatsApp
+                    sender. It is not a second way in. The code is still checked
+                    against the number, and accepting still proves the phone.
+
+
+                    Leave it out and the invitation is still created; `sent` is
+                    then `false` and `note` says to pass the link on yourself.
                 role:
                   type: string
                   enum: [OWNER, ADMIN, MANAGER, STAFF]
@@ -1349,7 +1360,14 @@ paths:
               schema:
                 type: object
                 properties:
-                  sent: { type: boolean }
+                  sent:
+                    type: boolean
+                    description: >-
+                      Whether anything is actually carrying the invitation. It
+                      is read back from the queued message rather than asserted,
+                      and it is `false` when we hold no address we can reach
+                      that person on. The invitation exists either way and the
+                      code still works.
                   role:
                     type: string
                     enum: [OWNER, STAFF]
@@ -1360,6 +1378,10 @@ paths:
                       Present when `role` is not the role that was asked for, and
                       says so: they join as staff, and their role can be changed
                       once they have joined. Show it to the person inviting.
+
+
+                      Also present when `sent` is `false`, saying to pass the
+                      join link and the code on by hand.
                   joinUrl:
                     type: string
                     description: >-
@@ -1374,8 +1396,9 @@ paths:
                   devCode: { type: string, description: Development only. }
         "400":
           description: >-
-            `invalid_input`: the number is not in E.164. `invalid_role`: `role`
-            is not a role on a team, and `details.allowed` lists the four.
+            `invalid_input`: the number is not in E.164, or `email` was given
+            and is not an address. `invalid_role`: `role` is not a role on a
+            team, and `details.allowed` lists the four.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2040,8 +2063,8 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: >
-            `nobody_to_tell` — this booking is no longer live, so there was
-            nobody to send to. Deliberately not a success: "sent to 0 people"
+            `nobody_to_tell`: this booking is no longer live (cancelled,
+            declined, or a hold that lapsed), so there was nobody to send to. Deliberately not a success: "sent to 0 people"
             and "sent" must not look the same.
           content:
             application/json:
@@ -2063,9 +2086,13 @@ paths:
         it per recipient would punish the operator with the fuller boat.
 
 
-        Reaches `converted` bookings and unexpired holds only. A lapsed hold is
-        somebody who is not coming, and a declined request is somebody already
-        told no.
+        Reaches exactly the parties this departure's manifest shows
+        (`GET /slots/{id}/manifest`), and nobody else: bookings that are still
+        on, and holds that have not lapsed. A cancelled or declined booking is
+        not told, and neither is a lapsed hold or an expired request. The two
+        read the same rule on the server, so `recipients` can never be more than
+        the manifest's party count. It can be fewer, when somebody listed has no
+        address we can reach, and then `notReached` says how many.
       operationId: relayToSlot
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -2349,6 +2376,22 @@ paths:
         On success the traveller has an ordinary hold with a clock on it — the
         same thing a direct-booking traveller gets at checkout — and is told to
         pay before it lapses.
+
+
+        **The clock is twelve hours, not the checkout's ten minutes**
+        (yuvoy-api#203), and never runs past the departure's booking cutoff:
+        close to the cutoff, the hold ends at the cutoff. The traveller asked
+        hours ago and hears of the answer from a message, and a ten minute
+        clock started at 02:41 gave the seats back at 02:51 while they slept.
+        The length is the service's `REQUEST_HOLD_AFTER_ACCEPT`.
+
+
+        **The answer says how the traveller is being told.** `toldBy` lists the
+        channels their message was queued on, and is empty when nothing could
+        carry it. `receipt` is the whole sentence to show the operator, with the
+        pay-by time in the departure's market time and the day named when it
+        is not today. Show `receipt` as it is: it already says, when nobody
+        could be reached, that the operator is the one who has to tell them.
       operationId: acceptRequest
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -2369,7 +2412,14 @@ paths:
           description: >
             `request_not_open` — already answered, or out of time.
             `grant_ceiling_exceeded` — that would put more people on the
-            departure than it physically holds.
+            departure than it physically holds. Counter sales count towards
+            that: seats sold at your own counter are seats used. When they are
+            the reason a party does not fit, and only then, the message names
+            them rather than leaving you to guess, so you know that correcting
+            the count on the counter sales screen is what lets the accept
+            through. This is a 409 in every case, including the one the
+            database's own backstop catches, which used to reach the portal as a
+            500 that drew as a dropped network.
             `operator_not_sellable` — new in 0053. Accepting is a sale, so it
             is gated on the same eligibility as every other sale: the business
             is not selling, a kill switch is engaged, the listing lost its
@@ -2787,6 +2837,28 @@ paths:
         A trip appears here only once it is **completed** and you have
         **recorded taking the cash**. A no-show who never paid you owes nobody
         anything.
+
+
+        **Held for trips still to run** sits beside it, in the `held` fields:
+        cash you have recorded taking on bookings that are neither cancelled
+        nor declined and whose trip is not yet completed or a no-show. None of
+        its commission is owed yet. When the trip is completed the booking
+        moves from held to owed. `collectedPaise` plus `heldCollectedPaise` is
+        all the cash you have recorded taking on those bookings.
+
+
+        Trips finish on their own: six hours after a departure ends, every
+        booking on it still confirmed is completed, or marked a no-show where
+        you marked the party absent. You can still mark attendance yourself
+        before then.
+
+
+        **Unrecorded** sits beside both, in the `unrecorded` fields: cash
+        bookings whose trip ended more than six hours ago with no cash
+        recorded. These trips have happened and nothing says whether you were
+        paid, so none of it is held or owed. A trip does not finish on its own
+        while its cash is unrecorded. Record the cash and it is owed once the
+        trip is complete; mark the party a no-show and nothing is owed.
       operationId: getCommissionOwed
       responses:
         "200":
@@ -2795,28 +2867,76 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [bookings, farePaise, commissionPaise, lines]
+                required: [bookings, farePaise, collectedPaise, commissionPaise, lines,
+                           heldBookings, heldFarePaise, heldCollectedPaise,
+                           heldCommissionPaise, heldLines,
+                           unrecordedBookings, unrecordedFarePaise, unrecordedLines]
                 properties:
-                  bookings: { type: integer }
+                  bookings:
+                    type: integer
+                    description: >-
+                      Owed now: completed cash trips you recorded taking the
+                      cash for.
                   farePaise:
                     type: integer
                     description: >-
-                      What travellers paid you in cash across these trips.
-                      Context for the commission, so it reads as a share of
-                      something rather than a bill out of nowhere.
-                  commissionPaise: { type: integer }
+                      The fares on the trips owed now. Context for the
+                      commission, so it reads as a share of something rather
+                      than a bill out of nowhere.
+                  collectedPaise:
+                    type: integer
+                    description: >-
+                      The cash you recorded taking on the trips owed now, which
+                      can be short of the fares.
+                  commissionPaise:
+                    type: integer
+                    description: What you owe us now, on the trips owed now.
                   lines:
+                    description: The trips owed now, latest trip first.
                     type: array
-                    items:
-                      type: object
-                      required: [bookingReference, tripDate, guests, farePaise, commissionPaise]
-                      properties:
-                        bookingReference: { type: string }
-                        tripDate: { type: string, description: "Market-local YYYY-MM-DD." }
-                        guests: { type: integer }
-                        farePaise: { type: integer }
-                        collectedPaise: { type: integer }
-                        commissionPaise: { type: integer }
+                    items: { $ref: "#/components/schemas/CashTripLine" }
+                  heldBookings:
+                    type: integer
+                    description: >-
+                      Held for trips still to run: bookings you recorded taking
+                      the cash for that are neither cancelled nor declined and
+                      whose trip is not yet completed or a no-show.
+                  heldFarePaise:
+                    type: integer
+                    description: The fares on the held bookings.
+                  heldCollectedPaise:
+                    type: integer
+                    description: The cash you recorded taking on the held bookings.
+                  heldCommissionPaise:
+                    type: integer
+                    description: >-
+                      Our commission on the held bookings, at the rate fixed on
+                      each. Not owed yet: it is owed once the trip is completed,
+                      and then it is in `commissionPaise`.
+                  heldLines:
+                    description: The held bookings, soonest trip first.
+                    type: array
+                    items: { $ref: "#/components/schemas/CashTripLine" }
+                  unrecordedBookings:
+                    type: integer
+                    description: >-
+                      Cash bookings whose trip ended more than six hours ago
+                      and that you never recorded the cash for. These trips
+                      have happened, and nothing says whether you were paid.
+                      Not in any held or owed figure. The same count `GET
+                      /settlements/overview` shows as
+                      `paidAtCounter.unrecordedBookings`.
+                  unrecordedFarePaise:
+                    type: integer
+                    description: >-
+                      The fares agreed on the unrecorded bookings. Not cash
+                      anybody is known to have.
+                  unrecordedLines:
+                    description: >-
+                      The unrecorded bookings, latest trip first.
+                      `collectedPaise` is 0 on every one.
+                    type: array
+                    items: { $ref: "#/components/schemas/CashTripLine" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /slots/{id}/offline-sales:
@@ -2877,6 +2997,16 @@ paths:
         applying a 50% tier to somebody whose trip was called off by weather is
         the fastest way to lose a market where every traveller talks to the next
         one at the same guesthouse.
+
+
+        **Refunding in full is not the same as everybody getting their money
+        back.** We refund what was captured online. A traveller who paid you in
+        cash at the counter paid us nothing, so that money is with you and only
+        you can hand it back. The response carries `cashToGiveBack` naming those
+        people and what each is owed, and they stay on
+        `GET /slots/{id}/manifest` under the same key until you record the
+        return with `POST /bookings/{id}/cash-returned`. Do not render "everyone
+        has been refunded" while `cashToGiveBack` is present.
 
 
         `confirmSlotId` must equal the departure's own id. Not a boolean: a
@@ -3142,6 +3272,73 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /slots/confirm-seats:
+    post:
+      tags: [capacity]
+      summary: Confirm the seats on many departures at once
+      operationId: confirmOperatorSeats
+      description: >-
+        Confirms that the seat counts are still right on every open, upcoming,
+        instant-book departure of your business whose seats were set by hand,
+        with a market day from `from` to `to` (both included, at most 31 days),
+        and only on one listing when `experienceId` is given. Seat counts are
+        not changed. It is the same confirmation that saving a seat count with
+        `PATCH /slots/{id}` makes, over a range of dates.
+
+
+        Seats set by hand stop being offered to travellers once nobody has
+        confirmed them for two days. A departure confirmed here goes back on
+        sale straight away, unless something else keeps it off.
+
+
+        Departures made from a weekly schedule are left alone: they are not
+        taken off sale for this reason. Departures that take requests are left
+        alone too.
+
+
+        Safe to send again: confirming twice leaves the departures as
+        confirming once did. OWNER, ADMIN or MANAGER only. A listing belonging
+        to another business answers **404**.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                experienceId:
+                  type: string
+                  format: uuid
+                  description: Only this listing's departures. Omit for every listing.
+                from:
+                  type: string
+                  format: date
+                  description: The first market day, included.
+                to:
+                  type: string
+                  format: date
+                  description: The last market day, included. At most 30 days after `from`.
+      responses:
+        "200":
+          description: How many departures were confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [confirmed]
+                properties:
+                  confirmed:
+                    type: integer
+                    minimum: 0
+                    description: >-
+                      Departures whose seats were confirmed. 0 is a legitimate
+                      answer: nothing in that range needed it.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /slots/{id}/time:
     patch:
       tags: [availability]
@@ -3215,8 +3412,17 @@ paths:
                   bookingsTold:
                     type: integer
                     description: >-
-                      How many bookings were sent the new time. Zero is normal —
-                      an empty departure moves quietly.
+                      How many bookings a message is actually going to. It
+                      counts queued messages, never bookings on the departure:
+                      until 20 September it counted the second, so a move was
+                      reported as told when nothing could carry it. Zero is
+                      normal, because an empty departure moves quietly.
+                  bookingsNotReached:
+                    type: integer
+                    description: >-
+                      How many bookings on the departure nothing could carry the
+                      new time to. Present only when it is more than zero. The
+                      move still happened and their booking page shows it.
                   note:
                     type: string
                     description: >-
@@ -3587,6 +3793,13 @@ paths:
         A cash booking leaves it when its trip is marked complete or a no-show,
         or when it is cancelled or declined. What you owe us on cash you took
         for a trip marked complete is `GET /commission-owed`.
+
+
+        A cash booking whose trip ended more than six hours ago with no cash
+        recorded is not still to run either. It is counted apart in
+        `paidAtCounter.unrecordedBookings`, `unrecordedFarePaise` and
+        `unrecordedLines`: trips that have happened where nothing says whether
+        you were paid, for you to record the cash or mark a no-show.
 
 
         `seasonToDate` is every payout **sent** since `from`. Today a season is
@@ -5277,11 +5490,15 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: >-
-            `already_off_sale` — it is still a draft, so it is not on sale to
-            anybody yet — or `sale_in_progress` — somebody is mid-checkout on
-            this listing. Holds last ten minutes; withdrawing is never urgent,
-            and the alternatives are stranding a payer or killing a sale in
-            flight.
+            `already_off_sale`: it is still a draft, so it is not on sale to
+            anybody yet. `sale_in_progress`: somebody holds unpaid seats on
+            this listing, or a request on it is waiting for your answer.
+            Withdrawing is never urgent, and the alternatives are stranding a
+            payer or killing a sale in flight. A checkout hold lasts ten
+            minutes, but an accepted request holds for up to twelve hours, so
+            the message says until when, and `details` carries `heldUntil` (the
+            last unpaid hold's end, absent when there is none) and
+            `openRequests` (how many requests to accept or decline first).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -5305,6 +5522,30 @@ paths:
         **No playback URL.** An unpublished clip needs a signed, short-lived one,
         and minting per row on a list nobody may be watching hands out
         credentials for footage no moderator has seen.
+
+
+        **Paged.** Newest first, then by id. With no `limit` and no `cursor` this
+        is the 50 newest, as it always was, and `complete` says whether that was
+        all of them. Pass `nextCursor` back as `cursor` for the next page, and
+        stop when there is no `nextCursor`, not when a page comes back short.
+        Home's posters and the profile's Reels grid both pick out of this list,
+        so a client that reads one page loses the oldest items past it, and they
+        can then be neither published nor withdrawn from that screen
+        (yuvoy-api#204).
+      parameters:
+        - name: limit
+          in: query
+          description: >-
+            Items per page. None, or a value that is not a whole number above
+            zero, gets 50. More than 200 gets 200.
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          description: >-
+            A previous response's `nextCursor`. Opaque, so do not construct one.
+            A cursor this list did not issue is a `400`, and the way on is the
+            first page.
+          schema: { type: string }
       responses:
         "200":
           description: Clips belonging to the signed-in operator.
@@ -5312,10 +5553,20 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [items, complete]
                 properties:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/OperatorMedia" }
+                  complete:
+                    type: boolean
+                    description: >-
+                      Told rather than inferred. `true` means nothing comes after
+                      this page; `false` always comes with a `nextCursor`.
+                  nextCursor:
+                    type: string
+                    description: Absent when there is nothing after this page.
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /media/photo-intents:
@@ -6045,6 +6296,18 @@ components:
         refundsPaise: { type: integer }
         netPaise: { type: integer, description: "`grossPaise - commissionPaise - refundsPaise`." }
 
+    CashTripLine:
+      type: object
+      description: One cash booking on the cash screen.
+      required: [bookingReference, tripDate, guests, farePaise, commissionPaise]
+      properties:
+        bookingReference: { type: string }
+        tripDate: { type: string, description: "Market-local YYYY-MM-DD." }
+        guests: { type: integer }
+        farePaise: { type: integer }
+        collectedPaise: { type: integer }
+        commissionPaise: { type: integer }
+
     PaidAtCounter:
       type: object
       description: >-
@@ -6053,7 +6316,14 @@ components:
         declined. Never part of
         a settlement, because the traveller pays you and that money never
         passes through us.
-      required: [bookings, farePaise, commissionPaise, netPaise]
+
+
+        A cash booking you have not recorded the cash for stops being still to
+        run six hours after its departure ends, the same time a trip finishes
+        on its own. From then it is in the `unrecorded` fields instead, and in
+        none of the others.
+      required: [bookings, farePaise, commissionPaise, netPaise, heldBookings, heldCollectedPaise,
+                 unrecordedBookings, unrecordedFarePaise, unrecordedLines]
       properties:
         bookings: { type: integer }
         farePaise:
@@ -6071,6 +6341,40 @@ components:
             What you keep: the cash you recorded taking, or the fare where you
             have not recorded any yet, less `commissionPaise`. Our commission is
             on the fare, so cash you took short of it comes out of what you keep.
+        heldBookings:
+          type: integer
+          description: >-
+            How many of these bookings you have already recorded taking the
+            cash for. The same count `GET /commission-owed` shows as
+            `heldBookings`.
+        heldCollectedPaise:
+          type: integer
+          description: >-
+            The cash you have already recorded taking on these bookings: money
+            in hand for trips still to run. The same figure `GET
+            /commission-owed` shows as `heldCollectedPaise`.
+        unrecordedBookings:
+          type: integer
+          description: >-
+            Cash bookings whose trip has happened and that you never recorded
+            the cash for: the departure ended more than six hours ago and the
+            booking is not cancelled, declined, complete or a no-show. These
+            trips have happened, and nothing here says whether you were paid.
+            Record the cash if you took it, or mark the party a no-show if
+            they did not come. Not in `bookings` or any other figure above.
+            The same count `GET /commission-owed` shows as
+            `unrecordedBookings`.
+        unrecordedFarePaise:
+          type: integer
+          description: >-
+            The fares agreed on the unrecorded bookings. A fare, not cash
+            anybody is known to have: nothing says whether it was paid.
+        unrecordedLines:
+          description: >-
+            The unrecorded bookings, latest trip first. `collectedPaise` is 0
+            on every one, because no cash was recorded.
+          type: array
+          items: { $ref: "#/components/schemas/CashTripLine" }
 
     SeasonToDate:
       type: object
@@ -6205,9 +6509,10 @@ components:
         # standing, because the two are opposite facts for the people on it.
         - departure_called_off
         - departure_past_cutoff
-        # Allotment seats we have not confirmed with you recently are suppressed,
-        # exactly as availability suppresses them. Without a reason for it, such
-        # a departure would show as not on sale with nothing said.
+        # Seats set by hand that nobody has confirmed for two days are not
+        # offered, exactly as availability suppresses them. Confirm them with
+        # PATCH /slots/{id} or POST /slots/confirm-seats. Without a reason for
+        # it, such a departure would show as not on sale with nothing said.
         - departure_seats_unconfirmed
         # Not strictly "not on sale" — it sold out, which is the good outcome —
         # but the screen has to say so rather than show an unexplained gap.
@@ -6797,6 +7102,51 @@ components:
             `ListingEdit`.
           examples: ["diving_rstc"]
         upcomingDepartures: { type: integer }
+        departuresNotOnSale:
+          type: integer
+          minimum: 0
+          description: >-
+            Upcoming departures of this listing that are off sale only because
+            nobody has confirmed their seats: seats set by hand on an instant-book
+            departure stop being offered once nobody has confirmed them for two
+            days. The same departures `GET /slots` reports with
+            `notOnSaleReason: departure_seats_unconfirmed`. Always present, 0
+            when none. Add them up across listings for Home, and confirm them
+            with `POST /slots/confirm-seats`.
+        departuresGoingOffSaleSoon:
+          type: integer
+          minimum: 0
+          description: >-
+            Upcoming departures of this listing that are on sale now and will go
+            off sale within 24 hours for the same reason, unless somebody
+            confirms their seats. Always present, 0 when none.
+        bookableDatesNext30Days:
+          type: integer
+          minimum: 0
+          description: >-
+            How many market days, from the market's today through the 29 days
+            after it, a traveller could book this listing on right now: days
+            with at least one departure that is open, before its booking
+            cutoff, not held off sale for unconfirmed seats, with seats left
+            when it is instant-book, and on a listing and business that are
+            selling. These are the rules the traveller app's dated feed and
+            checkout apply, and the ones
+            `GET /v1/experiences/{slug}/availability` applies to the departures
+            it returns. Always present, and 0 for a draft, an unpriced listing
+            or one whose business is not selling.
+
+
+            A `published` listing reading 0 is on the traveller app and sells
+            nothing. Show it as "Live, but no dates in the next 30 days" and
+            point at adding departures, on the listing row and on Home.
+
+
+            30 is a warning window, not the traveller's calendar. The traveller
+            app's calendar asks for 90 days, which is the most that read
+            accepts, so a listing whose first date is 31 to 90 days out still
+            reads 0 here while a traveller can book it. `upcomingDepartures`
+            counts every open departure still to come, whether it sells or not.
+          examples: [0, 12]
         publishBlockers:
           type: array
           items: { type: string }
@@ -7066,10 +7416,12 @@ components:
                 # selling" and "we cannot read this" need different things from
                 # the person holding the phone.
                 - not_withdrawn
-                # Somebody is mid-checkout on this listing. Withdrawing now would
-                # strand them at the payment step and releasing their hold would
-                # kill a legitimate sale, so the answer is to wait — holds are
-                # ten minutes, and withdrawing is never urgent.
+                # Somebody holds unpaid seats on this listing, or a request on it
+                # waits for an answer. Withdrawing now would strand them at the
+                # payment step and releasing their hold would kill a legitimate
+                # sale, so the answer is to wait. A checkout hold is ten minutes
+                # and an accepted request's is up to twelve hours, so the
+                # message says until when.
                 - sale_in_progress
                 # POST /media/{id}/publish. A listing shows one hero and 0058
                 # made the database say so; before that a second hero was
@@ -7227,7 +7579,27 @@ components:
         intent: { type: string }
         recipients:
           type: integer
-          description: How many people were actually told.
+          description: >-
+            How many people a message is actually going to. It counts queued
+            messages, never bookings: a person we hold no reachable address for
+            is not somebody who was told, and until 20 September this number
+            said they were.
+        byChannel:
+          type: object
+          additionalProperties: { type: integer }
+          description: >-
+            The same number split by channel, for example `{"email": 3}`. A
+            message goes on exactly one channel per person: WhatsApp when this
+            deployment can send it, otherwise the address on file.
+        notReached:
+          type: integer
+          description: >-
+            How many people on this departure nothing could carry the message
+            to. Present only when it is more than zero. Their booking page
+            still shows the update.
+        notReachedNote:
+          type: string
+          description: Present with `notReached`, and safe to show the operator verbatim.
 
     BookingMessage:
       type: object
@@ -7375,6 +7747,23 @@ components:
             Seats still grantable on this departure before its physical
             capacity is reached. Shown beside the request because "accept" with
             no sense of what is left is a decision made blind.
+
+
+            **Counter sales count as seats used.** A seat you sold at your own
+            counter has a person in it, so it lowers this number by one. A
+            six-seat departure with two sold at the counter offers 4. It used to
+            offer 8, because the arithmetic added the counter sale instead of
+            subtracting it, and accepting then failed with a 500: the database
+            refused the oversell the number had invited.
+
+
+            **Never more than an accept will allow.** The same expression the
+            accept refuses on, so a party this number says you have room for is
+            one `POST /requests/{id}/accept` will say yes to. `0` means the
+            departure is full, counting what you sold at the counter. If that
+            count is wrong, correcting it on the counter sales screen is what
+            raises this number again.
+          example: 4
         minutesToAnswer:
           type: integer
           description: Never negative. Computed server-side so every client agrees.
@@ -7392,7 +7781,33 @@ components:
           nullable: true
           description: >-
             Set on acceptance: the traveller now holds seats with a clock on
-            them, and must pay before it lapses. Null on a decline.
+            them, and must pay before it lapses. Twelve hours from the accept,
+            or the departure's booking cutoff if that is sooner, so it can fall
+            on the next day. Null on a decline.
+        toldBy:
+          type: array
+          items:
+            type: string
+            enum: [whatsapp, email]
+          description: >-
+            Accept only. The channels the traveller's message was queued on,
+            WhatsApp before email. Queued, not yet delivered: it leaves once the
+            accept is saved. **Empty when nothing could carry it**, for example
+            a traveller who left only a WhatsApp number on a deployment that
+            cannot send WhatsApp. They then do not know their request was
+            accepted, and the operator is the only one who can tell them.
+          example: [email]
+        receipt:
+          type: string
+          description: >-
+            Accept only. What to show the operator, as it is. Says how many
+            seats the traveller holds, how they are being told or that nobody
+            could reach them, and when the seats come back, in the departure's
+            market time.
+          example: >-
+            They are holding 3 seats and still have to pay. We are letting them
+            know by email. If they have not paid by 14:41, the seats come back
+            to you.
 
     ListingQuestion:
       type: object
@@ -7568,8 +7983,29 @@ components:
           description: Present only when the departure is off.
           properties:
             reasonCode: { type: string }
+        cashToGiveBack:
+          allOf:
+            - $ref: "#/components/schemas/CashToGiveBack"
+          description: >-
+            **Cancelled parties who are owed cash you took.** They are NOT in
+            `parties` and never will be: `parties` is who is on the boat, and
+            somebody cancelled is not. A called-off departure empties `parties`
+            entirely, so without this list there was no screen left naming the
+            money at all.
+
+
+            Read it after calling a departure off, and read it again whenever
+            the manifest is opened: a party stays here until the return is
+            recorded with `POST /bookings/{id}/cash-returned`.
+
+
+            Not in the CSV, which is the boat's list for a clipboard.
         parties:
           type: array
+          description: >-
+            Who is on the boat: bookings still on, and live holds. Cancelled
+            parties are deliberately absent; where they are owed money, they are
+            in `cashToGiveBack`.
           items:
             type: object
             properties:
@@ -7601,6 +8037,21 @@ components:
                   never ask about health, which stays with `screening`. Answers
                   are deleted 90 days after the trip, as `PartyQuestion`
                   describes.
+              cash:
+                allOf: [{ $ref: "#/components/schemas/CounterCash" }]
+                description: >-
+                  **Present only when this party pays you at the counter**, the
+                  same object `GET /bookings` sends on the same booking. Absent
+                  on a party that paid online and on a hold.
+
+
+                  The manifest is every party on the departure, so a party with
+                  a `bookingId` and no `cash` has paid and owes you nothing; it
+                  is not a party the check could not read. That is what lets
+                  the manifest say who still owes cash without a second read of
+                  `GET /bookings`, which is one page at a time and used to cut
+                  a busy day short (yuvoy-api#204). What is still to take from
+                  a party is `collectPaise` while `collected` is `false`.
         totals:
           type: object
           description: >-
@@ -7613,6 +8064,56 @@ components:
             arrived: { type: integer }
             seatsSold: { type: integer }
             seatsSoldOffline: { type: integer }
+
+    CounterCash:
+      type: object
+      description: >-
+        **Present only when the traveller is paying you at the counter.**
+        Absent means they have already paid us and you collect nothing.
+
+
+        Without this you cannot tell a cash booking from a card one, and
+        `paid_pending_ops` reads as "payment clearing", which on a cash
+        booking is the opposite of the truth. Nothing is clearing. You are
+        the one who has to collect, and the booking is not settled until
+        you record it.
+
+
+        `collected: false` is the ACTIONABLE state: it is what puts this
+        booking on somebody's list for the morning. Record it with
+        `POST /bookings/{id}/cash-collected`.
+
+
+        Note `collectPaise` is the FARE and is not the same number as
+        `money.grossPaise`, which is what WE captured: zero here, for the
+        whole life of the booking, because the money never passes through
+        us.
+      required: [collectPaise, collected]
+      properties:
+        collectPaise:
+          type: integer
+          description: What to take from them, in INR paise.
+        collected:
+          type: boolean
+          description: Whether you have recorded taking it.
+        collectedAt: { type: string, format: date-time }
+        collectedPaise:
+          type: integer
+          description: >-
+            What you reported taking, which may be less than the fare if you
+            gave them something off.
+        returnedAt:
+          type: string
+          format: date-time
+          description: >-
+            When you recorded giving this cash back, on a booking cancelled
+            after you took it, with `POST /bookings/{id}/cash-returned`.
+            Absent until then.
+        returnedPaise:
+          type: integer
+          description: >-
+            What you recorded giving back, which is all of `collectedPaise`.
+            Present with `returnedAt`.
 
     OfflineSaleResult:
       type: object
@@ -7633,6 +8134,71 @@ components:
             message: { type: string }
             incidentId: { type: string }
 
+    CashToGiveBack:
+      type: object
+      description: >-
+        **Money you are holding that is not yours.** These travellers paid you
+        in cash at the counter and paid us nothing online, so there is nothing
+        for us to refund and nothing will reach them from our side. Hand it
+        back, then record it with `POST /bookings/{id}/cash-returned`, which is
+        what takes a party off this list.
+
+
+        Present only when there is somebody on it. A departure called off with
+        nobody owed cash carries no `cashToGiveBack` at all, so a screen has
+        nothing to render on an ordinary day.
+
+
+        This exists because a call-off used to report `refundedPaise` and
+        nothing else. `refundedPaise` covers what was captured online, which on
+        a cash booking is zero, so the portal told the operator everybody had
+        been refunded in full while the operator still had their notes, and the
+        cancelled parties then dropped off the manifest with nothing naming the
+        money anywhere.
+      required: [totalPaise, parties]
+      properties:
+        totalPaise:
+          type: integer
+          format: int64
+          description: What the lines below add up to. Never zero when present.
+        parties:
+          type: array
+          description: One line per cancelled booking whose cash you took.
+          items:
+            type: object
+            required: [bookingId, reference, guests, amountPaise]
+            properties:
+              bookingId: { type: string }
+              reference:
+                type: string
+                description: The booking reference, which is what the traveller will show you.
+              name:
+                type: string
+                description: >-
+                  A FIRST NAME and nothing else, so you know who to call over
+                  (D-018). Empty when the booking carries no contact name.
+              guests: { type: integer }
+              amountPaise:
+                type: integer
+                format: int64
+                description: >-
+                  What you recorded taking, in paise, which is what you owe
+                  back. Whole: no partial return is recorded anywhere.
+        note:
+          type: string
+          description: The same thing in a sentence, safe to show an operator as written.
+      example:
+        totalPaise: 10000
+        parties:
+          - bookingId: "0d0f3a2c-1d61-4b0e-9f3f-2a2f1c7b9e10"
+            reference: "YV-GQZS05HM"
+            name: "Meera"
+            guests: 2
+            amountPaise: 10000
+        note: >-
+          You are holding this money. These travellers paid you in cash and
+          nothing was paid online, so we refund nothing: hand it back to them.
+
     CallOffResult:
       type: object
       properties:
@@ -7640,8 +8206,21 @@ components:
         reasonCode: { type: string }
         bookingsCancelled: { type: integer }
         guestsAffected: { type: integer }
-        refundedPaise: { type: integer, format: int64 }
+        refundedPaise:
+          type: integer
+          format: int64
+          description: >-
+            What we queued back, which is everything captured ONLINE. A booking
+            to be paid in cash captured nothing, so it adds nothing here. This
+            number is not the whole story on its own: read `cashToGiveBack`
+            beside it before telling anybody they have been paid back.
         holdsReleased: { type: integer }
+        cashToGiveBack:
+          allOf:
+            - $ref: "#/components/schemas/CashToGiveBack"
+          description: >-
+            **Present when travellers on this departure paid you in cash you
+            still hold.** Absent when there is none, which is the ordinary case.
 
     BookingCancelResult:
       type: object
@@ -7670,6 +8249,12 @@ components:
             cash.** We refund nothing on it because we took nothing, so this is
             money you hold that belongs to the traveller. Once you have given it
             back, record that with `POST /bookings/{id}/cash-returned`.
+
+
+            One booking, so it is a number rather than a list. Calling a whole
+            departure off can leave several people owed, and that answer carries
+            `cashToGiveBack` with a line each instead.
+          example: 10000
         note:
           type: string
           description: Present with `cashToGiveBackPaise`, saying the same thing in words.
@@ -7755,6 +8340,9 @@ components:
         - settlement_summary
         # A document we require of the business expires within 30 days.
         - document_expiry
+        # Once a day, departures off sale, or going off sale within a day,
+        # because nobody confirmed their seats.
+        - seat_confirmations
 
     NotificationSwitchChanges:
       type: object
@@ -8037,55 +8625,7 @@ components:
           properties:
             name: { type: string }
         createdAt: { type: string, format: date-time }
-        cash:
-          type: object
-          description: >-
-            **Present only when the traveller is paying you at the counter.**
-            Absent means they have already paid us and you collect nothing.
-
-
-            Without this you cannot tell a cash booking from a card one, and
-            `paid_pending_ops` reads as "payment clearing" — which on a cash
-            booking is the opposite of the truth. Nothing is clearing. You are
-            the one who has to collect, and the booking is not settled until
-            you record it.
-
-
-            `collected: false` is the ACTIONABLE state — it is what puts this
-            booking on somebody's list for the morning. Record it with
-            `POST /bookings/{id}/cash-collected`.
-
-
-            Note `collectPaise` is the FARE and is not the same number as
-            `money.grossPaise`, which is what WE captured — zero here, for the
-            whole life of the booking, because the money never passes through
-            us.
-          required: [collectPaise, collected]
-          properties:
-            collectPaise:
-              type: integer
-              description: What to take from them, in INR paise.
-            collected:
-              type: boolean
-              description: Whether you have recorded taking it.
-            collectedAt: { type: string, format: date-time }
-            collectedPaise:
-              type: integer
-              description: >-
-                What you reported taking, which may be less than the fare if you
-                gave them something off.
-            returnedAt:
-              type: string
-              format: date-time
-              description: >-
-                When you recorded giving this cash back, on a booking cancelled
-                after you took it, with `POST /bookings/{id}/cash-returned`.
-                Absent until then.
-            returnedPaise:
-              type: integer
-              description: >-
-                What you recorded giving back, which is all of `collectedPaise`.
-                Present with `returnedAt`.
+        cash: { $ref: "#/components/schemas/CounterCash" }
         money:
           type: object
           description: >-
