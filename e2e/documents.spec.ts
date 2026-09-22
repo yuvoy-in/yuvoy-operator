@@ -390,6 +390,7 @@ test("every role sees every switch, and what each one covers", async ({
     "New bookings",
     "Guest cancellations",
     "Today's departures",
+    "Seats to confirm",
     "Payout sent",
     "Documents running out",
   ]) {
@@ -407,6 +408,44 @@ test("every role sees every switch, and what each one covers", async ({
     somebody will be told.
   */
   await expect(page.getByText(/Some messages have no switch/)).toBeVisible();
+});
+
+test("seat confirmations has its own switch, on by default, where the API puts it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#94 item 3. `NotificationGroup` gained `seat_confirmations`:
+    once a day, the departures off sale, or going off sale within a day,
+    because nobody confirmed their seats. The row is the API's words, drawn
+    the same way as the other switches, and it is on until somebody turns it
+    off. Read only: the toggling tests below own the switches they change.
+  */
+  await signIn(page);
+  await page.goto("/notifications");
+
+  const row = page.locator("li").filter({ hasText: "Seats to confirm" });
+  await expect(
+    row.getByText(/Once a day, the departures that are off sale/),
+  ).toBeVisible();
+  await expect(row.getByRole("checkbox")).toBeChecked();
+
+  // After the day's work and before money, as the API orders them.
+  const labels = await page
+    .locator("li")
+    .filter({ has: page.getByRole("checkbox") })
+    .allInnerTexts();
+  const at = (text: string) => labels.findIndex((l) => l.includes(text));
+  expect(at("Seats to confirm")).toBeGreaterThan(at("Today's departures"));
+  expect(at("Seats to confirm")).toBeLessThan(at("Payout sent"));
+
+  // And on somebody else's screen, which draws the same list.
+  await page.goto(`/team/${STAFF_ID}/notifications`);
+  await expect(
+    page
+      .locator("li")
+      .filter({ hasText: "Seats to confirm" })
+      .getByRole("checkbox"),
+  ).toBeVisible();
 });
 
 test("turning a switch off survives a reload", async ({ page }, testInfo) => {

@@ -1475,7 +1475,8 @@ function accountWithFiles<T extends { credentials: readonly unknown[] }>(
 }
 
 /**
- * The five switches, as the API declares them — yuvoy-operator#46 item 5.
+ * The six switches, as the API declares them: yuvoy-operator#46 item 5, and
+ * `seat_confirmations` since yuvoy-api e7291e3 (yuvoy-operator#94 item 3).
  *
  * `label` and `description` are the API's words, and the descriptions say who
  * each kind of message goes to. That is load-bearing rather than decorative:
@@ -1499,6 +1500,17 @@ const SWITCHES = [
     group: "todays_departures",
     label: "Today's departures",
     description: "The 06:00 summary of the day's booked departures.",
+  },
+  /*
+    The API's own label, description and place (after the day's work, before
+    money), from `noticeGroupWording` at e7291e3. On by default like every
+    switch: nobody has turned it off.
+  */
+  {
+    group: "seat_confirmations",
+    label: "Seats to confirm",
+    description:
+      "Once a day, the departures that are off sale, or will be within a day, because nobody has confirmed their seats. Sent to the owner, admins and managers.",
   },
   {
     group: "settlement_summary",
