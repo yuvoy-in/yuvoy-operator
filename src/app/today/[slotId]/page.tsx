@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 import { readSessionToken, requireOperator } from "@/lib/auth/session";
 import { getManifest } from "@/lib/day/manifest";
 import { orderParties, isHolding, type PartyForClient } from "@/lib/day/types";
-import type { BookingCash } from "@/lib/money/bookings";
-import { cashForDeparture } from "@/lib/money/fetch";
+import { toBookingCash, type BookingCash } from "@/lib/money/bookings";
+import { toGiveBack } from "@/lib/money/give-back";
+import { formatPaise } from "@/lib/format/money";
+import { CashBack } from "@/app/bookings/cash-back";
 import { screeningSignal, screeningSummary } from "@/lib/day/screening";
 import { OperatorApiError } from "@/lib/api/errors";
 import {
@@ -19,7 +21,7 @@ import { RelayPanel } from "./relay-panel";
 import { CallOffPanel } from "./call-off-panel";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
-import { Panel } from "@/components/ui/panel";
+import { Panel, panelClass } from "@/components/ui/panel";
 
 /**
  * The departure, not the word "Manifest" — yuvoy-operator#21.
@@ -141,34 +143,31 @@ export default async function ManifestPage({
   const holdRows = rows.filter((r) => isHolding(r.party));
 
   /*
-    CASH AT THE COUNTER — yuvoy-operator#40 §1.
+    CASH AT THE COUNTER — yuvoy-operator#40 §1, read off the manifest itself
+    since yuvoy-api#204 (op#95 item 2).
 
-    The manifest carries no cash; `GET /bookings` does. So this is one read for
-    the whole departure, joined by booking id, and only when there is a booking
-    to join — a departure of holds, or one called off, asks nothing.
+    Each party carries `cash` exactly when it pays at the counter, the same
+    object `GET /bookings` sends: "a party with a `bookingId` and no `cash` has
+    paid and owes you nothing; it is not a party the check could not read."
 
-    Three answers per party, and the third is kept apart on purpose: paying at
-    the counter (`BookingCash`), not (`null` — paid online, or a hold), and
-    COULD NOT TELL (`undefined` — the read failed, or it did not return that
-    booking). Could-not-tell is said above the list rather than drawn as
-    nothing to collect, because the failure that way is somebody waved onto a
-    boat still owing ₹10,000.
+    This used to be a second read, `GET /bookings` for the departure's day,
+    joined by booking id. One page of it: past 100 bookings some parties came
+    back unread and the screen said "We could not check whether 3 bookings here
+    owe cash". Now the list and the cash come in one response and cannot
+    disagree, and could-not-tell is left to the one case it is true, the
+    manifest not loading at all, which is the error page. Checked live before
+    switching: the deployed API is the release that carries it (e7291e3).
   */
-  const bookedRows = rows.filter(({ party }) => Boolean(party.bookingId));
-  const cashByBooking =
-    startsAt && bookedRows.length > 0 && !manifest.calledOff
-      ? await cashForDeparture(token, startsAt, timezone)
-      : null;
-  const cashOf = (party: PartyForClient): BookingCash | null | undefined => {
-    if (!party.bookingId) return null;
-    if (!cashByBooking) return undefined;
-    return cashByBooking.has(party.bookingId)
-      ? (cashByBooking.get(party.bookingId) ?? null)
-      : undefined;
-  };
-  const unchecked = manifest.calledOff
-    ? 0
-    : bookedRows.filter(({ party }) => cashOf(party) === undefined).length;
+  const cashOf = (party: PartyForClient): BookingCash | null =>
+    party.bookingId ? (toBookingCash(party.cash) ?? null) : null;
+
+  /*
+    Cancelled parties whose cash is still in the till. They are NOT in
+    `parties` ("`parties` is who is on the boat, and somebody cancelled is
+    not"), and a called-off departure empties `parties` entirely, so without
+    this the manifest named nobody the money belonged to (op#95).
+  */
+  const giveBack = toGiveBack(manifest.cashToGiveBack);
 
   // Read once, in the async work, and passed down. A clock read during render
   // is impure and the React compiler refuses it — and a "has it departed yet"
@@ -195,14 +194,87 @@ export default async function ManifestPage({
         <p className="text-forest/80 mt-3 text-base">{manifest.meetingPoint}</p>
       ) : null}
 
-      {/* The departure is off. Nothing else on the page matters as much. */}
+      {/*
+        The departure is off. Nothing else on the page matters as much.
+
+        It said "Everybody on it has been told and refunded in full", which was
+        false twice: the call-off refunds what was paid ONLINE, so a traveller
+        who paid at the counter got nothing back from us, and a message counts
+        only the people we could reach. What is true is what the call-off did.
+      */}
       {manifest.calledOff ? (
         <div className="mt-6">
           <Problem
             title="This departure is called off"
-            body="Everybody on it has been told and refunded in full. Nothing below needs marking."
+            body="Every booking on it is cancelled, and everything paid online goes back in full."
           />
         </div>
+      ) : null}
+
+      {/*
+        Money the business is holding that is not theirs, above everything
+        else below it: each party stays here until the return is recorded.
+      */}
+      {giveBack ? (
+        <section className="mt-6" aria-labelledby="give-back">
+          <div className={panelClass("alert")}>
+            <h2 id="give-back" className="text-base font-bold">
+              You are holding {formatPaise(giveBack.totalPaise)} that is not
+              yours
+            </h2>
+            <p className="text-forest/80 mt-2 text-sm">
+              {giveBack.parties.length === 1
+                ? "This traveller paid you in cash, so nothing of theirs reached us to refund. Hand it back, then record it here."
+                : "These travellers paid you in cash, so nothing of theirs reached us to refund. Hand it back, then record each one here."}
+            </p>
+            <ul className="mt-4 space-y-3">
+              {giveBack.parties.map((party) => (
+                <li
+                  key={party.bookingId}
+                  className="border-paper-line border-t pt-3"
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="font-mono text-base font-bold">
+                      {party.reference || "-"}
+                    </p>
+                    <p className="shrink-0 text-base font-bold tabular-nums">
+                      {formatPaise(party.amountPaise)}
+                    </p>
+                  </div>
+                  <p className="text-forest/70 mt-1 text-sm">
+                    {[
+                      party.name,
+                      party.guests === 1
+                        ? "1 guest"
+                        : party.guests > 1
+                          ? `${party.guests} guests`
+                          : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  {/*
+                    OWNER, ADMIN or MANAGER: "STAFF cannot record giving the
+                    cash back". A staff login is told who can, rather than
+                    shown a control the API will refuse.
+                  */}
+                  {me.canManage ? (
+                    <CashBack
+                      bookingId={party.bookingId}
+                      amountPaise={party.amountPaise}
+                      refreshLabel="Update the list"
+                    />
+                  ) : (
+                    <p className="text-forest/70 mt-2 text-sm">
+                      An owner, an admin or a manager records it once it is
+                      handed back.
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
       ) : null}
 
       {/*
@@ -212,12 +284,14 @@ export default async function ManifestPage({
         them together to get a head count is the mistake this layout avoids
         by never putting them beside each other as one number.
       */}
-      <dl className="mt-8 grid grid-cols-3 gap-3">
-        <Total label="Parties" value={totals.parties} />
-        <Total label="Guests" value={totals.guests} />
-        <Total label="Here" value={totals.arrived} />
-      </dl>
-      {totals.seatsSoldOffline ? (
+      {manifest.calledOff ? null : (
+        <dl className="mt-8 grid grid-cols-3 gap-3">
+          <Total label="Parties" value={totals.parties} />
+          <Total label="Guests" value={totals.guests} />
+          <Total label="Here" value={totals.arrived} />
+        </dl>
+      )}
+      {!manifest.calledOff && totals.seatsSoldOffline ? (
         <p className="text-forest/70 mt-3 text-sm">
           {totals.seatsSoldOffline} more seat
           {totals.seatsSoldOffline === 1 ? "" : "s"} sold at your own counter.
@@ -283,49 +357,41 @@ export default async function ManifestPage({
         </section>
       ) : null}
 
-      {unchecked > 0 ? (
-        <div className="mt-8">
-          <Problem
-            title={
-              unchecked === bookedRows.length
-                ? "We could not check who owes cash at the counter"
-                : unchecked === 1
-                  ? "We could not check whether one booking here owes cash"
-                  : `We could not check whether ${unchecked} bookings here owe cash`
-            }
-            body="Anybody paying you at the counter still has to hand it over. Each booking's own page says how it is paid. Open it from Bookings before they board."
-          />
-        </div>
-      ) : null}
-
-      <section className="mt-10" aria-labelledby="confirmed">
-        <h2 id="confirmed" className="label text-forest/75">
-          Coming
-        </h2>
-        {confirmedRows.length === 0 ? (
-          <div className="mt-3">
-            <Empty
-              title="Nobody booked yet"
-              body="When somebody books this departure they appear here, with the reference they will read out to you."
-            />
-          </div>
-        ) : (
-          <ul className="mt-3 space-y-3">
-            {confirmedRows.map(({ party, signal }) => (
-              <PartyRow
-                key={party.bookingId}
-                party={party}
-                slotId={slotId}
-                departed={departed}
-                screening={signal}
-                cash={cashOf(party)}
-                timezone={timezone}
-                canManage={me.canManage}
+      {/*
+        A called-off departure has nobody on it: the API empties `parties`,
+        and "Nobody booked yet" under it would read as a departure nobody
+        wanted rather than one that was called off.
+      */}
+      {manifest.calledOff ? null : (
+        <section className="mt-10" aria-labelledby="confirmed">
+          <h2 id="confirmed" className="label text-forest/75">
+            Coming
+          </h2>
+          {confirmedRows.length === 0 ? (
+            <div className="mt-3">
+              <Empty
+                title="Nobody booked yet"
+                body="When somebody books this departure they appear here, with the reference they will read out to you."
               />
-            ))}
-          </ul>
-        )}
-      </section>
+            </div>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {confirmedRows.map(({ party, signal }) => (
+                <PartyRow
+                  key={party.bookingId}
+                  party={party}
+                  slotId={slotId}
+                  departed={departed}
+                  screening={signal}
+                  cash={cashOf(party)}
+                  timezone={timezone}
+                  canManage={me.canManage}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/*
         Holds are on the manifest deliberately: "a party mid-checkout at

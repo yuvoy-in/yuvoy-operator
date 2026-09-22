@@ -146,6 +146,12 @@ export interface DepartureState {
   message?: string;
   note?: string;
   done?: boolean;
+  /**
+   * Bookings on a moved departure that nothing could carry the new time to
+   * (op#89). Present only when above zero. The move still happened and their
+   * booking page shows it; the operator is the only one who can tell them.
+   */
+  notReached?: number;
 }
 
 /**
@@ -180,9 +186,24 @@ export async function moveDeparture(
     });
     if (error) throw error;
 
+    /*
+      `bookingsTold` counts messages actually queued since yuvoy-api#200, and
+      `bookingsNotReached` is the rest: "present only when it is more than
+      zero". Read as optional, so an older API reads as everybody reached,
+      which is what it used to claim.
+    */
+    const notReached =
+      Number.isInteger(data.bookingsNotReached) &&
+      (data.bookingsNotReached ?? 0) > 0
+        ? (data.bookingsNotReached as number)
+        : 0;
     revalidatePath("/today");
     revalidatePath("/calendar");
-    return { done: true, ...(data.note ? { note: dedash(data.note) } : {}) };
+    return {
+      done: true,
+      ...(data.note ? { note: dedash(data.note) } : {}),
+      ...(notReached > 0 ? { notReached } : {}),
+    };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was moved." };

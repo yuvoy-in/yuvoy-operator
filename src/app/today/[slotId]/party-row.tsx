@@ -58,9 +58,12 @@ export function PartyRow({
    *
    *   `BookingCash`  paying at the counter: the fare, and whether it is taken
    *   `null`         not a cash booking — paid online, or a hold
-   *   `undefined`    could not tell; the page says so above the list
+   *
+   * There is no third "could not tell" any more. It existed for a second read
+   * that could miss a booking; the manifest carries each party's cash itself
+   * since yuvoy-api#204 (op#95).
    */
-  cash: BookingCash | null | undefined;
+  cash: BookingCash | null;
   /** The departure's own zone, for when the cash was taken. */
   timezone: string;
   /**

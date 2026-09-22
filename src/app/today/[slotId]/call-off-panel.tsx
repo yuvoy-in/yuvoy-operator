@@ -13,8 +13,10 @@ import { panelClass } from "@/components/ui/panel";
  *
  * The founding use case of the whole product — a storm handled from a phone —
  * and the only action in the portal that cannot be undone. It cancels the
- * departure, cancels every booking on it, refunds all of them **in full**,
- * releases the holds and tells everybody, in one transaction.
+ * departure, cancels every booking on it, refunds everything paid online **in
+ * full**, releases the holds and messages everyone booked, in one
+ * transaction. Cash taken at the counter is not refunded by anybody but the
+ * operator, and both the confirmation and the receipt say so (op#95).
  *
  * Two things about the design are not decoration:
  *
@@ -51,8 +53,14 @@ export function CallOffPanel({
           than repeating the state.
         */}
         <h2 className="text-base font-bold">What that did</h2>
+        {/*
+          It said "Everybody has been told and refunded in full". Neither half
+          is the call-off's to promise: the refund is everything paid ONLINE,
+          and a traveller who paid at the counter gets nothing back from us.
+        */}
         <p className="text-forest/80 mt-2 text-sm">
-          Everybody has been told and refunded in full.
+          Every booking on it is cancelled, and everything paid online goes back
+          in full.
         </p>
         <dl className="border-paper-line mt-4 grid grid-cols-2 gap-4 border-t pt-4">
           <Figure
@@ -60,9 +68,26 @@ export function CallOffPanel({
             value={String(r.bookingsCancelled)}
           />
           <Figure label="Guests affected" value={String(r.guestsAffected)} />
-          <Figure label="Refunded" value={formatPaise(r.refundedPaise)} />
+          <Figure
+            label="Refunded online"
+            value={formatPaise(r.refundedPaise)}
+          />
           <Figure label="Holds released" value={String(r.holdsReleased)} />
         </dl>
+        {r.giveBack ? (
+          <div className="border-paper-line mt-4 border-t pt-4">
+            <p className="text-terra-deep text-base font-bold">
+              You are holding {formatPaise(r.giveBack.totalPaise)} in cash
+            </p>
+            <p className="text-forest/80 mt-1.5 text-sm">
+              {r.giveBack.parties.length === 1
+                ? "1 party paid you at the counter, so nothing of theirs reached us to refund."
+                : `${r.giveBack.parties.length} parties paid you at the counter, so nothing of theirs reached us to refund.`}{" "}
+              Hand it back, then record it on the list at the top of this
+              departure.
+            </p>
+          </div>
+        ) : null}
       </section>
     );
   }
@@ -95,9 +120,16 @@ export function CallOffPanel({
   return (
     <form action={act} className={panelClass("alert", "bg-paper mt-10")}>
       <h2 className="text-base font-bold">Call off this departure</h2>
+      {/*
+        The whole consequence, named before the tap (op#81 t5), including the
+        part the call-off does not do: cash taken at the counter goes back
+        from the operator's hand, not from us.
+      */}
       <p className="text-forest/80 mt-2 text-sm">
-        Everybody on it is cancelled and refunded <strong>in full</strong>, the
-        holds are released, and everybody is told. This cannot be undone.
+        Every booking on it is cancelled and everything paid online is refunded{" "}
+        <strong>in full</strong>. Holds are released and we message everyone
+        booked. Anyone who paid you in cash gets it back from you. This cannot
+        be undone.
       </p>
 
       <input type="hidden" name="slotId" value={slotId} />

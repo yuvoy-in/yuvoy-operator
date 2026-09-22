@@ -173,3 +173,91 @@ export const CALL_OFF_REASONS = [
 ] as const;
 
 export type CallOffReason = (typeof CALL_OFF_REASONS)[number]["code"];
+
+/* ------------------------------------------------------------ receipts -- */
+
+/**
+ * How a channel is said in a sentence. Only the channels the contract's
+ * `RequestAnswer.toldBy` names, plus nothing: an unknown channel is left out
+ * of the sentence rather than guessed at.
+ */
+const CHANNEL_WORDS: Record<string, string> = {
+  whatsapp: "on WhatsApp",
+  email: "by email",
+};
+
+/** What a relay came back with, as the receipt reads it. */
+export interface RelayOutcome {
+  intent?: string;
+  /** People a message is actually going to. Never bookings (yuvoy-api#200). */
+  recipients: number;
+  /** The same number by channel, e.g. `{ email: 3 }`. */
+  byChannel?: Record<string, number>;
+}
+
+/**
+ * The receipt's headline: who was told, and how (yuvoy-operator#89).
+ *
+ * `recipients` counts queued messages since 20 September, "never bookings: a
+ * person we hold no reachable address for is not somebody who was told, and
+ * until 20 September this number said they were". So it is the number to say,
+ * and the channel says what an operator would otherwise have to assume: with
+ * no WhatsApp sender today, "told" means "emailed".
+ *
+ * A note's words never reach a phone, and its count is people messaged about
+ * it rather than bookings it was left on, so a note's headline carries no
+ * number rather than the wrong one.
+ */
+export function relayHeadline(
+  outcome: RelayOutcome,
+  scope: "booking" | "departure",
+): string {
+  if (outcome.intent === "note") {
+    return scope === "booking"
+      ? "Note left on their booking page"
+      : "Note left on their booking pages";
+  }
+  const n = outcome.recipients;
+  if (n <= 0) return "Nobody was told";
+  return `Told ${n} ${n === 1 ? "person" : "people"}${channelPhrase(outcome)}`;
+}
+
+/**
+ * " by email", or ": 2 on WhatsApp, 1 by email", or "" when the split is
+ * absent, unknown, or does not add up to the headline's number: a sentence
+ * whose parts disagree with its total is worse than no split at all.
+ */
+function channelPhrase(outcome: RelayOutcome): string {
+  const entries = Object.entries(outcome.byChannel ?? {}).filter(
+    ([channel, count]) =>
+      CHANNEL_WORDS[channel] !== undefined &&
+      Number.isInteger(count) &&
+      count > 0,
+  );
+  const total = entries.reduce((sum, [, count]) => sum + count, 0);
+  if (entries.length === 0 || total !== outcome.recipients) return "";
+  if (entries.length === 1) return ` ${CHANNEL_WORDS[entries[0][0]]}`;
+  return `: ${entries
+    .map(([channel, count]) => `${count} ${CHANNEL_WORDS[channel]}`)
+    .join(", ")}`;
+}
+
+/**
+ * The sentence for people nothing could reach, or null when there are none.
+ *
+ * The API's own `notReachedNote` is preferred, "safe to show the operator
+ * verbatim". Ours is the fallback for a response that carries the count and
+ * not the sentence. Either way the operator learns the one thing that changes
+ * what they do: those people have not heard, and only the operator can tell
+ * them some other way.
+ */
+export function notReachedSentence(
+  notReached: number | undefined,
+  apiNote: string | undefined,
+): string | null {
+  if (!notReached || notReached <= 0) return null;
+  if (apiNote && apiNote.trim()) return apiNote.trim();
+  return notReached === 1
+    ? "1 person could not be sent this: we hold no way to reach them. Their booking page shows it."
+    : `${notReached} people could not be sent this: we hold no way to reach them. Their booking pages show it.`;
+}

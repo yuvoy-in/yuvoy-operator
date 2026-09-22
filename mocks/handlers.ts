@@ -2142,6 +2142,14 @@ function bookingStateOf(p: MockParty): string {
     exists for rather than a reason to call it confirmed.
   */
   if (cancelled[p.bookingId]) return "cancelled";
+  /*
+    A departure called off in this session took every booking on it with it,
+    in the same transaction, as the API's call-off does. Without this a party
+    on it read as live, and recording its cash going back was refused as "not
+    cancelled".
+  */
+  const slotId = partyOf(p.bookingId)?.slotId;
+  if (slotId && calledOff[slotId]) return "cancelled";
   const outcome = attendance[p.bookingId]?.outcome;
   if (outcome && outcome !== "arrived") return outcome;
   return cashTaken[p.bookingId] ? "confirmed" : p.state;
@@ -2191,6 +2199,34 @@ function cashReturnOf(p: MockParty) {
 }
 
 /**
+ * `CashToGiveBack` for one departure, as the manifest and the call-off send it
+ * (yuvoy-api#204): every CANCELLED booking whose cash was recorded taken and
+ * not yet recorded given back. `null` when there is nobody, because the API
+ * sends no block at all then ("present only when there is somebody on it").
+ */
+function cashToGiveBackOf(slot: MockSlot) {
+  const owed = slot.parties
+    .filter((p) => p.bookingId && bookingStateOf(p) === "cancelled")
+    .filter((p) => !cashReturned[p.bookingId])
+    .map((p) => ({ party: p, cash: bookingCashOf(p) }))
+    .filter(({ cash }) => cash?.collected === true)
+    .map(({ party, cash }) => ({
+      bookingId: party.bookingId,
+      reference: party.reference,
+      // A first name and nothing else (D-018).
+      name: party.name.split(" ")[0] ?? "",
+      guests: party.guests,
+      amountPaise: cash?.collectedPaise ?? cash?.collectPaise ?? 0,
+    }));
+  if (owed.length === 0) return null;
+  return {
+    totalPaise: owed.reduce((n, p) => n + p.amountPaise, 0),
+    parties: owed,
+    note: "You are holding this money. These travellers paid you in cash and nothing was paid online, so we refund nothing: hand it back to them.",
+  };
+}
+
+/**
  * Both relay endpoints.
  *
  * The rules are enforced rather than echoed: `detail` is required for every
@@ -2206,7 +2242,10 @@ function cashReturnOf(p: MockParty) {
  * stays the authority. A divergence shows up as a 400, which `sendRelay`
  * surfaces verbatim rather than swallowing.
  */
-const relay = async (request: Request, recipientsOf: () => number | null) => {
+const relay = async (
+  request: Request,
+  audienceOf: () => MockParty[] | null,
+) => {
   const failed = requireSession(request);
   if (failed) return failed;
 
@@ -2223,16 +2262,53 @@ const relay = async (request: Request, recipientsOf: () => number | null) => {
   );
   if (problem) return envelope("invalid_input", problem.message, 400);
 
-  const recipients = recipientsOf();
-  if (recipients === null) {
+  const audience = audienceOf();
+  if (audience === null) {
     return envelope("not_found", "No such departure or booking.", 404);
   }
 
-  return HttpResponse.json({
-    batchId: `batch_${Math.random().toString(36).slice(2, 10)}`,
-    intent: body.intent,
-    recipients,
-  });
+  /*
+    Who is on the manifest: a live booking, never a hold and never a
+    cancelled one (yuvoy-api#202). Nobody left is a 409, "deliberately not a
+    success: 'sent to 0 people' and 'sent' must not look the same".
+  */
+  const live = audience.filter(
+    (p) => p.bookingId && bookingStateOf(p) !== "cancelled",
+  );
+  if (live.length === 0) {
+    return envelope(
+      "nobody_to_tell",
+      "Nobody on this departure has a live booking, so there was nobody to tell.",
+      409,
+    );
+  }
+
+  /*
+    `recipients` counts people a message is actually going to (yuvoy-api#200),
+    by email because this deployment, like production, has no WhatsApp sender.
+    Anybody with no reachable address is `notReached`, present only when above
+    zero, with its sentence.
+  */
+  const recipients = live.filter((p) => !p.unreachable).length;
+  const notReached = live.length - recipients;
+  return HttpResponse.json(
+    {
+      batchId: `batch_${Math.random().toString(36).slice(2, 10)}`,
+      intent: body.intent,
+      recipients,
+      byChannel: recipients > 0 ? { email: recipients } : {},
+      ...(notReached > 0
+        ? {
+            notReached,
+            notReachedNote:
+              notReached === 1
+                ? "1 person on this departure could not be sent this: we hold no address we can reach them on. Their booking page shows it."
+                : `${notReached} people on this departure could not be sent this: we hold no address we can reach them on. Their booking pages show it.`,
+          }
+        : {}),
+    },
+    { status: 202 },
+  );
 };
 
 /**
@@ -4038,10 +4114,22 @@ export const handlers = [
     }
 
     movedTimes[id] = new Date(when).toISOString();
+    /*
+      `bookingsTold` counts messages actually queued (yuvoy-api#200): a live
+      booking we hold a reachable address for. The rest are
+      `bookingsNotReached`, present only when above zero.
+    */
+    const live = slot.parties.filter(
+      (p) => p.bookingId && bookingStateOf(p) !== "cancelled",
+    );
+    const told = live.filter((p) => !p.unreachable).length;
+    const notReached = live.length - told;
     return HttpResponse.json({
       id,
       startsAt: movedTimes[id],
-      note: `Moved. ${slot.parties.length} ${slot.parties.length === 1 ? "traveller has" : "travellers have"} been told, and each can cancel for a full refund until it leaves.`,
+      bookingsTold: told,
+      ...(notReached > 0 ? { bookingsNotReached: notReached } : {}),
+      note: `Moved. ${told} ${told === 1 ? "traveller has" : "travellers have"} been told, and each can cancel for a full refund until it leaves.`,
     });
   }),
 
@@ -5074,23 +5162,41 @@ export const handlers = [
     // Missing and "belongs to somebody else" are one answer, by design.
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
-    const parties = slot.parties.map((p) => {
+    /*
+      Who is on the boat, as the API reads it (yuvoy-api#204): nobody on a
+      departure that was called off, and never a cancelled booking. "`parties`
+      is who is on the boat, and somebody cancelled is not."
+    */
+    const wasCalledOff = Boolean(calledOff[slot.id] || slot.calledOff);
+    const onBoard = wasCalledOff
+      ? []
+      : slot.parties.filter(
+          (p) => !p.bookingId || bookingStateOf(p) !== "cancelled",
+        );
+
+    const parties = onBoard.map((p) => {
       const recorded = attendance[p.bookingId];
       /*
-        `cash` is held back. `Manifest.parties[]` carries none in the contract,
-        and a mock that sent it would let the manifest ship reading a field the
-        real API has never sent — the screen joins `GET /bookings` instead
-        (yuvoy-operator#40 §1).
+        `cash` is sent on a party that pays at the counter, the same object
+        `GET /bookings` sends, and on nobody else (yuvoy-api#204). It used to
+        be held back here, when the contract carried none and the screen
+        joined `GET /bookings` instead. `unreachable` is this mock's own and
+        never leaves it.
       */
-      const { cash: _cash, ...party } = p;
+      const { cash: _cash, unreachable: _unreachable, ...party } = p;
       void _cash;
+      void _unreachable;
+      const cash = p.bookingId ? bookingCashOf(p) : undefined;
       return {
         ...party,
         state: p.bookingId ? bookingStateOf(p) : p.state,
         arrived: recorded ? true : p.arrived,
         arrivedAt: recorded?.arrivedAt ?? p.arrivedAt,
+        ...(cash ? { cash } : {}),
       };
     });
+
+    const giveBack = cashToGiveBackOf(slot);
 
     const guests = parties.reduce((n, p) => n + p.guests, 0);
 
@@ -5107,6 +5213,7 @@ export const handlers = [
           ? { calledOff: slot.calledOff }
           : {}),
       parties,
+      ...(giveBack ? { cashToGiveBack: giveBack } : {}),
       totals: {
         parties: parties.length,
         guests,
@@ -6728,16 +6835,17 @@ export const handlers = [
   /* --------------------------------------------------------------- relay - */
 
   http.post(url("/bookings/:id/relay"), async ({ request, params }) =>
-    relay(request, () => (partyOf(String(params.id)) ? 1 : null)),
+    relay(request, () => {
+      const found = partyOf(String(params.id));
+      return found ? [found.party] : null;
+    }),
   ),
 
   http.post(url("/slots/:id/relay"), async ({ request, params }) =>
     relay(request, () => {
       const slot = SLOTS.find((s) => s.id === String(params.id));
-      if (!slot) return null;
-      // Only confirmed bookings are reachable; a live hold has no booking to
-      // message, which is why a relay can legitimately reach zero people.
-      return slot.parties.filter((p) => p.bookingId).length;
+      // A live hold has no booking to message; `relay` keeps only bookings.
+      return slot ? slot.parties : null;
     }),
   ),
 
@@ -6792,20 +6900,30 @@ export const handlers = [
       );
     }
 
-    calledOff[id] = body.reasonCode;
-
-    const confirmed = slot.parties.filter((p) => p.bookingId);
+    const confirmed = slot.parties.filter(
+      (p) => p.bookingId && bookingStateOf(p) !== "cancelled",
+    );
     const holds = slot.parties.filter((p) => !p.bookingId);
+
+    calledOff[id] = body.reasonCode;
+    const giveBack = cashToGiveBackOf(slot);
 
     return HttpResponse.json({
       slotId: id,
       reasonCode: body.reasonCode,
       bookingsCancelled: confirmed.length,
       guestsAffected: confirmed.reduce((n, p) => n + p.guests, 0),
-      // Full refunds regardless of the cancellation policy: those tiers price
-      // a traveller changing their mind, and nobody changed their mind here.
-      refundedPaise: confirmed.reduce((n, p) => n + p.guests * 450000, 0),
+      /*
+        Full refunds regardless of the cancellation policy: those tiers price a
+        traveller changing their mind, and nobody changed their mind here. But
+        only what was captured ONLINE: a cash booking captured nothing, so it
+        adds nothing here and its money is in `cashToGiveBack` instead.
+      */
+      refundedPaise: confirmed
+        .filter((p) => !p.cash)
+        .reduce((n, p) => n + p.guests * 450000, 0),
       holdsReleased: holds.length,
+      ...(giveBack ? { cashToGiveBack: giveBack } : {}),
     });
   }),
 

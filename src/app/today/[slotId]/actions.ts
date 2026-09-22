@@ -14,6 +14,8 @@ import {
   type RelayIntent,
 } from "@/lib/day/relay-types";
 import { suspendedMessage } from "@/lib/account/suspended";
+import { dedash } from "@/lib/format/dedash";
+import { toGiveBack, type GiveBack } from "@/lib/money/give-back";
 
 /**
  * O10's one write: ticking somebody off, or saying how it ended.
@@ -111,8 +113,18 @@ export async function markAttendance(
 
 export interface RelayState {
   message?: string;
-  /** Set on success, so the screen can say how many people were told. */
+  /**
+   * Set on success: how many PEOPLE a message is going to. It counts queued
+   * messages, never bookings, since yuvoy-api#200 (op#89): a person we hold no
+   * reachable address for is not somebody who was told.
+   */
   recipients?: number;
+  /** The same number by channel, e.g. `{ email: 3 }`. */
+  byChannel?: Record<string, number>;
+  /** People on it nothing could carry the message to. Only when above zero. */
+  notReached?: number;
+  /** The API's sentence for them, "safe to show the operator verbatim". */
+  notReachedNote?: string;
   intent?: string;
 }
 
@@ -183,17 +195,55 @@ export async function sendRelay(
 
     /*
       The recipient count is shown back rather than swallowed. "Sent" is not an
-      outcome an operator can check, and a relay that reached nobody — every
-      party on a departure being a live hold, say — looks identical to one that
-      reached eleven people unless the number is on screen.
+      outcome an operator can check, and a relay that reached nobody looks
+      identical to one that reached eleven people unless the number is on
+      screen.
+
+      Every new field is optional here whatever the contract says, and each
+      one's absence reads as the old answer: no split, and nobody unreached.
     */
+    const notReached =
+      Number.isInteger(data.notReached) && (data.notReached ?? 0) > 0
+        ? (data.notReached as number)
+        : 0;
     revalidatePath(`/today/${slotId}`);
-    return { intent, recipients: data.recipients ?? 0 };
+    return {
+      intent,
+      recipients: data.recipients ?? 0,
+      ...(data.byChannel ? { byChannel: data.byChannel } : {}),
+      ...(notReached > 0
+        ? {
+            notReached,
+            ...(data.notReachedNote
+              ? { notReachedNote: dedash(data.notReachedNote) }
+              : {}),
+          }
+        : {}),
+    };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was sent." };
     }
     if (err instanceof OperatorApiError) {
+      /*
+        Two refusals that used to read "Not sent. Try again." (op#90 f13), and
+        neither is fixed by trying again. `nobody_to_tell` is a departure or a
+        booking with no live booking left on it, which a retry cannot change;
+        `too_many_updates` is the hourly limit, which only waiting clears.
+      */
+      if (err.code === "nobody_to_tell") {
+        return {
+          message: bookingId
+            ? "This booking is no longer live, so there is nobody to tell. Nothing was sent."
+            : "Nobody on this departure has a live booking, so there is nobody to tell. Nothing was sent.",
+        };
+      }
+      if (err.code === "too_many_updates" || err.status === 429) {
+        return {
+          message:
+            "That is the most updates you can send in an hour. This one was not sent. Try again later.",
+        };
+      }
       // A suspended business is refused with 403 too, and the role
       // sentence would be the wrong one. See `suspendedMessage`.
       const refusal = suspendedMessage(err);
@@ -221,8 +271,15 @@ export interface CallOffState {
   result?: {
     bookingsCancelled: number;
     guestsAffected: number;
+    /** Everything captured ONLINE. A cash booking adds nothing here. */
     refundedPaise: number;
     holdsReleased: number;
+    /**
+     * Cash the business took from travellers now cancelled, which nothing
+     * refunds because it never reached us (op#95). `null` when there is none,
+     * the ordinary case.
+     */
+    giveBack: GiveBack | null;
   };
 }
 
@@ -244,10 +301,14 @@ const callOffSchema = z.object({
 /**
  * This departure cannot run.
  *
- * Cancels the departure, cancels every booking on it, refunds all of them in
- * full, releases the holds and tells everybody — in one transaction. Full
- * refunds regardless of the cancellation policy: those tiers price a traveller
- * changing their mind, and nobody changed their mind here.
+ * Cancels the departure, cancels every booking on it, refunds everything paid
+ * ONLINE in full, releases the holds and messages everyone booked, in one
+ * transaction. Full refunds regardless of the cancellation policy: those tiers
+ * price a traveller changing their mind, and nobody changed their mind here.
+ *
+ * Cash is the exception, and the result says so: a traveller who paid at the
+ * counter paid nothing online, so nothing is refunded to them and the
+ * business is holding their money. `cashToGiveBack` names each of them.
  *
  * The only irreversible action in the portal.
  */
@@ -312,6 +373,7 @@ export async function callOffDeparture(
         guestsAffected: data.guestsAffected ?? 0,
         refundedPaise: data.refundedPaise ?? 0,
         holdsReleased: data.holdsReleased ?? 0,
+        giveBack: toGiveBack(data.cashToGiveBack),
       },
     };
   } catch (err) {
@@ -320,9 +382,11 @@ export async function callOffDeparture(
     }
     if (err instanceof OperatorApiError) {
       if (err.code === "already_called_off") {
-        return {
-          message: "Already called off. Everybody on it has been told.",
-        };
+        /*
+          Not "everybody on it has been told": that is not the call-off's to
+          promise, since a message only reaches people we can reach.
+        */
+        return { message: "This departure is already called off." };
       }
       // A suspended business is refused with 403 too, and the role
       // sentence would be the wrong one. See `suspendedMessage`.

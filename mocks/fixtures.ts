@@ -150,6 +150,13 @@ export interface MockParty {
     collectedAt?: string;
     collectedPaise?: number;
   };
+  /**
+   * Mock-internal, and NOT part of any response: this traveller left no
+   * address anything can carry a message on (a WhatsApp number, on a
+   * deployment with no WhatsApp sender). A relay counts them in `notReached`
+   * rather than `recipients`, which is the case yuvoy-api#200 exists for.
+   */
+  unreachable?: boolean;
 }
 
 export interface MockSlot {
@@ -279,6 +286,12 @@ export const SLOTS: MockSlot[] = [
         name: "Priya Raghavan",
         guests: 2,
         state: "confirmed",
+        /*
+          Left only a WhatsApp number, so nothing can carry a relay to her
+          today. A departure-wide update therefore reaches two of three, and
+          the receipt has to say so (op#89).
+        */
+        unreachable: true,
         arrived: false,
         screening: { declared: false, clear: false, needsAttention: false },
         /*
@@ -359,12 +372,31 @@ export const SLOTS: MockSlot[] = [
     startsAt: todayAt("17:00"),
     timezone: TZ,
     seats: 10,
-    sold: 2,
-    remaining: 8,
+    sold: 3,
+    remaining: 7,
     status: "open",
     meetingPoint: "Havelock jetty, gate 1",
     seatsSoldOffline: 0,
     parties: [
+      {
+        /*
+          Paid at the counter, and the cash is in the till. Calling this
+          departure off refunds nothing on it, because nothing reached us, so
+          the call-off answers with it in `cashToGiveBack` (op#95).
+        */
+        bookingId: "bkg_ca_cash",
+        reference: "YV-CA5HA7K2",
+        name: "Nadia Khan",
+        guests: 1,
+        state: "confirmed",
+        arrived: false,
+        cash: {
+          collectPaise: 450_000,
+          collected: true,
+          collectedAt: todayAt("08:15"),
+          collectedPaise: 450_000,
+        },
+      },
       {
         bookingId: "bkg_ca_1",
         reference: "YV-1A2B3C4D",
@@ -382,12 +414,31 @@ export const SLOTS: MockSlot[] = [
     startsAt: todayAt("17:30"),
     timezone: TZ,
     seats: 10,
-    sold: 3,
-    remaining: 7,
+    sold: 4,
+    remaining: 6,
     status: "open",
     meetingPoint: "Havelock jetty, gate 1",
     seatsSoldOffline: 0,
     parties: [
+      {
+        /*
+          Paid at the counter, and the cash is in the till. Calling this
+          departure off refunds nothing on it, because nothing reached us, so
+          the call-off answers with it in `cashToGiveBack` (op#95).
+        */
+        bookingId: "bkg_cb_cash",
+        reference: "YV-CB5HB8M3",
+        name: "Joel Mathew",
+        guests: 1,
+        state: "confirmed",
+        arrived: false,
+        cash: {
+          collectPaise: 450_000,
+          collected: true,
+          collectedAt: todayAt("08:15"),
+          collectedPaise: 450_000,
+        },
+      },
       {
         bookingId: "bkg_cb_1",
         reference: "YV-5E6F7G8H",
