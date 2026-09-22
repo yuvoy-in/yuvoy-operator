@@ -168,8 +168,9 @@ export async function signOut(): Promise<void> {
  *
  * Two reasons that button is the wrong door for them:
  *
- *   - It fires a WhatsApp send to a phone they do not have, which is the whole
- *     reason they are on this path.
+ *   - It sends a code somewhere they cannot read it: to the email address on
+ *     the account, or nowhere at all when the account has none, which is the
+ *     whole reason they are on this path (yuvoy-operator#91).
  *   - **If issuing a code supersedes an outstanding one, it destroys the code
  *     they are holding** — burning their only way in at the moment they are
  *     using it. Whether it does is asked on #59; this path is correct either

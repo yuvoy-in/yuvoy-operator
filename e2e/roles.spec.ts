@@ -264,6 +264,12 @@ test("somebody who already holds a code never asks for one to be sent", async ({
   // Straight to the code field, and the screen does not claim it sent anything.
   await expect(page.getByLabel("Your code")).toBeVisible();
   await expect(page.getByText("We have not messaged you.")).toBeVisible();
+  /*
+    And it does not send them to an inbox. Where a requested code goes is said
+    only on the path that requested one (yuvoy-operator#91); this operator is
+    holding theirs already.
+  */
+  await expect(page.getByText(/We email the code/)).toHaveCount(0);
 
   // And the code still works, because skipping the send skips nothing that
   // authorises anybody — `POST /auth/session` is the only gate.
@@ -272,7 +278,7 @@ test("somebody who already holds a code never asks for one to be sent", async ({
   await page.waitForURL("**/today");
 });
 
-test("that door still needs a whole number, and still says nothing about channels", async ({
+test("that door still needs a whole number, and never promises a phone", async ({
   page,
 }) => {
   /*
@@ -282,7 +288,9 @@ test("that door still needs a whole number, and still says nothing about channel
     rather than merely handled, and the button waits instead of failing.
 
     The stronger property is asserted in its place: an incomplete number never
-    reaches the code step by EITHER door, and neither door names a channel.
+    reaches the code step by EITHER door, and neither door promises a phone.
+    Email is named now, as where a requested code goes (yuvoy-operator#91);
+    WhatsApp and SMS carry no code today, so neither is.
   */
   await page.goto("/sign-in");
   await page.getByLabel("Your phone number").fill("98765");
@@ -299,4 +307,67 @@ test("that door still needs a whole number, and still says nothing about channel
   // Nothing anywhere on the screen claims a code was sent by anything.
   await expect(page.getByText(/we (sent|have sent|messaged)/i)).toHaveCount(0);
   await expect(page.getByText(/WhatsApp|SMS/i)).toHaveCount(0);
+  // The hint that promised a phone message. "Your phone number" is the
+  // field's own label, so the pattern is the promise, not the words.
+  await expect(page.getByText(/messag\w* your phone/i)).toHaveCount(0);
+});
+
+test("asking for a code says it goes to the email on the account, on both steps", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#91 f22. The screen said nothing about where a code goes, and
+    its one hint said the other button skipped "messaging your phone", so every
+    operator waited on a phone for a WhatsApp that has never been sent. Since
+    yuvoy-api 67e3213 every code goes to the email address on the account.
+
+    Said as where codes go, never as "we sent you one": `POST /auth/otp`
+    answers identically for a number we know and one we do not, so the screen
+    is never told that this code went anywhere.
+  */
+  await page.goto("/sign-in");
+  await expect(
+    page.getByText(/We email the code to the address on your account/),
+  ).toBeVisible();
+  // The way in for an account with no email, on the same line.
+  await expect(
+    page.getByRole("link", { name: "+91 81216 57657" }),
+  ).toHaveAttribute("href", "tel:+918121657657");
+  // Announced with the button it describes, not only drawn under it.
+  await expect(
+    page.getByRole("button", { name: "Send me a code" }),
+  ).toHaveAttribute("aria-describedby", /.+/);
+
+  await page.getByLabel("Your phone number").fill(OWNER);
+  await page.getByRole("button", { name: "Send me a code" }).click();
+  await expect(page.getByLabel("Your code")).toBeVisible();
+  await expect(
+    page.getByText(/We email the code to the address on your account/),
+  ).toBeVisible();
+  await expect(page.getByText(/we (sent|have sent|messaged)/i)).toHaveCount(0);
+  await expect(page.getByText(/WhatsApp|SMS/i)).toHaveCount(0);
+});
+
+test("an offboarded account is told it cannot sign in, and who to call", async ({
+  page,
+}) => {
+  /*
+    `403 account_not_active` on `POST /auth/session`: the right code, for a
+    number whose account "cannot sign in or use a session". It fell through to
+    "We could not sign you in just now. Try again shortly", which no retry can
+    ever make true, so the owner went round the same two screens until they
+    gave up (yuvoy-operator#91).
+  */
+  await page.goto("/sign-in");
+  await page.getByLabel("Your phone number").fill("+919000000198");
+  await page.getByRole("button", { name: "Send me a code" }).click();
+  await page.getByLabel("Your code").fill(DEV_CODE);
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  const alert = page.locator("form").getByRole("alert");
+  await expect(alert).toHaveText(
+    "This business account is on hold, so it cannot be signed into. Call us on +91 81216 57657.",
+  );
+  await expect(alert).not.toContainText(/Try again/i);
+  await expect(page).toHaveURL(/\/sign-in/);
 });

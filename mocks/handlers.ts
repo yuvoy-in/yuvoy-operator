@@ -153,6 +153,14 @@ let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
 /** Wrong sign-in codes per number. The sixth answers 429. */
 let codeAttempts: Record<string, number> = {};
 const CODE_ATTEMPT_LIMIT = 5;
+
+/**
+ * A number whose account was offboarded, so `POST /auth/session` refuses it
+ * with `403 account_not_active` even with the right code. Belongs to nobody on
+ * any team, which is what an offboarded account's people are to the rest of
+ * the mock.
+ */
+const OFFBOARDED_PHONE = "+919000000198";
 /** Requests that have been answered. An answered one is not open any more. */
 let answered: Record<string, "active" | "released"> = {};
 /** Departures called off in this session. Irreversible, as in production. */
@@ -2405,6 +2413,20 @@ export const handlers = [
   http.post(url("/auth/session"), async ({ request }) => {
     const body = (await request.json()) as { phone?: string; code?: string };
     const phone = (body.phone ?? "").trim();
+    /*
+      An OFFBOARDED account, which "cannot sign in or use a session"
+      (`AccountNotActive`). The right code for the right number, refused
+      anyway, with the API's own sentence: the person is fine and the account
+      is not. No identity stood in for it, so the sign-in screen's answer to it
+      had never run, and it was "try again shortly" (yuvoy-operator#91).
+    */
+    if (phone === OFFBOARDED_PHONE && body.code === DEV_CODE) {
+      return envelope(
+        "account_not_active",
+        "this account cannot take bookings right now. Talk to us",
+        403,
+      );
+    }
     /*
       Over-attempted, as the contract declares. Five wrong codes and the
       number is throttled — a 429, distinct from the one 401 every wrong,
