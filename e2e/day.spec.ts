@@ -823,7 +823,13 @@ test("a booking opens, and shows no phone number", async ({ page }) => {
   */
   const body = await page.locator("body").innerText();
   expect(body).not.toMatch(/\+91[\s\d]{8,}/);
-  expect(body).toMatch(/do not show traveller phone numbers/i);
+  /*
+    Why there is none is one tap away in help rather than a paragraph at the
+    foot of every booking (yuvoy-operator#80 t4).
+  */
+  await expect(
+    page.getByRole("link", { name: "Why there is no phone number" }),
+  ).toHaveAttribute("href", "/account/help#traveller-phone-numbers");
 });
 
 test("a booking that is not yours is a 404, never a 403", async ({ page }) => {

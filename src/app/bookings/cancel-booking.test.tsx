@@ -81,7 +81,6 @@ describe("after a cancel", () => {
         reference="YV-TEST0001"
         isCash={false}
         available={false}
-        heading="Cannot run this one"
       />,
     );
     expect(container).toBeEmptyDOMElement();
@@ -106,5 +105,41 @@ describe("after a cancel", () => {
     expect(refresh).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Update the list" }));
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("before a cancel", () => {
+  /*
+    yuvoy-operator#81: cancelling a booking was a full-width button in the same
+    weight as the safe actions beside it. It is quiet text now, and the confirm
+    it opens names what happens and carries the loud button.
+  */
+  it("is a quiet text control, not a pill, until it is asked for", () => {
+    render(<CancelBooking bookingId="bkg_1" reference="YV-TEST0001" isCash />);
+    const trigger = screen.getByRole("button", { name: "Cancel this booking" });
+    expect(trigger).toHaveClass("text-terra-deep");
+    expect(trigger).not.toHaveClass("border-2");
+    expect(screen.queryByRole("heading")).toBeNull();
+  });
+
+  it("names the booking and the money before the loud button", () => {
+    render(
+      <CancelBooking
+        bookingId="bkg_1"
+        reference="YV-TEST0001"
+        isCash={false}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel this booking" }),
+    );
+
+    expect(screen.getByText("Cancel YV-TEST0001?")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Everything they paid online is refunded in full/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Cancel the booking" }),
+    ).toHaveClass("border-2", "border-terra-deep");
   });
 });

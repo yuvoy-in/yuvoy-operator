@@ -216,7 +216,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
     );
     expect(screen.getByRole("button", { name: "Here" })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Cash taken" }),
+      screen.getByRole("button", { name: "Take ₹9,000" }),
     ).toBeInTheDocument();
     expect(screen.getByText("₹9,000 to take in cash")).toBeInTheDocument();
   });
@@ -235,7 +235,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
         />
       </ul>,
     );
-    expect(screen.queryByRole("button", { name: /Cash taken/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Take / })).toBeNull();
     expect(screen.queryByText(/in cash/)).toBeNull();
   });
 
@@ -253,7 +253,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
         />
       </ul>,
     );
-    expect(screen.queryByRole("button", { name: /Cash taken/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Take / })).toBeNull();
   });
 
   it("warns before a trip is completed with its cash unrecorded", async () => {

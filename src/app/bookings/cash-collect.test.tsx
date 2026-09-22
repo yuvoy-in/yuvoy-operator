@@ -33,13 +33,19 @@ beforeEach(() => {
   record.mockImplementation(async () => ({}));
 });
 
-describe("CashCollect — owed", () => {
-  it("names the fare and offers the whole of it in one tap", async () => {
+describe("CashCollect, owed", () => {
+  it("names the fare and offers the whole of it in one tap that says the amount", async () => {
+    /*
+      yuvoy-operator#81 s5: two equal buttons, "Cash taken" and "Took less",
+      and a mis-tap between them records the wrong amount on money that has
+      already changed hands. One button now names what it records.
+    */
     const user = userEvent.setup();
     row();
     expect(screen.getByText("₹13,500 to take in cash")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Took less" })).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Cash taken" }));
+    await user.click(screen.getByRole("button", { name: "Take ₹13,500" }));
     expect(record).toHaveBeenCalledTimes(1);
     const form = record.mock.calls[0][1];
     expect(form.get("mode")).toBe("fare");
@@ -50,7 +56,9 @@ describe("CashCollect — owed", () => {
   it("says the gap while the box is open, and refuses more than the fare", async () => {
     const user = userEvent.setup();
     row();
-    await user.click(screen.getByRole("button", { name: "Took less" }));
+    await user.click(
+      screen.getByRole("button", { name: "They paid a different amount" }),
+    );
 
     const box = screen.getByLabelText("What you took, in rupees");
     await user.type(box, "14000");
@@ -75,14 +83,16 @@ describe("CashCollect — owed", () => {
   it("says a recorded amount cannot be changed, before it is recorded", async () => {
     const user = userEvent.setup();
     row();
-    await user.click(screen.getByRole("button", { name: "Took less" }));
+    await user.click(
+      screen.getByRole("button", { name: "They paid a different amount" }),
+    );
     expect(
       screen.getByText(/cannot be changed afterwards/),
     ).toBeInTheDocument();
   });
 });
 
-describe("CashCollect — the answer", () => {
+describe("CashCollect, the answer", () => {
   it("says a shortfall once, quietly, beside the recorded fact", async () => {
     record.mockImplementation(async () => ({
       recorded: {
@@ -94,7 +104,9 @@ describe("CashCollect — the answer", () => {
     }));
     const user = userEvent.setup();
     row();
-    await user.click(screen.getByRole("button", { name: "Took less" }));
+    await user.click(
+      screen.getByRole("button", { name: "They paid a different amount" }),
+    );
     await user.type(screen.getByLabelText("What you took, in rupees"), "3000");
     await user.click(screen.getByRole("button", { name: "Record ₹3,000" }));
 
@@ -124,7 +136,7 @@ describe("CashCollect — the answer", () => {
     }));
     const user = userEvent.setup();
     row();
-    await user.click(screen.getByRole("button", { name: "Cash taken" }));
+    await user.click(screen.getByRole("button", { name: "Take ₹13,500" }));
 
     expect(
       await screen.findByText("₹13,500 taken · 09:04"),
@@ -141,7 +153,9 @@ describe("CashCollect — the answer", () => {
     }));
     const user = userEvent.setup();
     row();
-    await user.click(screen.getByRole("button", { name: "Took less" }));
+    await user.click(
+      screen.getByRole("button", { name: "They paid a different amount" }),
+    );
     await user.type(screen.getByLabelText("What you took, in rupees"), "3000");
     await user.click(screen.getByRole("button", { name: "Record ₹3,000" }));
 
@@ -152,7 +166,7 @@ describe("CashCollect — the answer", () => {
   });
 });
 
-describe("CashCollect — nothing to take", () => {
+describe("CashCollect, nothing to take", () => {
   it("offers nothing on a collection already recorded", () => {
     row({
       state: "confirmed",
@@ -182,11 +196,45 @@ describe("CashCollect — nothing to take", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("never says 'paid' — they were paid, we were not", async () => {
+  it("never says Yuvoy was paid: the one 'paid' is the traveller paying you", async () => {
+    /*
+      "Cash taken" and "take", never "paid" about us: the operator was paid, we
+      were not. "They paid a different amount" is the traveller paying the
+      operator, which is true, and it is the only "paid" anywhere here.
+    */
     const user = userEvent.setup();
     const { container } = row();
-    await user.click(screen.getByRole("button", { name: "Took less" }));
+    expect(container.textContent?.toLowerCase().match(/paid/g)).toHaveLength(1);
+    await user.click(
+      screen.getByRole("button", { name: "They paid a different amount" }),
+    );
     await user.type(screen.getByLabelText("What you took, in rupees"), "3000");
     expect(container.textContent?.toLowerCase()).not.toContain("paid");
+  });
+});
+
+describe("CashCollect, how loud it is", () => {
+  it("is the screen's one primary action on a booking's own page", () => {
+    row({ emphasis: "primary" });
+    expect(screen.getByRole("button", { name: "Take ₹13,500" })).toHaveClass(
+      "bg-forest",
+    );
+  });
+
+  it("stays secondary on a departure, beside checking the party in", () => {
+    row();
+    expect(
+      screen.getByRole("button", { name: "Take ₹13,500" }),
+    ).not.toHaveClass("bg-forest");
+  });
+
+  it("still records the whole fare when the fare did not load", async () => {
+    const user = userEvent.setup();
+    row({ cash: { collectPaise: null, collected: false } });
+    await user.click(
+      screen.getByRole("button", { name: "Take the full fare" }),
+    );
+    // No amount is sent: the server records the whole fare it knows.
+    expect(record.mock.calls[0][1].get("mode")).toBe("fare");
   });
 });
