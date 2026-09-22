@@ -666,11 +666,12 @@ test("a closed day with nothing on it still says Closed, and why", async ({
   await region.getByRole("button", { name: "Reopen" }).click();
   /*
     The note, which the API asks to be said out loud because it gives both
-    counts in words. It survives because the action does not revalidate: a
-    re-render drops the closure out of the list and would take the counts with
-    it. The day catches up on the next read.
+    counts in words. It is held by the day's panel, so it survives the day
+    re-reading, and the day re-reads at once: it used to go on saying Closed
+    until somebody tapped "Show the day" (op#89 f16).
   */
   await expect(region.getByText(/back on sale/)).toBeVisible();
+  await expect(region.getByText("Closed", { exact: true })).toHaveCount(0);
 
   await page.reload();
   const after = page.getByRole("region", { name: dayLabel(offset) });
@@ -715,6 +716,15 @@ test("stopping one departure leaves the rest of the day selling, and reopens", a
   await expect(
     region.getByText(/The bookings already on this departure still stand/),
   ).toBeVisible();
+  /*
+    And the day re-reads underneath it, with no tap (op#89 f16): the
+    departure's row now says why it is not selling, in the API's sentence.
+    Matched by the sentence rather than by row, because the open Manage panel
+    lists the same departure's name in its receipt.
+  */
+  await expect(
+    region.getByText(/^This departure is closed to new bookings\./).first(),
+  ).toBeVisible();
 
   await page.reload();
   const after = page.getByRole("region", { name: dayLabel(offset) });
@@ -748,6 +758,11 @@ test("stopping one departure leaves the rest of the day selling, and reopens", a
   await expect(after.getByText("One departure", { exact: true })).toBeVisible();
   await after.getByRole("button", { name: "Reopen" }).click();
   await expect(after.getByText("1 departure is back on sale.")).toBeVisible();
+  // Without a reload, too: the day re-reads as soon as it is reopened, and
+  // no departure on it says it is closed any more.
+  await expect(
+    after.getByText(/^This departure is closed to new bookings\./),
+  ).toHaveCount(0);
 
   await page.reload();
   await expect(

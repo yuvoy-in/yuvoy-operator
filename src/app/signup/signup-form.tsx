@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass } from "@/components/ui/input";
 import { PhoneField } from "@/components/ui/phone-field";
 import { formatE164 } from "@/lib/auth/phone";
+import { EMAIL_REQUIRED_AT_SIGNUP } from "@/lib/auth/signup";
+import { EMAIL_MAX_LENGTH } from "@/lib/auth/email";
+import { WhereTheCodeGoes } from "@/app/sign-in/where-the-code-goes";
 
 /**
  * Owning it and running it, and what each one actually gets you.
@@ -85,10 +88,15 @@ export function SignUpForm() {
             className={inputClass("mt-2 font-mono text-2xl tracking-[0.4em]")}
           />
           {/*
-            "For", not "sent to" — the same rule `/sign-in` keeps, and `pnpm qa`
-            enforces on both. A code may arrive by WhatsApp or be issued by
-            Yuvoy out of band (yuvoy-api#59); this screen is never told which,
-            so its copy is true of both, unconditionally.
+            "For", not "sent to": the same rule `/sign-in` keeps, and `pnpm qa`
+            enforces on both. This screen is never told whether a code went
+            anywhere, so its copy says where codes go (the email address on
+            the account, yuvoy-operator#91) and never that one arrived.
+
+            "On your account", not "the address you just typed", and for the
+            reason below: a number that already has an account is answered
+            exactly like a new one, and its code goes to the address THAT
+            account holds.
 
             And NOT "your account is created", which yuvoy-operator#20 asked
             for: `POST /auth/signup` answers identically for a number that
@@ -100,6 +108,9 @@ export function SignUpForm() {
             Almost there. For {formatE164(state.phone ?? "")}. It lasts a few
             minutes.
           </p>
+          <div className="mt-2">
+            <WhereTheCodeGoes id="signup-where" />
+          </div>
           {state.devCode ? (
             <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
               Development build: the code is{" "}
@@ -250,9 +261,20 @@ export function SignUpForm() {
         hint="This is what you will sign in with."
       />
 
+      {/*
+        REQUIRED, by the owner's ruling of 21 September (yuvoy-operator#91
+        f22), and optional in the contract. Every sign-in code goes to this
+        address while there is no WhatsApp sender, so an account without one
+        is an account its owner cannot sign back into. The switch and the
+        reason live on `EMAIL_REQUIRED_AT_SIGNUP`; this reads it, so the label,
+        the `required` and the hint relax together with the schema.
+      */}
       <div>
         <label htmlFor="email" className="label text-forest/75">
-          Email <span className="text-forest/70">(optional)</span>
+          Email address
+          {EMAIL_REQUIRED_AT_SIGNUP ? null : (
+            <span className="text-forest/70"> (optional)</span>
+          )}
         </label>
         <input
           id="email"
@@ -262,23 +284,31 @@ export function SignUpForm() {
           /*
             `text` with an email keyboard, NOT `type="email"`.
 
-            Native validation blocks the submit and shows a browser tooltip,
-            so our own message — "leave it blank if unsure", which is the part
-            that matters, because this field is optional — would never be
-            seen. The same call the capacity screen makes about `min`: the
-            server and the schema are the authority, and the operator gets a
+            Native format validation blocks the submit and shows a browser
+            tooltip, so our own sentence about a typo would never be seen. The
+            same call the capacity screen makes about `min`: the schema and the
+            server are the authority on the SHAPE, and the operator gets a
             sentence written for them rather than one written by the browser.
+
+            `required` is the one native check kept, as the business name and
+            the person's name above keep it: an empty box is caught on the
+            phone, before a round trip, and the Server Action refuses it again
+            for a request that never came from this form.
           */
           type="text"
           inputMode="email"
           autoComplete="email"
-          maxLength={254}
+          required={EMAIL_REQUIRED_AT_SIGNUP}
+          maxLength={EMAIL_MAX_LENGTH}
           placeholder="you@yourbusiness.in"
           aria-invalid={state.field === "email" || undefined}
+          aria-describedby="email-hint"
           className={inputClass("mt-2")}
         />
-        <p className="text-forest/70 mt-2 text-sm">
-          Only if you have one. Everything works without it.
+        <p id="email-hint" className="text-forest/70 mt-2 text-sm">
+          {EMAIL_REQUIRED_AT_SIGNUP
+            ? "Your sign-in codes are emailed here for now, so we need it."
+            : "Only if you have one. Everything works without it."}
         </p>
       </div>
 

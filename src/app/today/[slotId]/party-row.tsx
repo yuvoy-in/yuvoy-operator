@@ -58,9 +58,12 @@ export function PartyRow({
    *
    *   `BookingCash`  paying at the counter: the fare, and whether it is taken
    *   `null`         not a cash booking — paid online, or a hold
-   *   `undefined`    could not tell; the page says so above the list
+   *
+   * There is no third "could not tell" any more. It existed for a second read
+   * that could miss a booking; the manifest carries each party's cash itself
+   * since yuvoy-api#204 (op#95).
    */
-  cash: BookingCash | null | undefined;
+  cash: BookingCash | null;
   /** The departure's own zone, for when the cash was taken. */
   timezone: string;
   /**
@@ -106,6 +109,18 @@ export function PartyRow({
     be recorded — said at the confirmation, where it can still be avoided.
   */
   const cashStillOwed = Boolean(cash && !cash.collected);
+  /*
+    Cancelled from this row. The row keeps its receipt and puts every other
+    control away, so nobody records cash against, or ticks off, a booking that
+    was just cancelled (op#89 f16). The next read of the manifest drops the
+    row entirely: a cancelled party is not on the boat.
+  */
+  const [cancelledHere, setCancelledHere] = useState(false);
+  const cancellable =
+    canManage &&
+    !departed &&
+    Boolean(party.bookingId) &&
+    (party.state === "confirmed" || party.state === "paid_pending_ops");
 
   return (
     <li
@@ -190,18 +205,17 @@ export function PartyRow({
         ended: the API answers `409 departure_started` and `409 booking_ended`,
         and both are knowable from what is on this row.
       */}
-      {canManage &&
-      !departed &&
-      party.bookingId &&
-      (party.state === "confirmed" || party.state === "paid_pending_ops") ? (
+      {party.bookingId && (cancellable || cancelledHere) ? (
         <CancelBooking
           bookingId={party.bookingId}
           reference={party.reference ?? ""}
           isCash={Boolean(cash)}
+          context="manifest"
+          onDone={() => setCancelledHere(true)}
         />
       ) : null}
 
-      {holding ? (
+      {cancelledHere ? null : holding ? (
         <p className="text-terra-deep mt-3 text-sm font-bold">
           Still paying. Not a confirmed seat yet. They may still turn up.
         </p>
@@ -315,7 +329,7 @@ export function PartyRow({
         "somebody can turn up and not pay". A hold is not a booking yet, so it
         has nothing to collect against.
       */}
-      {!holding && cash ? (
+      {!holding && !cancelledHere && cash ? (
         <CashCollect
           bookingId={party.bookingId ?? ""}
           slotId={slotId}
@@ -330,7 +344,7 @@ export function PartyRow({
         be — `reference` identifies them, the relay reaches them (O12). A hold
         has no bookingId, so there is nobody to address yet.
       */}
-      {holding ? null : (
+      {holding || cancelledHere ? null : (
         <RelayPanel
           slotId={slotId}
           bookingId={party.bookingId}

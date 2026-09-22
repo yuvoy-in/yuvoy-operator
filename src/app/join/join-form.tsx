@@ -29,7 +29,7 @@ export function JoinForm() {
       <Panel tone="done" role="status" className="mt-8">
         <p className="text-base font-bold">You are on the account</p>
         <p className="text-forest/80 mt-2 text-sm">
-          Sign in with the same number and we will send you a fresh code.
+          Sign in with the same number and ask for a code.
         </p>
         <ButtonLink href="/sign-in" className="mt-4">
           Sign in
@@ -53,8 +53,13 @@ export function JoinForm() {
       />
 
       <div>
+        {/*
+          "Your code", not "The code we sent you". Whether we sent one depends
+          on whether the invitation carried an email (yuvoy-operator#91), and
+          a code handed over by the owner or by us is typed here just the same.
+        */}
         <label htmlFor="join-code" className="label text-forest/75">
-          The code we sent you
+          Your code
         </label>
         <input
           id="join-code"

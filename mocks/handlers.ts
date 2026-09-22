@@ -11,6 +11,7 @@ import {
   resetMockUploads,
 } from "./tus-server";
 import { validateRelay } from "../src/lib/day/relay-types";
+import { deadlineLabel } from "../src/lib/format/market-time";
 import {
   ACCOUNT_AWAITING,
   ACCOUNT_LIVE,
@@ -135,7 +136,13 @@ function businessOf(request: Request): string {
  */
 function changesFor(request: Request): Record<string, unknown>[] {
   const mine = businessOf(request);
-  const raised = bankChanges
+  /*
+    Newest first, as the API orders them. A logo or details change is filed
+    in the same table as a bank change (`operator_change_requests`, kind
+    `logo` or `profile`) and listed beside it, so the screens that read this
+    for a bank change have to filter on `kind`, and do.
+  */
+  const raised = [...accountChanges, ...bankChanges]
     .filter((r) => r.raisedFor === mine)
     .map((r) => {
       const out = { ...r };
@@ -143,6 +150,47 @@ function changesFor(request: Request): Record<string, unknown>[] {
       return out;
     });
   return mine === "reef" ? [...raised, ...CHANGE_REQUESTS] : raised;
+}
+
+/**
+ * A LIVE business's logo or details change, filed for review the way the API
+ * files it: one pending row per kind, a new one withdrawing the last
+ * (`operator_logo.go`, `operator_business_details.go` at e7291e3).
+ */
+let accountChanges: Record<string, unknown>[] = [];
+
+/** Departures whose hand-set seats were confirmed this session. */
+let seatsConfirmed: Record<string, true> = {};
+
+/** Off sale only because nobody confirmed its seats (yuvoy-api#211). */
+function seatsAwaitingConfirmation(slot: MockSlot): boolean {
+  return Boolean(slot.seatsUnconfirmed) && !seatsConfirmed[slot.id];
+}
+
+function fileForReview(
+  request: Request,
+  kind: "logo" | "profile",
+  summary: string,
+) {
+  const mine = businessOf(request);
+  accountChanges = accountChanges.map((r) =>
+    r.raisedFor === mine && r.kind === kind && r.state === "pending"
+      ? { ...r, state: "withdrawn" }
+      : r,
+  );
+  accountChanges = [
+    {
+      id: `chg_${kind}_${Math.random().toString(36).slice(2, 8)}`,
+      kind,
+      state: "pending",
+      summary,
+      requestedAt: new Date().toISOString(),
+      objectionUntil: null,
+      coolingUntil: null,
+      raisedFor: mine,
+    },
+    ...accountChanges,
+  ];
 }
 
 /** OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it. */
@@ -153,6 +201,14 @@ let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
 /** Wrong sign-in codes per number. The sixth answers 429. */
 let codeAttempts: Record<string, number> = {};
 const CODE_ATTEMPT_LIMIT = 5;
+
+/**
+ * A number whose account was offboarded, so `POST /auth/session` refuses it
+ * with `403 account_not_active` even with the right code. Belongs to nobody on
+ * any team, which is what an offboarded account's people are to the rest of
+ * the mock.
+ */
+const OFFBOARDED_PHONE = "+919000000198";
 /** Requests that have been answered. An answered one is not open any more. */
 let answered: Record<string, "active" | "released"> = {};
 /** Departures called off in this session. Irreversible, as in production. */
@@ -1108,7 +1164,6 @@ type MockProfile = {
     postalCode?: string;
     country?: string;
   };
-  editable: boolean;
   submittedAt?: string;
 };
 
@@ -1118,13 +1173,20 @@ function seedProfile(): MockProfile {
     legalName: "Nemo Reef Watersports",
     entityType: "sole_proprietor",
     address: { line1: "Beach 3", locality: "Havelock", country: "IN" },
-    // Editable, because the fixture account is still onboarding. The LIVE
-    // lock is exercised by `PROFILE_LOCKED_ID` below.
-    editable: true,
   };
 }
 
 let profile: MockProfile = seedProfile();
+
+/** The logo in use, or null for none. */
+let logo: { imageId: string; uploadedAt: string } | null = null;
+
+/** A logo the browser can draw without a network: a data URL, like the story's. */
+function mockLogoUrl(imageId: string): string {
+  const hue = [...imageId].reduce((n, c) => n + c.charCodeAt(0), 0) % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><circle cx="80" cy="80" r="80" fill="hsl(${hue} 40% 30%)"/><circle cx="80" cy="80" r="28" fill="#be7149"/></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
 
 /** Credentials filed this session, by type. See `POST /credentials`. */
 let filedCredentials: Record<string, { state: string; expiresOn?: string }> =
@@ -1293,6 +1355,50 @@ function closedByAny(slot: MockSlot): boolean {
   });
 }
 
+/**
+ * `bookableDatesNext30Days` as the API counts it (yuvoy-api#205), near enough
+ * for the screens that read it: market days from today through the 29 after it
+ * with at least one departure that is open and still to come, on a listing
+ * that is on the traveller app. 0 for anything else, as the API answers a
+ * draft or a listing that is not selling. Full departures are not subtracted:
+ * no screen in this portal is tested against one.
+ */
+function bookableDatesOf(e: { id?: string; status?: string }): number {
+  if (e.status !== "live" && e.status !== "live_changes_in_review") return 0;
+  const dayOf = (at: number) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(
+      new Date(at),
+    );
+  const first = dayOf(Date.now());
+  const last = dayOf(Date.now() + 29 * 86_400_000);
+  const days = new Set<string>();
+  for (const slot of allSlots()) {
+    if (slot.experienceId !== e.id) continue;
+    if (slotStatusOf(slot) !== "open") continue;
+    if (seatsAwaitingConfirmation(slot)) continue;
+    const at = Date.parse(slot.startsAt);
+    if (Number.isNaN(at) || at <= Date.now()) continue;
+    const day = dayOf(at);
+    if (day >= first && day <= last) days.add(day);
+  }
+  return days.size;
+}
+
+/**
+ * `departuresNotOnSale` for a listing: its departures still to come that are
+ * off sale only because nobody confirmed their seats. Always present, 0 when
+ * none. Going off sale within a day is not modelled, so that count is 0.
+ */
+function unconfirmedDeparturesOf(e: { id?: string }): number {
+  return allSlots().filter(
+    (slot) =>
+      slot.experienceId === e.id &&
+      slotStatusOf(slot) === "open" &&
+      Date.parse(slot.startsAt) > Date.now() &&
+      seatsAwaitingConfirmation(slot),
+  ).length;
+}
+
 /** A departure's status as the API would answer it now. */
 function slotStatusOf(slot: MockSlot): string {
   if (calledOff[slot.id]) return "cancelled";
@@ -1349,6 +1455,12 @@ function saleVerdictOf(
   }
   if (slot.bookingMode === "allotment" && seats - sold <= 0) {
     return notOnSale("departure_full", "Every seat on this departure is sold.");
+  }
+  if (seatsAwaitingConfirmation(slot)) {
+    return notOnSale(
+      "departure_seats_unconfirmed",
+      "Nobody has confirmed the seats on this departure for two days, so it is not on sale. Confirm them to put it back.",
+    );
   }
   return { onSale: true };
 }
@@ -1467,7 +1579,8 @@ function accountWithFiles<T extends { credentials: readonly unknown[] }>(
 }
 
 /**
- * The five switches, as the API declares them — yuvoy-operator#46 item 5.
+ * The six switches, as the API declares them: yuvoy-operator#46 item 5, and
+ * `seat_confirmations` since yuvoy-api e7291e3 (yuvoy-operator#94 item 3).
  *
  * `label` and `description` are the API's words, and the descriptions say who
  * each kind of message goes to. That is load-bearing rather than decorative:
@@ -1491,6 +1604,17 @@ const SWITCHES = [
     group: "todays_departures",
     label: "Today's departures",
     description: "The 06:00 summary of the day's booked departures.",
+  },
+  /*
+    The API's own label, description and place (after the day's work, before
+    money), from `noticeGroupWording` at e7291e3. On by default like every
+    switch: nobody has turned it off.
+  */
+  {
+    group: "seat_confirmations",
+    label: "Seats to confirm",
+    description:
+      "Once a day, the departures that are off sale, or will be within a day, because nobody has confirmed their seats. Sent to the owner, admins and managers.",
   },
   {
     group: "settlement_summary",
@@ -1585,6 +1709,57 @@ function applySwitches(
 }
 
 /** Reset between tests so one case cannot make the next pass. */
+/**
+ * The account block `GET /me` sends for this identity, or `undefined` for none.
+ *
+ * `account` is per-BUSINESS, not per-user, so it is keyed off the identity
+ * that stands in for one here. The upload-drop and API-failure identities
+ * deliberately get NO account block: absent is a real response shape and the
+ * contract says what it means ("unknown, never everything is fine"), so the
+ * screen that must not read it as approval has something to be tested
+ * against.
+ *
+ * One function rather than a branch inside `GET /me`, because the logo and
+ * business-details writes ask the same question (is this business LIVE?) and
+ * two copies of the answer would drift.
+ */
+function accountFor(me: { id: string }) {
+  if (me.id === SUSPENDED_ID) return ACCOUNT_SUSPENDED;
+  if (me.id === PROSPECT_ID || signups.some((sme) => sme.id === me.id)) {
+    /*
+      A brand-new account is PROSPECT and cannot be booked: that is the whole
+      safety property of self-signup, and a mock that handed one ACCOUNT_LIVE
+      would let this portal ship the congratulation the API never earns.
+    */
+    return ACCOUNT_PROSPECT;
+  }
+  if (me.id === AWAITING_ID) return ACCOUNT_AWAITING;
+  if (me.id === LIVE_OUTSTANDING_ID) {
+    /*
+      Live, selling, and still owing us the logo and the registered address
+      (yuvoy-operator#38). Checked BEFORE the `OTHER_MEMBERS` fallthrough,
+      which hands back no account block at all, because this identity exists
+      to render a screen rather than to hide one.
+    */
+    return ACCOUNT_LIVE_OUTSTANDING;
+  }
+  if (OTHER_MEMBERS.some((o) => o.id === me.id)) return undefined;
+  return ACCOUNT_LIVE;
+}
+
+/**
+ * Whether a logo or business-details write is RECORDED FOR REVIEW rather than
+ * applied: the API asks `operators.status = 'LIVE'` (D-032.3) and answers
+ * `202 { state: "in_review", next }` when it is.
+ *
+ * An identity with no account block is a colleague on the fixture business,
+ * which is LIVE, so it is treated as live: the block is withheld to test a
+ * screen, not because the business changed.
+ */
+function isLiveBusiness(me: { id: string }): boolean {
+  return (accountFor(me)?.state ?? "LIVE") === "LIVE";
+}
+
 export function __resetOperatorMocks() {
   blackouts = [];
   attendance = {};
@@ -1595,6 +1770,8 @@ export function __resetOperatorMocks() {
   offlineSold = {};
   steppedUp = false;
   bankChanges = [];
+  accountChanges = [];
+  seatsConfirmed = {};
   stoppedChanges = [];
   team = TEAM.map((m) => ({ ...m }));
   signups = [];
@@ -1607,6 +1784,7 @@ export function __resetOperatorMocks() {
   uploadIntents = {};
   mediaAssets = seedMediaAssets();
   profile = seedProfile();
+  logo = null;
   filedCredentials = {};
   mockExperiences = seedWithBasis();
   createdSlots = [];
@@ -1635,7 +1813,13 @@ function profileResponse() {
   if (!profile.address.locality) missing.push("locality");
   if (!profile.address.region) missing.push("region");
   if (!profile.address.postalCode) missing.push("postalCode");
-  return { ...profile, missing };
+  /*
+    `editable` is sent as `true` for everybody, as the API has since D-032.3
+    (`operator_business_details.go`): a LIVE account's write is queued for
+    review rather than refused. The contract still describes the old lock
+    (yuvoy-api#222).
+  */
+  return { ...profile, editable: true, missing };
 }
 
 /**
@@ -2038,6 +2222,14 @@ function bookingStateOf(p: MockParty): string {
     exists for rather than a reason to call it confirmed.
   */
   if (cancelled[p.bookingId]) return "cancelled";
+  /*
+    A departure called off in this session took every booking on it with it,
+    in the same transaction, as the API's call-off does. Without this a party
+    on it read as live, and recording its cash going back was refused as "not
+    cancelled".
+  */
+  const slotId = partyOf(p.bookingId)?.slotId;
+  if (slotId && calledOff[slotId]) return "cancelled";
   const outcome = attendance[p.bookingId]?.outcome;
   if (outcome && outcome !== "arrived") return outcome;
   return cashTaken[p.bookingId] ? "confirmed" : p.state;
@@ -2087,6 +2279,34 @@ function cashReturnOf(p: MockParty) {
 }
 
 /**
+ * `CashToGiveBack` for one departure, as the manifest and the call-off send it
+ * (yuvoy-api#204): every CANCELLED booking whose cash was recorded taken and
+ * not yet recorded given back. `null` when there is nobody, because the API
+ * sends no block at all then ("present only when there is somebody on it").
+ */
+function cashToGiveBackOf(slot: MockSlot) {
+  const owed = slot.parties
+    .filter((p) => p.bookingId && bookingStateOf(p) === "cancelled")
+    .filter((p) => !cashReturned[p.bookingId])
+    .map((p) => ({ party: p, cash: bookingCashOf(p) }))
+    .filter(({ cash }) => cash?.collected === true)
+    .map(({ party, cash }) => ({
+      bookingId: party.bookingId,
+      reference: party.reference,
+      // A first name and nothing else (D-018).
+      name: party.name.split(" ")[0] ?? "",
+      guests: party.guests,
+      amountPaise: cash?.collectedPaise ?? cash?.collectPaise ?? 0,
+    }));
+  if (owed.length === 0) return null;
+  return {
+    totalPaise: owed.reduce((n, p) => n + p.amountPaise, 0),
+    parties: owed,
+    note: "You are holding this money. These travellers paid you in cash and nothing was paid online, so we refund nothing: hand it back to them.",
+  };
+}
+
+/**
  * Both relay endpoints.
  *
  * The rules are enforced rather than echoed: `detail` is required for every
@@ -2102,7 +2322,10 @@ function cashReturnOf(p: MockParty) {
  * stays the authority. A divergence shows up as a 400, which `sendRelay`
  * surfaces verbatim rather than swallowing.
  */
-const relay = async (request: Request, recipientsOf: () => number | null) => {
+const relay = async (
+  request: Request,
+  audienceOf: () => MockParty[] | null,
+) => {
   const failed = requireSession(request);
   if (failed) return failed;
 
@@ -2119,16 +2342,53 @@ const relay = async (request: Request, recipientsOf: () => number | null) => {
   );
   if (problem) return envelope("invalid_input", problem.message, 400);
 
-  const recipients = recipientsOf();
-  if (recipients === null) {
+  const audience = audienceOf();
+  if (audience === null) {
     return envelope("not_found", "No such departure or booking.", 404);
   }
 
-  return HttpResponse.json({
-    batchId: `batch_${Math.random().toString(36).slice(2, 10)}`,
-    intent: body.intent,
-    recipients,
-  });
+  /*
+    Who is on the manifest: a live booking, never a hold and never a
+    cancelled one (yuvoy-api#202). Nobody left is a 409, "deliberately not a
+    success: 'sent to 0 people' and 'sent' must not look the same".
+  */
+  const live = audience.filter(
+    (p) => p.bookingId && bookingStateOf(p) !== "cancelled",
+  );
+  if (live.length === 0) {
+    return envelope(
+      "nobody_to_tell",
+      "Nobody on this departure has a live booking, so there was nobody to tell.",
+      409,
+    );
+  }
+
+  /*
+    `recipients` counts people a message is actually going to (yuvoy-api#200),
+    by email because this deployment, like production, has no WhatsApp sender.
+    Anybody with no reachable address is `notReached`, present only when above
+    zero, with its sentence.
+  */
+  const recipients = live.filter((p) => !p.unreachable).length;
+  const notReached = live.length - recipients;
+  return HttpResponse.json(
+    {
+      batchId: `batch_${Math.random().toString(36).slice(2, 10)}`,
+      intent: body.intent,
+      recipients,
+      byChannel: recipients > 0 ? { email: recipients } : {},
+      ...(notReached > 0
+        ? {
+            notReached,
+            notReachedNote:
+              notReached === 1
+                ? "1 person on this departure could not be sent this: we hold no address we can reach them on. Their booking page shows it."
+                : `${notReached} people on this departure could not be sent this: we hold no address we can reach them on. Their booking pages show it.`,
+          }
+        : {}),
+    },
+    { status: 202 },
+  );
 };
 
 /**
@@ -2406,6 +2666,20 @@ export const handlers = [
     const body = (await request.json()) as { phone?: string; code?: string };
     const phone = (body.phone ?? "").trim();
     /*
+      An OFFBOARDED account, which "cannot sign in or use a session"
+      (`AccountNotActive`). The right code for the right number, refused
+      anyway, with the API's own sentence: the person is fine and the account
+      is not. No identity stood in for it, so the sign-in screen's answer to it
+      had never run, and it was "try again shortly" (yuvoy-operator#91).
+    */
+    if (phone === OFFBOARDED_PHONE && body.code === DEV_CODE) {
+      return envelope(
+        "account_not_active",
+        "this account cannot take bookings right now. Talk to us",
+        403,
+      );
+    }
+    /*
       Over-attempted, as the contract declares. Five wrong codes and the
       number is throttled — a 429, distinct from the one 401 every wrong,
       expired or used code shares, because "wait a minute" is a different
@@ -2452,39 +2726,7 @@ export const handlers = [
     const failed = requireSession(request);
     if (failed) return failed;
     const me = sessionUser(request)!;
-    /*
-      `account` is per-BUSINESS, not per-user, so it is keyed off the identity
-      that stands in for one here. The upload-drop and API-failure identities
-      deliberately get NO account block: absent is a real response shape and
-      the contract says what it means — "unknown, never everything is fine" —
-      so the screen that must not read it as approval has something to be
-      tested against.
-    */
-    const account =
-      me.id === SUSPENDED_ID
-        ? ACCOUNT_SUSPENDED
-        : me.id === PROSPECT_ID || signups.some((sme) => sme.id === me.id)
-          ? /*
-            A brand-new account is PROSPECT and cannot be booked — that is the
-            whole safety property of self-signup, and a mock that handed one
-            ACCOUNT_LIVE would let this portal ship the congratulation the API
-            never earns.
-          */
-            ACCOUNT_PROSPECT
-          : me.id === AWAITING_ID
-            ? ACCOUNT_AWAITING
-            : me.id === LIVE_OUTSTANDING_ID
-              ? /*
-                Live, selling, and still owing us the logo and the registered
-                address — yuvoy-operator#38. Branched BEFORE the
-                `OTHER_MEMBERS` fallthrough, which hands back no account block
-                at all, because this identity exists to render a screen rather
-                than to hide one.
-              */
-                ACCOUNT_LIVE_OUTSTANDING
-              : OTHER_MEMBERS.some((o) => o.id === me.id)
-                ? undefined
-                : ACCOUNT_LIVE;
+    const account = accountFor(me);
 
     return HttpResponse.json({
       id: me.id,
@@ -2551,14 +2793,39 @@ export const handlers = [
     const body = (await request.json()) as {
       phone?: string;
       name?: string;
+      email?: string;
       role?: string;
     };
     const phone = (body.phone ?? "").trim();
     const name = (body.name ?? "").trim();
     const role = body.role ?? "";
+    // Trimmed and lowered, as the API does before it checks the shape.
+    const email = (body.email ?? "").trim().toLowerCase();
 
+    /*
+      One code, two fields, and `details` says which: the API answers
+      `invalid_input` with `{ phone: … }` or `{ email: … }`, and the portal puts
+      the sentence on the field it names. The messages are the API's own, lower
+      case and all, so the screen's capitalising is exercised.
+    */
     if (!/^\+[1-9]\d{7,14}$/.test(phone) || name.length < 2) {
-      return envelope("invalid_input", "A name and an E.164 number.", 400);
+      return envelope(
+        "invalid_input",
+        "we need their number with the country code",
+        400,
+        { phone: "for example +919000000101" },
+      );
+    }
+    if (
+      email !== "" &&
+      (email.length > 254 || !/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(email))
+    ) {
+      return envelope(
+        "invalid_input",
+        "that email address does not look right",
+        400,
+        { email: "for example ramesh@example.com" },
+      );
     }
 
     /*
@@ -2626,16 +2893,31 @@ export const handlers = [
     });
 
     /*
-      `joinUrl` alongside the queued message, because there is no delivery yet
-      and "on an island the person doing the inviting is usually standing next
-      to the person being invited". The portal used to drop this, which made
-      inviting somebody a dead end for the invitee.
+      `sent` read back, not asserted (yuvoy-api 67e3213, yuvoy-operator#91).
+
+      There is no WhatsApp sender, so the only thing that can carry an
+      invitation is the email address, and with none the message is written
+      suppressed: `sent: false`, and a `note` saying to pass the link on. The
+      API's own words, and the same override it makes: a role it did not grant
+      as asked replaces the note, because that is the sentence the inviter
+      must not miss. It asserted `true` for every invitation before, which is
+      how an owner came to believe a colleague had been told.
+    */
+    const sent = email !== "";
+    const notSent =
+      "We could not send that invitation to them. Give them the join link and the code yourself, or add them again with an email address.";
+
+    /*
+      `joinUrl` alongside the queued message, because "on an island the person
+      doing the inviting is usually standing next to the person being
+      invited". The portal used to drop this, which made inviting somebody a
+      dead end for the invitee.
     */
     return HttpResponse.json(
       {
-        sent: true,
+        sent,
         role: granted,
-        ...(note ? { note } : {}),
+        ...(note ? { note } : sent ? {} : { note: notSent }),
         joinUrl: JOIN_URL,
         devCode: DEV_CODE,
       },
@@ -2839,21 +3121,11 @@ export const handlers = [
    * a client ship a form that omits a field and never notice it was cleared.
    */
   http.put(url("/profile"), async ({ request }) => {
-    const failed = requireSession(request);
+    const failed = requireManager(
+      request,
+      "only an owner, admin or manager can change the business details",
+    );
     if (failed) return failed;
-
-    /*
-      The LIVE lock. "After that the verified documents were checked against
-      the legal name on file, so changing it without anybody looking would make
-      the verification meaningless."
-    */
-    if (!profile.editable) {
-      return envelope(
-        "details_locked",
-        "The account is live; these change by asking us.",
-        409,
-      );
-    }
 
     const body = (await request.json()) as Record<string, string | undefined>;
     const required = [
@@ -2883,6 +3155,26 @@ export const handlers = [
     // 15 characters, or absent. The checksum is the server's business.
     if (body.gstin !== undefined && String(body.gstin).trim().length !== 15) {
       return envelope("invalid_input", "A GSTIN is 15 characters.", 400);
+    }
+
+    /*
+      A LIVE business's change is RECORDED FOR REVIEW, not applied (D-032.3):
+      the verified documents were checked against the name and address on
+      file. 202 with no details, exactly as the API answers, and after the
+      validation above, which the API also runs first. Nothing on file
+      changes, so `GET /profile` goes on answering with the old details, and
+      the change is listed on `GET /change-requests` as `profile`, pending. The `409
+      details_locked` this replaced is no longer returned (yuvoy-api#222).
+    */
+    if (isLiveBusiness(sessionUser(request)!)) {
+      fileForReview(request, "profile", "Registered name and address");
+      return HttpResponse.json(
+        {
+          state: "in_review",
+          next: "We check a change to your registered name or address, because your verified documents were checked against what is on file. Your current details stay in place until we do.",
+        },
+        { status: 202 },
+      );
     }
 
     profile = {
@@ -3022,6 +3314,20 @@ export const handlers = [
     async ({ request, params }) => {
       const failed = requireSession(request);
       if (failed) return failed;
+      /*
+        A service with no documents store, which is production today: every
+        upload intent answers `503 documents_unavailable` before anything else
+        is looked at (yuvoy-operator#93). Stood in for by the business waiting
+        on our review, the one identity whose pending document no upload test
+        needs to reach the bucket.
+      */
+      if (sessionUser(request)?.id === AWAITING_ID) {
+        return envelope(
+          "documents_unavailable",
+          "we cannot take documents just yet",
+          503,
+        );
+      }
       /*
         NOT `requireWritable`. A suspended business may still send a document
         (#50), and refusing here would hold an operator at a state they are
@@ -3194,6 +3500,13 @@ export const handlers = [
   http.put(url("/story"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json().catch(() => null)) as {
       about?: unknown;
@@ -3262,6 +3575,70 @@ export const handlers = [
   }),
 
   /**
+   * The mark in use. `logoUrl` absent when there is none, as the contract
+   * says; never the pending one, which is not up yet.
+   */
+  http.get(url("/logo"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    if (!logo) return HttpResponse.json({});
+    return HttpResponse.json({
+      imageId: logo.imageId,
+      logoUrl: mockLogoUrl(logo.imageId),
+      uploadedAt: logo.uploadedAt,
+    });
+  }),
+
+  /**
+   * Set the logo, the way the API does (`operator_logo.go` at e7291e3):
+   *
+   *   - OWNER, ADMIN or MANAGER only.
+   *   - The HOST is asked whether the file arrived, not the browser: an id the
+   *     mock image host never received is a 400.
+   *   - A LIVE business's new mark is RECORDED FOR REVIEW: `202 { state:
+   *     "in_review", next }` and deliberately no `logoUrl`, because the old
+   *     logo is still the live one (D-032.3). `GET /logo` goes on answering
+   *     with the old mark, and the new one is listed on `GET
+   *     /change-requests` as `logo`, pending. Declared under `GET /logo` in
+   *     the contract rather than here (yuvoy-api#222).
+   *   - Anybody else's is applied: `200 { logoUrl }`.
+   */
+  http.put(url("/logo"), async ({ request }) => {
+    const denied = requireManager(
+      request,
+      "only an owner, admin or manager can change the logo",
+    );
+    if (denied) return denied;
+
+    const body = (await request.json().catch(() => ({}))) as {
+      imageId?: unknown;
+    };
+    const imageId = typeof body.imageId === "string" ? body.imageId.trim() : "";
+    if (!imageId) return envelope("invalid_input", "which image?", 400);
+    if (!mockPhotoArrived(imageId)) {
+      return envelope(
+        "invalid_input",
+        "that upload has not arrived. Post the file to the upload URL first",
+        400,
+      );
+    }
+
+    if (isLiveBusiness(sessionUser(request)!)) {
+      fileForReview(request, "logo", "New logo");
+      return HttpResponse.json(
+        {
+          state: "in_review",
+          next: "We look at a new logo before it appears on your reels and listings. Your current one stays up until we do.",
+        },
+        { status: 202 },
+      );
+    }
+
+    logo = { imageId, uploadedAt: new Date().toISOString() };
+    return HttpResponse.json({ logoUrl: mockLogoUrl(imageId) });
+  }),
+
+  /**
    * The STORY's own upload slot — yuvoy-api#161.
    *
    * Open to every operator role, which is the same set that may edit the
@@ -3271,6 +3648,13 @@ export const handlers = [
   http.post(url("/story/photos/upload-intents"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     return HttpResponse.json(imageIntent(), { status: 201 });
   }),
@@ -3278,6 +3662,13 @@ export const handlers = [
   http.post(url("/story/photos"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json().catch(() => ({}))) as {
       imageId?: unknown;
@@ -3323,6 +3714,13 @@ export const handlers = [
   http.delete(url("/story/photos/:id"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     // Another business's photograph answers exactly as one that does not
     // exist; here there is only one business, so absent is the whole test.
@@ -3564,7 +3962,14 @@ export const handlers = [
     if (sessionUser(request)?.id === WIDE_READ_FAILS_ID) {
       return envelope("internal_error", "Something went wrong.", 500);
     }
-    return HttpResponse.json({ experiences: mockExperiences });
+    return HttpResponse.json({
+      experiences: mockExperiences.map((e) => ({
+        ...e,
+        bookableDatesNext30Days: bookableDatesOf(e),
+        departuresNotOnSale: unconfirmedDeparturesOf(e),
+        departuresGoingOffSaleSoon: 0,
+      })),
+    });
   }),
 
   /**
@@ -3732,7 +4137,13 @@ export const handlers = [
       });
 
     return HttpResponse.json({
-      listing,
+      listing: {
+        ...listing,
+        // The single listing carries these too (yuvoy-api#205, #211).
+        bookableDatesNext30Days: bookableDatesOf(listing),
+        departuresNotOnSale: unconfirmedDeparturesOf(listing),
+        departuresGoingOffSaleSoon: 0,
+      },
       departures,
       /*
         The listing's own media, matched on the NESTED `listing.experienceId`
@@ -3850,6 +4261,58 @@ export const handlers = [
    * screen and none of them would ever render against a permissive mock: too
    * close to its start, a different day, and a time this listing already has.
    */
+  /**
+   * Confirm the seats on many departures at once (yuvoy-api#211), as the API
+   * answers it: OWNER, ADMIN or MANAGER; market days `from` to `to`, both
+   * included, at most 30 days apart; one listing when `experienceId` is sent,
+   * and another business's listing answers 404. Safe to send twice: a second
+   * call confirms nothing and says 0.
+   */
+  http.post(url("/slots/confirm-seats"), async ({ request }) => {
+    const denied = requireManager(request, "STAFF cannot confirm seats.");
+    if (denied) return denied;
+
+    const body = (await request.json().catch(() => ({}))) as {
+      from?: unknown;
+      to?: unknown;
+      experienceId?: unknown;
+    };
+    const isDay = (v: unknown): v is string =>
+      typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    if (!isDay(body.from) || !isDay(body.to) || body.to < body.from) {
+      return envelope(
+        "invalid_input",
+        "from and to must be dates, from first",
+        400,
+      );
+    }
+    const span =
+      (Date.parse(`${body.to}T00:00:00Z`) -
+        Date.parse(`${body.from}T00:00:00Z`)) /
+      86_400_000;
+    if (span > 30) {
+      return envelope("invalid_input", "at most 31 days at a time", 400);
+    }
+    const experienceId =
+      typeof body.experienceId === "string" ? body.experienceId : "";
+    if (experienceId && !mockExperiences.some((e) => e.id === experienceId)) {
+      return envelope("not_found", "we could not find that listing", 404);
+    }
+
+    let confirmed = 0;
+    for (const slot of allSlots()) {
+      if (experienceId && slot.experienceId !== experienceId) continue;
+      if (slotStatusOf(slot) !== "open") continue;
+      if (Date.parse(slot.startsAt) <= Date.now()) continue;
+      const day = slotDay(slot);
+      if (day < body.from || day > body.to) continue;
+      if (!seatsAwaitingConfirmation(slot)) continue;
+      seatsConfirmed[slot.id] = true;
+      confirmed += 1;
+    }
+    return HttpResponse.json({ confirmed });
+  }),
+
   http.patch(url("/slots/:id/time"), async ({ request, params }) => {
     const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;
@@ -3892,10 +4355,22 @@ export const handlers = [
     }
 
     movedTimes[id] = new Date(when).toISOString();
+    /*
+      `bookingsTold` counts messages actually queued (yuvoy-api#200): a live
+      booking we hold a reachable address for. The rest are
+      `bookingsNotReached`, present only when above zero.
+    */
+    const live = slot.parties.filter(
+      (p) => p.bookingId && bookingStateOf(p) !== "cancelled",
+    );
+    const told = live.filter((p) => !p.unreachable).length;
+    const notReached = live.length - told;
     return HttpResponse.json({
       id,
       startsAt: movedTimes[id],
-      note: `Moved. ${slot.parties.length} ${slot.parties.length === 1 ? "traveller has" : "travellers have"} been told, and each can cancel for a full refund until it leaves.`,
+      bookingsTold: told,
+      ...(notReached > 0 ? { bookingsNotReached: notReached } : {}),
+      note: `Moved. ${told} ${told === 1 ? "traveller has" : "travellers have"} been told, and each can cancel for a full refund until it leaves.`,
     });
   }),
 
@@ -4282,22 +4757,49 @@ export const handlers = [
     );
   }),
 
+  /*
+    Paged, as the API pages it since yuvoy-api#204: `limit` (1 to 200, 50 when
+    absent or unreadable) and an opaque `cursor` in, `complete` and
+    `nextCursor` out. A cursor this list did not issue is a 400. The cursor
+    here is an offset in a costume, which is fine for a mock and exactly what
+    a client must never construct itself.
+  */
   http.get(url("/media"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+
+    const query = new URL(request.url).searchParams;
+    const asked = Number(query.get("limit"));
+    const limit =
+      Number.isInteger(asked) && asked > 0 ? Math.min(asked, 200) : 50;
+    const cursor = query.get("cursor");
+    let offset = 0;
+    if (cursor !== null) {
+      const match = /^mc_(\d+)$/.exec(cursor);
+      if (!match) {
+        return envelope("invalid_input", "that cursor is not ours", 400);
+      }
+      offset = Number(match[1]);
+    }
+
+    const all = Object.entries(mediaAssets).map(([id, asset]) => ({
+      id,
+      kind: asset.kind,
+      state: asset.state,
+      // Omitted, never null, when there is none, which is most clips.
+      ...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
+      durationSeconds: asset.durationSeconds,
+      listing: asset.listing,
+      rejection: asset.rejection,
+      situation: situationOf(asset),
+      createdAt: new Date().toISOString(),
+    }));
+    const items = all.slice(offset, offset + limit);
+    const next = offset + limit;
     return HttpResponse.json({
-      items: Object.entries(mediaAssets).map(([id, asset]) => ({
-        id,
-        kind: asset.kind,
-        state: asset.state,
-        // Omitted, never null, when there is none — which is most clips.
-        ...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
-        durationSeconds: asset.durationSeconds,
-        listing: asset.listing,
-        rejection: asset.rejection,
-        situation: situationOf(asset),
-        createdAt: new Date().toISOString(),
-      })),
+      items,
+      complete: next >= all.length,
+      ...(next < all.length ? { nextCursor: `mc_${next}` } : {}),
     });
   }),
 
@@ -4432,6 +4934,13 @@ export const handlers = [
   http.post(url("/media/:id/rights"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const asset = mediaAssets[String(params.id)];
     if (!asset) return envelope("not_found", "No such clip.", 404);
@@ -4474,6 +4983,13 @@ export const handlers = [
   http.post(url("/media/:id/withdraw"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const id = String(params.id);
     const body = (await request.json()) as { reason?: string };
@@ -4507,6 +5023,13 @@ export const handlers = [
   http.post(url("/media/:id/publish"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const asset = mediaAssets[String(params.id)];
     /*
@@ -4928,23 +5451,41 @@ export const handlers = [
     // Missing and "belongs to somebody else" are one answer, by design.
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
-    const parties = slot.parties.map((p) => {
+    /*
+      Who is on the boat, as the API reads it (yuvoy-api#204): nobody on a
+      departure that was called off, and never a cancelled booking. "`parties`
+      is who is on the boat, and somebody cancelled is not."
+    */
+    const wasCalledOff = Boolean(calledOff[slot.id] || slot.calledOff);
+    const onBoard = wasCalledOff
+      ? []
+      : slot.parties.filter(
+          (p) => !p.bookingId || bookingStateOf(p) !== "cancelled",
+        );
+
+    const parties = onBoard.map((p) => {
       const recorded = attendance[p.bookingId];
       /*
-        `cash` is held back. `Manifest.parties[]` carries none in the contract,
-        and a mock that sent it would let the manifest ship reading a field the
-        real API has never sent — the screen joins `GET /bookings` instead
-        (yuvoy-operator#40 §1).
+        `cash` is sent on a party that pays at the counter, the same object
+        `GET /bookings` sends, and on nobody else (yuvoy-api#204). It used to
+        be held back here, when the contract carried none and the screen
+        joined `GET /bookings` instead. `unreachable` is this mock's own and
+        never leaves it.
       */
-      const { cash: _cash, ...party } = p;
+      const { cash: _cash, unreachable: _unreachable, ...party } = p;
       void _cash;
+      void _unreachable;
+      const cash = p.bookingId ? bookingCashOf(p) : undefined;
       return {
         ...party,
         state: p.bookingId ? bookingStateOf(p) : p.state,
         arrived: recorded ? true : p.arrived,
         arrivedAt: recorded?.arrivedAt ?? p.arrivedAt,
+        ...(cash ? { cash } : {}),
       };
     });
+
+    const giveBack = cashToGiveBackOf(slot);
 
     const guests = parties.reduce((n, p) => n + p.guests, 0);
 
@@ -4961,6 +5502,7 @@ export const handlers = [
           ? { calledOff: slot.calledOff }
           : {}),
       parties,
+      ...(giveBack ? { cashToGiveBack: giveBack } : {}),
       totals: {
         parties: parties.length,
         guests,
@@ -5741,11 +6283,32 @@ export const handlers = [
     }
 
     answered[id] = "active";
+    /*
+      The traveller now holds seats with a clock on them and must pay: twelve
+      hours, capped at the departure's booking cutoff (yuvoy-api#203), which an
+      hour before it leaves stands in for here. Never less than ten minutes, so
+      a run late at night still gets a hold in the future.
+    */
+    const cutoff = Date.parse(open.startsAt) - 60 * 60_000;
+    const holdExpiresAt = new Date(
+      Math.max(
+        Math.min(Date.now() + 12 * 60 * 60_000, cutoff),
+        Date.now() + 10 * 60_000,
+      ),
+    ).toISOString();
+    /*
+      `toldBy` and `receipt`, as the API writes them: queued by email because
+      there is no WhatsApp sender, and the whole sentence with the pay-by time
+      in market time, the day included when it is not today.
+    */
+    const told = ["email"];
+    const seats = `${open.guests} ${open.guests === 1 ? "seat" : "seats"}`;
     return HttpResponse.json({
       id,
       state: "active",
-      // The traveller now holds seats with a clock on them and must pay.
-      holdExpiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      holdExpiresAt,
+      toldBy: told,
+      receipt: `They are holding ${seats} and still have to pay. We are letting them know by email. If they have not paid by ${deadlineLabel(holdExpiresAt, open.timezone, Date.now())}, the seats come back to you.`,
     });
   }),
 
@@ -5817,6 +6380,13 @@ export const handlers = [
         farePaise: 2700000,
         commissionPaise: 405000,
         netPaise: 2295000,
+        // The same held and unrecorded figures `/commission-owed` sends, so
+        // Earnings and Cash agree, as the contract promises.
+        heldBookings: COMMISSION_OWED.heldBookings,
+        heldCollectedPaise: COMMISSION_OWED.heldCollectedPaise,
+        unrecordedBookings: COMMISSION_OWED.unrecordedBookings,
+        unrecordedFarePaise: COMMISSION_OWED.unrecordedFarePaise,
+        unrecordedLines: COMMISSION_OWED.unrecordedLines,
       },
       seasonToDate: {
         from: "2026-04-01",
@@ -5954,8 +6524,17 @@ export const handlers = [
       return HttpResponse.json({
         bookings: 0,
         farePaise: 0,
+        collectedPaise: 0,
         commissionPaise: 0,
         lines: [],
+        heldBookings: 0,
+        heldFarePaise: 0,
+        heldCollectedPaise: 0,
+        heldCommissionPaise: 0,
+        heldLines: [],
+        unrecordedBookings: 0,
+        unrecordedFarePaise: 0,
+        unrecordedLines: [],
       });
     }
 
@@ -6089,8 +6668,15 @@ export const handlers = [
       return envelope("forbidden", "Only the owner can change this.", 403);
     }
 
+    /*
+      Open BANK changes only. The list also carries logo and details changes
+      waiting for review (the same table, another `kind`), and one of those in
+      flight says nothing about where the money goes: counting it refused
+      every bank change raised after a live business sent a new logo.
+    */
     const open = changesFor(request).filter(
       (r) =>
+        (r as { kind?: string }).kind === "bank" &&
         !stoppedChanges.includes(String((r as { id?: string }).id)) &&
         ["objection_window", "pending", "cooling", "approved"].includes(
           String((r as { state?: string }).state),
@@ -6568,16 +7154,17 @@ export const handlers = [
   /* --------------------------------------------------------------- relay - */
 
   http.post(url("/bookings/:id/relay"), async ({ request, params }) =>
-    relay(request, () => (partyOf(String(params.id)) ? 1 : null)),
+    relay(request, () => {
+      const found = partyOf(String(params.id));
+      return found ? [found.party] : null;
+    }),
   ),
 
   http.post(url("/slots/:id/relay"), async ({ request, params }) =>
     relay(request, () => {
       const slot = SLOTS.find((s) => s.id === String(params.id));
-      if (!slot) return null;
-      // Only confirmed bookings are reachable; a live hold has no booking to
-      // message, which is why a relay can legitimately reach zero people.
-      return slot.parties.filter((p) => p.bookingId).length;
+      // A live hold has no booking to message; `relay` keeps only bookings.
+      return slot ? slot.parties : null;
     }),
   ),
 
@@ -6632,20 +7219,30 @@ export const handlers = [
       );
     }
 
-    calledOff[id] = body.reasonCode;
-
-    const confirmed = slot.parties.filter((p) => p.bookingId);
+    const confirmed = slot.parties.filter(
+      (p) => p.bookingId && bookingStateOf(p) !== "cancelled",
+    );
     const holds = slot.parties.filter((p) => !p.bookingId);
+
+    calledOff[id] = body.reasonCode;
+    const giveBack = cashToGiveBackOf(slot);
 
     return HttpResponse.json({
       slotId: id,
       reasonCode: body.reasonCode,
       bookingsCancelled: confirmed.length,
       guestsAffected: confirmed.reduce((n, p) => n + p.guests, 0),
-      // Full refunds regardless of the cancellation policy: those tiers price
-      // a traveller changing their mind, and nobody changed their mind here.
-      refundedPaise: confirmed.reduce((n, p) => n + p.guests * 450000, 0),
+      /*
+        Full refunds regardless of the cancellation policy: those tiers price a
+        traveller changing their mind, and nobody changed their mind here. But
+        only what was captured ONLINE: a cash booking captured nothing, so it
+        adds nothing here and its money is in `cashToGiveBack` instead.
+      */
+      refundedPaise: confirmed
+        .filter((p) => !p.cash)
+        .reduce((n, p) => n + p.guests * 450000, 0),
       holdsReleased: holds.length,
+      ...(giveBack ? { cashToGiveBack: giveBack } : {}),
     });
   }),
 

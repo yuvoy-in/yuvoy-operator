@@ -36,7 +36,12 @@ import {
   readTab,
   sinceLine,
 } from "@/lib/account/profile";
-import { listingLabel, posterFor } from "@/lib/services/home";
+import {
+  NO_DATES_BADGE,
+  listingLabel,
+  liveWithNothingToSell,
+  posterFor,
+} from "@/lib/services/home";
 import { listListings, listMedia } from "@/lib/day/manifest";
 import { readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
 import { operatorPageUrl } from "@/lib/site/traveller-app";
@@ -144,9 +149,9 @@ export default async function AccountPage({
           .then((r) => (r.error ? null : r.data))
           .catch(() => null),
         listListings(token).catch(() => []),
-        listMedia(token).catch(() => []),
+        listMedia(token).catch(() => null),
       ])
-    : [null, null, null, [], []];
+    : [null, null, null, [], null];
 
   /*
     Every listing, for the reel sheet's "put it on another listing" and for the
@@ -286,15 +291,16 @@ export default async function AccountPage({
           {tab === "listings" ? (
             <ListingsGrid
               listings={listings ?? []}
-              media={media ?? []}
+              media={media?.items ?? []}
               canManage={canManage}
               suspended={suspended}
             />
           ) : tab === "reels" ? (
             <ReelsTab
-              media={media ?? []}
+              media={media?.items ?? []}
               listings={listingOptions}
               suspended={suspended}
+              partial={media ? !media.complete : false}
             />
           ) : (
             <ReviewsTab />
@@ -372,6 +378,7 @@ function ListingsGrid({
     title?: string;
     status?: string;
     sentBack?: unknown;
+    bookableDatesNext30Days?: number;
   }[];
   media: {
     listing?: { experienceId?: string };
@@ -404,7 +411,16 @@ function ListingsGrid({
       {orderForProfile(listings).map((listing) => {
         const id = listing.id ?? "";
         const poster = posterFor(media, id);
-        const badge = listing.status === "live" ? null : listingLabel(listing);
+        /*
+          Live with nothing to sell gets a badge although live gets none: it is
+          on the traveller app and cannot be booked, which is lost money the
+          operator can fix by adding departures (op#95 item 3).
+        */
+        const badge = liveWithNothingToSell(listing)
+          ? NO_DATES_BADGE
+          : listing.status === "live"
+            ? null
+            : listingLabel(listing);
         return (
           <li key={id}>
             <Link href={`/account/listings/${id}`} className="block">

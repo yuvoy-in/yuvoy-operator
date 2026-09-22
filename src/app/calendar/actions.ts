@@ -19,6 +19,7 @@ import {
   departureProblem,
 } from "@/lib/day/departures";
 import { marketDays } from "@/lib/format/market-time";
+import { shiftDay } from "@/lib/day/calendar";
 import { dedash, dedashText } from "@/lib/format/dedash";
 import { suspendedMessage } from "@/lib/account/suspended";
 
@@ -311,6 +312,14 @@ export async function recordOfflineSale(
       return { message: "No signal. The sale was NOT recorded. Try again." };
     }
     if (err instanceof OperatorApiError) {
+      /*
+        A suspended business is refused with `403 AccountSuspended`, which
+        this read as "Not recorded. Try again." (op#90 f13): a retry that can
+        never succeed, with the one fact that explains it hidden.
+      */
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
+      if (err.status === 403) return { message: ROLE_REFUSAL };
       if (err.isNotFound)
         return { message: "That departure is no longer here." };
       if (err.status === 400) return { message: err.message };
@@ -552,8 +561,8 @@ export async function reopenClosure(
       counts with it, because a reopened closure drops out of the day's list and
       unmounts the row that was holding them. The API says "say this out loud.
       It gives both counts in words", and it is the ONLY place "two went back and
-      one did not" exists. So the sentence stays and the day is refreshed on the
-      operator's own tap, which is `router.refresh()` in `ReopenClosure`.
+      one did not" exists. So `ReopenClosure` hands the sentence up to the day's
+      panel, which survives the refresh, and then refreshes (op#89 f16).
 
       The same trap `cancelBooking` hit: revalidate only when the re-render
       shows more than the returned value, and here it shows less.
@@ -677,5 +686,84 @@ export async function closeDeparture(
       if (err.status === 400) return { message: dedash(err.message) };
     }
     return { message: "It is still selling. Try again." };
+  }
+}
+
+/* ------------------------------------------- confirm seats, many at once -- */
+
+export interface ConfirmSeatsState {
+  message?: string;
+  /** Departures whose seats were confirmed. 0 is a real answer. */
+  confirmed?: number;
+}
+
+/**
+ * Confirm the seats on many departures at once (yuvoy-operator#94 item 2).
+ *
+ * "Seats set by hand stop being offered to travellers once nobody has
+ * confirmed them for two days." An operator with a boat of hand-set seats
+ * used to find out one departure at a time, by noticing it was off sale, and
+ * confirm each by saving its seat count again.
+ *
+ * The window is the market's today and the thirty days after it: "a market
+ * day from `from` to `to` (both included, at most 31 days)". Decided here on
+ * the server, never taken from the form, so a stale page cannot send a window
+ * the API refuses. One listing when `experienceId` is sent, every listing
+ * when not: the listing hub sends its own, Home sends none.
+ *
+ * Safe to send twice ("confirming twice leaves the departures as confirming
+ * once did"), so a double tap on one bar of signal costs nothing. Seat counts
+ * are not changed.
+ */
+export async function confirmSeats(
+  _prev: ConfirmSeatsState,
+  form: FormData,
+): Promise<ConfirmSeatsState> {
+  const experienceId = String(form.get("experienceId") ?? "").trim();
+
+  const { token, me } = await requireOperator();
+  if (!me.canManage) return { message: ROLE_REFUSAL };
+
+  const { today } = await marketDays();
+  const to = shiftDay(today, 30);
+
+  try {
+    const { data, error } = await operatorApi(token).POST(
+      "/slots/confirm-seats",
+      {
+        body: {
+          from: today,
+          to,
+          ...(experienceId ? { experienceId } : {}),
+        },
+      },
+    );
+    if (error) throw error;
+
+    /*
+      Every screen that counts what is off sale re-reads: Home adds them up,
+      the calendar marks each departure, and the listing's own hub says how
+      many. The receipt lives in the control, which stays mounted on each.
+    */
+    revalidatePath("/today");
+    revalidatePath("/calendar");
+    if (experienceId) revalidatePath(`/today/listing/${experienceId}`);
+    return {
+      confirmed: Number.isInteger(data.confirmed) ? data.confirmed : 0,
+    };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      return { message: "No signal. Nothing was confirmed. Try again." };
+    }
+    if (err instanceof OperatorApiError) {
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
+      if (err.status === 403) return { message: ROLE_REFUSAL };
+      if (err.isNotFound) {
+        return { message: "That listing is not on this account any more." };
+      }
+      if (err.status === 400) return { message: dedash(err.message) };
+    }
+    return { message: "Nothing was confirmed. Try again." };
   }
 }

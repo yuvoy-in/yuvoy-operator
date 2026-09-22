@@ -32,8 +32,16 @@ export function ReelsTab({
   suspended,
   emptyLine = "No reels yet",
   offerAdd = true,
+  partial = false,
 }: {
   media: MediaItem[];
+  /**
+   * The read stopped before the end (a later page failed), so the oldest
+   * reels are missing from this grid rather than from the account. Said
+   * above the grid, because a reel that is not drawn cannot be published or
+   * withdrawn from here (op#95 item 2).
+   */
+  partial?: boolean;
   listings: ListingOption[];
   suspended: boolean;
   /**
@@ -90,6 +98,12 @@ export function ReelsTab({
 
   return (
     <>
+      {partial ? (
+        <p role="status" className="text-terra-deep mt-6 text-sm font-bold">
+          Showing your newest {media.length}. The older ones did not load just
+          now. Come back to this tab in a moment to see them.
+        </p>
+      ) : null}
       <ul className="mt-6 grid grid-cols-3 gap-2">
         {orderMedia(media).map((item, i) => {
           const badge = situationBadge(item.situation);

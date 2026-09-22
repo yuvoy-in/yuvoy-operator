@@ -438,14 +438,15 @@ export async function pauseListing(
       because what an operator most needs to know is what they still owe.
     */
     /*
-      `/today` and `/account`, which are the two screens that draw a listing's
-      state — the old Listings page is a redirect since #56. Neither is the
-      route these are called from (`/account/listings/...`), so the receipt
-      each of these returns survives the revalidation rather than being
-      unmounted by it.
+      `/today` and `/account` draw a listing's state, and so does the listing's
+      own hub, which is where this control lives now. The hub was left out, so
+      it went on saying "Paused" after a resume until a reload (op#89 f16).
+      Revalidating it is safe for the receipt: `PauseResume` is always mounted
+      on the hub and keeps its answer in action state across the re-render.
     */
     revalidatePath("/today");
     revalidatePath("/account");
+    revalidatePath(`/today/listing/${id}`);
     return {
       done: {
         upcomingDepartures: data.upcomingDepartures,
@@ -580,14 +581,15 @@ export async function resumeListing(
     // The row's own label moves — Paused becomes Live, or Not selling — and
     // says more about the listing than a message could.
     /*
-      `/today` and `/account`, which are the two screens that draw a listing's
-      state — the old Listings page is a redirect since #56. Neither is the
-      route these are called from (`/account/listings/...`), so the receipt
-      each of these returns survives the revalidation rather than being
-      unmounted by it.
+      `/today` and `/account` draw a listing's state, and so does the listing's
+      own hub, which is where this control lives now. The hub was left out, so
+      it went on saying "Paused" after a resume until a reload (op#89 f16).
+      Revalidating it is safe for the receipt: `PauseResume` is always mounted
+      on the hub and keeps its answer in action state across the re-render.
     */
     revalidatePath("/today");
     revalidatePath("/account");
+    revalidatePath(`/today/listing/${id}`);
     return {
       done: {
         state: data.state === "in_review" ? "in_review" : "published",

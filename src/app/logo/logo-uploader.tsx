@@ -10,11 +10,15 @@ import { Panel } from "@/components/ui/panel";
  * Choose a picture, send it to the host, save it — yuvoy-operator#35 §2.
  *
  * Three steps, and the middle one leaves this origin. Shorter than the reel
- * and photograph paths on purpose: **a logo is not moderated**. It is
- * presentation rather than content, nothing is verified against it, and the
- * contract says so — it is "editable after go-live, unlike the rest of the
- * business details". So there is no rights attestation here, and adding one
- * would be inventing a gate the server does not have.
+ * and photograph paths on purpose: a logo carries **no rights attestation**.
+ * It is presentation rather than content, and nothing is verified against it,
+ * so adding one would be inventing a gate the server does not have.
+ *
+ * It is not always applied at once, though. On a LIVE business the API
+ * records a new mark for review and keeps the old one up until somebody has
+ * looked (D-032.3, `202 in_review`). The two outcomes get two different
+ * receipts, and only the first may say the mark is on the listings
+ * (yuvoy-operator#89 f10).
  *
  * No resume and no progress bar, for the same reasons the photograph uploader
  * gives: the host takes one multipart POST, and `fetch` reports no upload
@@ -27,6 +31,8 @@ type Phase =
   | { name: "preparing" }
   | { name: "uploading"; file: File }
   | { name: "done"; logoUrl?: string }
+  /** Recorded for review, not applied. See the module comment. */
+  | { name: "in-review" }
   | { name: "failed"; message: string; unavailable?: boolean };
 
 /** Ours, and smaller than any host ceiling: a mark is a mark, not a photograph. */
@@ -121,6 +127,10 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
       });
       return;
     }
+    if (saved.inReview) {
+      setPhase({ name: "in-review" });
+      return;
+    }
     setPhase({ name: "done", logoUrl: saved.logoUrl });
   }
 
@@ -131,16 +141,43 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
 
   if (phase.name === "done") {
     return (
-      <Panel tone="alert" className="p-4">
+      <Panel tone="done" className="p-4">
         <p role="status" className="text-forest text-sm font-bold">
           Saved. Your mark is on your listings now.
         </p>
         <p className="text-forest/70 mt-2 text-sm">
           Travellers see it on a card with no clip, and on the page about your
-          business. Change it whenever you like. Nothing is verified against it.
+          business.
         </p>
         <Button onClick={reset} variant="secondary" className="mt-4">
           Choose a different one
+        </Button>
+      </Panel>
+    );
+  }
+
+  if (phase.name === "in-review") {
+    /*
+      Sent, and NOT up. Said as a receipt rather than a failure: nothing went
+      wrong, a person looks at a live business's new mark before it replaces
+      the one on every reel. What stays up in the meantime is named, because
+      "where is my new logo?" is the question this answers before it is asked.
+
+      Sending another is allowed, and the API keeps one waiting at a time, so
+      a second one replaces this one rather than queueing behind it.
+    */
+    return (
+      <Panel tone="done" className="p-4">
+        <p role="status" className="text-forest text-sm font-bold">
+          Sent to us for a check
+        </p>
+        <p className="text-forest/70 mt-2 text-sm">
+          {hasLogo
+            ? "We look at a new logo before it goes on your reels and listings. Your current one stays up until we have."
+            : "We look at a new logo before it goes on your reels and listings. It appears there once we have."}
+        </p>
+        <Button onClick={reset} variant="secondary" className="mt-4">
+          Send a different one instead
         </Button>
       </Panel>
     );

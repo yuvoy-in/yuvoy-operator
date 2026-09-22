@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  canEdit,
   entityLabel,
   gstinIssue,
   isEntityType,
@@ -8,23 +7,6 @@ import {
   toFormValues,
   type BusinessDetails,
 } from "./details";
-
-describe("whether the form may be edited", () => {
-  it("is editable only when the API says so", () => {
-    expect(canEdit({ editable: true })).toBe(true);
-    expect(canEdit({ editable: false })).toBe(false);
-  });
-
-  it("treats an absent flag as LOCKED, not as permission", () => {
-    /*
-      The safe direction. Offering a form that answers `409 details_locked`
-      teaches an operator the screen lies; a read-only form on an account that
-      could have been edited costs one message to us.
-    */
-    expect(canEdit({})).toBe(false);
-    expect(canEdit(null)).toBe(false);
-  });
-});
 
 describe("the fields still outstanding", () => {
   const details: BusinessDetails = {

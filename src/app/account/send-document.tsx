@@ -49,7 +49,14 @@ type Phase =
   | { name: "idle" }
   | { name: "working"; what: string }
   | { name: "done"; filename: string; replaced: boolean }
-  | { name: "failed"; message: string };
+  | { name: "failed"; message: string }
+  /*
+    No documents store on this service (`503 documents_unavailable`), which is
+    production today. Its own phase because it is not a failure: nothing is
+    wrong with the file and nothing the operator does changes it, so it gets
+    no retry control (yuvoy-operator#93).
+  */
+  | { name: "unavailable"; message: string };
 
 export function SendDocument({
   credentialId,
@@ -79,7 +86,11 @@ export function SendDocument({
       file.size,
     );
     if (!intent.ok) {
-      setPhase({ name: "failed", message: intent.message });
+      setPhase(
+        intent.unavailable
+          ? { name: "unavailable", message: intent.message }
+          : { name: "failed", message: intent.message },
+      );
       return;
     }
 
@@ -131,7 +142,11 @@ export function SendDocument({
     setPhase({ name: "working", what: "Checking…" });
     const done = await completeDocumentUpload(credentialId, intent.intentId);
     if (!done.ok) {
-      setPhase({ name: "failed", message: done.message });
+      setPhase(
+        done.unavailable
+          ? { name: "unavailable", message: done.message }
+          : { name: "failed", message: done.message },
+      );
       return;
     }
 
@@ -151,6 +166,20 @@ export function SendDocument({
   function reset() {
     if (input.current) input.current.value = "";
     setPhase({ name: "idle" });
+  }
+
+  if (phase.name === "unavailable") {
+    /*
+      A plain state, said once, with nothing to press. The file picker goes
+      too: offering it again is offering a retry the service cannot take, and
+      the control comes back on its own the next time the page is opened on a
+      service that can.
+    */
+    return (
+      <p role="status" className="text-forest/80 mt-3 text-sm">
+        {phase.message}
+      </p>
+    );
   }
 
   if (phase.name === "done") {

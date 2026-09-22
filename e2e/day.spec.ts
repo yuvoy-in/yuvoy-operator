@@ -625,8 +625,33 @@ test("a relay to a departure says how many people it reached", async ({
   await page.getByRole("button", { name: "Send it" }).click();
 
   // "Sent" is not an outcome an operator can check. One confirmed booking on
-  // this departure, so one person.
-  await expect(page.getByText("Told 1 person")).toBeVisible();
+  // this departure, so one person, and by email, which is how it goes out
+  // while there is no WhatsApp sender.
+  await expect(page.getByText("Told 1 person by email")).toBeVisible();
+});
+
+test("a relay names the people it could not reach", async ({ page }) => {
+  /*
+    yuvoy-operator#89. `recipients` counts people a message is going to, and
+    `notReached` the ones nothing could carry it to: on `slot_dawn` Priya left
+    only a WhatsApp number, so a departure-wide update reaches two of three.
+    This screen said "Told 3 people". A relay stores nothing in the mock, so
+    both projects can send it.
+  */
+  await signIn(page);
+  await page.goto("/today/slot_dawn");
+
+  await page
+    .getByRole("button", { name: "Tell everybody on this departure" })
+    .click();
+  await page.getByRole("radio", { name: "The time has changed" }).check();
+  await page.getByLabel("New time").fill("07:30");
+  await page.getByRole("button", { name: "Send it" }).click();
+
+  await expect(page.getByText("Told 2 people by email")).toBeVisible();
+  await expect(
+    page.getByText(/^1 person on this departure could not be sent this/),
+  ).toBeVisible();
 });
 
 test("calling off needs the departure's own id typed, not a checkbox", async ({
@@ -680,8 +705,38 @@ test("a call-off shows back exactly what it did", async ({
   await expect(page.getByText("Bookings cancelled")).toBeVisible();
   await expect(page.getByText("Guests affected")).toBeVisible();
   await expect(page.getByText("Holds released")).toBeVisible();
-  // Money is paise; the screen must render rupees.
-  await expect(page.getByText(/₹[\d,]+/)).toBeVisible();
+  // Money is paise; the screen must render rupees. Online only: the card
+  // party's fare (2 guests on A, 3 on B), and nothing for the one who paid at
+  // the counter.
+  await expect(page.getByText("Refunded online")).toBeVisible();
+  await expect(
+    page.getByText(testInfo.project.name === "mobile" ? "₹9,000" : "₹13,500"),
+  ).toBeVisible();
+
+  /*
+    THE CASH NOBODY REFUNDS: yuvoy-operator#95. The counter-paying party's
+    ₹4,500 is in the till, and the receipt used to say everybody had been
+    refunded in full. It names the money instead, and the manifest lists who
+    it belongs to until the return is recorded.
+  */
+  await expect(page.getByText("You are holding ₹4,500 in cash")).toBeVisible();
+  await expect(page.getByText("This departure is called off")).toBeVisible();
+  const owed = page.getByRole("region", { name: /that is not yours/ });
+  await expect(owed).toContainText("₹4,500");
+  await expect(owed).toContainText(
+    testInfo.project.name === "mobile" ? "YV-CA5HA7K2" : "YV-CB5HB8M3",
+  );
+
+  // Two taps, because a record of money handed over cannot be undone.
+  await owed.getByRole("button", { name: "I gave the cash back" }).click();
+  await owed.getByRole("button", { name: "Yes, I gave it back" }).click();
+  await expect(owed.getByText("₹4,500 recorded as given back")).toBeVisible();
+  await owed.getByRole("button", { name: "Update the list" }).click();
+
+  // Recorded, so the money is no longer named: the list is gone.
+  await expect(
+    page.getByRole("region", { name: /that is not yours/ }),
+  ).toHaveCount(0);
 });
 
 /*

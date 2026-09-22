@@ -27,7 +27,30 @@ export interface ListingLike {
    * which is the same answer by luck rather than by reading.
    */
   sentBack?: unknown;
+  /**
+   * Market days in the next 30 a traveller could book right now, by the same
+   * rules as checkout (yuvoy-api#205). Absent on an older API, which must read
+   * as "we cannot say", never as zero.
+   */
+  bookableDatesNext30Days?: number;
 }
+
+/**
+ * Live, and nothing a traveller can book (yuvoy-operator#95 item 3).
+ *
+ * "A `published` listing reading 0 is on the traveller app and sells
+ * nothing." Only `live` and `live_changes_in_review` are on the traveller
+ * app: `not_selling` also reads 0, for a reason on the account, and saying
+ * "live" about it would be the wrong fact. Absent is never zero.
+ */
+export function liveWithNothingToSell(listing: ListingLike): boolean {
+  const onTheApp =
+    listing.status === "live" || listing.status === "live_changes_in_review";
+  return onTheApp && listing.bookableDatesNext30Days === 0;
+}
+
+/** The tile's words for it: short, because a tile is a third of a phone. */
+export const NO_DATES_BADGE = "No dates in 30 days";
 
 /** Whether a reviewer has sent this listing back. See `ListingLike.sentBack`. */
 function isSentBack(listing: ListingLike): boolean {

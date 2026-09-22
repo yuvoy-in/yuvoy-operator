@@ -123,6 +123,28 @@ test("cash still to run is separate, and points at what is owed", async ({
     page.getByText(/none of this passes through a settlement/),
   ).toBeVisible();
 
+  /*
+    Of those, the cash already in hand, the same figure the Cash screen shows
+    as held, so the two screens agree (op#94 item 4).
+  */
+  const toRun = page.getByRole("region", {
+    name: "Cash bookings still to run",
+  });
+  await expect(toRun).toContainText("Cash already taken");
+  await expect(toRun).toContainText("₹15,000");
+
+  /*
+    Trips that ran with no cash recorded, in none of its figures: they used to
+    be counted as still to run (op#96, yuvoy-api#221).
+  */
+  const unrecorded = page.getByRole("region", {
+    name: "Past cash trips with no payment recorded",
+  });
+  await expect(unrecorded).toContainText("₹4,500");
+  await expect(
+    unrecorded.getByRole("link", { name: "See the trips" }),
+  ).toHaveAttribute("href", "/cash#unrecorded");
+
   await page
     .getByRole("link", { name: /What you owe us on cash already taken/ })
     .click();

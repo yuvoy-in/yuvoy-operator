@@ -1,11 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { firstProblem, signUpBody, signUpSchema } from "./signup";
+import {
+  EMAIL_REQUIRED_AT_SIGNUP,
+  firstProblem,
+  signUpBody,
+  signUpSchema,
+  signUpSchemaFor,
+} from "./signup";
 
 const valid = {
   businessName: "Reef Divers Havelock",
   name: "Priya Raut",
   phone: "+919000000101",
   relationship: "own",
+  email: "priya@reef.example",
 };
 
 describe("what an operator has to type", () => {
@@ -42,40 +49,98 @@ describe("what an operator has to type", () => {
   });
 });
 
-describe("the optional email", () => {
-  it("is genuinely optional — an operator on a jetty may not have one", () => {
-    expect(signUpSchema.safeParse(valid).success).toBe(true);
-    expect(signUpSchema.safeParse({ ...valid, email: "" }).success).toBe(true);
+describe("the email, required until WhatsApp delivers (owner, 21 Sep 2026)", () => {
+  /*
+    yuvoy-operator#91 f22. Every sign-in code goes to the email address on the
+    account while there is no WhatsApp sender, so an account created without
+    one was an account its owner could not sign back into. The contract keeps
+    the field optional; the requirement is the portal's, behind one switch.
+  */
+  it("is switched on", () => {
+    // Relaxing it is a decision, made in one place, with this test changed on
+    // purpose beside it. It must not happen by accident.
+    expect(EMAIL_REQUIRED_AT_SIGNUP).toBe(true);
   });
 
-  it("is omitted from the body rather than sent empty", () => {
+  it("refuses a sign-up without one, and says why it is needed", () => {
+    for (const email of [undefined, "", "   "]) {
+      const parsed = signUpSchema.safeParse({ ...valid, email });
+      expect(parsed.success, String(email)).toBe(false);
+      if (!parsed.success) {
+        const p = firstProblem(parsed.error);
+        expect(p.field).toBe("email");
+        expect(p.message).toBe(
+          "Add your email address. Your sign-in codes go there for now.",
+        );
+      }
+    }
+  });
+
+  it("is checked, so a typo is caught before it is stored", () => {
+    for (const email of ["priya@", "priya", "priya@reef", "pri ya@reef.in"]) {
+      const parsed = signUpSchema.safeParse({ ...valid, email });
+      expect(parsed.success, email).toBe(false);
+      if (!parsed.success) {
+        const p = firstProblem(parsed.error);
+        expect(p.field).toBe("email");
+        expect(p.message).toMatch(/does not look like an email address/);
+        // The old hint told them to leave it blank, which is now refused.
+        expect(p.message).not.toMatch(/blank/);
+      }
+    }
+  });
+
+  it("takes what the API takes, and sends it trimmed", () => {
+    // The API's own rule: a name, one @, and a domain with a dot in it.
+    for (const email of ["priya@reef.example", "a.b+c@mail.co.in"]) {
+      const parsed = signUpSchema.parse({ ...valid, email: `  ${email} ` });
+      expect(signUpBody(parsed).email).toBe(email);
+    }
+  });
+
+  it("refuses an address longer than any address can be", () => {
+    const long = `${"a".repeat(250)}@b.in`;
+    expect(signUpSchema.safeParse({ ...valid, email: long }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("the email, once the switch is relaxed", () => {
+  /*
+    Tested now rather than discovered on the day. With the switch off the form
+    goes back to what it was: an operator on a jetty with no address is not
+    stopped by one, and a blank field is left out of the body.
+  */
+  const relaxed = signUpSchemaFor({ emailRequired: false });
+  const withoutEmail = {
+    businessName: valid.businessName,
+    name: valid.name,
+    phone: valid.phone,
+    relationship: valid.relationship,
+  };
+
+  it("takes a sign-up with no email at all", () => {
+    expect(relaxed.safeParse(withoutEmail).success).toBe(true);
+    expect(relaxed.safeParse({ ...withoutEmail, email: "" }).success).toBe(
+      true,
+    );
+  });
+
+  it("omits a blank email from the body rather than sending it empty", () => {
     /*
       The request body is `additionalProperties: false` and an empty string is
       a value, not an absence. Sending "" would store a blank address that
       looks real to whoever tries to use it later.
     */
-    const parsed = signUpSchema.parse({ ...valid, email: "" });
+    const parsed = relaxed.parse({ ...withoutEmail, email: "" });
     expect(signUpBody(parsed)).not.toHaveProperty("email");
-    expect(signUpBody(parsed)).toEqual({
-      businessName: valid.businessName,
-      name: valid.name,
-      phone: valid.phone,
-      relationship: "own",
-    });
   });
 
-  it("is checked when it is given, so a typo is caught before it is stored", () => {
-    const parsed = signUpSchema.safeParse({ ...valid, email: "priya@" });
+  it("still refuses a typo", () => {
+    const parsed = relaxed.safeParse({ ...withoutEmail, email: "priya@" });
     expect(parsed.success).toBe(false);
     if (!parsed.success) expect(firstProblem(parsed.error).field).toBe("email");
-  });
-
-  it("is sent when it is real", () => {
-    const parsed = signUpSchema.parse({
-      ...valid,
-      email: "priya@reef.example",
-    });
-    expect(signUpBody(parsed).email).toBe("priya@reef.example");
   });
 });
 
@@ -102,6 +167,7 @@ describe("the body sent to the API", () => {
         name: "  Priya  ",
         phone: "  +919000000101 ",
         relationship: "own",
+        email: " priya@reef.example ",
       }),
     );
     expect(body.businessName).toBe("Reef Divers");
@@ -123,6 +189,7 @@ describe("owning it or running it (D15)", () => {
       businessName: valid.businessName,
       name: valid.name,
       phone: valid.phone,
+      email: valid.email,
     };
     const parsed = signUpSchema.safeParse(withoutAnswer);
     expect(parsed.success).toBe(false);

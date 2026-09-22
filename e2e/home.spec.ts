@@ -371,3 +371,72 @@ test("the listing hub has no accessibility violations", async ({ page }) => {
     .analyze();
   expect(results.violations).toEqual([]);
 });
+
+test("a live listing with no dates to sell says so, and one with dates does not", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#95 item 3. `bookableDatesNext30Days` counts the days a
+    traveller could book in the next 30, by checkout's own rules. A live
+    listing reading 0 is on the traveller app and sells nothing, and nothing
+    said so: "test2Activity reads Live with no next departure and no warning."
+
+    `exp_cover` is live with no departures at all; `exp_snorkel` has them.
+  */
+  await signIn(page);
+
+  await page.goto("/today/listing/exp_cover");
+  await expect(
+    page.getByText("Live, but no dates in the next 30 days"),
+  ).toBeVisible();
+
+  await page.goto(`/today/listing/${SNORKEL}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: /Snorkel trip/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Live, but no dates in the next 30 days"),
+  ).toHaveCount(0);
+
+  // And its tile on the profile carries the fact, where live tiles carry none.
+  await page.goto("/account");
+  await expect(
+    page.getByRole("link", { name: /^Coral wall \(cover fixture\)/ }),
+  ).toContainText("No dates in 30 days");
+});
+
+test("departures off sale for unconfirmed seats are named, and one tap confirms them", async ({
+  page,
+}, testInfo) => {
+  /*
+    yuvoy-operator#94 items 1 and 2. "Seats set by hand stop being offered to
+    travellers once nobody has confirmed them for two days", and no screen said
+    so: Sky diving had 19 of 20 departures off sale for it. `exp_nofootage`
+    has one such departure, ten days out.
+
+    Confirming is one-way in the mock, so this runs on one project.
+  */
+  test.skip(
+    testInfo.project.name !== "mobile",
+    "confirming seats is one-way in the shared mock, so single-tenant by design",
+  );
+  await signIn(page);
+  await page.goto("/today/listing/exp_nofootage");
+
+  await expect(page.getByText("1 departure is not on sale")).toBeVisible();
+  // Its only departure is off sale, so it is also live with nothing to sell.
+  await expect(
+    page.getByText("Live, but no dates in the next 30 days"),
+  ).toBeVisible();
+
+  await page
+    .getByRole("button", { name: "Confirm seats for the next 30 days" })
+    .click();
+
+  await expect(page.getByText("Seats confirmed on 1 departure")).toBeVisible();
+  // The hub re-read underneath the receipt: it has a date to sell now.
+  await expect(
+    page.getByText("Live, but no dates in the next 30 days"),
+  ).toHaveCount(0);
+  await expect(page.getByText("1 departure is not on sale")).toHaveCount(0);
+});

@@ -57,6 +57,12 @@ export async function createLogoIntent(): Promise<LogoIntentState> {
 
 export interface LogoSaveState {
   logoUrl?: string;
+  /**
+   * Recorded for review, NOT applied: the business is LIVE, so a new mark is
+   * looked at before it appears on every reel and listing, and the old one
+   * stays up until then (D-032.3). Never "saved".
+   */
+  inReview?: boolean;
   message?: string;
   unavailable?: boolean;
 }
@@ -75,10 +81,28 @@ export async function saveLogo(imageId: string): Promise<LogoSaveState> {
   const { token } = await requireOperator();
 
   try {
-    const { data, error } = await operatorApi(token).PUT("/logo", {
+    const { data, error, response } = await operatorApi(token).PUT("/logo", {
       body: { imageId: parsed.data },
     });
     if (error) throw error;
+
+    /*
+      `202` is "recorded for review, not applied": on a LIVE business a new
+      mark is looked at before it replaces the one on every reel and listing
+      (D-032.3), and the answer deliberately carries no `logoUrl`. Read by
+      STATUS, because the contract declares this answer under `GET /logo`
+      rather than here (yuvoy-api#222), so no type describes it, and
+      `openapi-fetch` hands any 2xx back as `data`. Treating it as saved is
+      how this screen told operators their logo was up when it was not
+      (yuvoy-operator#89 f10).
+
+      Nothing is revalidated. The receipt says it now, and the logo page says
+      it on every visit after (a new mark waiting, read from
+      `GET /change-requests`); re-rendering here would put the two side by
+      side, saying the same thing twice. Nothing else changed: the mark on
+      every other screen is still the live one.
+    */
+    if (response.status === 202) return { inReview: true };
 
     /*
       The logo is on the Business screen's blocker list and on this one, so
@@ -119,7 +143,7 @@ function failure(err: unknown): { message: string; unavailable?: boolean } {
       return {
         unavailable: true,
         message:
-          "Logos are switched off for now: nothing to do with your picture. We will tell you when they open.",
+          "Logos are switched off for now, which has nothing to do with your picture. Nothing to do on your side.",
       };
     }
     if (err.status === 502) {

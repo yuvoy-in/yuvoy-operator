@@ -45,22 +45,6 @@ export function entityLabel(value: string | undefined): string | null {
 }
 
 /**
- * Whether the form may be edited at all.
- *
- * "**Self-serve only until the account is LIVE.** After that the verified
- * documents were checked against the legal name on file, so changing it
- * without anybody looking would make the verification meaningless — the
- * response says so via `editable`, and a write answers `409`."
- *
- * Absent is treated as NOT editable. The safe direction: offering a form that
- * answers 409 teaches an operator the screen lies, while a read-only form on
- * an account that could have been edited costs them one message to us.
- */
-export function canEdit(details: BusinessDetails | null): boolean {
-  return details?.editable === true;
-}
-
-/**
  * The field names the API says are still outstanding.
  *
  * "Named rather than a bare boolean so a form can mark the specific rows." So

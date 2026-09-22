@@ -148,9 +148,16 @@ export default async function TeamPage() {
           <h2 id="invited" className="label text-forest/75">
             Invited, not accepted
           </h2>
+          {/*
+            It said "A code on somebody's phone", and no code has ever reached
+            a phone: there is no WhatsApp sender, and an invitation reaches
+            anybody only by email, or by the link passed on by hand
+            (yuvoy-operator#91). What is true of every row here is what an
+            invitation is: a way in that grants nothing until it is used.
+          */}
           <p className="text-forest/70 mt-2 text-sm">
-            A code on somebody&rsquo;s phone. It grants nothing until they use
-            it, and it expires after seven days.
+            An invitation grants nothing until they accept it with their own
+            number, and it expires after seven days.
           </p>
           <ul className="mt-3 space-y-3">
             {invitations.map((invite) => (

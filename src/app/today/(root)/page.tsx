@@ -110,7 +110,9 @@ export default async function HomePage({
       ),
       listSlots(token, today, fortnightEnd).catch(() => []),
       listListings(token).catch(() => []),
-      listMedia(token).catch(() => []),
+      listMedia(token)
+        .then((list) => list.items)
+        .catch(() => []),
       listOpenRequests(token).catch(() => null),
       totalUnread(token),
       now(),

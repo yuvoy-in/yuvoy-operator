@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toCommission, linesReconcile } from "./commission";
+import { cashInHand, linesReconcile, toCommission } from "./commission";
 
 const line = (over: Record<string, unknown> = {}) => ({
   bookingReference: "YV-8F3K2A",
@@ -11,9 +11,27 @@ const line = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/*
+  What the contract requires beside the owed figures since the 22 Sep pin: cash
+  held for trips still to run, and trips that ran with no cash recorded. Zero
+  here, because these tests are about what is owed.
+*/
+const NOTHING_ELSE = {
+  collectedPaise: 0,
+  heldBookings: 0,
+  heldFarePaise: 0,
+  heldCollectedPaise: 0,
+  heldCommissionPaise: 0,
+  heldLines: [],
+  unrecordedBookings: 0,
+  unrecordedFarePaise: 0,
+  unrecordedLines: [],
+};
+
 describe("what is owed on cash — yuvoy-operator#40 §2", () => {
   it("carries the totals and every line through", () => {
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 1,
       farePaise: 1_000_000,
       commissionPaise: 150_000,
@@ -33,6 +51,7 @@ describe("what is owed on cash — yuvoy-operator#40 §2", () => {
       Three trips in, three trips out.
     */
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 3,
       farePaise: 3_000_000,
       commissionPaise: 450_000,
@@ -47,6 +66,7 @@ describe("what is owed on cash — yuvoy-operator#40 §2", () => {
 
   it("puts the most recent trip first, so two loads agree", () => {
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 3,
       farePaise: 0,
       commissionPaise: 0,
@@ -67,6 +87,7 @@ describe("what is owed on cash — yuvoy-operator#40 §2", () => {
     // Money owed is money owed. Dropping it would stop the lines adding up to
     // the total above them, which is the one thing this screen promises.
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 2,
       farePaise: 0,
       commissionPaise: 0,
@@ -84,6 +105,7 @@ describe("what is owed on cash — yuvoy-operator#40 §2", () => {
       nothing" — a statement about an operator's honesty, not a missing number.
     */
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 1,
       farePaise: 0,
       commissionPaise: 0,
@@ -106,6 +128,7 @@ describe("whether the lines account for the total", () => {
     expect(
       linesReconcile(
         toCommission({
+          ...NOTHING_ELSE,
           bookings: 2,
           farePaise: 1_500_000,
           commissionPaise: 225_000,
@@ -126,6 +149,7 @@ describe("whether the lines account for the total", () => {
     expect(
       linesReconcile(
         toCommission({
+          ...NOTHING_ELSE,
           bookings: 2,
           farePaise: 1_500_000,
           commissionPaise: 300_000,
@@ -142,6 +166,7 @@ describe("whether the lines account for the total", () => {
     expect(
       linesReconcile(
         toCommission({
+          ...NOTHING_ELSE,
           bookings: 9,
           farePaise: 1_000_000,
           commissionPaise: 150_000,
@@ -155,6 +180,7 @@ describe("whether the lines account for the total", () => {
     expect(
       linesReconcile(
         toCommission({
+          ...NOTHING_ELSE,
           bookings: 0,
           farePaise: 0,
           commissionPaise: 0,
@@ -172,6 +198,7 @@ describe("whether the lines account for the total", () => {
       the screen must not read that as an error.
     */
     const c = toCommission({
+      ...NOTHING_ELSE,
       bookings: 1,
       farePaise: 1_500_000,
       commissionPaise: 225_000,
@@ -185,5 +212,84 @@ describe("whether the lines account for the total", () => {
     });
     expect(linesReconcile(c)).toBe(true);
     expect(c.lines[0].collectedPaise).toBe(1_200_000);
+  });
+});
+
+describe("held for trips still to run, and unrecorded: yuvoy-operator#94", () => {
+  const withHeld = {
+    ...NOTHING_ELSE,
+    bookings: 1,
+    farePaise: 1_000_000,
+    collectedPaise: 1_000_000,
+    commissionPaise: 150_000,
+    lines: [line()],
+    heldBookings: 2,
+    heldFarePaise: 1_500_000,
+    heldCollectedPaise: 1_500_000,
+    heldCommissionPaise: 225_000,
+    heldLines: [
+      line({ bookingReference: "LATER", tripDate: "2026-09-30" }),
+      line({ bookingReference: "SOONER", tripDate: "2026-09-25" }),
+    ],
+    unrecordedBookings: 1,
+    unrecordedFarePaise: 600_000,
+    unrecordedLines: [
+      line({
+        bookingReference: "RAN",
+        tripDate: "2026-09-20",
+        collectedPaise: 0,
+      }),
+    ],
+  };
+
+  it("carries the held figures, soonest trip first", () => {
+    const c = toCommission(withHeld);
+    expect(c.held).toMatchObject({
+      bookings: 2,
+      farePaise: 1_500_000,
+      collectedPaise: 1_500_000,
+      commissionPaise: 225_000,
+    });
+    expect(c.held?.lines.map((l) => l.bookingReference)).toEqual([
+      "SOONER",
+      "LATER",
+    ]);
+  });
+
+  it("carries the trips that ran with no cash recorded", () => {
+    const c = toCommission(withHeld);
+    expect(c.unrecorded).toMatchObject({ bookings: 1, farePaise: 600_000 });
+    expect(c.unrecorded?.lines[0].bookingReference).toBe("RAN");
+  });
+
+  it("adds owed and held into the cash in hand", () => {
+    // "collectedPaise plus heldCollectedPaise is all the cash you have
+    // recorded taking on those bookings."
+    expect(cashInHand(toCommission(withHeld))).toBe(2_500_000);
+  });
+
+  it("reads an older API, with none of the new figures, as unknown not zero", () => {
+    const older = {
+      bookings: 1,
+      farePaise: 1_000_000,
+      commissionPaise: 150_000,
+      lines: [line()],
+    } as Parameters<typeof toCommission>[0];
+    const c = toCommission(older);
+    expect(c.held).toBeNull();
+    expect(c.unrecorded).toBeNull();
+    expect(c.collectedPaise).toBeUndefined();
+    expect(cashInHand(c)).toBeNull();
+  });
+
+  it("reconciles the held lines against the held share on their own", () => {
+    const c = toCommission({
+      ...withHeld,
+      heldLines: [
+        line({ commissionPaise: 150_000 }),
+        line({ commissionPaise: 75_000, bookingReference: "B" }),
+      ],
+    });
+    expect(c.held && linesReconcile(c.held)).toBe(true);
   });
 });

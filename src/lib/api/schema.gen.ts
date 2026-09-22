@@ -750,7 +750,7 @@ export interface paths {
          * Tell everyone on this departure
          * @description The same act as the per-booking relay, addressed to every live booking on the departure. One send, one batch, one throttle count — telling thirty people the boat moved is one act of communication, and counting it per recipient would punish the operator with the fuller boat.
          *
-         *     Reaches `converted` bookings and unexpired holds only. A lapsed hold is somebody who is not coming, and a declined request is somebody already told no.
+         *     Reaches exactly the parties this departure's manifest shows (`GET /slots/{id}/manifest`), and nobody else: bookings that are still on, and holds that have not lapsed. A cancelled or declined booking is not told, and neither is a lapsed hold or an expired request. The two read the same rule on the server, so `recipients` can never be more than the manifest's party count. It can be fewer, when somebody listed has no address we can reach, and then `notReached` says how many.
          */
         post: operations["relayToSlot"];
         delete?: never;
@@ -875,6 +875,10 @@ export interface paths {
          *     Taken under the departure's row lock, so two staff answering two requests on two phones cannot together commit more seats than the boat holds. Requires OWNER, ADMIN or MANAGER.
          *
          *     On success the traveller has an ordinary hold with a clock on it — the same thing a direct-booking traveller gets at checkout — and is told to pay before it lapses.
+         *
+         *     **The clock is twelve hours, not the checkout's ten minutes** (yuvoy-api#203), and never runs past the departure's booking cutoff: close to the cutoff, the hold ends at the cutoff. The traveller asked hours ago and hears of the answer from a message, and a ten minute clock started at 02:41 gave the seats back at 02:51 while they slept. The length is the service's `REQUEST_HOLD_AFTER_ACCEPT`.
+         *
+         *     **The answer says how the traveller is being told.** `toldBy` lists the channels their message was queued on, and is empty when nothing could carry it. `receipt` is the whole sentence to show the operator, with the pay-by time in the departure's market time and the day named when it is not today. Show `receipt` as it is: it already says, when nobody could be reached, that the operator is the one who has to tell them.
          */
         post: operations["acceptRequest"];
         delete?: never;
@@ -1047,6 +1051,12 @@ export interface paths {
          *     The trips behind the total are listed, and that is the point of the screen. A total on its own invites "that cannot be right" and gives nobody a way to check.
          *
          *     A trip appears here only once it is **completed** and you have **recorded taking the cash**. A no-show who never paid you owes nobody anything.
+         *
+         *     **Held for trips still to run** sits beside it, in the `held` fields: cash you have recorded taking on bookings that are neither cancelled nor declined and whose trip is not yet completed or a no-show. None of its commission is owed yet. When the trip is completed the booking moves from held to owed. `collectedPaise` plus `heldCollectedPaise` is all the cash you have recorded taking on those bookings.
+         *
+         *     Trips finish on their own: six hours after a departure ends, every booking on it still confirmed is completed, or marked a no-show where you marked the party absent. You can still mark attendance yourself before then.
+         *
+         *     **Unrecorded** sits beside both, in the `unrecorded` fields: cash bookings whose trip ended more than six hours ago with no cash recorded. These trips have happened and nothing says whether you were paid, so none of it is held or owed. A trip does not finish on its own while its cash is unrecorded. Record the cash and it is owed once the trip is complete; mark the party a no-show and nothing is owed.
          */
         get: operations["getCommissionOwed"];
         put?: never;
@@ -1093,6 +1103,8 @@ export interface paths {
          * @description Cancels the departure, cancels every booking on it, refunds **in full** everybody who paid online, releases the holds and tells everybody, in one transaction. A booking to be paid in cash on the day has captured nothing, so it is cancelled with nothing to refund. Cancelling without the refunds would leave people who paid staring at a cancelled trip and their money gone.
          *
          *     Full refunds regardless of the cancellation policy. Those tiers price a traveller changing their mind; nobody changed their mind here, and applying a 50% tier to somebody whose trip was called off by weather is the fastest way to lose a market where every traveller talks to the next one at the same guesthouse.
+         *
+         *     **Refunding in full is not the same as everybody getting their money back.** We refund what was captured online. A traveller who paid you in cash at the counter paid us nothing, so that money is with you and only you can hand it back. The response carries `cashToGiveBack` naming those people and what each is owed, and they stay on `GET /slots/{id}/manifest` under the same key until you record the return with `POST /bookings/{id}/cash-returned`. Do not render "everyone has been refunded" while `cashToGiveBack` is present.
          *
          *     `confirmSlotId` must equal the departure's own id. Not a boolean: a checkbox is one mis-tap on a wet phone away from cancelling a full boat, and it cannot be undone. Requires OWNER, ADMIN or MANAGER.
          */
@@ -1157,6 +1169,32 @@ export interface paths {
          *     Requires OWNER, ADMIN or MANAGER.
          */
         patch: operations["setSlotCapacity"];
+        trace?: never;
+    };
+    "/slots/confirm-seats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the seats on many departures at once
+         * @description Confirms that the seat counts are still right on every open, upcoming, instant-book departure of your business whose seats were set by hand, with a market day from `from` to `to` (both included, at most 31 days), and only on one listing when `experienceId` is given. Seat counts are not changed. It is the same confirmation that saving a seat count with `PATCH /slots/{id}` makes, over a range of dates.
+         *
+         *     Seats set by hand stop being offered to travellers once nobody has confirmed them for two days. A departure confirmed here goes back on sale straight away, unless something else keeps it off.
+         *
+         *     Departures made from a weekly schedule are left alone: they are not taken off sale for this reason. Departures that take requests are left alone too.
+         *
+         *     Safe to send again: confirming twice leaves the departures as confirming once did. OWNER, ADMIN or MANAGER only. A listing belonging to another business answers **404**.
+         */
+        post: operations["confirmOperatorSeats"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/slots/{id}/time": {
@@ -1323,6 +1361,8 @@ export interface paths {
          *     `pipeline` is card bookings still to run, not yet marked complete or a no-show and neither cancelled nor declined, at what they come to after commission and refunds. It is **never** part of anything earned. A booking leaves the pipeline when its trip is marked complete or a no-show, which is when it becomes payable, or when it is cancelled or declined, so it is never in the pipeline and a settlement at once. Cash bookings are not in it: a cash fare is paid to you on the day and never passes through a settlement.
          *
          *     `paidAtCounter` is your cash bookings still to run, beside the pipeline and never in it: their fares, our commission on them, and what you keep. None of it is ever in a settlement, because that money is paid to you. A cash booking leaves it when its trip is marked complete or a no-show, or when it is cancelled or declined. What you owe us on cash you took for a trip marked complete is `GET /commission-owed`.
+         *
+         *     A cash booking whose trip ended more than six hours ago with no cash recorded is not still to run either. It is counted apart in `paidAtCounter.unrecordedBookings`, `unrecordedFarePaise` and `unrecordedLines`: trips that have happened where nothing says whether you were paid, for you to record the cash or mark a no-show.
          *
          *     `seasonToDate` is every payout **sent** since `from`. Today a season is the financial year, from 1 April.
          *
@@ -1914,6 +1954,8 @@ export interface paths {
          *     Without this the portal could show nothing after the upload screen — not what was processing, not what a reviewer approved, not what was live — and `publish` and `withdraw` were unreachable from any interface, because both need a media id the client only held for the seconds after `complete` returned it.
          *
          *     **No playback URL.** An unpublished clip needs a signed, short-lived one, and minting per row on a list nobody may be watching hands out credentials for footage no moderator has seen.
+         *
+         *     **Paged.** Newest first, then by id. With no `limit` and no `cursor` this is the 50 newest, as it always was, and `complete` says whether that was all of them. Pass `nextCursor` back as `cursor` for the next page, and stop when there is no `nextCursor`, not when a page comes back short. Home's posters and the profile's Reels grid both pick out of this list, so a client that reads one page loses the oldest items past it, and they can then be neither published nor withdrawn from that screen (yuvoy-api#204).
          */
         get: operations["listOperatorMedia"];
         put?: never;
@@ -2149,7 +2191,21 @@ export interface components {
             /** @description `grossPaise - commissionPaise - refundsPaise`. */
             netPaise: number;
         };
-        /** @description Your bookings to be paid in cash at the counter that are still to run: not yet marked complete or a no-show, and neither cancelled nor declined. Never part of a settlement, because the traveller pays you and that money never passes through us. */
+        /** @description One cash booking on the cash screen. */
+        CashTripLine: {
+            bookingReference: string;
+            /** @description Market-local YYYY-MM-DD. */
+            tripDate: string;
+            guests: number;
+            farePaise: number;
+            collectedPaise?: number;
+            commissionPaise: number;
+        };
+        /**
+         * @description Your bookings to be paid in cash at the counter that are still to run: not yet marked complete or a no-show, and neither cancelled nor declined. Never part of a settlement, because the traveller pays you and that money never passes through us.
+         *
+         *     A cash booking you have not recorded the cash for stops being still to run six hours after its departure ends, the same time a trip finishes on its own. From then it is in the `unrecorded` fields instead, and in none of the others.
+         */
         PaidAtCounter: {
             bookings: number;
             /** @description The fares agreed when the bookings were made. */
@@ -2158,6 +2214,16 @@ export interface components {
             commissionPaise: number;
             /** @description What you keep: the cash you recorded taking, or the fare where you have not recorded any yet, less `commissionPaise`. Our commission is on the fare, so cash you took short of it comes out of what you keep. */
             netPaise: number;
+            /** @description How many of these bookings you have already recorded taking the cash for. The same count `GET /commission-owed` shows as `heldBookings`. */
+            heldBookings: number;
+            /** @description The cash you have already recorded taking on these bookings: money in hand for trips still to run. The same figure `GET /commission-owed` shows as `heldCollectedPaise`. */
+            heldCollectedPaise: number;
+            /** @description Cash bookings whose trip has happened and that you never recorded the cash for: the departure ended more than six hours ago and the booking is not cancelled, declined, complete or a no-show. These trips have happened, and nothing here says whether you were paid. Record the cash if you took it, or mark the party a no-show if they did not come. Not in `bookings` or any other figure above. The same count `GET /commission-owed` shows as `unrecordedBookings`. */
+            unrecordedBookings: number;
+            /** @description The fares agreed on the unrecorded bookings. A fare, not cash anybody is known to have: nothing says whether it was paid. */
+            unrecordedFarePaise: number;
+            /** @description The unrecorded bookings, latest trip first. `collectedPaise` is 0 on every one, because no cash was recorded. */
+            unrecordedLines: components["schemas"]["CashTripLine"][];
         };
         /** @description Every payout sent since `from`. */
         SeasonToDate: {
@@ -2570,6 +2636,20 @@ export interface components {
              */
             screenerKey?: string;
             upcomingDepartures?: number;
+            /** @description Upcoming departures of this listing that are off sale only because nobody has confirmed their seats: seats set by hand on an instant-book departure stop being offered once nobody has confirmed them for two days. The same departures `GET /slots` reports with `notOnSaleReason: departure_seats_unconfirmed`. Always present, 0 when none. Add them up across listings for Home, and confirm them with `POST /slots/confirm-seats`. */
+            departuresNotOnSale?: number;
+            /** @description Upcoming departures of this listing that are on sale now and will go off sale within 24 hours for the same reason, unless somebody confirms their seats. Always present, 0 when none. */
+            departuresGoingOffSaleSoon?: number;
+            /**
+             * @description How many market days, from the market's today through the 29 days after it, a traveller could book this listing on right now: days with at least one departure that is open, before its booking cutoff, not held off sale for unconfirmed seats, with seats left when it is instant-book, and on a listing and business that are selling. These are the rules the traveller app's dated feed and checkout apply, and the ones `GET /v1/experiences/{slug}/availability` applies to the departures it returns. Always present, and 0 for a draft, an unpriced listing or one whose business is not selling.
+             *
+             *     A `published` listing reading 0 is on the traveller app and sells nothing. Show it as "Live, but no dates in the next 30 days" and point at adding departures, on the listing row and on Home.
+             *
+             *     30 is a warning window, not the traveller's calendar. The traveller app's calendar asks for 90 days, which is the most that read accepts, so a listing whose first date is 31 to 90 days out still reads 0 here while a traveller can book it. `upcomingDepartures` counts every open departure still to come, whether it sells or not.
+             * @example 0
+             * @example 12
+             */
+            bookableDatesNext30Days?: number;
             /**
              * @description The mandatory fields still empty on this listing, named in the same spelling the revision body uses. Empty means nothing is outstanding.
              *
@@ -2682,8 +2762,16 @@ export interface components {
             /** @description Groups one send across everyone it reached. */
             batchId?: string;
             intent?: string;
-            /** @description How many people were actually told. */
+            /** @description How many people a message is actually going to. It counts queued messages, never bookings: a person we hold no reachable address for is not somebody who was told, and until 20 September this number said they were. */
             recipients?: number;
+            /** @description The same number split by channel, for example `{"email": 3}`. A message goes on exactly one channel per person: WhatsApp when this deployment can send it, otherwise the address on file. */
+            byChannel?: {
+                [key: string]: number;
+            };
+            /** @description How many people on this departure nothing could carry the message to. Present only when it is more than zero. Their booking page still shows the update. */
+            notReached?: number;
+            /** @description Present with `notReached`, and safe to show the operator verbatim. */
+            notReachedNote?: string;
         };
         BookingMessage: {
             /** @description Send it as `upTo` to mark this message and everything before it read. */
@@ -2775,7 +2863,14 @@ export interface components {
             /** Format: date-time */
             expiresAt?: string;
             contactName?: string;
-            /** @description Seats still grantable on this departure before its physical capacity is reached. Shown beside the request because "accept" with no sense of what is left is a decision made blind. */
+            /**
+             * @description Seats still grantable on this departure before its physical capacity is reached. Shown beside the request because "accept" with no sense of what is left is a decision made blind.
+             *
+             *     **Counter sales count as seats used.** A seat you sold at your own counter has a person in it, so it lowers this number by one. A six-seat departure with two sold at the counter offers 4. It used to offer 8, because the arithmetic added the counter sale instead of subtracting it, and accepting then failed with a 500: the database refused the oversell the number had invited.
+             *
+             *     **Never more than an accept will allow.** The same expression the accept refuses on, so a party this number says you have room for is one `POST /requests/{id}/accept` will say yes to. `0` means the departure is full, counting what you sold at the counter. If that count is wrong, correcting it on the counter sales screen is what raises this number again.
+             * @example 4
+             */
             seatsGrantable?: number;
             /** @description Never negative. Computed server-side so every client agrees. */
             minutesToAnswer?: number;
@@ -2786,9 +2881,21 @@ export interface components {
             state?: string;
             /**
              * Format: date-time
-             * @description Set on acceptance: the traveller now holds seats with a clock on them, and must pay before it lapses. Null on a decline.
+             * @description Set on acceptance: the traveller now holds seats with a clock on them, and must pay before it lapses. Twelve hours from the accept, or the departure's booking cutoff if that is sooner, so it can fall on the next day. Null on a decline.
              */
             holdExpiresAt?: string | null;
+            /**
+             * @description Accept only. The channels the traveller's message was queued on, WhatsApp before email. Queued, not yet delivered: it leaves once the accept is saved. **Empty when nothing could carry it**, for example a traveller who left only a WhatsApp number on a deployment that cannot send WhatsApp. They then do not know their request was accepted, and the operator is the only one who can tell them.
+             * @example [
+             *       "email"
+             *     ]
+             */
+            toldBy?: ("whatsapp" | "email")[];
+            /**
+             * @description Accept only. What to show the operator, as it is. Says how many seats the traveller holds, how they are being told or that nobody could reach them, and when the seats come back, in the departure's market time.
+             * @example They are holding 3 seats and still have to pay. We are letting them know by email. If they have not paid by 14:41, the seats come back to you.
+             */
+            receipt?: string;
         };
         /** @description One question a listing asks travellers. Its `text`, `answerType` and `options` never change once it exists: rewording a question gives it a new `id`, so every answer keeps the words it answered. */
         ListingQuestion: {
@@ -2877,6 +2984,15 @@ export interface components {
             calledOff?: {
                 reasonCode?: string;
             };
+            /**
+             * @description **Cancelled parties who are owed cash you took.** They are NOT in `parties` and never will be: `parties` is who is on the boat, and somebody cancelled is not. A called-off departure empties `parties` entirely, so without this list there was no screen left naming the money at all.
+             *
+             *     Read it after calling a departure off, and read it again whenever the manifest is opened: a party stays here until the return is recorded with `POST /bookings/{id}/cash-returned`.
+             *
+             *     Not in the CSV, which is the boat's list for a clipboard.
+             */
+            cashToGiveBack?: components["schemas"]["CashToGiveBack"];
+            /** @description Who is on the boat: bookings still on, and live holds. Cancelled parties are deliberately absent; where they are owed money, they are in `cashToGiveBack`. */
             parties?: {
                 /** @description Empty for a party still holding. */
                 bookingId?: string;
@@ -2892,6 +3008,12 @@ export interface components {
                 screening?: components["schemas"]["PartyScreening"];
                 /** @description What the listing asks travellers and what this party answered. **Present only when there is something to show**: the listing asks a question, or this party answered one. These questions never ask about health, which stays with `screening`. Answers are deleted 90 days after the trip, as `PartyQuestion` describes. */
                 questions?: components["schemas"]["PartyQuestion"][];
+                /**
+                 * @description **Present only when this party pays you at the counter**, the same object `GET /bookings` sends on the same booking. Absent on a party that paid online and on a hold.
+                 *
+                 *     The manifest is every party on the departure, so a party with a `bookingId` and no `cash` has paid and owes you nothing; it is not a party the check could not read. That is what lets the manifest say who still owes cash without a second read of `GET /bookings`, which is one page at a time and used to cut a busy day short (yuvoy-api#204). What is still to take from a party is `collectPaise` while `collected` is `false`.
+                 */
+                cash?: components["schemas"]["CounterCash"];
             }[];
             /** @description Computed server-side so three clients cannot disagree about them on a dock. `seatsSold` and `seatsSoldOffline` answer different questions and are deliberately separate. */
             totals?: {
@@ -2901,6 +3023,32 @@ export interface components {
                 seatsSold?: number;
                 seatsSoldOffline?: number;
             };
+        };
+        /**
+         * @description **Present only when the traveller is paying you at the counter.** Absent means they have already paid us and you collect nothing.
+         *
+         *     Without this you cannot tell a cash booking from a card one, and `paid_pending_ops` reads as "payment clearing", which on a cash booking is the opposite of the truth. Nothing is clearing. You are the one who has to collect, and the booking is not settled until you record it.
+         *
+         *     `collected: false` is the ACTIONABLE state: it is what puts this booking on somebody's list for the morning. Record it with `POST /bookings/{id}/cash-collected`.
+         *
+         *     Note `collectPaise` is the FARE and is not the same number as `money.grossPaise`, which is what WE captured: zero here, for the whole life of the booking, because the money never passes through us.
+         */
+        CounterCash: {
+            /** @description What to take from them, in INR paise. */
+            collectPaise: number;
+            /** @description Whether you have recorded taking it. */
+            collected: boolean;
+            /** Format: date-time */
+            collectedAt?: string;
+            /** @description What you reported taking, which may be less than the fare if you gave them something off. */
+            collectedPaise?: number;
+            /**
+             * Format: date-time
+             * @description When you recorded giving this cash back, on a booking cancelled after you took it, with `POST /bookings/{id}/cash-returned`. Absent until then.
+             */
+            returnedAt?: string;
+            /** @description What you recorded giving back, which is all of `collectedPaise`. Present with `returnedAt`. */
+            returnedPaise?: number;
         };
         OfflineSaleResult: {
             seatsRecorded?: number;
@@ -2915,14 +3063,62 @@ export interface components {
                 incidentId?: string;
             };
         };
+        /**
+         * @description **Money you are holding that is not yours.** These travellers paid you in cash at the counter and paid us nothing online, so there is nothing for us to refund and nothing will reach them from our side. Hand it back, then record it with `POST /bookings/{id}/cash-returned`, which is what takes a party off this list.
+         *
+         *     Present only when there is somebody on it. A departure called off with nobody owed cash carries no `cashToGiveBack` at all, so a screen has nothing to render on an ordinary day.
+         *
+         *     This exists because a call-off used to report `refundedPaise` and nothing else. `refundedPaise` covers what was captured online, which on a cash booking is zero, so the portal told the operator everybody had been refunded in full while the operator still had their notes, and the cancelled parties then dropped off the manifest with nothing naming the money anywhere.
+         * @example {
+         *       "totalPaise": 10000,
+         *       "parties": [
+         *         {
+         *           "bookingId": "0d0f3a2c-1d61-4b0e-9f3f-2a2f1c7b9e10",
+         *           "reference": "YV-GQZS05HM",
+         *           "name": "Meera",
+         *           "guests": 2,
+         *           "amountPaise": 10000
+         *         }
+         *       ],
+         *       "note": "You are holding this money. These travellers paid you in cash and nothing was paid online, so we refund nothing: hand it back to them."
+         *     }
+         */
+        CashToGiveBack: {
+            /**
+             * Format: int64
+             * @description What the lines below add up to. Never zero when present.
+             */
+            totalPaise: number;
+            /** @description One line per cancelled booking whose cash you took. */
+            parties: {
+                bookingId: string;
+                /** @description The booking reference, which is what the traveller will show you. */
+                reference: string;
+                /** @description A FIRST NAME and nothing else, so you know who to call over (D-018). Empty when the booking carries no contact name. */
+                name?: string;
+                guests: number;
+                /**
+                 * Format: int64
+                 * @description What you recorded taking, in paise, which is what you owe back. Whole: no partial return is recorded anywhere.
+                 */
+                amountPaise: number;
+            }[];
+            /** @description The same thing in a sentence, safe to show an operator as written. */
+            note?: string;
+        };
         CallOffResult: {
             slotId?: string;
             reasonCode?: string;
             bookingsCancelled?: number;
             guestsAffected?: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description What we queued back, which is everything captured ONLINE. A booking to be paid in cash captured nothing, so it adds nothing here. This number is not the whole story on its own: read `cashToGiveBack` beside it before telling anybody they have been paid back.
+             */
             refundedPaise?: number;
             holdsReleased?: number;
+            /** @description **Present when travellers on this departure paid you in cash you still hold.** Absent when there is none, which is the ordinary case. */
+            cashToGiveBack?: components["schemas"]["CashToGiveBack"];
         };
         BookingCancelResult: {
             bookingId: string;
@@ -2941,6 +3137,9 @@ export interface components {
             /**
              * Format: int64
              * @description **Present only when you had already recorded taking this booking's cash.** We refund nothing on it because we took nothing, so this is money you hold that belongs to the traveller. Once you have given it back, record that with `POST /bookings/{id}/cash-returned`.
+             *
+             *     One booking, so it is a number rather than a list. Calling a whole departure off can leave several people owed, and that answer carries `cashToGiveBack` with a line each instead.
+             * @example 10000
              */
             cashToGiveBackPaise?: number;
             /** @description Present with `cashToGiveBackPaise`, saying the same thing in words. */
@@ -2993,7 +3192,7 @@ export interface components {
          * @description One switch. A closed set, added to by contract change.
          * @enum {string}
          */
-        NotificationGroup: "new_bookings" | "guest_cancellations" | "todays_departures" | "settlement_summary" | "document_expiry";
+        NotificationGroup: "new_bookings" | "guest_cancellations" | "todays_departures" | "settlement_summary" | "document_expiry" | "seat_confirmations";
         NotificationSwitchChanges: {
             /** @description The switches to change. Any not named are left as they are. */
             switches: {
@@ -3147,32 +3346,7 @@ export interface components {
             };
             /** Format: date-time */
             createdAt?: string;
-            /**
-             * @description **Present only when the traveller is paying you at the counter.** Absent means they have already paid us and you collect nothing.
-             *
-             *     Without this you cannot tell a cash booking from a card one, and `paid_pending_ops` reads as "payment clearing" — which on a cash booking is the opposite of the truth. Nothing is clearing. You are the one who has to collect, and the booking is not settled until you record it.
-             *
-             *     `collected: false` is the ACTIONABLE state — it is what puts this booking on somebody's list for the morning. Record it with `POST /bookings/{id}/cash-collected`.
-             *
-             *     Note `collectPaise` is the FARE and is not the same number as `money.grossPaise`, which is what WE captured — zero here, for the whole life of the booking, because the money never passes through us.
-             */
-            cash?: {
-                /** @description What to take from them, in INR paise. */
-                collectPaise: number;
-                /** @description Whether you have recorded taking it. */
-                collected: boolean;
-                /** Format: date-time */
-                collectedAt?: string;
-                /** @description What you reported taking, which may be less than the fare if you gave them something off. */
-                collectedPaise?: number;
-                /**
-                 * Format: date-time
-                 * @description When you recorded giving this cash back, on a booking cancelled after you took it, with `POST /bookings/{id}/cash-returned`. Absent until then.
-                 */
-                returnedAt?: string;
-                /** @description What you recorded giving back, which is all of `collectedPaise`. Present with `returnedAt`. */
-                returnedPaise?: number;
-            };
+            cash?: components["schemas"]["CounterCash"];
             /**
              * @description What this one booking contributed, so an operator asking "why is this two hundred rupees less than I expected" can answer it here rather than by messaging us.
              *
@@ -4345,6 +4519,12 @@ export interface operations {
                     phone: string;
                     name: string;
                     /**
+                     * @description Optional. Where the invitation goes when no phone channel can carry it, which today is always: there is no WhatsApp sender. It is not a second way in. The code is still checked against the number, and accepting still proves the phone.
+                     *
+                     *     Leave it out and the invitation is still created; `sent` is then `false` and `note` says to pass the link on yourself.
+                     */
+                    email?: string;
+                    /**
                      * @description What the person inviting would like them to be. `OWNER` joins as an owner. Anything else, or nothing, joins as `STAFF`.
                      * @enum {string}
                      */
@@ -4360,13 +4540,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description Whether anything is actually carrying the invitation. It is read back from the queued message rather than asserted, and it is `false` when we hold no address we can reach that person on. The invitation exists either way and the code still works. */
                         sent?: boolean;
                         /**
                          * @description What accepting will make them.
                          * @enum {string}
                          */
                         role?: "OWNER" | "STAFF";
-                        /** @description Present when `role` is not the role that was asked for, and says so: they join as staff, and their role can be changed once they have joined. Show it to the person inviting. */
+                        /**
+                         * @description Present when `role` is not the role that was asked for, and says so: they join as staff, and their role can be changed once they have joined. Show it to the person inviting.
+                         *
+                         *     Also present when `sent` is `false`, saying to pass the join link and the code on by hand.
+                         */
                         note?: string;
                         /**
                          * @description The business's join link, returned so the inviter can pass it on themselves. The same URL for everybody this business adds, and the same one shown on `GET /team`.
@@ -4379,7 +4564,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description `invalid_input`: the number is not in E.164. `invalid_role`: `role` is not a role on a team, and `details.allowed` lists the four. */
+            /** @description `invalid_input`: the number is not in E.164, or `email` was given and is not an address. `invalid_role`: `role` is not a role on a team, and `details.allowed` lists the four. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4967,7 +5152,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description `nobody_to_tell` — this booking is no longer live, so there was nobody to send to. Deliberately not a success: "sent to 0 people" and "sent" must not look the same. */
+            /** @description `nobody_to_tell`: this booking is no longer live (cancelled, declined, or a hold that lapsed), so there was nobody to send to. Deliberately not a success: "sent to 0 people" and "sent" must not look the same. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5239,7 +5424,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description `request_not_open` — already answered, or out of time. `grant_ceiling_exceeded` — that would put more people on the departure than it physically holds. `operator_not_sellable` — new in 0053. Accepting is a sale, so it is gated on the same eligibility as every other sale: the business is not selling, a kill switch is engaged, the listing lost its price, or a required credential lapsed while the request sat waiting. The request is deliberately NOT auto-declined, so an operator who fixes the gap within the window can still say yes. */
+            /** @description `request_not_open` — already answered, or out of time. `grant_ceiling_exceeded` — that would put more people on the departure than it physically holds. Counter sales count towards that: seats sold at your own counter are seats used. When they are the reason a party does not fit, and only then, the message names them rather than leaving you to guess, so you know that correcting the count on the counter sales screen is what lets the accept through. This is a 409 in every case, including the one the database's own backstop catches, which used to reach the portal as a 500 that drew as a dropped network. `operator_not_sellable` — new in 0053. Accepting is a sale, so it is gated on the same eligibility as every other sale: the business is not selling, a kill switch is engaged, the listing lost its price, or a required credential lapsed while the request sat waiting. The request is deliberately NOT auto-declined, so an operator who fixes the gap within the window can still say yes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5559,19 +5744,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description Owed now: completed cash trips you recorded taking the cash for. */
                         bookings: number;
-                        /** @description What travellers paid you in cash across these trips. Context for the commission, so it reads as a share of something rather than a bill out of nowhere. */
+                        /** @description The fares on the trips owed now. Context for the commission, so it reads as a share of something rather than a bill out of nowhere. */
                         farePaise: number;
+                        /** @description The cash you recorded taking on the trips owed now, which can be short of the fares. */
+                        collectedPaise: number;
+                        /** @description What you owe us now, on the trips owed now. */
                         commissionPaise: number;
-                        lines: {
-                            bookingReference: string;
-                            /** @description Market-local YYYY-MM-DD. */
-                            tripDate: string;
-                            guests: number;
-                            farePaise: number;
-                            collectedPaise?: number;
-                            commissionPaise: number;
-                        }[];
+                        /** @description The trips owed now, latest trip first. */
+                        lines: components["schemas"]["CashTripLine"][];
+                        /** @description Held for trips still to run: bookings you recorded taking the cash for that are neither cancelled nor declined and whose trip is not yet completed or a no-show. */
+                        heldBookings: number;
+                        /** @description The fares on the held bookings. */
+                        heldFarePaise: number;
+                        /** @description The cash you recorded taking on the held bookings. */
+                        heldCollectedPaise: number;
+                        /** @description Our commission on the held bookings, at the rate fixed on each. Not owed yet: it is owed once the trip is completed, and then it is in `commissionPaise`. */
+                        heldCommissionPaise: number;
+                        /** @description The held bookings, soonest trip first. */
+                        heldLines: components["schemas"]["CashTripLine"][];
+                        /** @description Cash bookings whose trip ended more than six hours ago and that you never recorded the cash for. These trips have happened, and nothing says whether you were paid. Not in any held or owed figure. The same count `GET /settlements/overview` shows as `paidAtCounter.unrecordedBookings`. */
+                        unrecordedBookings: number;
+                        /** @description The fares agreed on the unrecorded bookings. Not cash anybody is known to have. */
+                        unrecordedFarePaise: number;
+                        /** @description The unrecorded bookings, latest trip first. `collectedPaise` is 0 on every one. */
+                        unrecordedLines: components["schemas"]["CashTripLine"][];
                     };
                 };
             };
@@ -5806,6 +6004,53 @@ export interface operations {
             };
         };
     };
+    confirmOperatorSeats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description Only this listing's departures. Omit for every listing.
+                     */
+                    experienceId?: string;
+                    /**
+                     * Format: date
+                     * @description The first market day, included.
+                     */
+                    from: string;
+                    /**
+                     * Format: date
+                     * @description The last market day, included. At most 30 days after `from`.
+                     */
+                    to: string;
+                };
+            };
+        };
+        responses: {
+            /** @description How many departures were confirmed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Departures whose seats were confirmed. 0 is a legitimate answer: nothing in that range needed it. */
+                        confirmed: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     moveDeparture: {
         parameters: {
             query?: never;
@@ -5837,8 +6082,10 @@ export interface operations {
                     "application/json": {
                         /** Format: date-time */
                         startsAt: string;
-                        /** @description How many bookings were sent the new time. Zero is normal — an empty departure moves quietly. */
+                        /** @description How many bookings a message is actually going to. It counts queued messages, never bookings on the departure: until 20 September it counted the second, so a move was reported as told when nothing could carry it. Zero is normal, because an empty departure moves quietly. */
                         bookingsTold: number;
+                        /** @description How many bookings on the departure nothing could carry the new time to. Present only when it is more than zero. The move still happened and their booking page shows it. */
+                        bookingsNotReached?: number;
                         /** @description Say this out loud. It names how many people were told and that, until the departure leaves, anybody booked on it now may cancel and get back everything they paid online, which is the cost of the move an operator should see before repeating it. */
                         note: string;
                     };
@@ -7195,7 +7442,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description `already_off_sale` — it is still a draft, so it is not on sale to anybody yet — or `sale_in_progress` — somebody is mid-checkout on this listing. Holds last ten minutes; withdrawing is never urgent, and the alternatives are stranding a payer or killing a sale in flight. */
+            /** @description `already_off_sale`: it is still a draft, so it is not on sale to anybody yet. `sale_in_progress`: somebody holds unpaid seats on this listing, or a request on it is waiting for your answer. Withdrawing is never urgent, and the alternatives are stranding a payer or killing a sale in flight. A checkout hold lasts ten minutes, but an accepted request holds for up to twelve hours, so the message says until when, and `details` carries `heldUntil` (the last unpaid hold's end, absent when there is none) and `openRequests` (how many requests to accept or decline first). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7208,7 +7455,12 @@ export interface operations {
     };
     listOperatorMedia: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Items per page. None, or a value that is not a whole number above zero, gets 50. More than 200 gets 200. */
+                limit?: number;
+                /** @description A previous response's `nextCursor`. Opaque, so do not construct one. A cursor this list did not issue is a `400`, and the way on is the first page. */
+                cursor?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7222,10 +7474,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items?: components["schemas"]["OperatorMedia"][];
+                        items: components["schemas"]["OperatorMedia"][];
+                        /** @description Told rather than inferred. `true` means nothing comes after this page; `false` always comes with a `nextCursor`. */
+                        complete: boolean;
+                        /** @description Absent when there is nothing after this page. */
+                        nextCursor?: string;
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };
