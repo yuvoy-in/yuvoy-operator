@@ -316,7 +316,7 @@ test("the manifest never says what anybody disclosed", async ({ page }) => {
   }
 });
 
-test("marking somebody here sticks, and a second tap is not an error", async ({
+test("checking somebody in sticks, and a second tap is not an error", async ({
   page,
 }, testInfo) => {
   await signIn(page);
@@ -332,20 +332,30 @@ test("marking somebody here sticks, and a second tap is not an error", async ({
   const who =
     testInfo.project.name === "mobile" ? "Asha Menon" : "Priya Raghavan";
   const row = page.locator("li").filter({ hasText: who });
-  await row.getByRole("button", { name: "Here", exact: true }).click();
-  await expect(row.getByRole("button", { name: "Here ✓" })).toBeVisible();
+  /*
+    "Check in", and "Checked in" once done (yuvoy-operator#88 s3): "Here" is
+    our word, and on a jetty it read as a question.
+  */
+  await row.getByRole("button", { name: "Check in", exact: true }).click();
+  await expect(
+    row.getByRole("button", { name: "Checked in", exact: true }),
+  ).toBeVisible();
 
   // Idempotent server-side: "a second tap on a wet phone keeps the first
   // arrival time and is not an error somebody has to read while eleven people
   // wait."
-  await row.getByRole("button", { name: "Here ✓" }).click();
+  await row.getByRole("button", { name: "Checked in", exact: true }).click();
   await expect(row.getByRole("alert")).toHaveCount(0);
-  await expect(row.getByRole("button", { name: "Here ✓" })).toBeVisible();
+  await expect(
+    row.getByRole("button", { name: "Checked in", exact: true }),
+  ).toBeVisible();
 
   // It survives a reload, because the manifest is re-read rather than patched.
   await page.reload();
   const after = page.locator("li").filter({ hasText: who });
-  await expect(after.getByRole("button", { name: "Here ✓" })).toBeVisible();
+  await expect(
+    after.getByRole("button", { name: "Checked in", exact: true }),
+  ).toBeVisible();
 });
 
 test("terminal outcomes are absent before the departure has set off", async ({
@@ -357,7 +367,9 @@ test("terminal outcomes are absent before the departure has set off", async ({
   // whatever hour this suite runs at. See `earlierToday` in the fixtures.
   await page.goto("/today/slot_late_morning");
   const row = page.locator("li").filter({ hasText: "Nadia Farouk" });
-  await expect(row.getByRole("button", { name: "Here" })).toBeVisible();
+  await expect(
+    row.getByRole("button", { name: "Check in", exact: true }),
+  ).toBeVisible();
   // Offering a button the API will refuse is how an operator learns to
   // distrust the screen.
   await expect(row.getByRole("button", { name: "Completed" })).toHaveCount(0);
@@ -381,6 +393,30 @@ test("terminal outcomes are absent before the departure has set off", async ({
   await early.getByRole("button", { name: "Not that" }).click();
   await expect(early.getByRole("button", { name: "No-show" })).toBeVisible();
   await expect(early.getByRole("button", { name: /Confirm/ })).toHaveCount(0);
+});
+
+test("the departure has one title, and nothing repeats it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#80 t2 and #88 s3. The day moved from an eyebrow into the line
+    under the title, beside where to meet; the "Manifest" caption and the "Tell
+    everybody" heading over its own button are gone; the total says "Checked
+    in", not "Here".
+  */
+  await signIn(page);
+  await page.goto("/today/slot_dawn");
+
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    /^\d\d:\d\d Try-dive at Nemo Reef$/,
+  );
+  await expect(page.getByText(/ · Beach 3 dive hut, 06:30$/)).toBeVisible();
+  await expect(page.getByText("Manifest", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Tell everybody", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.locator("dt", { hasText: "Checked in" })).toBeVisible();
+  await expect(page.locator("dt", { hasText: /^Here$/ })).toHaveCount(0);
 });
 
 test("a called-off departure says so before anything else", async ({
@@ -574,9 +610,7 @@ test("a note is unmistakably not sent to a phone", async ({ page }) => {
   await signIn(page);
   await page.goto("/today/slot_dawn");
 
-  await page
-    .getByRole("button", { name: "Tell everybody on this departure" })
-    .click();
+  await page.getByRole("button", { name: "Message everyone booked" }).click();
 
   /*
     The most important sentence on the panel. "An operator who thinks they
@@ -595,9 +629,7 @@ test("the relay refuses a link, and says why", async ({ page }) => {
   await signIn(page);
   await page.goto("/today/slot_dawn");
 
-  await page
-    .getByRole("button", { name: "Tell everybody on this departure" })
-    .click();
+  await page.getByRole("button", { name: "Message everyone booked" }).click();
   await page
     .getByRole("radio", { name: "The meeting point has changed" })
     .check();
@@ -617,9 +649,7 @@ test("a relay to a departure says how many people it reached", async ({
   await signIn(page);
   await page.goto("/today/slot_late_morning");
 
-  await page
-    .getByRole("button", { name: "Tell everybody on this departure" })
-    .click();
+  await page.getByRole("button", { name: "Message everyone booked" }).click();
   await page.getByRole("radio", { name: "The time has changed" }).check();
   await page.getByLabel("New time").fill("09:30");
   await page.getByRole("button", { name: "Send it" }).click();
@@ -641,9 +671,7 @@ test("a relay names the people it could not reach", async ({ page }) => {
   await signIn(page);
   await page.goto("/today/slot_dawn");
 
-  await page
-    .getByRole("button", { name: "Tell everybody on this departure" })
-    .click();
+  await page.getByRole("button", { name: "Message everyone booked" }).click();
   await page.getByRole("radio", { name: "The time has changed" }).check();
   await page.getByLabel("New time").fill("07:30");
   await page.getByRole("button", { name: "Send it" }).click();
@@ -662,7 +690,14 @@ test("calling off needs the departure's own id typed, not a checkbox", async ({
   // that nothing else cancels.
   await page.goto("/today/slot_late_morning");
 
-  await page.getByRole("button", { name: "This departure cannot run" }).click();
+  /*
+    "Call this departure off", the product's own words (yuvoy-operator#88 s3),
+    and a confirm that names the time before anything is typed (#81 t5).
+  */
+  await page.getByRole("button", { name: "Call this departure off" }).click();
+  await expect(
+    page.getByRole("heading", { name: /^Call off \d\d:\d\d\?$/ }),
+  ).toBeVisible();
   await page.getByRole("radio", { name: "Weather" }).check();
   await page.getByLabel("Type the departure id to confirm").fill("wrong-id");
   await page.getByRole("button", { name: "Call it off" }).click();
@@ -689,7 +724,7 @@ test("a call-off shows back exactly what it did", async ({
     testInfo.project.name === "mobile" ? "slot_calloff_a" : "slot_calloff_b";
   await page.goto(`/today/${slot}`);
 
-  await page.getByRole("button", { name: "This departure cannot run" }).click();
+  await page.getByRole("button", { name: "Call this departure off" }).click();
   await page.getByRole("radio", { name: "Weather" }).check();
   await page.getByLabel("Type the departure id to confirm").fill(slot);
   await page.getByRole("button", { name: "Call it off" }).click();

@@ -243,7 +243,7 @@ test("a cash booking says what to take, and a card booking says nothing", async 
   await expect(owed.getByRole("button", { name: "Take ₹9,000" })).toBeVisible();
   // A separate act from arriving — "somebody can turn up and not pay".
   await expect(
-    owed.getByRole("button", { name: "Here", exact: true }),
+    owed.getByRole("button", { name: "Check in", exact: true }),
   ).toBeVisible();
 
   // Paid online: nothing to collect, and nothing said about cash.

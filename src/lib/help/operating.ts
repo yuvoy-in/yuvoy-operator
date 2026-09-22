@@ -41,6 +41,25 @@ export const OPERATING_HELP: readonly HelpTopic[] = [
     ],
   },
   {
+    id: "still-paying",
+    area: "Bookings",
+    question: "Who are the people under Still paying on a departure?",
+    answer: [
+      "Travellers who are part way through paying. They hold seats for a few minutes, and they have no booking yet.",
+      "They may finish paying and turn up, or the hold may run out and the seats come back. Keep them in mind at the jetty, but do not check them in: there is nothing to check in until they have paid.",
+    ],
+  },
+  {
+    id: "calling-off",
+    area: "Calendar",
+    question: "What happens when I call a departure off?",
+    answer: [
+      "Every booking on it is cancelled, and everything the travellers paid online is refunded in full, whatever the cancellation terms. Seats being held are released, and we message everyone booked.",
+      "Anyone who paid you in cash gets it back from you, because none of it reached us. The departure lists who, and you record each one once you have handed the money back.",
+      "It cannot be undone, which is why you type the departure's id to confirm it rather than ticking a box. To stop new bookings and keep the people already booked, stop selling the departure instead.",
+    ],
+  },
+  {
     id: "booking-money",
     area: "Money",
     question: "Why do my bookings not add up to a month of earnings?",

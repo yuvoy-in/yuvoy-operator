@@ -9,7 +9,9 @@ import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 
 /**
- * This departure cannot run.
+ * Calling a departure off: "Call this departure off", the words used
+ * everywhere else in the product (yuvoy-operator#88 s3). It read "This
+ * departure cannot run".
  *
  * The founding use case of the whole product — a storm handled from a phone —
  * and the only action in the portal that cannot be undone. It cancels the
@@ -26,21 +28,38 @@ import { panelClass } from "@/components/ui/panel";
  * **The numbers come back.** Somebody who has just cancelled fourteen people's
  * day should see that it happened, and how much money went back — otherwise
  * the most consequential action in the product ends in silence.
+ *
+ * **Quiet until it is asked for** (yuvoy-operator#81 t5). It sat alone at the
+ * foot of the manifest in the same shape as every other control. It is text
+ * in the warning colour now, and the confirm it opens names the departure and
+ * what happens to the people on it, over the loud button.
  */
 export function CallOffPanel({
   slotId,
   alreadyCalledOff,
   canManage,
+  time,
+  startOpen = false,
+  onKeep,
 }: {
   slotId: string;
   alreadyCalledOff: boolean;
   canManage: boolean;
+  /** The departure's own start time, "09:00", which the confirm names. */
+  time?: string;
+  /**
+   * Opens on the confirm, for a screen that already asked (the listing hub's
+   * Manage row), so nobody taps "call off" twice to reach it.
+   */
+  startOpen?: boolean;
+  /** Where "Keep it" goes when the screen that opened this should close it. */
+  onKeep?: () => void;
 }) {
   const [state, act, pending] = useActionState<CallOffState, FormData>(
     callOffDeparture,
     {},
   );
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
 
   if (state.result) {
     const r = state.result;
@@ -110,8 +129,13 @@ export function CallOffPanel({
   if (!open) {
     return (
       <div className="mt-10">
-        <Button onClick={() => setOpen(true)} variant="danger">
-          This departure cannot run
+        <Button
+          onClick={() => setOpen(true)}
+          variant="danger-quiet"
+          size="md"
+          block={false}
+        >
+          Call this departure off
         </Button>
       </div>
     );
@@ -119,20 +143,25 @@ export function CallOffPanel({
 
   return (
     <form action={act} className={panelClass("alert", "bg-paper mt-10")}>
-      <h2 className="text-base font-bold">Call off this departure</h2>
+      <h2 className="text-base font-bold">
+        {time ? `Call off ${time}?` : "Call off this departure?"}
+      </h2>
       {/*
         The whole consequence, named before the tap (op#81 t5), including the
         part the call-off does not do: cash taken at the counter goes back
-        from the operator's hand, not from us.
+        from the operator's hand, not from us (op#95).
       */}
       <p className="text-forest/80 mt-2 text-sm">
-        Every booking on it is cancelled and everything paid online is refunded{" "}
-        <strong>in full</strong>. Holds are released and we message everyone
-        booked. Anyone who paid you in cash gets it back from you. This cannot
-        be undone.
+        Everyone booked is cancelled, and everything paid online is refunded{" "}
+        <strong>in full</strong>. Anyone who paid you in cash gets it back from
+        you. We message everyone booked. This cannot be undone.
       </p>
 
       <input type="hidden" name="slotId" value={slotId} />
+      {/*
+        Ids carry the departure: the listing hub can hold one of these open on
+        more than one row, and a repeated id gives two labels one field.
+      */}
 
       <fieldset className="mt-5">
         <legend className="label text-forest/75">Why?</legend>
@@ -153,11 +182,14 @@ export function CallOffPanel({
       </fieldset>
 
       <div className="mt-4">
-        <label htmlFor="call-off-note" className="label text-forest/75">
+        <label
+          htmlFor={`call-off-note-${slotId}`}
+          className="label text-forest/75"
+        >
           Anything to add (optional)
         </label>
         <textarea
-          id="call-off-note"
+          id={`call-off-note-${slotId}`}
           name="note"
           rows={2}
           maxLength={500}
@@ -169,16 +201,21 @@ export function CallOffPanel({
       </div>
 
       <div className="mt-4">
-        <label htmlFor="confirm-slot" className="label text-forest/75">
+        <label
+          htmlFor={`confirm-slot-${slotId}`}
+          className="label text-forest/75"
+        >
           Type the departure id to confirm
         </label>
+        {/*
+          The id, because nobody has it memorised. Why it is typed rather than
+          ticked is the design's reason, not the operator's, and it went.
+        */}
         <p className="text-forest/70 mt-1 text-xs">
-          It is <code className="font-mono font-bold">{slotId}</code>. Typing it
-          is deliberate: a checkbox is one mis-tap away from cancelling a full
-          boat.
+          It is <code className="font-mono font-bold">{slotId}</code>.
         </p>
         <input
-          id="confirm-slot"
+          id={`confirm-slot-${slotId}`}
           name="confirmSlotId"
           type="text"
           autoComplete="off"
@@ -204,7 +241,7 @@ export function CallOffPanel({
           {pending ? "Cancelling…" : "Call it off"}
         </Button>
         <Button
-          onClick={() => setOpen(false)}
+          onClick={() => (onKeep ? onKeep() : setOpen(false))}
           variant="secondary"
           block={false}
           className="flex-1"
