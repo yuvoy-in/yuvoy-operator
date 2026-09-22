@@ -7,17 +7,17 @@ import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { bankProblem } from "@/lib/account/bank";
 import { suspendedMessage } from "@/lib/account/suspended";
+import { SESSION_ENDED, stepUpRefusal } from "@/lib/account/step-up";
 
 /**
  * O4's three writes: ask for a code, use it, change the account — plus the
  * emergency brake.
  *
  * The ordering of gates is the security model, so it is worth restating where
- * it is enforced: OWNER only and a code to the OWNER's phone are both the
- * server's job, and this file surfaces those refusals rather than
- * second-guessing them. What it does locally is refuse a malformed account
- * number, so a typo does not cost a code, an SMS to the owner and a 24-hour
- * clock.
+ * it is enforced: OWNER only and a code to an OWNER are both the server's job,
+ * and this file surfaces those refusals rather than second-guessing them. What
+ * it does locally is refuse a malformed account number, so a typo does not
+ * cost a code, a message to the owner and a 24-hour clock.
  */
 
 const MOCKING = process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
@@ -30,21 +30,29 @@ export interface StepUpState {
   /**
    * The API accepted the request and sent nothing — `202` with `sent: false`.
    *
-   * A business whose first person runs it has no owner (D15), so there is
-   * nobody the code can go to: "the code goes to no number, `sent` is `false`,
-   * and no session there can be elevated until an owner has joined." Distinct
-   * from `message`, because nothing went wrong and there is nothing to retry.
+   * Two reasons, and the response does not say which. A business whose first
+   * person runs it has no owner (D15), so "the code goes to no number". And
+   * since yuvoy-api 67e3213 `sent` is read back from the queued message: the
+   * step-up code goes to an owner by email while there is no WhatsApp sender,
+   * so an owner with no email on their account is an owner nothing can reach
+   * either (yuvoy-operator#91). Distinct from `message`, because nothing went
+   * wrong and there is nothing to retry; the sentence names both causes.
    */
   nobodyToSendTo?: boolean;
 }
 
 /**
- * Send a code to the OWNER's phone.
+ * Send a code to an OWNER.
  *
  * "The code goes to the OWNER's number whoever asks — a compromised MANAGER
  * login must not be able to both request the elevation and receive the code
- * that grants it." The screen says whose phone it went to for that reason: a
- * manager who asked and did not receive it has learned something true.
+ * that grants it." The screen says whose it is for that reason: a manager who
+ * asked and did not receive it has learned something true. It travels by email
+ * since yuvoy-api 67e3213, to the owner's address, never the asker's.
+ *
+ * Each refusal the endpoint declares has its own sentence (yuvoy-operator#90):
+ * `401` is a session that has ended, `403 account_suspended` is the business,
+ * and `429` is wait.
  */
 export async function requestStepUp(): Promise<StepUpState> {
   const { token } = await requireOperator();
@@ -57,10 +65,10 @@ export async function requestStepUp(): Promise<StepUpState> {
       which put a code field in front of somebody at a business with no owner
       and left them typing into it (yuvoy-operator#46 item 4).
 
-      It is `false` for one reason and it is not an error: the code "goes to the
-      owner who joined first", and a business whose first person runs it has no
-      owner to send it to. Absent is read as `true`, because that is what every
-      response before this field existed meant.
+      It is `false` when nothing can carry the code, which is not an error: no
+      owner to send it to, or an owner with no email while there is no phone
+      sender. Absent is read as `true`, because that is what every response
+      before this field existed meant.
     */
     if (data.sent === false) {
       return { sent: false, nobodyToSendTo: true };
@@ -71,9 +79,6 @@ export async function requestStepUp(): Promise<StepUpState> {
       return { message: "No signal. No code was sent." };
     }
     if (err instanceof OperatorApiError) {
-      if (err.status === 429) {
-        return { message: "Too many attempts. Wait a minute." };
-      }
       /*
         A suspended business cannot raise a bank change, and the API's own
         sentence says which of suspended, closed or disqualified it is (#50). A
@@ -81,6 +86,10 @@ export async function requestStepUp(): Promise<StepUpState> {
       */
       const refusal = suspendedMessage(err);
       if (refusal) return { message: refusal };
+      if (err.status === 429) {
+        return { message: "Too many attempts. Wait a minute." };
+      }
+      if (err.isUnauthorized) return { message: SESSION_ENDED };
     }
     return { message: "We could not send a code just now." };
   }
@@ -129,15 +138,15 @@ export async function changeBank(
 
   const { code, ...bank } = parsed.data;
 
-  // Refused here first: a typo must not cost a code, an SMS to the owner and
-  // a 24-hour clock.
+  // Refused here first: a typo must not cost a code, a message to the owner
+  // and a 24-hour clock.
   const problem = bankProblem(bank);
   if (problem) return { field: problem.field, message: problem.message };
 
   if (!/^\d{4,8}$/.test(code)) {
     return {
       field: "code",
-      message: "Enter the code sent to the owner's phone.",
+      message: "Enter the code that went to the owner.",
     };
   }
 
@@ -150,14 +159,8 @@ export async function changeBank(
     });
     if (error) throw error;
   } catch (err) {
-    if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was changed." };
-    }
-    // Wrong, expired and used all answer the same way, deliberately.
-    return {
-      field: "code",
-      message: "That code did not work. Ask for a new one.",
-    };
+    // One sentence per declared refusal, suspension first. See `stepUpRefusal`.
+    return stepUpRefusal(err);
   }
 
   try {

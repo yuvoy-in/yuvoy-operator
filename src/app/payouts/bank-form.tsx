@@ -8,6 +8,7 @@ import {
   type StepUpState,
 } from "./actions";
 import { maskAccount } from "@/lib/account/bank";
+import { SUPPORT_PHONE } from "@/lib/site/contact";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -114,9 +115,13 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
 
       {/* ------------------------------------------------------- step up -- */}
       <Panel tone="outline" className="p-4">
-        <p className="text-sm font-bold">
-          A code goes to the owner&rsquo;s phone
-        </p>
+        {/*
+          It said "A code goes to the owner's phone", and none ever has: there
+          is no WhatsApp sender, and since yuvoy-api 67e3213 the step-up code
+          goes to the owner's email address (yuvoy-operator#91). Who it goes to
+          is the part that matters, and is unchanged: an owner, whoever asks.
+        */}
+        <p className="text-sm font-bold">A code is emailed to the owner</p>
         <p className="text-forest/80 mt-1.5 text-sm">
           Whoever asks. A manager who requested this will not receive it. That
           is the point of sending it to the owner.
@@ -151,18 +156,25 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
         ) : step.nobodyToSendTo ? (
           /*
             No code field, because there is no code and there is not going to be
-            one (yuvoy-operator#46 item 4). A business whose first person runs it
-            has no owner (D15), and "the code goes to no number, `sent` is
-            `false`, and no session there can be elevated until an owner has
-            joined."
+            one (yuvoy-operator#46 item 4).
+
+            `sent: false` has two causes and the response names neither. A
+            business whose first person runs it has no owner (D15): "the code
+            goes to no number". And an owner with no email address with us is
+            one nothing can reach while there is no phone sender, since the
+            code travels by email (yuvoy-api 67e3213, yuvoy-operator#91). The
+            sentence used to name only the first, which told an owner-run
+            business that "an owner has to join". So it names both, and the one
+            way forward that covers both.
 
             This screen used to draw the field anyway, because the action
-            returned `sent: true` whatever the API said — so somebody at such a
+            returned `sent: true` whatever the API said, so somebody at such a
             business typed into a box waiting for a message nobody sent.
           */
           <p className="text-terra-deep mt-4 text-sm font-bold">
-            No code was sent. An owner has to join before the bank details can
-            change.
+            No code was sent. We have no way to reach an owner: there is no
+            owner on this account yet, or the owner has no email address with
+            us. Call us on {SUPPORT_PHONE}.
           </p>
         ) : (
           <Button

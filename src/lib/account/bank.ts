@@ -5,9 +5,10 @@
  * to redirect a season's takings."
  *
  * Three gates, and the UI's job is to explain them rather than apologise for
- * them: OWNER only, a code to the owner's phone, then two 24-hour clocks — one
- * before approval so the real owner can stop it, one after, so even an
- * approved change is still catchable.
+ * them: OWNER only, a code to an owner (by email since yuvoy-api 67e3213, as
+ * there is no phone sender), then two 24-hour clocks: one before approval so
+ * the real owner can stop it, one after, so even an approved change is still
+ * catchable.
  */
 
 export type ChangeState =

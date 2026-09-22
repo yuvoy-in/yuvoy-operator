@@ -1079,18 +1079,20 @@ for (const [segment, info] of gateJustification) {
 /* ------ 11d. access screens never promise a message nobody can carry ----- */
 
 /**
- * Copy on the team, join and bank-change screens that says a message went to
+ * Copy on the team, join and payout screens that says a message went to
  * somebody's phone.
  *
  * yuvoy-operator#91. There has never been a WhatsApp sender (yuvoy-api#68).
  * Since yuvoy-api 67e3213 a code or an invitation reaches a person only by
  * email, when we hold one, and the warnings that protect an account (a bank
  * change raised) are phone only by design and so reach nobody at all. The
- * screens said otherwise in six places: "We message them a code", "A code on
+ * screens said otherwise in eight places: "We message them a code", "A code on
  * somebody's phone", "Sent to" on a pending row, "The code we sent them", "we
- * will send you a fresh code", and "We messaged the owner the moment it was
- * raised". Each told an owner something had been delivered that had not, and
- * the owner acted on it: waited, or did not pass the link on.
+ * will send you a fresh code", "We messaged the owner the moment it was
+ * raised", "The owner is messaged immediately", and the payout step-up's "A
+ * code goes to the owner's phone". Each told an owner something had been
+ * delivered that had not, and the owner acted on it: waited, or did not pass
+ * the link on.
  *
  * So these screens may say what an invitation IS and what the API says was
  * sent (`sent`, `note`), and may not assert a send on their own authority or
@@ -1102,7 +1104,9 @@ for (const [segment, info] of gateJustification) {
   const surfaces = [
     ...walk(join(APP, "team")),
     ...walk(join(APP, "join")),
+    ...walk(join(APP, "payouts")),
     join(SRC, "lib", "account", "bank.ts"),
+    join(SRC, "lib", "account", "step-up.ts"),
   ].filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f));
 
   const promises = [
@@ -1115,6 +1119,7 @@ for (const [segment, info] of gateJustification) {
     /\b(?:code|digits) we sent\b/i,
     /\bwe(?:'ll| will) send you\b/i,
     /\bcode on (?:somebody|someone|their|your)\S*\s+phone\b/i,
+    /\b(?:goes|go|went|sent) to (?:the owner|your|their)\S*\s+phone\b/i,
     /\bSent to\b/,
   ];
 
