@@ -182,6 +182,12 @@ export interface MockSlot {
   calledOff?: { reasonCode: string };
   parties: MockParty[];
   seatsSoldOffline: number;
+  /**
+   * Mock-internal: seats set by hand that nobody has confirmed for two days,
+   * so the departure is off sale for that alone until
+   * `POST /slots/confirm-seats` confirms it (yuvoy-api#211).
+   */
+  seatsUnconfirmed?: boolean;
 }
 
 /**
@@ -811,6 +817,29 @@ export const SLOTS: MockSlot[] = [
         arrived: false,
       },
     ],
+  },
+  /*
+    OFF SALE BECAUSE NOBODY CONFIRMED ITS SEATS (yuvoy-operator#94).
+
+    On "Blue lagoon", a live listing with no other departures, three days out
+    where no other fixture is. Confirming it is one-way in this mock, so the
+    walkthrough that confirms it runs on one project only.
+  */
+  {
+    id: "slot_unconfirmed",
+    experienceId: "exp_nofootage",
+    title: "Blue lagoon (no footage fixture)",
+    startsAt: todayAt("10:00", 3),
+    timezone: TZ,
+    seats: 6,
+    sold: 0,
+    remaining: 6,
+    bookingMode: "allotment",
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 1",
+    seatsSoldOffline: 0,
+    parties: [],
+    seatsUnconfirmed: true,
   },
 ];
 

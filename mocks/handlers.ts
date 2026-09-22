@@ -159,6 +159,14 @@ function changesFor(request: Request): Record<string, unknown>[] {
  */
 let accountChanges: Record<string, unknown>[] = [];
 
+/** Departures whose hand-set seats were confirmed this session. */
+let seatsConfirmed: Record<string, true> = {};
+
+/** Off sale only because nobody confirmed its seats (yuvoy-api#211). */
+function seatsAwaitingConfirmation(slot: MockSlot): boolean {
+  return Boolean(slot.seatsUnconfirmed) && !seatsConfirmed[slot.id];
+}
+
 function fileForReview(
   request: Request,
   kind: "logo" | "profile",
@@ -1359,12 +1367,28 @@ function bookableDatesOf(e: { id?: string; status?: string }): number {
   for (const slot of allSlots()) {
     if (slot.experienceId !== e.id) continue;
     if (slotStatusOf(slot) !== "open") continue;
+    if (seatsAwaitingConfirmation(slot)) continue;
     const at = Date.parse(slot.startsAt);
     if (Number.isNaN(at) || at <= Date.now()) continue;
     const day = dayOf(at);
     if (day >= first && day <= last) days.add(day);
   }
   return days.size;
+}
+
+/**
+ * `departuresNotOnSale` for a listing: its departures still to come that are
+ * off sale only because nobody confirmed their seats. Always present, 0 when
+ * none. Going off sale within a day is not modelled, so that count is 0.
+ */
+function unconfirmedDeparturesOf(e: { id?: string }): number {
+  return allSlots().filter(
+    (slot) =>
+      slot.experienceId === e.id &&
+      slotStatusOf(slot) === "open" &&
+      Date.parse(slot.startsAt) > Date.now() &&
+      seatsAwaitingConfirmation(slot),
+  ).length;
 }
 
 /** A departure's status as the API would answer it now. */
@@ -1423,6 +1447,12 @@ function saleVerdictOf(
   }
   if (slot.bookingMode === "allotment" && seats - sold <= 0) {
     return notOnSale("departure_full", "Every seat on this departure is sold.");
+  }
+  if (seatsAwaitingConfirmation(slot)) {
+    return notOnSale(
+      "departure_seats_unconfirmed",
+      "Nobody has confirmed the seats on this departure for two days, so it is not on sale. Confirm them to put it back.",
+    );
   }
   return { onSale: true };
 }
@@ -1721,6 +1751,7 @@ export function __resetOperatorMocks() {
   steppedUp = false;
   bankChanges = [];
   accountChanges = [];
+  seatsConfirmed = {};
   stoppedChanges = [];
   team = TEAM.map((m) => ({ ...m }));
   signups = [];
@@ -3819,6 +3850,8 @@ export const handlers = [
       experiences: mockExperiences.map((e) => ({
         ...e,
         bookableDatesNext30Days: bookableDatesOf(e),
+        departuresNotOnSale: unconfirmedDeparturesOf(e),
+        departuresGoingOffSaleSoon: 0,
       })),
     });
   }),
@@ -3990,8 +4023,10 @@ export const handlers = [
     return HttpResponse.json({
       listing: {
         ...listing,
-        // The single listing carries it too (yuvoy-api#205).
+        // The single listing carries these too (yuvoy-api#205, #211).
         bookableDatesNext30Days: bookableDatesOf(listing),
+        departuresNotOnSale: unconfirmedDeparturesOf(listing),
+        departuresGoingOffSaleSoon: 0,
       },
       departures,
       /*
@@ -4110,6 +4145,58 @@ export const handlers = [
    * screen and none of them would ever render against a permissive mock: too
    * close to its start, a different day, and a time this listing already has.
    */
+  /**
+   * Confirm the seats on many departures at once (yuvoy-api#211), as the API
+   * answers it: OWNER, ADMIN or MANAGER; market days `from` to `to`, both
+   * included, at most 30 days apart; one listing when `experienceId` is sent,
+   * and another business's listing answers 404. Safe to send twice: a second
+   * call confirms nothing and says 0.
+   */
+  http.post(url("/slots/confirm-seats"), async ({ request }) => {
+    const denied = requireManager(request, "STAFF cannot confirm seats.");
+    if (denied) return denied;
+
+    const body = (await request.json().catch(() => ({}))) as {
+      from?: unknown;
+      to?: unknown;
+      experienceId?: unknown;
+    };
+    const isDay = (v: unknown): v is string =>
+      typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    if (!isDay(body.from) || !isDay(body.to) || body.to < body.from) {
+      return envelope(
+        "invalid_input",
+        "from and to must be dates, from first",
+        400,
+      );
+    }
+    const span =
+      (Date.parse(`${body.to}T00:00:00Z`) -
+        Date.parse(`${body.from}T00:00:00Z`)) /
+      86_400_000;
+    if (span > 30) {
+      return envelope("invalid_input", "at most 31 days at a time", 400);
+    }
+    const experienceId =
+      typeof body.experienceId === "string" ? body.experienceId : "";
+    if (experienceId && !mockExperiences.some((e) => e.id === experienceId)) {
+      return envelope("not_found", "we could not find that listing", 404);
+    }
+
+    let confirmed = 0;
+    for (const slot of allSlots()) {
+      if (experienceId && slot.experienceId !== experienceId) continue;
+      if (slotStatusOf(slot) !== "open") continue;
+      if (Date.parse(slot.startsAt) <= Date.now()) continue;
+      const day = slotDay(slot);
+      if (day < body.from || day > body.to) continue;
+      if (!seatsAwaitingConfirmation(slot)) continue;
+      seatsConfirmed[slot.id] = true;
+      confirmed += 1;
+    }
+    return HttpResponse.json({ confirmed });
+  }),
+
   http.patch(url("/slots/:id/time"), async ({ request, params }) => {
     const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
     if (failed) return failed;

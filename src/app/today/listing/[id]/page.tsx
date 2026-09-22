@@ -19,6 +19,7 @@ import { Panel } from "@/components/ui/panel";
 import { Problem } from "@/components/ui/states";
 import { ButtonLink } from "@/components/ui/button";
 import { PauseResume } from "@/components/listings/pause-resume";
+import { ConfirmSeats } from "@/components/listings/confirm-seats";
 import { ScheduleForm } from "./schedule-form";
 import { DepartureRow } from "./departure-row";
 
@@ -133,6 +134,21 @@ export default async function ListingHubPage({
         </div>
       ) : null}
 
+      {/*
+        Departures this listing has off sale, or about to go off sale, because
+        nobody confirmed their seats (op#94). Mounted for every manager so the
+        receipt survives the re-read that brings the counts to 0.
+      */}
+      {me.canManage && !suspended ? (
+        <div className="mt-4">
+          <ConfirmSeats
+            experienceId={id}
+            notOnSale={count(listing.departuresNotOnSale)}
+            goingOffSoon={count(listing.departuresGoingOffSaleSoon)}
+          />
+        </div>
+      ) : null}
+
       <p className="text-forest/80 mt-3 text-base">{price}</p>
       <p className="text-forest/70 mt-1 text-sm">
         {listing.durationMinutes ? `${listing.durationMinutes} minutes` : null}
@@ -238,4 +254,14 @@ export default async function ListingHubPage({
       </section>
     </Screen>
   );
+}
+
+/**
+ * A count the API "always" sends, read as 0 when it did not: an older API
+ * that sends neither count has nothing to confirm, which draws nothing.
+ */
+function count(value: number | undefined): number {
+  return Number.isInteger(value) && (value as number) > 0
+    ? (value as number)
+    : 0;
 }
