@@ -821,15 +821,16 @@ export const SLOTS: MockSlot[] = [
   /*
     OFF SALE BECAUSE NOBODY CONFIRMED ITS SEATS (yuvoy-operator#94).
 
-    On "Blue lagoon", a live listing with no other departures, three days out
-    where no other fixture is. Confirming it is one-way in this mock, so the
+    On "Blue lagoon", a live listing with no other departures, ten days out:
+    the calendar's own tests keep +3, +5 and +6 empty and build on +9 and
+    +11, and +10 is nobody's. Confirming it is one-way in this mock, so the
     walkthrough that confirms it runs on one project only.
   */
   {
     id: "slot_unconfirmed",
     experienceId: "exp_nofootage",
     title: "Blue lagoon (no footage fixture)",
-    startsAt: todayAt("10:00", 3),
+    startsAt: todayAt("10:00", 10),
     timezone: TZ,
     seats: 6,
     sold: 0,

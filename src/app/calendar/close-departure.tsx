@@ -74,15 +74,8 @@ export function CloseDeparture({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.done]);
 
-  if (state.done) {
-    // The frame before the day re-reads; the day's panel says it from here.
-    return (
-      <div role="status" className="text-sm">
-        <p className="font-bold">{heading}</p>
-        <p className="text-forest/80 mt-1">{note}</p>
-      </div>
-    );
-  }
+  // Said on the day's panel from here on; here too would say it twice.
+  if (state.done) return null;
 
   if (!open) {
     return (

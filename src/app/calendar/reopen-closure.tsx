@@ -55,27 +55,24 @@ export function ReopenClosure({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.done]);
 
+  /*
+    Nothing here once it is done: the note is on the day's panel, and saying
+    it in this row too, for the moment before the day re-reads and the row
+    goes, would say it twice.
+  */
+  if (state.done) return null;
+
   return (
     <form action={act} className="mt-2">
       <input type="hidden" name="id" value={id} />
-      {state.done ? (
-        /*
-          The frame before the day re-reads. The note itself is on the day's
-          panel from here on.
-        */
-        <p role="status" className="text-forest/80 text-sm">
-          {state.note ?? STALE_REOPEN}
-        </p>
-      ) : (
-        <Button
-          type="submit"
-          variant="secondary"
-          block={false}
-          disabled={pending}
-        >
-          {pending ? "Reopening…" : "Reopen"}
-        </Button>
-      )}
+      <Button
+        type="submit"
+        variant="secondary"
+        block={false}
+        disabled={pending}
+      >
+        {pending ? "Reopening…" : "Reopen"}
+      </Button>
       {state.message ? (
         <p role="alert" className="text-terra-deep mt-2 text-sm font-bold">
           {state.message}

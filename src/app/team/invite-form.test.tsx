@@ -59,7 +59,7 @@ beforeEach(() => {
 });
 
 describe("the receipt", () => {
-  it("leads with the link, and says plainly that nothing was sent", async () => {
+  it("says plainly that nothing was sent, and what makes it go", async () => {
     inviteMember.mockResolvedValue(receipt({ note: NOT_SENT }));
     const user = userEvent.setup();
     render(<InviteForm />);
@@ -67,19 +67,20 @@ describe("the receipt", () => {
 
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("Ramesh Toppo is invited as Staff");
-    expect(screen.getByText("Send them this link")).toBeInTheDocument();
-    expect(screen.getByText(LINK)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Copy the link" }),
+      screen.getByText(/Nothing was sent: we hold no email address for them/),
     ).toBeInTheDocument();
-    expect(screen.getByText(NOT_SENT)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Invite them again with their email address/),
+    ).toBeInTheDocument();
+    /*
+      Not the API's note: it says to pass on "the code yourself", and this
+      screen never has the code. And not the link: without the code, which
+      goes only to an email address, the link is not a way in.
+    */
+    expect(screen.queryByText(NOT_SENT)).toBeNull();
+    expect(screen.queryByText("Send them this link")).toBeNull();
     expect(screen.queryByText(/We also sent them/)).toBeNull();
-
-    // The link comes BEFORE anything about a message.
-    const text = status.textContent ?? "";
-    expect(text.indexOf("Send them this link")).toBeLessThan(
-      text.indexOf("We could not send"),
-    );
   });
 
   it("says so when a message is carrying it", async () => {
@@ -107,7 +108,7 @@ describe("the receipt", () => {
     expect(screen.getByText("Send them this link")).toBeInTheDocument();
   });
 
-  it("says nothing was sent in our words when the API gave none", async () => {
+  it("says nothing was sent in the same words when the API gave no note", async () => {
     inviteMember.mockResolvedValue(receipt());
     const user = userEvent.setup();
     render(<InviteForm />);
@@ -115,7 +116,7 @@ describe("the receipt", () => {
 
     expect(
       await screen.findByText(
-        /We could not send this invitation to them\. Give them the link yourself/,
+        /Nothing was sent: we hold no email address for them/,
       ),
     ).toBeInTheDocument();
   });

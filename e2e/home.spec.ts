@@ -412,7 +412,7 @@ test("departures off sale for unconfirmed seats are named, and one tap confirms 
     yuvoy-operator#94 items 1 and 2. "Seats set by hand stop being offered to
     travellers once nobody has confirmed them for two days", and no screen said
     so: Sky diving had 19 of 20 departures off sale for it. `exp_nofootage`
-    has one such departure, three days out.
+    has one such departure, ten days out.
 
     Confirming is one-way in the mock, so this runs on one project.
   */

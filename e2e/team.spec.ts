@@ -444,30 +444,29 @@ test("inviting echoes the whole number once, and the pending row keeps its last 
   ).toBeVisible();
 });
 
-test("an invitation with no email says nothing was sent, and leads with the link", async ({
+test("an invitation with no email says nothing was sent, and what makes it go", async ({
   page,
 }, testInfo) => {
   /*
     yuvoy-operator#91 f20. The form promised "We message them a code", the only
     channel was WhatsApp, and there is no WhatsApp sender: the owner believed
     their colleague had been told and nothing arrived. `sent` is read back now,
-    and with no email it is false, with the API's note saying what to do.
+    and with no email it is false.
+
+    And the link is not offered as the way in: accepting takes the code, and
+    the code goes only to an email address. The API's own note says to pass
+    on "the code yourself", which this screen never has, so ours is said.
   */
   const who = invitee("unsent", testInfo);
   await signIn(page);
   await invite(page, who);
 
   const receipt = page.getByRole("status").filter({ hasText: "is invited" });
-  await expect(receipt.getByText("Send them this link")).toBeVisible();
-  await expect(receipt.getByText(/\/join\/jn_reefdivers/)).toBeVisible();
   await expect(
-    receipt.getByRole("button", { name: "Copy the link" }),
+    receipt.getByText(/Nothing was sent: we hold no email address for them/),
   ).toBeVisible();
-  await expect(
-    receipt.getByText(
-      "We could not send that invitation to them. Give them the join link and the code yourself, or add them again with an email address.",
-    ),
-  ).toBeVisible();
+  await expect(receipt.getByText("Send them this link")).toHaveCount(0);
+  await expect(receipt.getByText(/the code yourself/)).toHaveCount(0);
   await expect(receipt.getByText(/We also sent them/)).toHaveCount(0);
   await expect(page.getByText(/We message them/)).toHaveCount(0);
 });
@@ -543,7 +542,9 @@ test("a new invitation is on the pending list at once, beside its receipt", asyn
     row.getByRole("button", { name: "Copy invite link" }),
   ).toBeVisible();
   // And the receipt is still on screen, not unmounted by the list catching up.
-  await expect(page.getByText("Send them this link")).toBeVisible();
+  await expect(
+    page.getByText(/Nothing was sent: we hold no email address for them/),
+  ).toBeVisible();
 });
 
 test("a number already on the account is refused with one message", async ({

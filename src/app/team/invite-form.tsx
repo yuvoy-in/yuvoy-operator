@@ -297,19 +297,21 @@ function InviteFields({ state }: { state: InviteState }) {
  *
  * ## The link leads
  *
- * "Send them this link", with the copy control, is the first thing under the
- * name, because it is the one part that works whether or not a message went.
- * The owner is usually standing next to the person they are adding.
+ * When an invitation went, "Send them this link", with the copy control, is
+ * the first thing under the name. The owner is usually standing next to the
+ * person they are adding, and the email carries the same link and their code.
  *
  * ## Sent, or not, said plainly
  *
  * `sent` is read back from the queued message, not asserted. When it is true
  * a message is carrying the invitation, the link and their code to them, and
- * the receipt says so without naming a channel it has not been told. When it
- * is false, or absent, NOTHING went, and the receipt says that instead, in
- * the API's own words (`note`) when it sent any: pass the link on yourself,
- * or add them again with an email address. Ours stand in only when it did
- * not.
+ * the receipt says so without naming a channel it has not been told.
+ *
+ * When it is false, or absent, NOTHING went, and the link is not offered: it
+ * does not work without the code, and the code goes only to an email address.
+ * The receipt says the one thing that works, inviting them again with their
+ * address, in our words rather than the API's `note`, which tells the owner to
+ * pass on a code this screen never shows.
  *
  * On a receipt that WAS delivered, `note` can only be the other thing the API
  * puts there, a role it did not grant as asked, and it is shown for the reason
@@ -329,26 +331,26 @@ function Receipt({ state }: { state: InviteState }) {
         {sent.name} is invited as {roleLabel(sent.role)}
       </p>
 
-      {/*
-        The link, at the moment it is needed rather than only on the list
-        behind this receipt. It is the same URL `GET /team` shows, so somebody
-        who closes this has not lost anything, which matters, because
-        re-inviting to see it again would replace the code the invitee holds.
-      */}
-      <div className="mt-3">
-        {state.joinUrl ? (
-          <JoinLink url={state.joinUrl} />
-        ) : (
-          <p className="text-forest/80 text-sm">
-            They accept at{" "}
-            <span className="font-bold">operators.yuvoy.in/join</span>, then
-            sign in as usual. Nothing is granted until they do.
-          </p>
-        )}
-      </div>
-
       {sent.delivered ? (
         <>
+          {/*
+            The link, at the moment it is needed rather than only on the list
+            behind this receipt. It is the same URL `GET /team` shows, so
+            somebody who closes this has not lost anything, which matters,
+            because re-inviting to see it again would replace the code the
+            invitee holds.
+          */}
+          <div className="mt-3">
+            {state.joinUrl ? (
+              <JoinLink url={state.joinUrl} />
+            ) : (
+              <p className="text-forest/80 text-sm">
+                They accept at{" "}
+                <span className="font-bold">operators.yuvoy.in/join</span>, then
+                sign in as usual. Nothing is granted until they do.
+              </p>
+            )}
+          </div>
           <p className="text-forest/80 mt-3 text-sm">
             We also sent them the invitation, with the link and their code.
           </p>
@@ -359,9 +361,23 @@ function Receipt({ state }: { state: InviteState }) {
           ) : null}
         </>
       ) : (
+        /*
+          NOTHING WENT, and the link alone is not a way in. Accepting takes the
+          invitation's code, and the code goes only to an email address: with
+          none on the invitation, asking for it on the join page sends nothing
+          (yuvoy-api at e7291e3, `RefreshJoinCode`). So the one thing that
+          works is inviting them again with their address, and that is what
+          this says, in our words.
+
+          Not the API's `note`, which says "give them the join link and the
+          code yourself": this screen never has the code (it is shown only in a
+          development build), so that sentence sends the owner looking for
+          something that does not exist. Raised on yuvoy-api.
+        */
         <p className="text-terra-deep mt-3 text-sm font-bold">
-          {state.note ??
-            "We could not send this invitation to them. Give them the link yourself, and add them again with their email address so their code can reach them."}
+          Nothing was sent: we hold no email address for them, so their code has
+          nowhere to go. Invite them again with their email address and the
+          invitation goes there.
         </p>
       )}
 
