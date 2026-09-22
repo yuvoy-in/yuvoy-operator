@@ -196,9 +196,15 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
         {pending ? "Raising…" : "Raise the change"}
       </Button>
 
+      {/*
+        "The owner is messaged immediately" was the claim here, and it is not
+        true: the bank-change warning is phone only, by design, and with no
+        phone sender it is suppressed (yuvoy-operator#91). What stands is the
+        window and the brake on this screen, so that is what it promises.
+      */}
       <p className="text-forest/70 text-xs">
-        Raising it changes nothing today. The owner is messaged immediately and
-        can stop it for 24 hours; a person at Yuvoy then reviews it; and it goes
+        Raising it changes nothing today. For 24 hours an owner or an admin can
+        stop it from this screen; a person at Yuvoy then reviews it; and it goes
         live 24 hours after that, still stoppable the whole time.
       </p>
     </form>

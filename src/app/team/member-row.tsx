@@ -87,9 +87,15 @@ export function MemberRow({
             ? `Invitation to ${member.name} revoked`
             : `${member.name} removed`}
         </p>
+        {/*
+          "The code we sent them" was the sentence here, and it claimed a send
+          nothing had made: an invitation with no email is sent nowhere
+          (`sent: false`, yuvoy-operator#91). What revoking does is true either
+          way: the invitation, and the code that goes with it, stop working.
+        */}
         <p className="text-forest/80 mt-2 text-sm">
           {member.pending
-            ? "The code we sent them no longer works."
+            ? "The invitation and its code no longer work."
             : "Signed out everywhere, now. Not at their next sign-in. If their phone is open on this portal, the next thing they tap will ask them to sign in."}
         </p>
       </li>
@@ -155,7 +161,13 @@ export function MemberRow({
           (yuvoy-api#62).
         */
         <p className="text-forest/80 mt-2 font-mono text-sm tracking-wider">
-          {member.pending ? "Sent to " : "Signs in with "}
+          {/*
+            "Invited on", not "Sent to". Nothing is sent to a phone: there is
+            no WhatsApp sender, and an invitation goes by email or by hand
+            (yuvoy-operator#91). The number is the one they accept with, which
+            is the fact the four digits are here to check.
+          */}
+          {member.pending ? "Invited on " : "Signs in with "}
           {member.phoneMasked}
         </p>
       ) : null}
@@ -250,7 +262,7 @@ export function MemberRow({
               </p>
               <p className="text-forest/80 mt-1.5 text-sm">
                 {member.pending
-                  ? "The code we sent them stops working. You can invite them again."
+                  ? "The invitation and its code stop working. You can invite them again."
                   : "Their sessions end immediately. Not at their next sign-in. You can invite them again afterwards."}
               </p>
               <div className="mt-4 flex gap-2">

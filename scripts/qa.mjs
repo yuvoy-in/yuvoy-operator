@@ -1076,6 +1076,66 @@ for (const [segment, info] of gateJustification) {
   }
 }
 
+/* ------ 11d. access screens never promise a message nobody can carry ----- */
+
+/**
+ * Copy on the team, join and bank-change screens that says a message went to
+ * somebody's phone.
+ *
+ * yuvoy-operator#91. There has never been a WhatsApp sender (yuvoy-api#68).
+ * Since yuvoy-api 67e3213 a code or an invitation reaches a person only by
+ * email, when we hold one, and the warnings that protect an account (a bank
+ * change raised) are phone only by design and so reach nobody at all. The
+ * screens said otherwise in six places: "We message them a code", "A code on
+ * somebody's phone", "Sent to" on a pending row, "The code we sent them", "we
+ * will send you a fresh code", and "We messaged the owner the moment it was
+ * raised". Each told an owner something had been delivered that had not, and
+ * the owner acted on it: waited, or did not pass the link on.
+ *
+ * So these screens may say what an invitation IS and what the API says was
+ * sent (`sent`, `note`), and may not assert a send on their own authority or
+ * name a phone channel. Relax the phone half the day a phone sender exists,
+ * in the same change that says so on the screen. `/sign-in` and `/signup` have
+ * their own, stricter rule above (11c).
+ */
+{
+  const surfaces = [
+    ...walk(join(APP, "team")),
+    ...walk(join(APP, "join")),
+    join(SRC, "lib", "account", "bank.ts"),
+  ].filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f));
+
+  const promises = [
+    /\bWhatsApp\b/i,
+    /\bSMS\b/,
+    /\btext message/i,
+    /\bwe message\b/i,
+    /(?<!not )\bmessaged (?:them|the owner|you)\b/i,
+    /\bis messaged\b/i,
+    /\b(?:code|digits) we sent\b/i,
+    /\bwe(?:'ll| will) send you\b/i,
+    /\bcode on (?:somebody|someone|their|your)\S*\s+phone\b/i,
+    /\bSent to\b/,
+  ];
+
+  for (const f of surfaces) {
+    if (!existsSync(f)) continue;
+    const src = code(f);
+    for (const promise of promises) {
+      const hit = promise.exec(src);
+      if (hit) {
+        problems.push(
+          `${rel(f)}: says "${hit[0]}". Nothing reaches a phone today (there ` +
+            `is no WhatsApp sender) and an invitation or code reaches anybody ` +
+            `only by email, when we hold one. Say what the API reported ` +
+            `(\`sent\`, \`note\`), never a send of our own. See ` +
+            `yuvoy-operator#91.`,
+        );
+      }
+    }
+  }
+}
+
 /* -------------- 12. the failure screens exist at all --------------------- */
 
 /**

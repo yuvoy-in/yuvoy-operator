@@ -154,30 +154,34 @@ test("the team is two lists: people, and invitations nobody has used", async ({
   ).toBeVisible();
 
   /*
-    An invitation is a code on somebody's phone, not a person with less
-    access. `id` is the invitation, not a user, and the section says so.
+    An invitation is a way in nobody has used, not a person with less access.
+    `id` is the invitation, not a user, and the section says so. It used to
+    call it "a code on somebody's phone", and no code has ever reached a phone
+    (yuvoy-operator#91).
   */
   await expect(
     page.getByRole("heading", { name: "Invited, not accepted" }),
   ).toBeVisible();
   await expect(page.getByText("Ramesh Toppo")).toBeVisible();
   await expect(
-    page.getByText(/It grants nothing until they use it/),
+    page.getByText(/An invitation grants nothing until they accept it/),
   ).toBeVisible();
+  await expect(page.getByText(/on somebody.s phone/)).toHaveCount(0);
 
   /*
     Four digits on every row (`phoneMasked`, yuvoy-api#62) — the invitation's
     especially, because it is the one a human typed at six in the morning and
-    the only place a typo grants a stranger access. "Sent to" on an
+    the only place a typo grants a stranger access. "Invited on" on an
     invitation, "Signs in with" on a person: the same field, two different
-    claims.
+    claims. It said "Sent to", and nothing is sent to a phone (#91).
   */
   await expect(
     page
       .locator("li")
       .filter({ hasText: "Ramesh Toppo" })
-      .getByText("Sent to ••••0104"),
+      .getByText("Invited on ••••0104"),
   ).toBeVisible();
+  await expect(page.getByText(/Sent to ••••/)).toHaveCount(0);
   await expect(
     page
       .locator("li")
@@ -436,7 +440,7 @@ test("inviting echoes the whole number once, and the pending row keeps its last 
   const row = page.locator("li").filter({ hasText: who.name });
   await expect(row.getByText(/They have not signed in yet/)).toBeVisible();
   await expect(
-    row.getByText(`Sent to ••••${who.phone.slice(-4)}`),
+    row.getByText(`Invited on ••••${who.phone.slice(-4)}`),
   ).toBeVisible();
 });
 
@@ -533,7 +537,7 @@ test("a new invitation is on the pending list at once, beside its receipt", asyn
   const row = page.locator("li").filter({ hasText: who.name });
   await expect(row.getByText(/They have not signed in yet/)).toBeVisible();
   await expect(
-    row.getByText(`Sent to ••••${who.phone.slice(-4)}`),
+    row.getByText(`Invited on ••••${who.phone.slice(-4)}`),
   ).toBeVisible();
   await expect(
     row.getByRole("button", { name: "Copy invite link" }),
@@ -591,8 +595,9 @@ test("revoking an invitation says the code stops working", async ({
   await expect(
     page.getByText(`Invitation to ${who.name} revoked`),
   ).toBeVisible();
+  // True whether or not anything was ever sent to them (#91).
   await expect(
-    page.getByText("The code we sent them no longer works."),
+    page.getByText("The invitation and its code no longer work."),
   ).toBeVisible();
 });
 
@@ -607,7 +612,7 @@ test("accepting an invitation signs you in, and lands you in the portal", async 
   await page.context().clearCookies();
   await page.goto("/join");
   await page.getByLabel("Your phone number").fill(who.phone);
-  await page.getByLabel("The code we sent you").fill(DEV_CODE);
+  await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Accept the invitation" }).click();
 
   /*
@@ -630,7 +635,7 @@ test("a wrong code on /join gives one answer, whatever went wrong", async ({
 }) => {
   await page.goto("/join");
   await page.getByLabel("Your phone number").fill("+919000099999");
-  await page.getByLabel("The code we sent you").fill("000000");
+  await page.getByLabel("Your code").fill("000000");
   await page.getByRole("button", { name: "Accept the invitation" }).click();
 
   /*
@@ -657,7 +662,7 @@ test("removing somebody ends their access now, and says so", async ({
   */
   await page.goto("/join");
   await page.getByLabel("Your phone number").fill(who.phone);
-  await page.getByLabel("The code we sent you").fill(DEV_CODE);
+  await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Accept the invitation" }).click();
   await page.waitForURL("**/today");
 

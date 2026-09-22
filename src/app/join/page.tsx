@@ -33,7 +33,7 @@ export default function JoinPage() {
       </h1>
       <p className="text-forest/70 mt-3 text-base">
         Somebody has added you to their business on Yuvoy. Enter your number and
-        the code they sent you.
+        the code from your invitation.
       </p>
 
       <JoinForm />

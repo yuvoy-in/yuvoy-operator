@@ -51,7 +51,12 @@ const acceptSchema = z.object({
   code: z
     .string()
     .trim()
-    .regex(/^\d{4,8}$/, "The code is the digits we sent you, nothing else."),
+    /*
+      "The digits we sent you" claimed a send that may never have happened:
+      an invitation with no email is sent nowhere (yuvoy-operator#91), and the
+      code in somebody's hand may have come from the owner or from us.
+    */
+    .regex(/^\d{4,8}$/, "The code is digits, and nothing else."),
 });
 
 export interface AcceptState {
