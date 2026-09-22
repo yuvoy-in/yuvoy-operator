@@ -241,6 +241,8 @@ test("a business with no owner is told no code was sent, and gets no field", asy
   await page.getByRole("radio", { name: "I run it for the owner" }).check();
   await page.getByLabel("Your name", { exact: true }).fill("Rohit Das");
   await page.getByLabel("Your phone number").fill(phone);
+  // Required until WhatsApp delivers (owner, 21 Sep 2026, op#91).
+  await page.getByLabel(/^Email/).fill("rohit@standin.example");
   await page.getByRole("button", { name: "Create the account" }).click();
   await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Finish" }).click();
@@ -276,6 +278,8 @@ test("a code that WAS sent still gets a field, which is the control", async ({
   await page.getByRole("radio", { name: "I own it" }).check();
   await page.getByLabel("Your name", { exact: true }).fill("Kavya Nair");
   await page.getByLabel("Your phone number").fill(phone);
+  // Required until WhatsApp delivers (owner, 21 Sep 2026, op#91).
+  await page.getByLabel(/^Email/).fill("kavya@ownit.example");
   await page.getByRole("button", { name: "Create the account" }).click();
   await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Finish" }).click();
