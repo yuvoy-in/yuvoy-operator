@@ -3256,6 +3256,13 @@ export const handlers = [
   http.put(url("/story"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json().catch(() => null)) as {
       about?: unknown;
@@ -3333,6 +3340,13 @@ export const handlers = [
   http.post(url("/story/photos/upload-intents"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     return HttpResponse.json(imageIntent(), { status: 201 });
   }),
@@ -3340,6 +3354,13 @@ export const handlers = [
   http.post(url("/story/photos"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json().catch(() => ({}))) as {
       imageId?: unknown;
@@ -3385,6 +3406,13 @@ export const handlers = [
   http.delete(url("/story/photos/:id"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     // Another business's photograph answers exactly as one that does not
     // exist; here there is only one business, so absent is the whole test.
@@ -4494,6 +4522,13 @@ export const handlers = [
   http.post(url("/media/:id/rights"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const asset = mediaAssets[String(params.id)];
     if (!asset) return envelope("not_found", "No such clip.", 404);
@@ -4536,6 +4571,13 @@ export const handlers = [
   http.post(url("/media/:id/withdraw"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const id = String(params.id);
     const body = (await request.json()) as { reason?: string };
@@ -4569,6 +4611,13 @@ export const handlers = [
   http.post(url("/media/:id/publish"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const asset = mediaAssets[String(params.id)];
     /*

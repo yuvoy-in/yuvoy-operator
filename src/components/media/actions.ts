@@ -334,6 +334,14 @@ export async function attestRights(
       return { message: "No signal. Nothing was recorded. Try again." };
     }
     if (err instanceof OperatorApiError) {
+      /*
+        A suspended business is refused with 403 `account_suspended`, which is
+        the one 403 this endpoint declares. It fell through to "Nothing was
+        recorded. Try again" (yuvoy-operator#90 f13), sending the operator to
+        retry something that can never succeed and hiding why.
+      */
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
       if (err.isNotFound) {
         return { message: "That clip is no longer here. Start again." };
       }
@@ -408,6 +416,14 @@ export async function withdrawMedia(
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. It is still up. Try again." };
     }
+    /*
+      Suspension first, before anything that reads as retryable. Taking a clip
+      down is not one of the writes a suspended business may still make, and
+      the refusal read "It was not taken down. Try again" (yuvoy-operator#90
+      f13), a retry that can never succeed.
+    */
+    const refusal = suspendedMessage(err);
+    if (refusal) return { message: refusal };
     if (err instanceof OperatorApiError && err.isNotFound) {
       /*
         404 and another operator's clip are one case; the server does not
@@ -550,6 +566,14 @@ function publishFailure(err: unknown, lead: string): string {
     return `No signal. ${lead} Try again.`;
   }
   if (err instanceof OperatorApiError) {
+    /*
+      Suspension first: `403 account_suspended` is the one 403 publishing
+      declares, and it read "{lead} Try again" (yuvoy-operator#90 f13). Both
+      callers, attaching and moving between cover and gallery, get it from
+      here.
+    */
+    const refusal = suspendedMessage(err);
+    if (refusal) return refusal;
     if (err.isNotFound) {
       // The API does not separate "not yours" from "not approved", and neither
       // does this. Approval is the cause an operator can do something about.
