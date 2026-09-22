@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { PhoneField } from "@/components/ui/phone-field";
 import { formatE164 } from "@/lib/auth/phone";
+import { WhereTheCodeGoes } from "./where-the-code-goes";
 
 /**
  * Two steps in one form, driven entirely by Server Actions.
@@ -87,10 +88,20 @@ export function SignInForm({ next }: { next?: string | null }) {
             nothing was sent anywhere — but the code still belongs to that
             number, which is the fact worth showing: it is how somebody catches
             a digit they mistyped on the previous step.
+
+            Where to look is said only on the path that asked for a code. The
+            operator who came through "I already have a code" is holding it
+            already, and pointing them at an inbox would send them looking for
+            a message nobody wrote.
           */}
           <p className="text-forest/70 mt-2 text-sm">
             For {formatE164(state.phone ?? "")}. It lasts a few minutes.
           </p>
+          {state.existing ? null : (
+            <div className="mt-2">
+              <WhereTheCodeGoes id="sign-in-where" />
+            </div>
+          )}
           {state.devCode ? (
             <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
               Development build: the code is{" "}
@@ -110,6 +121,7 @@ export function SignInForm({ next }: { next?: string | null }) {
       <Button
         type="submit"
         disabled={pending || (state.step === "phone" && !complete)}
+        aria-describedby={state.step === "phone" ? "sign-in-where" : undefined}
       >
         {pending
           ? "Working…"
@@ -121,13 +133,20 @@ export function SignInForm({ next }: { next?: string | null }) {
       {state.step === "phone" ? (
         <>
           {/*
+            Directly under the button it describes, and tied to it with
+            `aria-describedby`, so "Send me a code" is announced with where the
+            code will go. See `WhereTheCodeGoes`.
+          */}
+          <WhereTheCodeGoes id="sign-in-where" />
+
+          {/*
             The other door, for an operator who is holding a code already.
 
             Yuvoy staff can issue one out of band — the hedge for somebody
-            whose phone is gone (yuvoy-api#59). That operator must not be made
-            to press "Send me a code": it messages a phone they do not have,
-            and if issuing a code supersedes an outstanding one it destroys the
-            code they are holding, at the moment they are using it.
+            whose phone is gone, or whose account has no email to send a code
+            to (yuvoy-api#59). That operator must not be made to press "Send me
+            a code": if issuing a code supersedes an outstanding one it destroys
+            the code they are holding, at the moment they are using it.
 
             A submit rather than a link, so it carries the number they already
             typed. `name` + `value` on a button is what puts `intent` in the
@@ -144,7 +163,7 @@ export function SignInForm({ next }: { next?: string | null }) {
           </Button>
           <p className="text-forest/70 text-xs">
             If somebody at Yuvoy gave you one, use this. It takes you straight
-            to the code without messaging your phone.
+            to the code without asking for a new one.
           </p>
         </>
       ) : null}

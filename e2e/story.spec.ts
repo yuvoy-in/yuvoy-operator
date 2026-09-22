@@ -12,9 +12,12 @@ import AxeBuilder from "@axe-core/playwright";
 
 const DEV_CODE = "424242";
 
-async function signIn(page: Page) {
+/** Ismail, the owner of a suspended business. See `ACCOUNT_SUSPENDED`. */
+const SUSPENDED = "+919000000109";
+
+async function signIn(page: Page, phone = "+919000000101") {
   await page.goto("/sign-in");
-  await page.getByLabel("Your phone number").fill("+919000000101");
+  await page.getByLabel("Your phone number").fill(phone);
   await page.getByRole("button", { name: "Send me a code" }).click();
   await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -175,6 +178,33 @@ test("the About count is the letters typed, not the bytes", async ({
   await about.fill("আ".repeat(120));
   await expect(page.getByText("120 of 600")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
+});
+
+test("a suspended business is told why its story will not save, not to try again", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#90 f13. `PUT /story` declares `403 account_suspended`, and
+    the screen read "It was not saved. Try again", a retry that can never
+    succeed, with the one sentence that explains it hidden. The API's own
+    sentence now comes first. Nothing is written, so this is safe beside the
+    single-tenant story tests above.
+  */
+  await signIn(page, SUSPENDED);
+  await page.goto("/story");
+
+  await page
+    .getByLabel("About your business")
+    .fill(
+      "Two instructors and one boat, out of Beach No. 3 since 2014. Ask us anything.",
+    );
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const alert = page.locator("form").getByRole("alert");
+  await expect(alert).toHaveText(
+    "Your account has been suspended. Please reach out to admin for help.",
+  );
+  await expect(alert).not.toContainText(/try again/i);
 });
 
 test("/story has no accessibility violations", async ({ page }) => {

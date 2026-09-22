@@ -58,18 +58,22 @@ export default async function SignInPage({
         Sign in
       </h1>
       {/*
-        Deliberately says nothing about HOW the code reaches you.
+        Says nothing here about how a code reaches you; the form says it,
+        beside the button that asks for one.
 
-        `yuvoy-api#59` adds a second path: Yuvoy staff can issue a sign-in
-        code out of band, which is the hedge for an operator whose phone is
-        gone or whose WhatsApp has not arrived. The session it produces is
-        indistinguishable from a WhatsApp one — `POST /auth/session` never
-        learns which channel the code came from — and the ruling was that
-        this copy should be true of both, **unconditionally**.
+        There are two ways in. A code the operator asks for goes to the email
+        address on the account (yuvoy-api 67e3213, every code falls back to
+        email while there is no WhatsApp sender, yuvoy-operator#91). And Yuvoy
+        staff can issue one out of band (yuvoy-api#59), which is the hedge for
+        an operator whose phone is gone or whose account has no email. The
+        session either produces is indistinguishable: `POST /auth/session`
+        never learns which way the code came, so the copy on this screen is
+        true of both, **unconditionally**.
 
-        Unconditional is the important half. A screen that says "we messaged
-        you" only when it believes it did is a screen that has been told the
-        channel, and being told is exactly what the design avoids.
+        Unconditional is the important half. "We emailed you" said only when
+        the screen believes it did would be a screen that had been told the
+        channel of one code, and `POST /auth/otp` answers identically for a
+        number we know and one we do not, so it is never told.
       */}
       <p className="text-forest/70 mt-3 text-base">
         No password. You sign in with a one-time code for your business.

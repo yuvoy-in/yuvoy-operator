@@ -248,16 +248,35 @@ export function splitByWaitingOn(blocking: readonly Blocker[]): {
 }
 
 /**
+ * A document we verified and hold no file for: yuvoy-operator#93.
+ *
+ * `hasFile` is "sent on every row", and a verified row with it `false` is
+ * Yuvoy vouching for a document it cannot produce: "if a regulator or an
+ * insurer asks, there is nothing to show". Keyed on an explicit `false`, never
+ * on the flag being absent: an older API that does not send it must leave the
+ * row as it was rather than accuse it of missing a file.
+ */
+export function verifiedWithoutFile(credential: {
+  state?: string;
+  hasFile?: boolean;
+}): boolean {
+  return credential.state === "verified" && credential.hasFile === false;
+}
+
+/**
  * What a credential is doing, in the words the row needs.
  *
  * `state` is a closed enum here (`pending`, `verified`, `rejected`, `expired`)
  * — unlike the account's own `state` — so it is safe to branch on. An unknown
  * value still falls through to the raw string rather than to silence.
+ *
+ * `saysNoFile` is set when the sentence already says we hold no file, so the
+ * row does not say it twice.
  */
 export function credentialText(
   credential: OperatorCredential,
   now: number,
-): { tone: "ok" | "warn" | "problem"; text: string } {
+): { tone: "ok" | "warn" | "problem"; text: string; saysNoFile?: boolean } {
   const expiring = expiryWarning(credential, now);
 
   switch (credential.state) {
@@ -269,9 +288,19 @@ export function credentialText(
         with a date approaching is the ONLY place this portal warns about
         something the API has not called a blocker — and it is arithmetic on a
         published date, not a guess about what Yuvoy will do.
+
+        And never simply "Verified" over a document we hold no file for
+        (yuvoy-operator#93): the review read "Verified" and "No file sent" on
+        one row with no way to act on either. The expiry still leads when both
+        are true, because it is the one that takes a listing down on a date.
       */
-      return expiring
-        ? { tone: "warn", text: expiring }
+      if (expiring) return { tone: "warn", text: expiring };
+      return verifiedWithoutFile(credential)
+        ? {
+            tone: "warn",
+            text: "Verified, but we hold no file for it",
+            saysNoFile: true,
+          }
         : { tone: "ok", text: "Verified" };
     case "pending":
       return { tone: "warn", text: "With Yuvoy, not checked yet" };

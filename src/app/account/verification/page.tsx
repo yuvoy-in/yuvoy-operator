@@ -15,8 +15,10 @@ import {
   expirySentences,
   splitByWaitingOn,
   standingOf,
+  verifiedWithoutFile,
   type Standing,
 } from "@/lib/account/standing";
+import { SUPPORT_PHONE, SUPPORT_PHONE_HREF } from "@/lib/site/contact";
 import {
   blockerFor,
   documentCount,
@@ -371,6 +373,7 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
       <ul className="mt-3 space-y-3">
         {standing.credentials.map((c, i) => {
           const row = credentialText(c, at);
+          const noFile = verifiedWithoutFile(c);
           const type = c.type?.trim() ?? "";
           const action = offered.has(type) ? null : (actions.get(type) ?? null);
           offered.add(type);
@@ -435,10 +438,20 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
                 decides it rather than the name being present: a response
                 carrying a name without the flag is one disagreeing with itself,
                 and showing the name would say we hold a file we may not.
+
+                Left out when the status above has already said we hold no
+                file, so the row does not say it twice.
               */}
-              <p className="text-forest/70 mt-1 text-sm break-all">
-                {fileLine(c)}
-              </p>
+              {row.saysNoFile ? null : (
+                <p
+                  className={cn(
+                    "mt-1 text-sm break-all",
+                    noFile ? "text-terra-deep font-bold" : "text-forest/70",
+                  )}
+                >
+                  {fileLine(c)}
+                </p>
+              )}
 
               {/*
                 Sending a file is offered on a PENDING document only. "Once
@@ -452,6 +465,32 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
                   credentialId={c.id}
                   label={credentialTypeLabel(c.type)}
                 />
+              ) : null}
+
+              {/*
+                VERIFIED, and we hold no file for it (yuvoy-operator#93).
+
+                The review asked for "Send the file" here too, and the pinned
+                API decided otherwise: the operator's upload answers
+                `409 document_locked` for any state but pending, and "our staff
+                can put a file behind a verified document that has none" (D56).
+                A control here would be refused the day a documents bucket
+                exists, so the ask goes by the route that can take the file: a
+                person, who puts it on record. Said plainly, because a checked
+                document we cannot produce is our gap, not a fault of theirs.
+              */}
+              {noFile ? (
+                <p className="text-forest/80 mt-2 text-sm">
+                  A checked document cannot take a file from this screen. If you
+                  have a copy, call us on{" "}
+                  <a
+                    href={SUPPORT_PHONE_HREF}
+                    className="text-terra-deep tap-target font-bold whitespace-nowrap underline underline-offset-4"
+                  >
+                    {SUPPORT_PHONE}
+                  </a>{" "}
+                  and we will put it on record.
+                </p>
               ) : null}
 
               {action ? (

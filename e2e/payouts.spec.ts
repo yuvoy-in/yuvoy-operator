@@ -132,12 +132,46 @@ test("raising a change needs a code, and the code goes to the owner", async ({
   await expect(
     page.getByRole("button", { name: "Raise the change" }),
   ).toBeDisabled();
-  await expect(
-    page.getByText(/A code goes to the owner.s phone/),
-  ).toBeVisible();
+  /*
+    To the owner, whoever asks: that part is the security model and is
+    unchanged. The channel is email now. It said "the owner's phone", and no
+    code has ever reached a phone: there is no WhatsApp sender, and since
+    yuvoy-api 67e3213 the code goes to the owner's email (yuvoy-operator#91).
+  */
+  await expect(page.getByText("A code is emailed to the owner")).toBeVisible();
   await expect(
     page.getByText(/A manager who requested this will not receive it/),
   ).toBeVisible();
+  await expect(page.getByText(/owner.s phone/)).toHaveCount(0);
+  // The brake is on this screen; the phone-only warning reaches nobody today.
+  await expect(page.getByText(/owner is messaged/i)).toHaveCount(0);
+});
+
+test("a wrong code says the code did not work, and changes nothing", async ({
+  page,
+}) => {
+  /*
+    The one refusal that IS about the code. yuvoy-operator#90: it used to be
+    the sentence for every refusal of the code, a suspended account included,
+    so each one now has its own and this is the control for the unit tests
+    that pin the others.
+  */
+  await signIn(page);
+  await clearOpenChange(page);
+
+  await page.getByLabel("Name on the account").fill("Nemo Reef Divers");
+  await page.getByLabel("Account number").fill("50100123456789");
+  await page.getByLabel("IFSC").fill("HDFC0001234");
+  await page.getByRole("button", { name: "Send the code" }).click();
+  await page.getByLabel("The code").fill("000000");
+  await page.getByRole("button", { name: "Raise the change" }).click();
+
+  await expect(page.locator("form").getByRole("alert")).toHaveText(
+    "That code did not work. Ask for a new one.",
+  );
+  await expect(page.getByText("Raised: you can still stop this")).toHaveCount(
+    0,
+  );
 });
 
 test("a malformed IFSC is refused before a code is spent", async ({ page }) => {

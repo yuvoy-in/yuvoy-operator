@@ -21,8 +21,12 @@ import { suspendedMessage } from "@/lib/account/suspended";
  *
  * "Not behind step-up and not OWNER-only. Nothing here takes money, moves
  * money, or puts anything on sale." None of the story operations declares a
- * 403, and `pnpm qa` fails a gate the contract did not ask for — inventing one
- * would stop the person who actually runs the boat from describing it.
+ * role 403, and `pnpm qa` fails a gate the contract did not ask for: inventing
+ * one would stop the person who actually runs the boat from describing it.
+ *
+ * The one 403 they do declare is `account_suspended`, and every write here
+ * answers it before anything else (yuvoy-operator#90 f13): a suspended
+ * business may read its story and may not change it.
  *
  * ## Photographs have their own upload slot
  *
@@ -81,6 +85,14 @@ export async function saveStory(
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was saved. Try again." };
     }
+    /*
+      A suspended business may not change its story: `403 account_suspended`
+      is declared on `PUT /story`, and it read "It was not saved. Try again"
+      (yuvoy-operator#90 f13). The API's sentence says which of suspended,
+      closed or disqualified it is.
+    */
+    const refusal = suspendedMessage(err);
+    if (refusal) return { message: refusal };
     if (err instanceof OperatorApiError && err.status === 400 && err.message) {
       // "tell them 40 to 600 characters about the business" — the API's own
       // reason, which names the rule better than a paraphrase would.
@@ -197,9 +209,16 @@ export async function removeStoryPhoto(
     });
     if (error) throw error;
   } catch (err) {
+    /*
+      Suspension before anything else: `403 account_suspended` is declared on
+      `DELETE /story/photos/{id}`, and it read "It was not removed. Try again"
+      (yuvoy-operator#90 f13).
+    */
+    const refusal = suspendedMessage(err);
+    if (refusal) return { message: refusal };
     if (err instanceof OperatorApiError && err.status === 404) {
       /*
-        Already gone — a second tab, or a tap that landed twice. The list
+        Already gone: a second tab, or a tap that landed twice. The list
         catching up is the right answer, not an error about a photograph that
         is no longer there.
       */

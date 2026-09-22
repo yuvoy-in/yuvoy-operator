@@ -5,6 +5,8 @@ import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
+import { EMAIL_MAX_LENGTH, looksLikeEmail } from "@/lib/auth/email";
+import { sentence } from "@/lib/format/sentence";
 import { INVITABLE_ROLES, type InvitableRole } from "@/lib/team/roles";
 import { ASSIGNABLE_ROLES, type AssignableRole } from "@/lib/team/access";
 import { suspendedMessage } from "@/lib/account/suspended";
@@ -44,8 +46,20 @@ const MOCKING = process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
 
 export interface InviteState {
   message?: string;
-  field?: "phone" | "name" | "role";
-  /** Set when the invitation was sent. */
+  field?: "phone" | "name" | "role" | "email";
+  /**
+   * What was typed, handed back with a refusal so the form can put it back.
+   *
+   * React resets a form once its action completes and these inputs are
+   * uncontrolled, so a typo in the email emptied all three fields and the
+   * owner retyped a name and thirteen digits to fix one character. The same
+   * repair `/sign-in` and `/signup` carry. Never set on success: an invitation
+   * that went through should leave an empty form for the next person.
+   */
+  values?: { name: string; phone: string; email: string; role: string };
+  /** Bumped per submission, so the form remounts and re-reads `values`. */
+  attempt?: number;
+  /** Set when the invitation was created. */
   sent?: {
     name: string;
     /**
@@ -66,15 +80,35 @@ export interface InviteState {
      * the inviter they had made somebody an admin when they had not.
      */
     role: string;
+    /**
+     * Whether anything is actually carrying the invitation to them.
+     *
+     * yuvoy-operator#91 f20. `sent` is "read back from the queued message
+     * rather than asserted, and it is `false` when we hold no address we can
+     * reach that person on". Before yuvoy-api 67e3213 it was `true` of every
+     * invitation, including every one queued on a WhatsApp sender that does
+     * not exist, and the form said "We message them a code". The owner
+     * believed their colleague had been told, and nothing arrived.
+     *
+     * `true` only when the API says `true`. Absent is read as NOT sent: the
+     * failure of saying "sent" about a message nobody carried is a colleague
+     * waiting on a phone, and the failure of the reverse is a link passed on
+     * by hand that was not strictly needed.
+     */
+    delivered: boolean;
   };
   /**
-   * The server's own sentence about a role it did not grant as asked.
+   * The server's own sentence to the person inviting, rendered as it sent it
+   * (through `sentence()`, which strips a long dash our copy rule cannot reach
+   * in another team's database).
    *
-   * "Present when `role` is not the role that was asked for … Show it to the
-   * person inviting." This form only ever asks for OWNER or STAFF, so it should
-   * never arrive — which is exactly why it is rendered rather than dropped: if it
-   * does, something about this build's idea of the roles is wrong, and the
-   * operator is the one who needs to know before they hand a phone over.
+   * Two things put one here. When `sent` is `false` it says to pass the link
+   * on and how to make the next one arrive (#91). And when `role` is not the
+   * role asked for it says they join as staff; this form only ever asks for
+   * OWNER or STAFF, so that one should never arrive, which is exactly why it
+   * is rendered rather than dropped: if it does, this build and the API
+   * disagree about what an invitation grants, and the person handing a phone
+   * over is the one who needs to know.
    */
   note?: string;
   /**
@@ -107,6 +141,22 @@ const inviteSchema = z.object({
   phone: phoneSchema,
   name: z.string().trim().min(2, "Who is this? A name they will recognise."),
   /*
+    Optional, and where the invitation goes while no phone channel can carry
+    it, "which today is always: there is no WhatsApp sender" (yuvoy-operator#91
+    f20, `POST /team`). A blank field is left out of the body rather than sent
+    as "". A typed one is checked with the rule the API applies to this very
+    field (`lib/auth/email.ts`), so a typo is caught on the phone instead of
+    coming back as a 400, and nothing the API would take is refused here.
+  */
+  email: z
+    .string()
+    .trim()
+    .max(EMAIL_MAX_LENGTH, "That is longer than an email address can be.")
+    .refine(
+      (v) => v === "" || looksLikeEmail(v),
+      "That does not look like an email address. Check it, or leave it out.",
+    ),
+  /*
     Derived from INVITABLE_ROLES rather than retyped, so the radios, the
     validator and the request body cannot disagree about which two roles an
     invitation may ask for. The endpoint's own enum is all four and downgrades
@@ -118,28 +168,58 @@ const inviteSchema = z.object({
   ),
 });
 
+/**
+ * Which field a `400 invalid_input` from `POST /team` is about.
+ *
+ * One code covers two fields: "the number is not in E.164, or `email` was
+ * given and is not an address". The API names the field in `details`
+ * (`{ "email": "for example ramesh@example.com" }`), so that is what decides
+ * it. With no details, which is how the API answered before the email
+ * existed, it is the number, which was the only field it could be.
+ */
+function invalidField(details: unknown): "email" | "phone" {
+  if (details && typeof details === "object" && "email" in details) {
+    return "email";
+  }
+  return "phone";
+}
+
 export async function inviteMember(
-  _prev: InviteState,
+  prev: InviteState,
   form: FormData,
 ): Promise<InviteState> {
-  const parsed = inviteSchema.safeParse({
-    phone: String(form.get("phone") ?? ""),
+  // Exactly as typed, for the refusals below to hand back. See `values`.
+  const values = {
     name: String(form.get("name") ?? ""),
+    phone: String(form.get("phone") ?? ""),
+    email: String(form.get("email") ?? ""),
     role: String(form.get("role") ?? ""),
+  };
+  const attempt = (prev.attempt ?? 0) + 1;
+  const refuse = (
+    state: Omit<InviteState, "values" | "attempt">,
+  ): InviteState => ({ ...state, values, attempt });
+
+  const parsed = inviteSchema.safeParse({
+    phone: values.phone,
+    name: values.name,
+    email: values.email,
+    role: values.role,
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    return {
+    return refuse({
       field: issue.path[0] as InviteState["field"],
       message: issue.message,
-    };
+    });
   }
 
   const { token } = await requireOperator();
+  const { email, ...rest } = parsed.data;
 
   try {
     const { data, error } = await operatorApi(token).POST("/team", {
-      body: parsed.data,
+      body: { ...rest, ...(email ? { email } : {}) },
     });
     if (error) throw error;
 
@@ -149,10 +229,16 @@ export async function inviteMember(
       pending row with its role, which is strictly more than a message could
       say, and this form is rendered unconditionally for an owner so the
       returned state survives the re-render rather than unmounting with it.
+
+      The form ALSO refreshes the route once the receipt is on screen
+      (`InviteForm`). yuvoy-operator#89 f16 found the new invitation missing
+      from the list until a reload on the live portal, and this revalidate was
+      already here, so the list is no longer left to one mechanism.
     */
     revalidatePath("/team");
 
     return {
+      attempt,
       sent: {
         name: parsed.data.name,
         phone: parsed.data.phone,
@@ -162,16 +248,17 @@ export async function inviteMember(
           on it is worse than the one thing we did ask for.
         */
         role: data.role ?? parsed.data.role,
+        delivered: data.sent === true,
       },
-      note: data.note,
+      note: data.note ? sentence(data.note) : undefined,
       /*
         The link, carried back so the inviter can pass it on themselves.
 
         This was dropped before, and dropping it was the whole of the dead end:
-        there is no WhatsApp delivery yet, so the queued message never arrives,
-        and the only other thing on the response was `devCode` — which is gated
-        on the mock flag and therefore absent in production. The owner was shown
-        nothing and the invited person was told nothing.
+        nothing the API queued ever arrived, and the only other thing on the
+        response was `devCode`, which is gated on the mock flag and therefore
+        absent in production. The owner was shown nothing and the invited
+        person was told nothing.
 
         "On an island the person doing the inviting is usually standing next to
         the person being invited, and a link they can paste beats waiting for
@@ -182,7 +269,7 @@ export async function inviteMember(
     };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was sent. Try again." };
+      return refuse({ message: "No signal. Nothing was sent. Try again." });
     }
     if (err instanceof OperatorApiError) {
       if (err.code === "cannot_invite") {
@@ -203,38 +290,51 @@ export async function inviteMember(
           yuvoy-operator#51 item 2). An owner IS invitable now, so the copy was
           telling operators the opposite of what the form in front of them does.
         */
-        return { message: err.message || "The invitation was not sent." };
+        return refuse({
+          message: sentence(err.message) || "The invitation was not sent.",
+        });
       }
       // A suspended business is refused with 403 too, and the role
       // sentence would be the wrong one. See `suspendedMessage`.
       const refusal = suspendedMessage(err);
-      if (refusal) return { message: refusal };
+      if (refusal) return refuse({ message: refusal });
       /*
         403 and 400 both come through as the server said them. The hand-written
         403 read "only the owner can add people", which an ADMIN would read on a
         screen whose invite form they are allowed to use: `POST /team` is "OWNER
         or ADMIN". The fallbacks stay for an empty message, never as a rewrite.
+        Through `sentence()`, because the API writes them in lower case for its
+        logs and a screen's sentences start with a capital.
       */
       if (err.status === 403) {
-        return {
+        return refuse({
           message:
-            err.message ||
+            sentence(err.message) ||
             "You cannot add people to this account. An owner or an admin can.",
-        };
+        });
       }
       if (err.status === 400) {
         /*
-          `invalid_input` is the number, and it belongs ON the number. Anything
+          `invalid_input` belongs ON the field it is about, and since the email
+          it can be about either: `details` names which (`invalidField`). A bad
+          address used to have nowhere to go but the number, which would have
+          pointed the owner at the one field they had typed correctly. Anything
           else 400 can be here is `invalid_role`, which is not a field somebody
           can fix by typing, so it is said once at the bottom.
         */
-        return {
-          field: err.code === "invalid_input" ? "phone" : undefined,
-          message: err.message || "Something in that invitation needs fixing.",
-        };
+        const field =
+          err.code === "invalid_input" ? invalidField(err.details) : undefined;
+        return refuse({
+          field,
+          message:
+            sentence(err.message) ||
+            (field === "email"
+              ? "That does not look like an email address. Check it, or leave it out."
+              : "Something in that invitation needs fixing."),
+        });
       }
     }
-    return { message: "The invitation was not sent. Try again." };
+    return refuse({ message: "The invitation was not sent. Try again." });
   }
 }
 

@@ -201,6 +201,14 @@ let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
 /** Wrong sign-in codes per number. The sixth answers 429. */
 let codeAttempts: Record<string, number> = {};
 const CODE_ATTEMPT_LIMIT = 5;
+
+/**
+ * A number whose account was offboarded, so `POST /auth/session` refuses it
+ * with `403 account_not_active` even with the right code. Belongs to nobody on
+ * any team, which is what an offboarded account's people are to the rest of
+ * the mock.
+ */
+const OFFBOARDED_PHONE = "+919000000198";
 /** Requests that have been answered. An answered one is not open any more. */
 let answered: Record<string, "active" | "released"> = {};
 /** Departures called off in this session. Irreversible, as in production. */
@@ -1571,7 +1579,8 @@ function accountWithFiles<T extends { credentials: readonly unknown[] }>(
 }
 
 /**
- * The five switches, as the API declares them — yuvoy-operator#46 item 5.
+ * The six switches, as the API declares them: yuvoy-operator#46 item 5, and
+ * `seat_confirmations` since yuvoy-api e7291e3 (yuvoy-operator#94 item 3).
  *
  * `label` and `description` are the API's words, and the descriptions say who
  * each kind of message goes to. That is load-bearing rather than decorative:
@@ -1595,6 +1604,17 @@ const SWITCHES = [
     group: "todays_departures",
     label: "Today's departures",
     description: "The 06:00 summary of the day's booked departures.",
+  },
+  /*
+    The API's own label, description and place (after the day's work, before
+    money), from `noticeGroupWording` at e7291e3. On by default like every
+    switch: nobody has turned it off.
+  */
+  {
+    group: "seat_confirmations",
+    label: "Seats to confirm",
+    description:
+      "Once a day, the departures that are off sale, or will be within a day, because nobody has confirmed their seats. Sent to the owner, admins and managers.",
   },
   {
     group: "settlement_summary",
@@ -2646,6 +2666,20 @@ export const handlers = [
     const body = (await request.json()) as { phone?: string; code?: string };
     const phone = (body.phone ?? "").trim();
     /*
+      An OFFBOARDED account, which "cannot sign in or use a session"
+      (`AccountNotActive`). The right code for the right number, refused
+      anyway, with the API's own sentence: the person is fine and the account
+      is not. No identity stood in for it, so the sign-in screen's answer to it
+      had never run, and it was "try again shortly" (yuvoy-operator#91).
+    */
+    if (phone === OFFBOARDED_PHONE && body.code === DEV_CODE) {
+      return envelope(
+        "account_not_active",
+        "this account cannot take bookings right now. Talk to us",
+        403,
+      );
+    }
+    /*
       Over-attempted, as the contract declares. Five wrong codes and the
       number is throttled — a 429, distinct from the one 401 every wrong,
       expired or used code shares, because "wait a minute" is a different
@@ -2759,14 +2793,39 @@ export const handlers = [
     const body = (await request.json()) as {
       phone?: string;
       name?: string;
+      email?: string;
       role?: string;
     };
     const phone = (body.phone ?? "").trim();
     const name = (body.name ?? "").trim();
     const role = body.role ?? "";
+    // Trimmed and lowered, as the API does before it checks the shape.
+    const email = (body.email ?? "").trim().toLowerCase();
 
+    /*
+      One code, two fields, and `details` says which: the API answers
+      `invalid_input` with `{ phone: … }` or `{ email: … }`, and the portal puts
+      the sentence on the field it names. The messages are the API's own, lower
+      case and all, so the screen's capitalising is exercised.
+    */
     if (!/^\+[1-9]\d{7,14}$/.test(phone) || name.length < 2) {
-      return envelope("invalid_input", "A name and an E.164 number.", 400);
+      return envelope(
+        "invalid_input",
+        "we need their number with the country code",
+        400,
+        { phone: "for example +919000000101" },
+      );
+    }
+    if (
+      email !== "" &&
+      (email.length > 254 || !/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(email))
+    ) {
+      return envelope(
+        "invalid_input",
+        "that email address does not look right",
+        400,
+        { email: "for example ramesh@example.com" },
+      );
     }
 
     /*
@@ -2834,16 +2893,31 @@ export const handlers = [
     });
 
     /*
-      `joinUrl` alongside the queued message, because there is no delivery yet
-      and "on an island the person doing the inviting is usually standing next
-      to the person being invited". The portal used to drop this, which made
-      inviting somebody a dead end for the invitee.
+      `sent` read back, not asserted (yuvoy-api 67e3213, yuvoy-operator#91).
+
+      There is no WhatsApp sender, so the only thing that can carry an
+      invitation is the email address, and with none the message is written
+      suppressed: `sent: false`, and a `note` saying to pass the link on. The
+      API's own words, and the same override it makes: a role it did not grant
+      as asked replaces the note, because that is the sentence the inviter
+      must not miss. It asserted `true` for every invitation before, which is
+      how an owner came to believe a colleague had been told.
+    */
+    const sent = email !== "";
+    const notSent =
+      "We could not send that invitation to them. Give them the join link and the code yourself, or add them again with an email address.";
+
+    /*
+      `joinUrl` alongside the queued message, because "on an island the person
+      doing the inviting is usually standing next to the person being
+      invited". The portal used to drop this, which made inviting somebody a
+      dead end for the invitee.
     */
     return HttpResponse.json(
       {
-        sent: true,
+        sent,
         role: granted,
-        ...(note ? { note } : {}),
+        ...(note ? { note } : sent ? {} : { note: notSent }),
         joinUrl: JOIN_URL,
         devCode: DEV_CODE,
       },
@@ -3241,6 +3315,20 @@ export const handlers = [
       const failed = requireSession(request);
       if (failed) return failed;
       /*
+        A service with no documents store, which is production today: every
+        upload intent answers `503 documents_unavailable` before anything else
+        is looked at (yuvoy-operator#93). Stood in for by the business waiting
+        on our review, the one identity whose pending document no upload test
+        needs to reach the bucket.
+      */
+      if (sessionUser(request)?.id === AWAITING_ID) {
+        return envelope(
+          "documents_unavailable",
+          "we cannot take documents just yet",
+          503,
+        );
+      }
+      /*
         NOT `requireWritable`. A suspended business may still send a document
         (#50), and refusing here would hold an operator at a state they are
         being asked to clear.
@@ -3412,6 +3500,13 @@ export const handlers = [
   http.put(url("/story"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json().catch(() => null)) as {
       about?: unknown;
@@ -3553,6 +3648,13 @@ export const handlers = [
   http.post(url("/story/photos/upload-intents"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     return HttpResponse.json(imageIntent(), { status: 201 });
   }),
@@ -3560,6 +3662,13 @@ export const handlers = [
   http.post(url("/story/photos"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const body = (await request.json().catch(() => ({}))) as {
       imageId?: unknown;
@@ -3605,6 +3714,13 @@ export const handlers = [
   http.delete(url("/story/photos/:id"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     // Another business's photograph answers exactly as one that does not
     // exist; here there is only one business, so absent is the whole test.
@@ -4818,6 +4934,13 @@ export const handlers = [
   http.post(url("/media/:id/rights"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const asset = mediaAssets[String(params.id)];
     if (!asset) return envelope("not_found", "No such clip.", 404);
@@ -4860,6 +4983,13 @@ export const handlers = [
   http.post(url("/media/:id/withdraw"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const id = String(params.id);
     const body = (await request.json()) as { reason?: string };
@@ -4893,6 +5023,13 @@ export const handlers = [
   http.post(url("/media/:id/publish"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    /*
+      `403 account_suspended`, which this write declares: a suspended business
+      reads its story and its clips and may not change them (yuvoy-operator#90
+      f13). Modelled so the portal's answer to it runs.
+    */
+    const shut = requireWritable(request);
+    if (shut) return shut;
 
     const asset = mediaAssets[String(params.id)];
     /*

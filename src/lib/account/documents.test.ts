@@ -86,6 +86,31 @@ describe("the file behind a document", () => {
     expect(fileLine({ hasFile: true })).toBe("A file is on record");
   });
 
+  it("is said from our side for a verified document we hold no file for", () => {
+    /*
+      yuvoy-operator#93. We verified it, so the gap is ours: "No file sent"
+      would read as the operator's omission.
+    */
+    expect(fileLine({ state: "verified", hasFile: false })).toBe(
+      "We hold no file for it",
+    );
+    // Pending with no file is still simply unsent, and an absent flag on a
+    // verified row is not an accusation (an older API sends none).
+    expect(fileLine({ state: "pending", hasFile: false })).toBe("No file sent");
+    expect(fileLine({ state: "verified" })).toBe("No file sent");
+  });
+
+  it("is not offered on a verified document with none either, because the API refuses it", () => {
+    /*
+      The review asked for "Send the file" on a verified document with no file
+      (#93). The pinned API answers the operator's upload with
+      `409 document_locked` for any state but pending; only our staff attach a
+      file to a verified document (D56). A control there would be one the API
+      refuses, so the row asks for a copy by the route that can take it.
+    */
+    expect(takesFile("verified")).toBe(false);
+  });
+
   it("is only offered on a document nobody has decided yet", () => {
     /*
       "Once somebody at Yuvoy has verified or rejected a document, a new file

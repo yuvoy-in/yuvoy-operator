@@ -5,7 +5,11 @@ import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { suspendedMessage } from "@/lib/account/suspended";
-import { uploadFailure, type AllowedType } from "@/lib/account/documents";
+import {
+  DOCUMENTS_SWITCHED_OFF,
+  uploadFailure,
+  type AllowedType,
+} from "@/lib/account/documents";
 
 /**
  * Sending the file behind a document — yuvoy-operator#46 item 3.
@@ -34,7 +38,13 @@ export type IntentResult =
       headers: Record<string, string>;
       maxBytes: number;
     }
-  | { ok: false; message: string; locked?: boolean };
+  | {
+      ok: false;
+      message: string;
+      locked?: boolean;
+      /** No documents store on this service: a state, not a retry. */
+      unavailable?: boolean;
+    };
 
 export async function startDocumentUpload(
   credentialId: string,
@@ -73,17 +83,18 @@ export async function startDocumentUpload(
           whether an operator tries again in a minute or stops trying.
 
           `502` is "the document store could not sign an upload just now".
-          `503` is "no document store is configured on this service" — which is
+          `503` is "no document store is configured on this service", which is
           what PRODUCTION answers today, so this is the branch a real operator
-          meets, and "try again" would have them retrying for weeks.
+          meets, and "try again" would have them retrying for weeks. It comes
+          back flagged, and the screen draws it as a plain state with no retry
+          control rather than as a failure (yuvoy-operator#93).
         */
-        return {
-          ok: false,
-          message:
-            err.status === 503
-              ? "Sending files is not available yet."
-              : "Could not send the file just now. Try again.",
-        };
+        return err.status === 503
+          ? { ok: false, unavailable: true, message: DOCUMENTS_SWITCHED_OFF }
+          : {
+              ok: false,
+              message: "Could not send the file just now. Try again.",
+            };
       }
       if (err.code === "document_locked") {
         // The way forward is filing the document again, not retrying this one.
@@ -108,7 +119,14 @@ export async function startDocumentUpload(
 
 export type CompleteResult =
   | { ok: true; filename: string; replacedPrevious: boolean }
-  | { ok: false; message: string; retryUpload?: boolean; restart?: boolean };
+  | {
+      ok: false;
+      message: string;
+      retryUpload?: boolean;
+      restart?: boolean;
+      /** No documents store on this service: a state, not a retry. */
+      unavailable?: boolean;
+    };
 
 /**
  * Record that the file arrived — and the API decides whether it did.
@@ -159,13 +177,13 @@ export async function completeDocumentUpload(
     }
     if (err instanceof OperatorApiError) {
       if (err.code === "documents_unavailable") {
-        return {
-          ok: false,
-          message:
-            err.status === 503
-              ? "Sending files is not available yet."
-              : "Could not check the file just now. Try again.",
-        };
+        // The same two statuses as the intent, the same split. See above.
+        return err.status === 503
+          ? { ok: false, unavailable: true, message: DOCUMENTS_SWITCHED_OFF }
+          : {
+              ok: false,
+              message: "Could not check the file just now. Try again.",
+            };
       }
       /*
         Three codes, three different next steps, and the component acts on the
