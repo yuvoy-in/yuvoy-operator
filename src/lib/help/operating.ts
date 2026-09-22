@@ -60,6 +60,54 @@ export const OPERATING_HELP: readonly HelpTopic[] = [
     ],
   },
   {
+    id: "not-on-sale",
+    area: "Calendar",
+    question: "Why is a departure not on sale?",
+    answer: [
+      "Open the departure in Calendar: it says why, in a sentence. A day with a departure that should be selling and is not carries a mark, such as 2 not on sale, so you can see it without opening every day.",
+      "The usual reasons are seats nobody has confirmed for two days, a document that is missing or has lapsed, or the whole business not selling yet. Confirm the seats in Calendar; the others are put right in Business.",
+      "A departure you stopped selling, one you called off, one past its booking cutoff and one that is full are not marked: those are decisions already made, or the day working as it should.",
+    ],
+  },
+  {
+    id: "confirming-seats",
+    area: "Calendar",
+    question: "Why do seats need confirming?",
+    answer: [
+      "Seats you set by hand stop being offered to travellers once nobody has confirmed them for two days, so that a boat nobody is watching does not keep selling.",
+      "Confirming keeps the seat count exactly as it is and puts the departure back on sale, unless something else keeps it off. Setting the seats again does the same. Confirm seats for the next 30 days does it for every departure at once.",
+      "Departures made from a weekly schedule, and departures where you answer each request, are never taken off sale for this.",
+    ],
+  },
+  {
+    id: "counter-sales",
+    area: "Calendar",
+    question: "What does recording a counter sale do?",
+    answer: [
+      "It tells us how many seats you sold yourself, at your own counter, so we stop selling them. It is a report rather than a request.",
+      "It is recorded even when it oversells the departure, because refusing it would not un-sell the seats. If it does, the screen says so, names the bookings affected and gives an incident number to quote. Sort the seats out before the boat leaves.",
+    ],
+  },
+  {
+    id: "closing-dates",
+    area: "Calendar",
+    question: "Does closing a day or stopping a departure cancel the bookings?",
+    answer: [
+      "No. Closing a day, closing dates or stopping one departure stops new bookings straight away, and every booking already made stays. The travellers still expect you, so resolve each of them in Bookings.",
+      "To cancel a departure and refund everybody on it, call it off from the departure itself. You can reopen a closed day or departure from the day in Calendar.",
+    ],
+  },
+  {
+    id: "instant-or-request",
+    area: "Calendar",
+    question:
+      "What is the difference between instant booking and answering each request?",
+    answer: [
+      "With instant booking, Yuvoy holds the seats and travellers book them straight away. The seats left on a departure are the ones we can still sell.",
+      "When you answer each request, nothing is held: a traveller asks, you accept or decline, and they pay only after you accept. The number left is how many more people the departure can take.",
+    ],
+  },
+  {
     id: "booking-money",
     area: "Money",
     question: "Why do my bookings not add up to a month of earnings?",

@@ -6,13 +6,10 @@ import { closeDeparture, type CloseDepartureState } from "./actions";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
 import { Button } from "@/components/ui/button";
 import { choiceClass, textareaClass } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 
 /**
  * Stop selling ONE departure — yuvoy-operator#45 item 4.
- *
- * One component, and #56's "Stop selling" reuses it, because the act is the
- * same and a second confirmation written for the hub would be a second chance
- * to get the one sentence that matters wrong.
  *
  * ## That sentence
  *
@@ -27,22 +24,33 @@ import { choiceClass, textareaClass } from "@/components/ui/input";
  * That worked, and it read as a trick. It also left the departure looking full
  * to whoever read the row next, with nothing to distinguish it from a boat that
  * genuinely sold out.
+ *
+ * ## Quiet, and inside the departure (yuvoy-operator#84 s7, #81)
+ *
+ * It lives in the departure's own opened row now, not in a list under the
+ * day, and it is text in the warning colour until it is asked for: stopping a
+ * sale is destructive, so it is demoted below the seat controls and its
+ * confirm carries the loud button.
+ *
+ * The receipt is kept HERE. The departure stays in its day after it closes, so
+ * this component stays mounted through the re-read that turns the row Closed:
+ * `available` goes false and the receipt is still what it draws.
  */
 export function CloseDeparture({
   slotId,
   title,
   time,
+  available,
   onClosed,
 }: {
   slotId: string;
   title: string;
   /** The departure's own start time, in its own zone. */
   time: string;
-  /**
-   * Hands the receipt to the day's panel, which survives the refresh that
-   * takes this departure out of the list it is in (op#89 f16).
-   */
-  onClosed: (title: string, note: string) => void;
+  /** Whether it is still selling, so there is anything to stop. */
+  available: boolean;
+  /** Told once it is closed, for a screen that also wants the words. */
+  onClosed?: (title: string, note: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [state, act, pending] = useActionState<CloseDepartureState, FormData>(
@@ -61,29 +69,39 @@ export function CloseDeparture({
     state.note ?? "Nobody was booked on it, so there is nobody to tell.";
 
   /*
-    The day re-reads at once, so it stops showing this departure as selling.
-    It used to wait for a tap on "Show the day", because the re-read drops the
-    departure out of this list and took the receipt with it; the receipt is on
-    the day's panel now.
+    The day re-reads at once, so the departure's row stops saying it sells.
+    The action does not revalidate, because a re-render used to take the
+    receipt with it; the receipt stays here now, and the refresh only moves
+    the row underneath it.
   */
   useEffect(() => {
     if (!state.done) return;
-    onClosed(heading, note);
+    onClosed?.(heading, note);
     router.refresh();
     // `done` flips once; the rest is fixed for this departure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.done]);
 
-  // Said on the day's panel from here on; here too would say it twice.
-  if (state.done) return null;
+  if (state.done) {
+    return (
+      <Panel tone="done" role="status" className="p-4">
+        <p className="text-sm font-bold">{heading}</p>
+        <p className="text-forest/80 mt-1 text-sm">{note}</p>
+      </Panel>
+    );
+  }
+
+  if (!available) return null;
 
   if (!open) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-bold">
-          {time} {title}
-        </span>
-        <Button variant="outline" block={false} onClick={() => setOpen(true)}>
+      <div>
+        <Button
+          variant="danger-quiet"
+          size="md"
+          block={false}
+          onClick={() => setOpen(true)}
+        >
           Stop selling
         </Button>
       </div>
@@ -91,7 +109,7 @@ export function CloseDeparture({
   }
 
   return (
-    <form action={act}>
+    <form action={act} className="border-paper-line border-t pt-4">
       <input type="hidden" name="slotId" value={slotId} />
       <p className="text-sm font-bold">
         Stop selling {time} {title}?
@@ -131,7 +149,7 @@ export function CloseDeparture({
           name="note"
           rows={2}
           maxLength={500}
-          className={textareaClass("mt-2")}
+          className={textareaClass("bg-paper mt-2")}
         />
       </div>
 
@@ -144,6 +162,7 @@ export function CloseDeparture({
       <div className="mt-3 flex gap-2">
         <Button
           type="submit"
+          variant="danger"
           block={false}
           className="flex-1"
           disabled={pending}

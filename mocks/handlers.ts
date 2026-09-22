@@ -6820,6 +6820,15 @@ export const handlers = [
     }
 
     capacity[id] = seats;
+    /*
+      Saving a seat count CONFIRMS it: `POST /slots/confirm-seats` is "the same
+      confirmation that saving a seat count with `PATCH /slots/{id}` makes, over
+      a range of dates". The mock only modelled the range, so a departure's own
+      "Confirm seats" on the calendar (yuvoy-operator#84 s7) saved the count
+      and left it off sale, which is a screen tested green against an answer
+      production never gives.
+    */
+    seatsConfirmed[id] = true;
     return new HttpResponse(null, { status: 204 });
   }),
 

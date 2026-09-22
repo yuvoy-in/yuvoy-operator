@@ -8,7 +8,7 @@ import {
   type DepartureState,
 } from "./actions";
 import { CallOffPanel } from "@/app/today/[slotId]/call-off-panel";
-import { SlotCapacity } from "@/app/calendar/slot-capacity";
+import { SeatsForm } from "@/app/calendar/departure-controls";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
 import type { OperatorSlot } from "@/lib/day/types";
 import { marketTime } from "@/lib/format/market-time";
@@ -141,7 +141,7 @@ export function DepartureRow({
           seat editors would be two chances to let somebody oversell a boat.
         */
         <div className="mt-3">
-          <SlotCapacity slot={slot} />
+          <SeatsForm slot={slot} />
         </div>
       ) : null}
 
