@@ -143,7 +143,7 @@ function failure(err: unknown): { message: string; unavailable?: boolean } {
       return {
         unavailable: true,
         message:
-          "Logos are switched off for now: nothing to do with your picture. We will tell you when they open.",
+          "Logos are switched off for now, which has nothing to do with your picture. Nothing to do on your side.",
       };
     }
     if (err.status === 502) {

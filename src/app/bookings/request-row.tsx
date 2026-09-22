@@ -255,7 +255,7 @@ export function RequestRow({
           </fieldset>
 
           <p className="text-forest/70 mt-3 text-xs">
-            They are told nothing was charged, because nothing was.
+            Their booking page says nothing was charged, because nothing was.
           </p>
 
           <div className="mt-4 flex gap-2">
