@@ -714,7 +714,7 @@ test("a call-off shows back exactly what it did", async ({
   ).toBeVisible();
 
   /*
-    THE CASH NOBODY REFUNDS — yuvoy-operator#95. The counter-paying party's
+    THE CASH NOBODY REFUNDS: yuvoy-operator#95. The counter-paying party's
     ₹4,500 is in the till, and the receipt used to say everybody had been
     refunded in full. It names the money instead, and the manifest lists who
     it belongs to until the return is recorded.

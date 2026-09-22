@@ -57,7 +57,7 @@ describe("telling a departure: yuvoy-operator#89, #90", () => {
         recipients: 2,
         byChannel: { email: 2 },
         notReached: 1,
-        notReachedNote: "1 person could not be sent this — no address.",
+        notReachedNote: "1 person could not be sent this \u2014 no address.",
       },
       error: undefined,
     });
@@ -71,7 +71,7 @@ describe("telling a departure: yuvoy-operator#89, #90", () => {
       notReached: 1,
     });
     // The API's sentence, through dedash: no long dash reaches the screen.
-    expect(state.notReachedNote).not.toMatch(/[–—―]/);
+    expect(state.notReachedNote).not.toMatch(/[\u2013\u2014\u2015]/);
     expect(state.notReachedNote).toMatch(/no address/i);
   });
 

@@ -1,7 +1,7 @@
 import type { components } from "@/lib/api/schema.gen";
 
 /**
- * Cash the business is holding that is not theirs — yuvoy-operator#95.
+ * Cash the business is holding that is not theirs (yuvoy-operator#95).
  *
  * ## Why this exists
  *

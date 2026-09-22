@@ -1339,6 +1339,34 @@ function closedByAny(slot: MockSlot): boolean {
   });
 }
 
+/**
+ * `bookableDatesNext30Days` as the API counts it (yuvoy-api#205), near enough
+ * for the screens that read it: market days from today through the 29 after it
+ * with at least one departure that is open and still to come, on a listing
+ * that is on the traveller app. 0 for anything else, as the API answers a
+ * draft or a listing that is not selling. Full departures are not subtracted:
+ * no screen in this portal is tested against one.
+ */
+function bookableDatesOf(e: { id?: string; status?: string }): number {
+  if (e.status !== "live" && e.status !== "live_changes_in_review") return 0;
+  const dayOf = (at: number) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(
+      new Date(at),
+    );
+  const first = dayOf(Date.now());
+  const last = dayOf(Date.now() + 29 * 86_400_000);
+  const days = new Set<string>();
+  for (const slot of allSlots()) {
+    if (slot.experienceId !== e.id) continue;
+    if (slotStatusOf(slot) !== "open") continue;
+    const at = Date.parse(slot.startsAt);
+    if (Number.isNaN(at) || at <= Date.now()) continue;
+    const day = dayOf(at);
+    if (day >= first && day <= last) days.add(day);
+  }
+  return days.size;
+}
+
 /** A departure's status as the API would answer it now. */
 function slotStatusOf(slot: MockSlot): string {
   if (calledOff[slot.id]) return "cancelled";
@@ -3787,7 +3815,12 @@ export const handlers = [
     if (sessionUser(request)?.id === WIDE_READ_FAILS_ID) {
       return envelope("internal_error", "Something went wrong.", 500);
     }
-    return HttpResponse.json({ experiences: mockExperiences });
+    return HttpResponse.json({
+      experiences: mockExperiences.map((e) => ({
+        ...e,
+        bookableDatesNext30Days: bookableDatesOf(e),
+      })),
+    });
   }),
 
   /**
@@ -3955,7 +3988,11 @@ export const handlers = [
       });
 
     return HttpResponse.json({
-      listing,
+      listing: {
+        ...listing,
+        // The single listing carries it too (yuvoy-api#205).
+        bookableDatesNext30Days: bookableDatesOf(listing),
+      },
       departures,
       /*
         The listing's own media, matched on the NESTED `listing.experienceId`
@@ -4517,22 +4554,49 @@ export const handlers = [
     );
   }),
 
+  /*
+    Paged, as the API pages it since yuvoy-api#204: `limit` (1 to 200, 50 when
+    absent or unreadable) and an opaque `cursor` in, `complete` and
+    `nextCursor` out. A cursor this list did not issue is a 400. The cursor
+    here is an offset in a costume, which is fine for a mock and exactly what
+    a client must never construct itself.
+  */
   http.get(url("/media"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+
+    const query = new URL(request.url).searchParams;
+    const asked = Number(query.get("limit"));
+    const limit =
+      Number.isInteger(asked) && asked > 0 ? Math.min(asked, 200) : 50;
+    const cursor = query.get("cursor");
+    let offset = 0;
+    if (cursor !== null) {
+      const match = /^mc_(\d+)$/.exec(cursor);
+      if (!match) {
+        return envelope("invalid_input", "that cursor is not ours", 400);
+      }
+      offset = Number(match[1]);
+    }
+
+    const all = Object.entries(mediaAssets).map(([id, asset]) => ({
+      id,
+      kind: asset.kind,
+      state: asset.state,
+      // Omitted, never null, when there is none, which is most clips.
+      ...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
+      durationSeconds: asset.durationSeconds,
+      listing: asset.listing,
+      rejection: asset.rejection,
+      situation: situationOf(asset),
+      createdAt: new Date().toISOString(),
+    }));
+    const items = all.slice(offset, offset + limit);
+    const next = offset + limit;
     return HttpResponse.json({
-      items: Object.entries(mediaAssets).map(([id, asset]) => ({
-        id,
-        kind: asset.kind,
-        state: asset.state,
-        // Omitted, never null, when there is none — which is most clips.
-        ...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
-        durationSeconds: asset.durationSeconds,
-        listing: asset.listing,
-        rejection: asset.rejection,
-        situation: situationOf(asset),
-        createdAt: new Date().toISOString(),
-      })),
+      items,
+      complete: next >= all.length,
+      ...(next < all.length ? { nextCursor: `mc_${next}` } : {}),
     });
   }),
 
@@ -6092,11 +6156,13 @@ export const handlers = [
         farePaise: 2700000,
         commissionPaise: 405000,
         netPaise: 2295000,
-        heldBookings: 0,
-        heldCollectedPaise: 0,
-        unrecordedBookings: 0,
-        unrecordedFarePaise: 0,
-        unrecordedLines: [],
+        // The same held and unrecorded figures `/commission-owed` sends, so
+        // Earnings and Cash agree, as the contract promises.
+        heldBookings: COMMISSION_OWED.heldBookings,
+        heldCollectedPaise: COMMISSION_OWED.heldCollectedPaise,
+        unrecordedBookings: COMMISSION_OWED.unrecordedBookings,
+        unrecordedFarePaise: COMMISSION_OWED.unrecordedFarePaise,
+        unrecordedLines: COMMISSION_OWED.unrecordedLines,
       },
       seasonToDate: {
         from: "2026-04-01",

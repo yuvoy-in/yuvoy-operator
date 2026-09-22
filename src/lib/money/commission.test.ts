@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toCommission, linesReconcile } from "./commission";
+import { cashInHand, linesReconcile, toCommission } from "./commission";
 
 const line = (over: Record<string, unknown> = {}) => ({
   bookingReference: "YV-8F3K2A",
@@ -212,5 +212,84 @@ describe("whether the lines account for the total", () => {
     });
     expect(linesReconcile(c)).toBe(true);
     expect(c.lines[0].collectedPaise).toBe(1_200_000);
+  });
+});
+
+describe("held for trips still to run, and unrecorded: yuvoy-operator#94", () => {
+  const withHeld = {
+    ...NOTHING_ELSE,
+    bookings: 1,
+    farePaise: 1_000_000,
+    collectedPaise: 1_000_000,
+    commissionPaise: 150_000,
+    lines: [line()],
+    heldBookings: 2,
+    heldFarePaise: 1_500_000,
+    heldCollectedPaise: 1_500_000,
+    heldCommissionPaise: 225_000,
+    heldLines: [
+      line({ bookingReference: "LATER", tripDate: "2026-09-30" }),
+      line({ bookingReference: "SOONER", tripDate: "2026-09-25" }),
+    ],
+    unrecordedBookings: 1,
+    unrecordedFarePaise: 600_000,
+    unrecordedLines: [
+      line({
+        bookingReference: "RAN",
+        tripDate: "2026-09-20",
+        collectedPaise: 0,
+      }),
+    ],
+  };
+
+  it("carries the held figures, soonest trip first", () => {
+    const c = toCommission(withHeld);
+    expect(c.held).toMatchObject({
+      bookings: 2,
+      farePaise: 1_500_000,
+      collectedPaise: 1_500_000,
+      commissionPaise: 225_000,
+    });
+    expect(c.held?.lines.map((l) => l.bookingReference)).toEqual([
+      "SOONER",
+      "LATER",
+    ]);
+  });
+
+  it("carries the trips that ran with no cash recorded", () => {
+    const c = toCommission(withHeld);
+    expect(c.unrecorded).toMatchObject({ bookings: 1, farePaise: 600_000 });
+    expect(c.unrecorded?.lines[0].bookingReference).toBe("RAN");
+  });
+
+  it("adds owed and held into the cash in hand", () => {
+    // "collectedPaise plus heldCollectedPaise is all the cash you have
+    // recorded taking on those bookings."
+    expect(cashInHand(toCommission(withHeld))).toBe(2_500_000);
+  });
+
+  it("reads an older API, with none of the new figures, as unknown not zero", () => {
+    const older = {
+      bookings: 1,
+      farePaise: 1_000_000,
+      commissionPaise: 150_000,
+      lines: [line()],
+    } as Parameters<typeof toCommission>[0];
+    const c = toCommission(older);
+    expect(c.held).toBeNull();
+    expect(c.unrecorded).toBeNull();
+    expect(c.collectedPaise).toBeUndefined();
+    expect(cashInHand(c)).toBeNull();
+  });
+
+  it("reconciles the held lines against the held share on their own", () => {
+    const c = toCommission({
+      ...withHeld,
+      heldLines: [
+        line({ commissionPaise: 150_000 }),
+        line({ commissionPaise: 75_000, bookingReference: "B" }),
+      ],
+    });
+    expect(c.held && linesReconcile(c.held)).toBe(true);
   });
 });

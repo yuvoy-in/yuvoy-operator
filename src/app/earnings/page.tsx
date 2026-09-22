@@ -100,10 +100,26 @@ export default async function EarningsPage() {
 
   const hold = payoutHold(changes);
   const { nextSettlement, pipeline, paidAtCounter, seasonToDate } = overview;
+  /*
+    Cash taken for trips still to run, and trips that ran with no cash
+    recorded (yuvoy-api#211, #221; op#94). Required in the contract since
+    22 Sep and read as optional all the same: an older API sends neither, and
+    "₹0 taken" or "0 unrecorded" drawn from silence would be a claim.
+  */
+  const heldKnown =
+    Number.isInteger(paidAtCounter.heldBookings) &&
+    Number.isInteger(paidAtCounter.heldCollectedPaise);
+  const unrecordedBookings = Number.isInteger(paidAtCounter.unrecordedBookings)
+    ? paidAtCounter.unrecordedBookings
+    : 0;
 
   return (
     <Screen nav={{ back: BACK }} stageLabel="Earnings">
-      <p className="eyebrow text-terra-deep">{me.name || "Your account"}</p>
+      {/*
+        The money, not the person holding the phone: this printed the signed-in
+        person's name above the business's earnings (op#87 t3).
+      */}
+      <p className="eyebrow text-terra-deep">The money</p>
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
         Earnings
       </h1>
@@ -248,6 +264,24 @@ export default async function EarningsPage() {
             value={formatPaise(paidAtCounter.commissionPaise)}
           />
           <Row label="Bookings" value={String(paidAtCounter.bookings)} plain />
+          {/*
+            Of those, the cash already in hand: "the same figure
+            `GET /commission-owed` shows as `heldCollectedPaise`", so this panel
+            and the Cash screen agree (op#94 item 4).
+          */}
+          {heldKnown ? (
+            <>
+              <Row
+                label="Cash already taken"
+                value={formatPaise(paidAtCounter.heldCollectedPaise)}
+              />
+              <Row
+                label="Bookings paid already"
+                value={String(paidAtCounter.heldBookings)}
+                plain
+              />
+            </>
+          ) : null}
         </dl>
         <Link
           href="/cash"
@@ -256,6 +290,47 @@ export default async function EarningsPage() {
           What you owe us on cash already taken
         </Link>
       </Panel>
+
+      {/*
+        Trips that ran with no cash recorded, apart from "still to run" and in
+        none of its figures: "these trips have happened, and nothing here says
+        whether you were paid". They used to be counted as still to run, which
+        is how 7 past trips read as ₹60,000 of bookings to come (op#96).
+      */}
+      {unrecordedBookings > 0 ? (
+        <Panel
+          tone="alert"
+          className="mt-4"
+          role="region"
+          aria-labelledby="cash-unrecorded"
+        >
+          <h2 id="cash-unrecorded" className="label text-terra-deep">
+            Past cash trips with no payment recorded
+          </h2>
+          <p className="font-display tracking-display mt-3 text-2xl leading-none">
+            {unrecordedBookings}
+          </p>
+          <p className="text-forest/80 mt-2 text-sm">
+            These trips have happened and nothing says whether you were paid, so
+            they are in none of the figures above. Record the cash if you took
+            it, or mark the party a no-show.
+          </p>
+          {Number.isInteger(paidAtCounter.unrecordedFarePaise) ? (
+            <dl className="mt-4 space-y-2 text-sm">
+              <Row
+                label="Fares agreed"
+                value={formatPaise(paidAtCounter.unrecordedFarePaise)}
+              />
+            </dl>
+          ) : null}
+          <Link
+            href="/cash#unrecorded"
+            className="text-terra-deep tap-target mt-4 inline-block text-sm underline underline-offset-4"
+          >
+            See the trips
+          </Link>
+        </Panel>
+      ) : null}
 
       {/* ------------------------------------------- 4. season so far ---- */}
 

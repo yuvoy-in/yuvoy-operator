@@ -371,3 +371,36 @@ test("the listing hub has no accessibility violations", async ({ page }) => {
     .analyze();
   expect(results.violations).toEqual([]);
 });
+
+test("a live listing with no dates to sell says so, and one with dates does not", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#95 item 3. `bookableDatesNext30Days` counts the days a
+    traveller could book in the next 30, by checkout's own rules. A live
+    listing reading 0 is on the traveller app and sells nothing, and nothing
+    said so: "test2Activity reads Live with no next departure and no warning."
+
+    `exp_cover` is live with no departures at all; `exp_snorkel` has them.
+  */
+  await signIn(page);
+
+  await page.goto("/today/listing/exp_cover");
+  await expect(
+    page.getByText("Live, but no dates in the next 30 days"),
+  ).toBeVisible();
+
+  await page.goto(`/today/listing/${SNORKEL}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: /Snorkel trip/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Live, but no dates in the next 30 days"),
+  ).toHaveCount(0);
+
+  // And its tile on the profile carries the fact, where live tiles carry none.
+  await page.goto("/account");
+  await expect(
+    page.getByRole("link", { name: /^Coral wall \(cover fixture\)/ }),
+  ).toContainText("No dates in 30 days");
+});

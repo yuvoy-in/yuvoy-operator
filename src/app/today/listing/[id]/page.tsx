@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 import { requireOperator } from "@/lib/auth/session";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError } from "@/lib/api/errors";
-import { listingLabel, withinFortnight } from "@/lib/services/home";
+import {
+  listingLabel,
+  liveWithNothingToSell,
+  withinFortnight,
+} from "@/lib/services/home";
 import { shiftDay } from "@/lib/day/calendar";
 import type { OperatorSlot } from "@/lib/day/types";
 import { formatPaise } from "@/lib/format/money";
@@ -12,6 +16,7 @@ import { travellerAppOrigin } from "@/lib/site/traveller-app";
 import { Screen } from "@/components/chrome/screen";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
+import { Problem } from "@/components/ui/states";
 import { ButtonLink } from "@/components/ui/button";
 import { PauseResume } from "@/components/listings/pause-resume";
 import { ScheduleForm } from "./schedule-form";
@@ -112,6 +117,21 @@ export default async function ListingHubPage({
         </h1>
         <Chip>{listingLabel(listing)}</Chip>
       </div>
+
+      {/*
+        On the traveller app and nothing to book (op#95 item 3): "a published
+        listing reading 0 is on the traveller app and sells nothing". Said
+        before anything else on the page, because it is lost money the operator
+        can fix here, with the schedule below.
+      */}
+      {liveWithNothingToSell(listing) ? (
+        <div className="mt-4">
+          <Problem
+            title="Live, but no dates in the next 30 days"
+            body="Travellers can see this listing and cannot book it. Add departures, or set a weekly schedule below."
+          />
+        </div>
+      ) : null}
 
       <p className="text-forest/80 mt-3 text-base">{price}</p>
       <p className="text-forest/70 mt-1 text-sm">

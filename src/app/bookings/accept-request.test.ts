@@ -44,14 +44,14 @@ describe("accepting a request: yuvoy-operator#95", () => {
       holdExpiresAt: "2026-09-22T02:30:00Z",
       toldBy: ["email"],
       receipt:
-        "they are holding 3 seats and still have to pay — by email. If they have not paid by 08:00 on Tue 22 Sep, the seats come back to you.",
+        "they are holding 3 seats and still have to pay \u2014 by email. If they have not paid by 08:00 on Tue 22 Sep, the seats come back to you.",
     });
 
     const state = await acceptRequest({}, form());
 
     expect(state.granted).toBe(true);
     expect(state.receipt).toMatch(/^They are holding 3 seats/);
-    expect(state.receipt).not.toMatch(/[–—―]/);
+    expect(state.receipt).not.toMatch(/[\u2013\u2014\u2015]/);
     expect(state.untold).toBeUndefined();
   });
 

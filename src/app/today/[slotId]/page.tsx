@@ -143,7 +143,7 @@ export default async function ManifestPage({
   const holdRows = rows.filter((r) => isHolding(r.party));
 
   /*
-    CASH AT THE COUNTER — yuvoy-operator#40 §1, read off the manifest itself
+    CASH AT THE COUNTER (yuvoy-operator#40 §1), read off the manifest itself
     since yuvoy-api#204 (op#95 item 2).
 
     Each party carries `cash` exactly when it pays at the counter, the same

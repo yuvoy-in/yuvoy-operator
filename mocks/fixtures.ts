@@ -1073,14 +1073,50 @@ export const COMMISSION_OWED = {
       commissionPaise: 225_000,
     },
   ],
-  heldBookings: 0,
-  heldFarePaise: 0,
-  heldCollectedPaise: 0,
-  heldCommissionPaise: 0,
-  heldLines: [],
-  unrecordedBookings: 0,
-  unrecordedFarePaise: 0,
-  unrecordedLines: [],
+  /*
+    HELD for trips still to run (yuvoy-api#211, op#94): the cash the screen
+    left out, which is how an operator holding ₹42,000 read ₹30,000. Two
+    trips, and their shares add up to the held share, as the owed ones do.
+  */
+  heldBookings: 2,
+  heldFarePaise: 1_500_000,
+  heldCollectedPaise: 1_500_000,
+  heldCommissionPaise: 225_000,
+  heldLines: [
+    {
+      bookingReference: "YV-H3LD0B2",
+      tripDate: marketDay(5),
+      guests: 1,
+      farePaise: 600_000,
+      collectedPaise: 600_000,
+      commissionPaise: 90_000,
+    },
+    {
+      bookingReference: "YV-H3LD0A1",
+      tripDate: marketDay(2),
+      guests: 2,
+      farePaise: 900_000,
+      collectedPaise: 900_000,
+      commissionPaise: 135_000,
+    },
+  ],
+  /*
+    A trip that RAN with no cash recorded (yuvoy-api#221): nothing says
+    whether the business was paid, so it is in no held or owed figure, and
+    only the operator can close it.
+  */
+  unrecordedBookings: 1,
+  unrecordedFarePaise: 450_000,
+  unrecordedLines: [
+    {
+      bookingReference: "YV-UNR3C0D",
+      tripDate: marketDay(-1),
+      guests: 1,
+      farePaise: 450_000,
+      collectedPaise: 0,
+      commissionPaise: 67_500,
+    },
+  ],
 };
 
 export const CHANGE_REQUESTS = [

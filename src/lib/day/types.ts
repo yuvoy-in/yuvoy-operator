@@ -171,4 +171,10 @@ export interface OperatorListing {
    * inside it. See `isSentBack` in `src/lib/services/home.ts`.
    */
   sentBack?: unknown;
+  /**
+   * Market days in the next 30 a traveller could book right now
+   * (yuvoy-api#205). Carried only when the API sent a whole number, so an
+   * older API reads as unknown rather than as a listing with nothing to sell.
+   */
+  bookableDatesNext30Days?: number;
 }

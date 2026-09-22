@@ -38,7 +38,7 @@ export default async function LogoPage() {
       .GET("/logo", {})
       /*
         `readShape` because the contract declares a `202` on this GET whose
-        body is the "recorded for review" acknowledgement, not a logo — see
+        body is the "recorded for review" acknowledgement, not a logo: see
         src/lib/account/read-shape.ts. A read cannot record anything for
         review, so that shape is treated as "nothing to show" rather than
         rendered.
