@@ -9,6 +9,7 @@ import {
   longDay,
   seasonStartLabel,
   nextSettlementNote,
+  stateLine,
   statementFilename,
 } from "./settlements";
 
@@ -40,6 +41,35 @@ describe("the three states, and which one has moved money", () => {
     expect(hasStatement({ state: "settled" })).toBe(true);
     expect(hasStatement({ state: "approved" })).toBe(false);
     expect(hasStatement({ state: "locked" })).toBe(false);
+  });
+});
+
+describe("the line under a payout's heading", () => {
+  it("says when a sent payout was paid, in the market's calendar", () => {
+    // 18:30 UTC on the 7th is already the 8th on the islands.
+    expect(
+      stateLine({ state: "settled", settledAt: "2026-09-07T18:30:00Z" }),
+    ).toBe("Paid on 8 September 2026");
+  });
+
+  it("says Paid alone when the time is missing or unreadable", () => {
+    expect(stateLine({ state: "settled" })).toBe("Paid");
+    expect(stateLine({ state: "settled", settledAt: "yesterday" })).toBe(
+      "Paid",
+    );
+  });
+
+  it("says what a week not yet sent is waiting for", () => {
+    /*
+      On its own page the state is the heading's only context, and "Locked"
+      alone does not say whether anybody still has to act.
+    */
+    expect(stateLine({ state: "approved" })).toBe(
+      "Approved, waiting to be sent",
+    );
+    expect(stateLine({ state: "locked" })).toBe(
+      "Locked, waiting to be approved",
+    );
   });
 });
 

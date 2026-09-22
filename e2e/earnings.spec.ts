@@ -216,10 +216,23 @@ test("a sent payout has a statement; one that is not has none", async ({
   await expect(page.getByText("UTR2026090812345")).toBeVisible();
 
   /*
+    One title, the week; its state is the line under it rather than an
+    eyebrow above it (op#80 t2), saying when it was paid. The commission is
+    Yuvoy's share here too, and the way back is to Money.
+  */
+  await expect(page.getByText("Paid on 8 September 2026")).toBeVisible();
+  await expect(page.getByText("Yuvoy's share").first()).toBeVisible();
+  await expect(page.getByText(/our commission/i)).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Back to Money" }),
+  ).toHaveAttribute("href", "/earnings");
+
+  /*
     Approved but not sent: no button. The endpoint answers `409 not_settled`, so
     offering it would be a download that always fails.
   */
   await page.goto("/earnings/stl_approved");
+  await expect(page.getByText("Approved, waiting to be sent")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Download statement" }),
   ).toHaveCount(0);
