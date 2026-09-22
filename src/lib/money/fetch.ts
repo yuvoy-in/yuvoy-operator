@@ -174,6 +174,25 @@ export async function getCommissionOwed(token: string): Promise<Commission> {
   return toCommission(data);
 }
 
+/**
+ * The same read, for a screen where cash is one section among several: the
+ * Money tab's summary (yuvoy-operator#96).
+ *
+ * SOFT-failing, where `getCommissionOwed` is hard, and for the reason that one
+ * is hard: on `/cash` the balance IS the screen, while on Money a failed read
+ * must cost the cash figures and nothing else. `null` is "we could not read
+ * it", and the caller draws no owed figure at all rather than a ₹0.
+ */
+export async function readCommissionOwed(
+  token: string,
+): Promise<Commission | null> {
+  try {
+    return await getCommissionOwed(token);
+  } catch {
+    return null;
+  }
+}
+
 /* ---------------------------------------------------- settlements (op#47) -- */
 
 /**
