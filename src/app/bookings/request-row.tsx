@@ -14,7 +14,6 @@ import {
   type OpenRequest,
 } from "@/lib/day/request-types";
 import { requestWhen } from "@/lib/day/request-time";
-import { marketTime } from "@/lib/format/market-time";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
@@ -32,9 +31,12 @@ export interface Receipt {
   id: string;
   contactName: string;
   guests: number;
-  /** The granted hold's deadline. Null when the API did not say. */
-  holdExpiresAt: string | null;
-  timezone: string;
+  /** The API's whole sentence, when it sent one (yuvoy-api#203). */
+  sentence?: string;
+  /** "14:41", or "08:00 on Tue 22 Sep": for a response with no sentence. */
+  payBy?: string;
+  /** Nothing could carry the news, so the traveller does not know yet. */
+  untold?: boolean;
 }
 
 /**
@@ -42,22 +44,46 @@ export interface Receipt {
  * them and must pay before it lapses — an operator who reads "accepted" as
  * "booked" will not chase it, and the seats go back.
  *
- * The deadline is said as a time, because that is the number an operator
- * chases a traveller against. Market time, never the phone's.
+ * ## Whose words
+ *
+ * The API's `receipt` since yuvoy-api#203: how many seats are held, how the
+ * traveller is being told or that nobody could reach them, and when the seats
+ * come back, in market time with the day when it is not today. The hold is
+ * twelve hours now, so "if they have not paid by 08:00" read at 20:00 named a
+ * morning that had already gone (op#95).
+ *
+ * Ours is the fallback for an API that sends no sentence, with the pay-by
+ * time worked out the same way. Nothing here invents how the traveller was
+ * told: without the API's sentence, the receipt says nothing about it.
+ *
+ * ## Nobody told them
+ *
+ * `toldBy` empty means no channel could carry the news. The traveller does
+ * not know they were accepted, and the operator is the only one who can tell
+ * them, so the receipt turns into a warning rather than a tick.
  */
 export function GrantedReceipt({ receipt }: { receipt: Receipt }) {
   return (
-    <li className={panelClass("done")}>
+    <li className={panelClass(receipt.untold ? "alert" : "done")}>
       <p className="text-base font-bold">
         Seats granted to {receipt.contactName}
       </p>
       <p className="text-forest/80 mt-2 text-sm">
-        They are holding {receipt.guests}{" "}
-        {receipt.guests === 1 ? "seat" : "seats"} and still have to pay.{" "}
-        {receipt.holdExpiresAt
-          ? `If they have not paid by ${marketTime(receipt.holdExpiresAt, receipt.timezone)}, the seats come back to you.`
-          : "If they do not, the seats come back to you."}
+        {receipt.sentence ??
+          `They are holding ${receipt.guests} ${
+            receipt.guests === 1 ? "seat" : "seats"
+          } and still have to pay. ${
+            receipt.payBy
+              ? `If they have not paid by ${receipt.payBy}, the seats come back to you.`
+              : "If they do not, the seats come back to you."
+          }`}
       </p>
+      {receipt.untold && !receipt.sentence ? (
+        <p className="text-terra-deep mt-2 text-sm font-bold">
+          We could not reach them, so they do not know yet. Tell them yourself
+          if you can.
+        </p>
+      ) : null}
     </li>
   );
 }
@@ -144,8 +170,9 @@ export function RequestRow({
         id: request.id ?? "",
         contactName: request.contactName ?? "",
         guests: request.guests ?? 0,
-        holdExpiresAt: state.holdExpiresAt ?? null,
-        timezone: request.timezone ?? "Asia/Kolkata",
+        ...(state.receipt ? { sentence: state.receipt } : {}),
+        ...(state.payBy ? { payBy: state.payBy } : {}),
+        ...(state.untold ? { untold: true } : {}),
       }
     : null;
 
@@ -254,6 +281,15 @@ export function RequestRow({
       ) : (
         <form action={act} className="mt-4 flex gap-2">
           <input type="hidden" name="requestId" value={request.id ?? ""} />
+          {/*
+            The departure's zone, so a pay-by time written for an API that
+            sends no sentence is the market's, never the phone's.
+          */}
+          <input
+            type="hidden"
+            name="timezone"
+            value={request.timezone ?? "Asia/Kolkata"}
+          />
           {canAccept ? (
             <Button
               type="submit"

@@ -311,6 +311,14 @@ export async function recordOfflineSale(
       return { message: "No signal. The sale was NOT recorded. Try again." };
     }
     if (err instanceof OperatorApiError) {
+      /*
+        A suspended business is refused with `403 AccountSuspended`, which
+        this read as "Not recorded. Try again." (op#90 f13): a retry that can
+        never succeed, with the one fact that explains it hidden.
+      */
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
+      if (err.status === 403) return { message: ROLE_REFUSAL };
       if (err.isNotFound)
         return { message: "That departure is no longer here." };
       if (err.status === 400) return { message: err.message };
@@ -552,8 +560,8 @@ export async function reopenClosure(
       counts with it, because a reopened closure drops out of the day's list and
       unmounts the row that was holding them. The API says "say this out loud.
       It gives both counts in words", and it is the ONLY place "two went back and
-      one did not" exists. So the sentence stays and the day is refreshed on the
-      operator's own tap, which is `router.refresh()` in `ReopenClosure`.
+      one did not" exists. So `ReopenClosure` hands the sentence up to the day's
+      panel, which survives the refresh, and then refreshes (op#89 f16).
 
       The same trap `cancelBooking` hit: revalidate only when the re-render
       shows more than the returned value, and here it shows less.

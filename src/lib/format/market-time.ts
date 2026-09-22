@@ -128,3 +128,52 @@ export function dayCaption(
   if (date === tomorrow) return "Tomorrow";
   return marketDay(`${date}T12:00:00+05:30`, timeZone);
 }
+
+/*
+  Fixed English names, not `Intl`. The same locale spells September "Sept" in
+  node's ICU and "Sep" in a browser's, and a date written on the server and
+  the phone must read the same (the traveller app learned this as a
+  hydration mismatch).
+*/
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/**
+ * A deadline as an operator chases it: "14:41" when it falls on the market's
+ * today, "08:00 on Tue 22 Sep" when it does not (yuvoy-operator#95).
+ *
+ * An accepted request now holds its seats for twelve hours, capped at the
+ * departure's booking cutoff, so the pay-by time is often tomorrow. A bare
+ * "08:00" read at 20:00 says this morning, which has already gone.
+ *
+ * Empty for an instant that does not parse, so a caller can fall back to a
+ * sentence with no time in it rather than print "Invalid Date".
+ */
+export function deadlineLabel(
+  iso: string,
+  timeZone: string,
+  nowMs: number,
+): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const time = marketTime(iso, timeZone);
+  const day = marketDate(at, timeZone);
+  if (day === marketDate(new Date(nowMs), timeZone)) return time;
+  const [y, m, d] = day.split("-").map(Number);
+  // The weekday of a calendar date, which no time zone can move.
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${time} on ${WEEKDAY_SHORT[weekday]} ${d} ${MONTH_SHORT[m - 1]}`;
+}

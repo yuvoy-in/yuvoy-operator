@@ -11,6 +11,7 @@ import {
   resetMockUploads,
 } from "./tus-server";
 import { validateRelay } from "../src/lib/day/relay-types";
+import { deadlineLabel } from "../src/lib/format/market-time";
 import {
   ACCOUNT_AWAITING,
   ACCOUNT_LIVE,
@@ -5994,11 +5995,32 @@ export const handlers = [
     }
 
     answered[id] = "active";
+    /*
+      The traveller now holds seats with a clock on them and must pay: twelve
+      hours, capped at the departure's booking cutoff (yuvoy-api#203), which an
+      hour before it leaves stands in for here. Never less than ten minutes, so
+      a run late at night still gets a hold in the future.
+    */
+    const cutoff = Date.parse(open.startsAt) - 60 * 60_000;
+    const holdExpiresAt = new Date(
+      Math.max(
+        Math.min(Date.now() + 12 * 60 * 60_000, cutoff),
+        Date.now() + 10 * 60_000,
+      ),
+    ).toISOString();
+    /*
+      `toldBy` and `receipt`, as the API writes them: queued by email because
+      there is no WhatsApp sender, and the whole sentence with the pay-by time
+      in market time, the day included when it is not today.
+    */
+    const told = ["email"];
+    const seats = `${open.guests} ${open.guests === 1 ? "seat" : "seats"}`;
     return HttpResponse.json({
       id,
       state: "active",
-      // The traveller now holds seats with a clock on them and must pay.
-      holdExpiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      holdExpiresAt,
+      toldBy: told,
+      receipt: `They are holding ${seats} and still have to pay. We are letting them know by email. If they have not paid by ${deadlineLabel(holdExpiresAt, open.timezone, Date.now())}, the seats come back to you.`,
     });
   }),
 

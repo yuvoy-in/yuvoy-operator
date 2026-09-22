@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { closeDeparture, type CloseDepartureState } from "./actions";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
@@ -32,11 +32,17 @@ export function CloseDeparture({
   slotId,
   title,
   time,
+  onClosed,
 }: {
   slotId: string;
   title: string;
   /** The departure's own start time, in its own zone. */
   time: string;
+  /**
+   * Hands the receipt to the day's panel, which survives the refresh that
+   * takes this departure out of the list it is in (op#89 f16).
+   */
+  onClosed: (title: string, note: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [state, act, pending] = useActionState<CloseDepartureState, FormData>(
@@ -45,37 +51,35 @@ export function CloseDeparture({
   );
   const router = useRouter();
 
+  const heading = `${time} ${title} is closed to new bookings`;
+  /*
+    Rendered verbatim, and it is the half that stops somebody not turning up:
+    "present when `existingBookings` is above zero, and clients must render it
+    verbatim."
+  */
+  const note =
+    state.note ?? "Nobody was booked on it, so there is nobody to tell.";
+
+  /*
+    The day re-reads at once, so it stops showing this departure as selling.
+    It used to wait for a tap on "Show the day", because the re-read drops the
+    departure out of this list and took the receipt with it; the receipt is on
+    the day's panel now.
+  */
+  useEffect(() => {
+    if (!state.done) return;
+    onClosed(heading, note);
+    router.refresh();
+    // `done` flips once; the rest is fixed for this departure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.done]);
+
   if (state.done) {
+    // The frame before the day re-reads; the day's panel says it from here.
     return (
       <div role="status" className="text-sm">
-        <p className="font-bold">
-          {time} {title} is closed to new bookings
-        </p>
-        {/*
-          Rendered verbatim, and it is the half that stops somebody not turning
-          up: "present when `existingBookings` is above zero, and clients must
-          render it verbatim."
-        */}
-        {state.note ? (
-          <p className="text-forest/80 mt-1">{state.note}</p>
-        ) : (
-          <p className="text-forest/80 mt-1">
-            Nobody was booked on it, so there is nobody to tell.
-          </p>
-        )}
-        {/*
-          The day is refreshed on a tap rather than by the action, because a
-          re-render drops this departure out of the list it is in and takes the
-          receipt with it. See `closeDeparture`.
-        */}
-        <Button
-          variant="secondary"
-          block={false}
-          className="mt-2"
-          onClick={() => router.refresh()}
-        >
-          Show the day
-        </Button>
+        <p className="font-bold">{heading}</p>
+        <p className="text-forest/80 mt-1">{note}</p>
       </div>
     );
   }
