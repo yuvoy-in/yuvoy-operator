@@ -170,14 +170,48 @@ export const NO_COUNTS: Counts = {
 };
 
 /**
- * Which pill to open on when the URL names none.
+ * Which pill to open on when the URL names none: the first, in pill order,
+ * that has anything in it (yuvoy-operator#83 s4).
  *
- * "Requests if `counts.requests > 0` in that response, otherwise Upcoming. Past
- * and Cancelled are never the default." A request has a clock on it and a
- * traveller behind it; nothing else on this screen expires.
+ * It used to be Requests or Upcoming and never anything else, so an operator
+ * whose season was over opened on "Upcoming 0" with ten bookings under Past
+ * and a blank screen as the first thing they saw. Pill order still puts a
+ * request first whenever one is waiting: it has a clock on it and a traveller
+ * behind it, and nothing else on this screen expires.
+ *
+ * Upcoming when every pill is empty, because that is where the next booking
+ * will land and the empty state there says how to get one.
  */
 export function defaultView(counts: Counts): View {
-  return counts.requests > 0 ? "requests" : "upcoming";
+  return VIEWS.find((view) => counts[view] > 0) ?? "upcoming";
+}
+
+/**
+ * Whether the business has no bookings and no requests at all, under no
+ * filter. The one empty state that needs a way forward rather than a shrug.
+ */
+export function nothingBooked(counts: Counts): boolean {
+  return VIEWS.every((view) => counts[view] === 0);
+}
+
+/**
+ * How far to scroll the pill row so the selected pill sits in view, centred
+ * where the row allows it and never past either end.
+ *
+ * The row scrolls sideways rather than wrapping (yuvoy-operator#83 s4), so on
+ * a phone the last two pills start off screen, and opening on Cancelled would
+ * otherwise light a pill nobody can see. Pure, so the arithmetic is tested
+ * without a layout engine.
+ */
+export function pillScrollLeft(
+  pillLeft: number,
+  pillWidth: number,
+  rowWidth: number,
+  scrollWidth: number,
+): number {
+  const centred = pillLeft - (rowWidth - pillWidth) / 2;
+  const furthest = Math.max(0, scrollWidth - rowWidth);
+  return Math.round(Math.min(Math.max(0, centred), furthest));
 }
 
 export const PILL_LABEL: Record<View, string> = {
