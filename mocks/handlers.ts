@@ -1289,6 +1289,25 @@ function storyResponse() {
     languages: story.languages,
     photos: story.photos.map(storyPhotoJson),
     reviewed: STORY_REVIEWED,
+    /*
+      The three numbers at the top of the business profile (yuvoy-api#185):
+      "always present, zeroes included". This mock never sent them, so the
+      profile's row of numbers had never once been drawn against it, and the
+      finding it carried ("the header says 3 listings; the grid below shows
+      six", op#86 s9) could not be seen here at all.
+
+      `listings` is counted the way the API counts it: what a traveller can
+      buy now, live or live with changes in review. `tripsRun` is a constant,
+      because this mock keeps no record of departures that ran. No review has
+      been published, which is what a count of 0 and a null average say.
+    */
+    stats: {
+      listings: mockExperiences.filter(
+        (e) => e.status === "live" || e.status === "live_changes_in_review",
+      ).length,
+      tripsRun: 128,
+      rating: { average: null, count: 0 },
+    },
   };
 }
 
@@ -3495,6 +3514,33 @@ export const handlers = [
     const failed = requireSession(request);
     if (failed) return failed;
     return HttpResponse.json(storyResponse());
+  }),
+
+  /**
+   * What travellers said (yuvoy-api#185). Nothing has been published, which
+   * agrees with the `stats.rating` above: "published reviews only, so
+   * `summary` and `stats.rating` always agree". Unmocked, the Reviews tab had
+   * only ever said it did not load.
+   */
+  http.get(url("/reviews"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json({
+      summary: {
+        averageRating: null,
+        count: 0,
+        tags: {
+          guide: 0,
+          safety: 0,
+          value: 0,
+          organisation: 0,
+          punctuality: 0,
+          equipment: 0,
+        },
+      },
+      items: [],
+      complete: true,
+    });
   }),
 
   http.put(url("/story"), async ({ request }) => {

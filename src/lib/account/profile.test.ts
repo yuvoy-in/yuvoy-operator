@@ -57,24 +57,44 @@ describe("the line under the numbers", () => {
 });
 
 describe("the rating", () => {
-  it("says there are none rather than scoring them zero", () => {
+  it("is a 0 over the word Reviews when there are none, like the others", () => {
     /*
-      A null average is a rating nobody gave. Printing it as "0.0 ★" tells an
-      operator their travellers scored them nothing, which is a different and
-      much worse claim.
+      yuvoy-operator#86 s9: "'No reviews yet' sits where a number belongs ...
+      Show '0' with the word Reviews under it, exactly like the others." A
+      count of reviews, never a score: "0.0 ★" would say travellers scored
+      them nothing, which is a different and much worse claim.
     */
     expect(ratingLine({ average: null, count: 0 })).toEqual({
-      value: "No reviews yet",
-      label: "",
+      value: "0",
+      label: "Reviews",
     });
-    expect(ratingLine(undefined).value).toBe("No reviews yet");
+    expect(ratingLine({ average: null, count: 0 })?.value).not.toContain("★");
   });
 
-  it("carries the count beside the average", () => {
+  it("carries the count under the average", () => {
     expect(ratingLine({ average: 4.8, count: 37 })).toEqual({
       value: "4.8 ★",
-      label: "Rating (37)",
+      label: "37 reviews",
     });
+    expect(ratingLine({ average: 5, count: 1 })).toEqual({
+      value: "5 ★",
+      label: "1 review",
+    });
+  });
+
+  it("draws no average it was not given, only the count", () => {
+    // The contract has the average null only at a count of 0; a response that
+    // disagrees with itself still gets no invented score.
+    expect(ratingLine({ average: null, count: 3 })).toEqual({
+      value: "3",
+      label: "Reviews",
+    });
+  });
+
+  it("draws nothing when the response did not say, rather than a 0", () => {
+    // A zero nobody measured is worse than a gap in the row.
+    expect(ratingLine(undefined)).toBeNull();
+    expect(ratingLine({ average: 4.2 })).toBeNull();
   });
 });
 

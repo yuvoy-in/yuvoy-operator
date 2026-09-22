@@ -142,6 +142,61 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
   ).toHaveCount(0);
 });
 
+test("the profile's three numbers are numbers, and say what they count", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#86 s9: "The header says 3 listings; the grid below shows
+    six. 'No reviews yet' sits where a number belongs." The first number counts
+    what a traveller can buy now, and the grid shows every listing, so it is
+    labelled for what it counts. Reviews is a number over its word, like the
+    other two.
+  */
+  await signIn(page, OWNER);
+  await page.waitForURL("**/today");
+  await page.goto("/account");
+
+  const stat = (term: string) =>
+    page.locator(`dl > div:has(> dt:text-is("${term}")) > dd`);
+  await expect(stat("Live")).toHaveText(/^\d+$/);
+  await expect(stat("Trips run")).toHaveText("128");
+  await expect(stat("Reviews")).toHaveText("0");
+  await expect(page.locator("dt", { hasText: /^Listings$/ })).toHaveCount(0);
+  await expect(page.getByText("No reviews yet")).toHaveCount(0);
+});
+
+test("the profile names what is waiting, and each opens where it is fixed", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#86 s9: "'2 things waiting on you' does not say what they
+    are ... Name the two things in the strip." The count still opens the list
+    that explains them; each thing opens the screen that fixes it.
+  */
+  await signIn(page, LIVE_OUTSTANDING);
+  await page.waitForURL("**/today");
+  await page.goto("/account");
+
+  await expect(
+    page.getByRole("link", { name: /3 things waiting on you/ }),
+  ).toHaveAttribute("href", "/account/verification");
+  await expect(
+    page.getByRole("link", { name: "Complete your details" }),
+  ).toHaveAttribute("href", "/profile");
+  await expect(
+    page.getByRole("link", { name: "Add your logo" }),
+  ).toHaveAttribute("href", "/logo");
+  // A sentence this build cannot read a document out of is the API's own.
+  await expect(
+    page.getByRole("link", {
+      name: "We have no equipment inspection on file.",
+    }),
+  ).toHaveAttribute("href", "/profile#documents");
+
+  await page.getByRole("link", { name: "Add your logo" }).click();
+  await page.waitForURL("**/logo");
+});
+
 test("a signed-up account that cannot sell is never told it is live", async ({
   page,
 }) => {

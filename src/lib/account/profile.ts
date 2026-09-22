@@ -57,7 +57,21 @@ export function sinceLine(
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-/** "4.8 ★" and "Rating (37)", or the sentence that stands in for both. */
+/**
+ * The third number on the profile: "4.8 ★" over "37 reviews", or "0" over
+ * "Reviews" when there are none. `null` when the response did not say.
+ *
+ * yuvoy-operator#86 s9: "'No reviews yet' sits where a number belongs ...
+ * Three numbers in a row set an expectation that all three are numbers. One
+ * is a sentence, so the row reads as broken. Show '0' with the word Reviews
+ * under it, exactly like the others."
+ *
+ * The 0 is a COUNT of reviews, never a score: "0.0 ★" would tell an operator
+ * their travellers scored them nothing, which is a different and much worse
+ * claim, so an average is only ever drawn when there is one. And a rating the
+ * response did not carry at all is not drawn as a 0 either: that would be a
+ * number nobody measured.
+ */
 export function ratingLine(
   rating:
     | {
@@ -65,17 +79,15 @@ export function ratingLine(
         count?: number;
       }
     | undefined,
-): { value: string; label: string } {
+): { value: string; label: string } | null {
+  const count = rating?.count;
+  if (!Number.isInteger(count) || (count as number) < 0) return null;
+  const reviews = count === 1 ? "1 review" : `${count} reviews`;
   const average = rating?.average;
-  if (average === null || average === undefined) {
-    /*
-      "No reviews yet" rather than "0.0 ★". A zero average is a rating nobody
-      gave, and printing it as one tells an operator their travellers scored
-      them nothing.
-    */
-    return { value: "No reviews yet", label: "" };
+  if (typeof average === "number" && (count as number) > 0) {
+    return { value: `${average} ★`, label: reviews };
   }
-  return { value: `${average} ★`, label: `Rating (${rating?.count ?? 0})` };
+  return { value: String(count), label: count === 1 ? "Review" : "Reviews" };
 }
 
 /**
