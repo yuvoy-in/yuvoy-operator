@@ -35,6 +35,11 @@ function pngBytes(): Buffer {
 }
 
 async function sendLogo(page: Page) {
+  /*
+    Hydrated first: a file set before React attaches `onChange` uploads
+    nothing and says nothing (the same trap story.spec.ts hit under load).
+  */
+  await page.waitForLoadState("networkidle");
   await page.getByLabel(/your logo/i).setInputFiles({
     name: "mark.png",
     mimeType: "image/png",

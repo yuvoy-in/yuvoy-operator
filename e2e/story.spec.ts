@@ -100,6 +100,13 @@ test("a photograph of the operation goes on the page, and comes off it", async (
   );
   await signIn(page);
   await page.goto("/story");
+  /*
+    Hydrated first. A file set on the input before React has attached its
+    `onChange` is a change nobody hears: nothing is uploaded and nothing is
+    said, which is how this failed under a full suite's load (the trace shows
+    no request after the page loaded).
+  */
+  await page.waitForLoadState("networkidle");
 
   const tiles = page
     .getByRole("region", { name: "Photographs" })
