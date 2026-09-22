@@ -46,7 +46,7 @@ export default async function HelpPage() {
         href={SUPPORT_PHONE_HREF}
         className={panelClass(
           "raised",
-          "ease-interaction hover:bg-paper mt-10 flex min-h-14 items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
+          "ease-interaction hover:bg-paper mt-10 flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
         )}
       >
         <span className="flex min-w-0 items-center gap-3">
