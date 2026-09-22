@@ -101,6 +101,36 @@ describe("business details: yuvoy-operator#89 f10", () => {
     expect(screen.queryByText("Sent to us for a check")).toBeNull();
   });
 
+  it("says a change is waiting, above the form it would change", () => {
+    render(
+      <DetailsForm
+        details={DETAILS}
+        values={VALUES}
+        canManage
+        review={{ state: "waiting", sentOn: "21 September 2026" }}
+      />,
+    );
+    expect(
+      screen.getByText("A change to these details is waiting for our check"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Sent on 21 September 2026/)).toBeInTheDocument();
+  });
+
+  it("says a refused change was not applied, without inventing why", () => {
+    render(
+      <DetailsForm
+        details={DETAILS}
+        values={VALUES}
+        canManage={false}
+        review={{ state: "refused", sentOn: null }}
+      />,
+    );
+    expect(
+      screen.getByText("We did not apply the change you sent"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Sent on/)).toBeNull();
+  });
+
   it("shows a staff login the details and no form", () => {
     render(<DetailsForm details={DETAILS} values={VALUES} canManage={false} />);
 

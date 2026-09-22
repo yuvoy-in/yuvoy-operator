@@ -66,9 +66,16 @@ test.describe.serial("setting a logo", () => {
     await expect(page.getByText("Sent to us for a check")).toBeVisible();
     await expect(page.getByText(/on your listings now/)).toHaveCount(0);
 
-    // Nothing was applied: the read an operator would trust says so.
+    // Nothing was applied: the read an operator would trust says so, and it
+    // says the new one is waiting rather than leaving them to wonder.
     await page.reload();
     await expect(page.getByText("You have not set one yet")).toBeVisible();
+    await expect(
+      page.getByText("A new logo is waiting for our check"),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/It appears on your listings once we have/),
+    ).toBeVisible();
   });
 
   test("a business that is not live yet has its logo saved and shown", async ({
@@ -93,6 +100,8 @@ test.describe.serial("setting a logo", () => {
     await page.reload();
     await expect(page.getByText("You have a logo")).toBeVisible();
     await expect(page.getByRole("img", { name: "Your logo" })).toBeVisible();
+    // Applied, so nothing is waiting.
+    await expect(page.getByText(/waiting for our check/)).toHaveCount(0);
   });
 });
 

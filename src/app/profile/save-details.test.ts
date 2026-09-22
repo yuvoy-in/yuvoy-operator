@@ -65,10 +65,16 @@ describe("saving the business details: yuvoy-operator#89 f10", () => {
     expect(result.saved).toBeUndefined();
   });
 
-  it("leaves the screens alone on a 202, because nothing on file changed", async () => {
+  it("re-renders only this screen on a 202, for the note that a change is waiting", async () => {
+    /*
+      `/account`'s blockers are derived from what is on file, which a 202 did
+      not change. This screen gains the "waiting for our check" note, which
+      the operator meets when they put the receipt away.
+    */
     put.mockResolvedValue(answered(202, { state: "in_review", next: "…" }));
     await saveDetails({}, form(COMPLETE));
-    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledTimes(1);
+    expect(revalidatePath).toHaveBeenCalledWith("/profile");
   });
 
   it("reports a 200 as saved and refreshes the details and the blockers", async () => {

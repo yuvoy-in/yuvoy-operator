@@ -117,12 +117,21 @@ test.describe.serial("the profile, read then written", () => {
     await page.getByRole("button", { name: "Back to your details" }).click();
     await expect(page.getByLabel("State or union territory")).toHaveValue("");
 
+    // The screen now says a change is waiting, which is what stops the
+    // operator sending it again.
+    await expect(
+      page.getByText("A change to these details is waiting for our check"),
+    ).toBeVisible();
+
     // And after a reload, which is the read an operator would trust.
     await page.reload();
     const region = page.locator("label", {
       hasText: "State or union territory",
     });
     await expect(region.getByText("still needed")).toBeVisible();
+    await expect(
+      page.getByText("A change to these details is waiting for our check"),
+    ).toBeVisible();
   });
 
   test("filling the details in on a new account says saved, and never says live", async ({

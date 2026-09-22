@@ -135,7 +135,13 @@ function businessOf(request: Request): string {
  */
 function changesFor(request: Request): Record<string, unknown>[] {
   const mine = businessOf(request);
-  const raised = bankChanges
+  /*
+    Newest first, as the API orders them. A logo or details change is filed
+    in the same table as a bank change (`operator_change_requests`, kind
+    `logo` or `profile`) and listed beside it, so the screens that read this
+    for a bank change have to filter on `kind`, and do.
+  */
+  const raised = [...accountChanges, ...bankChanges]
     .filter((r) => r.raisedFor === mine)
     .map((r) => {
       const out = { ...r };
@@ -143,6 +149,39 @@ function changesFor(request: Request): Record<string, unknown>[] {
       return out;
     });
   return mine === "reef" ? [...raised, ...CHANGE_REQUESTS] : raised;
+}
+
+/**
+ * A LIVE business's logo or details change, filed for review the way the API
+ * files it: one pending row per kind, a new one withdrawing the last
+ * (`operator_logo.go`, `operator_business_details.go` at e7291e3).
+ */
+let accountChanges: Record<string, unknown>[] = [];
+
+function fileForReview(
+  request: Request,
+  kind: "logo" | "profile",
+  summary: string,
+) {
+  const mine = businessOf(request);
+  accountChanges = accountChanges.map((r) =>
+    r.raisedFor === mine && r.kind === kind && r.state === "pending"
+      ? { ...r, state: "withdrawn" }
+      : r,
+  );
+  accountChanges = [
+    {
+      id: `chg_${kind}_${Math.random().toString(36).slice(2, 8)}`,
+      kind,
+      state: "pending",
+      summary,
+      requestedAt: new Date().toISOString(),
+      objectionUntil: null,
+      coolingUntil: null,
+      raisedFor: mine,
+    },
+    ...accountChanges,
+  ];
 }
 
 /** OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it. */
@@ -1652,6 +1691,7 @@ export function __resetOperatorMocks() {
   offlineSold = {};
   steppedUp = false;
   bankChanges = [];
+  accountChanges = [];
   stoppedChanges = [];
   team = TEAM.map((m) => ({ ...m }));
   signups = [];
@@ -2912,10 +2952,12 @@ export const handlers = [
       the verified documents were checked against the name and address on
       file. 202 with no details, exactly as the API answers, and after the
       validation above, which the API also runs first. Nothing on file
-      changes, so `GET /profile` goes on answering with the old details. The `409
+      changes, so `GET /profile` goes on answering with the old details, and
+      the change is listed on `GET /change-requests` as `profile`, pending. The `409
       details_locked` this replaced is no longer returned (yuvoy-api#222).
     */
     if (isLiveBusiness(sessionUser(request)!)) {
+      fileForReview(request, "profile", "Registered name and address");
       return HttpResponse.json(
         {
           state: "in_review",
@@ -3324,8 +3366,9 @@ export const handlers = [
    *     mock image host never received is a 400.
    *   - A LIVE business's new mark is RECORDED FOR REVIEW: `202 { state:
    *     "in_review", next }` and deliberately no `logoUrl`, because the old
-   *     logo is still the live one (D-032.3). Nothing is stored, so `GET
-   *     /logo` goes on answering with the old mark. Declared under `GET /logo` in
+   *     logo is still the live one (D-032.3). `GET /logo` goes on answering
+   *     with the old mark, and the new one is listed on `GET
+   *     /change-requests` as `logo`, pending. Declared under `GET /logo` in
    *     the contract rather than here (yuvoy-api#222).
    *   - Anybody else's is applied: `200 { logoUrl }`.
    */
@@ -3350,6 +3393,7 @@ export const handlers = [
     }
 
     if (isLiveBusiness(sessionUser(request)!)) {
+      fileForReview(request, "logo", "New logo");
       return HttpResponse.json(
         {
           state: "in_review",

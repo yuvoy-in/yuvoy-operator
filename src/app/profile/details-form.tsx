@@ -9,9 +9,11 @@ import {
   type BusinessDetails,
   type DetailsFormValues,
 } from "@/lib/profile/details";
+import type { ReviewNote } from "@/lib/account/review";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { ReviewPanel } from "@/components/account/review-panel";
 
 /**
  * The legal details an invoice and a payout both need.
@@ -37,10 +39,13 @@ export function DetailsForm({
   details,
   values,
   canManage,
+  review = null,
 }: {
   details: BusinessDetails | null;
   values: DetailsFormValues;
   canManage: boolean;
+  /** A change waiting on us, or refused. Read on every visit; see `ReviewPanel`. */
+  review?: ReviewNote | null;
 }) {
   const [state, act, pending] = useActionState<DetailsState, FormData>(
     saveDetails,
@@ -55,10 +60,18 @@ export function DetailsForm({
   const [dismissed, setDismissed] = useState<DetailsState | null>(null);
   const receipt = dismissed === state ? null : state;
 
+  const hasCurrent = Boolean(details?.legalName);
+  const reviewPanel = review ? (
+    <div className="mt-4">
+      <ReviewPanel note={review} subject="details" hasCurrent={hasCurrent} />
+    </div>
+  ) : null;
+
   if (!canManage) {
     return (
       <Panel>
         <h2 className="font-display text-2xl">Business details</h2>
+        {reviewPanel}
         <dl className="mt-4 space-y-3">
           <Row label="Registered name" value={details?.legalName} />
           <Row label="Entity type" value={entityLabel(details?.entityType)} />
@@ -136,6 +149,7 @@ export function DetailsForm({
         payout both need these, and asking now beats chasing them on the day
         your first payout runs.
       </p>
+      {reviewPanel}
 
       <form action={act} className="mt-5 space-y-5">
         <Field

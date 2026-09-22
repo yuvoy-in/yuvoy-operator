@@ -12,6 +12,8 @@ import {
   waitingOnOperator,
 } from "@/lib/profile/credentials";
 import { readShape } from "@/lib/account/read-shape";
+import { reviewNote, reviewOf } from "@/lib/account/review";
+import { getChangeRequests } from "@/lib/money/fetch";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
 import { Problem } from "@/components/ui/states";
@@ -59,9 +61,14 @@ export default async function ProfilePage() {
     is blocked on an insurance certificate should be able to send it even if
     the details endpoint is having a bad minute.
   */
-  const [detailsResult, meResult] = await Promise.all([
+  const [detailsResult, meResult, changes] = await Promise.all([
     client.GET("/profile", {}).catch(() => null),
     client.GET("/me", {}).catch(() => null),
+    /*
+      Whether a change to the details is waiting on us (yuvoy-operator#89
+      f10). Soft: `[]` on failure says nothing rather than something false.
+    */
+    getChangeRequests(token),
   ]);
 
   const standing: Standing | null =
@@ -72,6 +79,7 @@ export default async function ProfilePage() {
       ? readShape(detailsResult.data)
       : null;
   const detailsUnavailable = !detailsResult || Boolean(detailsResult.error);
+  const review = reviewNote(reviewOf(changes, "profile", details?.submittedAt));
 
   const credentials: OperatorCredential[] = standing?.credentials ?? [];
   const theirMove = waitingOnOperator(standing?.blocking ?? []);
@@ -132,6 +140,7 @@ export default async function ProfilePage() {
             details={details}
             values={toFormValues(details)}
             canManage={me.canManage}
+            review={review}
           />
         )}
       </div>

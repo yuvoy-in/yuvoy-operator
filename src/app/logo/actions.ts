@@ -96,8 +96,11 @@ export async function saveLogo(imageId: string): Promise<LogoSaveState> {
       how this screen told operators their logo was up when it was not
       (yuvoy-operator#89 f10).
 
-      Nothing is revalidated. Every screen behind the receipt would re-render
-      the mark that is still live, which is what they already show.
+      Nothing is revalidated. The receipt says it now, and the logo page says
+      it on every visit after (a new mark waiting, read from
+      `GET /change-requests`); re-rendering here would put the two side by
+      side, saying the same thing twice. Nothing else changed: the mark on
+      every other screen is still the live one.
     */
     if (response.status === 202) return { inReview: true };
 

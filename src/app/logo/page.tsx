@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import { readShape } from "@/lib/account/read-shape";
 import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
+import { getChangeRequests } from "@/lib/money/fetch";
+import { reviewNote, reviewOf } from "@/lib/account/review";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
+import { ReviewPanel } from "@/components/account/review-panel";
 import { LogoUploader } from "./logo-uploader";
 
 export const metadata: Metadata = { title: "Your logo" };
@@ -30,16 +33,25 @@ export default async function LogoPage() {
     "replace" wording, not the ability to set a logo. An operator whose
     account is blocked on a missing logo must not be stopped by a read.
   */
-  const current = await operatorApi(token)
-    .GET("/logo", {})
+  const [current, changes] = await Promise.all([
+    operatorApi(token)
+      .GET("/logo", {})
+      /*
+        `readShape` because the contract declares a `202` on this GET whose
+        body is the "recorded for review" acknowledgement, not a logo — see
+        src/lib/account/read-shape.ts. A read cannot record anything for
+        review, so that shape is treated as "nothing to show" rather than
+        rendered.
+      */
+      .then((r) => (r.error ? null : readShape(r.data)))
+      .catch(() => null),
     /*
-      `readShape` because the contract declares a `202` on this GET whose body
-      is the "recorded for review" acknowledgement, not a logo — see
-      src/lib/account/read-shape.ts. A read cannot record anything for review,
-      so that shape is treated as "nothing to show" rather than rendered.
+      Whether a new mark is waiting on us (yuvoy-operator#89 f10). Soft, like
+      the read above: `[]` on failure, which says nothing rather than
+      something false.
     */
-    .then((r) => (r.error ? null : readShape(r.data)))
-    .catch(() => null);
+    getChangeRequests(token),
+  ]);
 
   /*
     "`logoUrl` is absent when there is no logo, and ALSO when image hosting is
@@ -49,6 +61,7 @@ export default async function LogoPage() {
   */
   const hasLogo = Boolean(current?.imageId);
   const logoUrl = current?.logoUrl;
+  const review = reviewNote(reviewOf(changes, "logo", current?.uploadedAt));
 
   return (
     <Screen
@@ -106,6 +119,12 @@ export default async function LogoPage() {
         ) : (
           <p className="text-base font-bold">You have not set one yet</p>
         )}
+
+        {review ? (
+          <div className="mt-6">
+            <ReviewPanel note={review} subject="logo" hasCurrent={hasLogo} />
+          </div>
+        ) : null}
 
         <div className="mt-6">
           {me.canManage ? (

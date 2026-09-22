@@ -142,10 +142,15 @@ export async function saveDetails(
       `openapi-fetch` hands any 2xx back as `data`, which is how it was read
       as saved.
 
-      Nothing is revalidated: `missing` and the blockers on `/account` are
-      derived from what is on file, which this did not change.
+      Only this screen is revalidated, and only for the note that now says a
+      change is waiting (read from `GET /change-requests`), which the operator
+      meets when they put the receipt away. `missing` and the blockers on
+      `/account` are derived from what is on file, which this did not change.
     */
-    if (response.status === 202) return { inReview: true };
+    if (response.status === 202) {
+      revalidatePath("/profile");
+      return { inReview: true };
+    }
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was saved. Try again." };
