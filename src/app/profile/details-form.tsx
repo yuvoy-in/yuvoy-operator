@@ -61,18 +61,20 @@ export function DetailsForm({
   const receipt = dismissed === state ? null : state;
 
   const hasCurrent = Boolean(details?.legalName);
+  // First in its panel now that nothing heads it; what follows keeps its gap.
   const reviewPanel = review ? (
-    <div className="mt-4">
-      <ReviewPanel note={review} subject="details" hasCurrent={hasCurrent} />
-    </div>
+    <ReviewPanel note={review} subject="details" hasCurrent={hasCurrent} />
   ) : null;
 
   if (!canManage) {
+    /*
+      No heading of its own: the screen's title is "Business details", and a
+      second one saying the same thing is the repetition op#80 t2 removes.
+    */
     return (
       <Panel>
-        <h2 className="font-display text-2xl">Business details</h2>
         {reviewPanel}
-        <dl className="mt-4 space-y-3">
+        <dl className={review ? "mt-4 space-y-3" : "space-y-3"}>
           <Row label="Registered name" value={details?.legalName} />
           <Row label="Entity type" value={entityLabel(details?.entityType)} />
           <Row label="GSTIN" value={details?.gstin} />
@@ -141,17 +143,16 @@ export function DetailsForm({
     );
   }
 
+  /*
+    No heading and no paragraph over the form. The heading repeated the
+    screen's own title (op#80 t2), and the paragraph explained why the details
+    are asked for, which is an answer in Help now (op#80 t4).
+  */
   return (
     <Panel>
-      <h2 className="font-display text-2xl">Business details</h2>
-      <p className="text-forest/70 mt-2 text-sm">
-        The name the business is registered under, and where. An invoice and a
-        payout both need these, and asking now beats chasing them on the day
-        your first payout runs.
-      </p>
       {reviewPanel}
 
-      <form action={act} className="mt-5 space-y-5">
+      <form action={act} className={review ? "mt-5 space-y-5" : "space-y-5"}>
         <Field
           name="legalName"
           label="Registered name"
@@ -196,7 +197,7 @@ export function DetailsForm({
             and demanding a number they cannot legally obtain would block
             exactly the businesses this marketplace exists for."
           */
-          hint="Only if you are registered. Leave it blank if you are not. Plenty of operators are under the threshold."
+          hint="Only if you are registered. Leave it blank if you are not."
         />
 
         <fieldset className="space-y-5">

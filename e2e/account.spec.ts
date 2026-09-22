@@ -348,6 +348,22 @@ test("a live account is still asked for what is outstanding", async ({
     page.getByRole("link", { name: "Complete your details" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Add your logo" })).toBeVisible();
+
+  /*
+    yuvoy-operator#88 s13: "The biggest, darkest button on a screen about
+    outstanding paperwork is 'Go to today' ... Make the first outstanding item
+    the primary action." The first thing waiting has the forest fill; Go to
+    today is a plain link.
+  */
+  await expect(
+    page.getByRole("link", { name: "Complete your details" }),
+  ).toHaveClass(/bg-forest/);
+  await expect(
+    page.getByRole("link", { name: "Add your logo" }),
+  ).not.toHaveClass(/bg-forest/);
+  await expect(page.getByRole("link", { name: "Go to today" })).not.toHaveClass(
+    /bg-forest/,
+  );
 });
 
 test("an account block the API did not send is unknown, not approval", async ({

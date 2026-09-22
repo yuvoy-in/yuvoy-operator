@@ -74,16 +74,25 @@ test("the document count comes from the API, and names what is missing", async (
   ).toBeVisible();
 
   /*
-    And the blocker that says why, beside the document it is about. `exact`
-    because `getByText` is a case-insensitive substring match by default, and
-    the blocker's own sentence contains the document's name.
+    The document, and that it is needed. `exact` because `getByText` is a
+    case-insensitive substring match by default, and the blocker's own
+    sentence contains the document's name.
+
+    The blocker's sentence is said once, under "Waiting on you" with the way
+    to send it, and not again beside the document: "show each blocker in one
+    place only" (yuvoy-operator#88 s13).
   */
+  const documents = page.getByLabel("Your documents");
   await expect(
-    page.getByText("Equipment inspection", { exact: true }),
+    documents.getByText("Equipment inspection", { exact: true }),
   ).toBeVisible();
+  await expect(documents.getByText("Needed", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("We have no equipment inspection on file."),
+  ).toHaveCount(1);
   await expect(
     page
-      .getByLabel("Your documents")
+      .getByRole("region", { name: "Waiting on you" })
       .getByText("We have no equipment inspection on file."),
   ).toBeVisible();
 });

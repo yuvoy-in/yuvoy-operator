@@ -72,10 +72,6 @@ export function CredentialForm({
   return (
     <Panel>
       <h2 className="font-display text-2xl">Send us a document</h2>
-      <p className="text-forest/70 mt-2 text-sm">
-        Tell us what you hold and we will check it. Nothing here verifies
-        itself.
-      </p>
 
       <form action={act} className="mt-5 space-y-5">
         <div>
@@ -165,8 +161,7 @@ export function CredentialForm({
               departure's start instant."
             */}
             <p id="cred-expires-hint" className="text-forest/70 mt-1.5 text-xs">
-              We warn you two months before this date. An expired document stops
-              your departures selling.
+              An expired document stops your departures selling.
             </p>
           </div>
         </div>

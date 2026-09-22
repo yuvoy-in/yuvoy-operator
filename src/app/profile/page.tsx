@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
 import {
@@ -15,7 +16,8 @@ import { readShape } from "@/lib/account/read-shape";
 import { reviewNote, reviewOf } from "@/lib/account/review";
 import { getChangeRequests } from "@/lib/money/fetch";
 import { Screen } from "@/components/chrome/screen";
-import { Panel } from "@/components/ui/panel";
+import { ChevronRightIcon } from "@/components/ui/icons";
+import { panelClass } from "@/components/ui/panel";
 import { Problem } from "@/components/ui/states";
 import { DetailsForm } from "./details-form";
 import { CredentialForm } from "./credential-form";
@@ -40,13 +42,15 @@ export const dynamic = "force-dynamic";
  *
  * ## What this screen deliberately does NOT duplicate
  *
- * `/account` already shows the standing, the blockers split by who has to move
- * next, and every credential with its expiry date. That is O3 and it is right
- * where it is — the first thing an operator opens after signing in.
+ * Verification shows the standing, the blockers split by who has to move
+ * next, and every credential with its expiry date. This screen is the
+ * *acting* half: fill the details in, send the document.
  *
- * This screen is the *acting* half: fill the details in, send the document.
- * The one thing repeated here is what is waiting on THEM, because a form that
- * asks for a document without saying which one is a guessing game.
+ * It used to repeat the list of what is waiting on the operator, word for
+ * word: "Both items then repeat word for word on Business details, so the
+ * operator meets the same two sentences twice" (yuvoy-operator#88 s13, "show
+ * each blocker in one place only, and link to it from the other"). So it
+ * links to that list instead, with the count.
  */
 export default async function ProfilePage() {
   const { token, me } = await requireOperator();
@@ -85,48 +89,33 @@ export default async function ProfilePage() {
   const theirMove = waitingOnOperator(standing?.blocking ?? []);
 
   return (
-    <Screen
-      nav={{ back: { href: "/account/settings", label: "settings" } }}
-      stageLabel="Business details"
-    >
-      <p className="eyebrow text-terra-deep">Your account</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>
+      {/* One title (op#80 t2): no eyebrow over it, no caption in the bar. */}
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Business details
       </h1>
-      <p className="text-forest/70 mt-3 text-base">
-        What we hold about the business, and how to send us what is missing.
-      </p>
 
       {/*
-        What is waiting on THEM, repeated from `/account` on purpose.
-
-        `waitingOn` is "the field that stops the phone call" — and a form that
-        asks for a document without naming which one turns a two-minute job
-        into a guess. Only the operator's half is shown: somebody waiting on us
-        should not be invited to send another copy of what we already hold.
+        What is waiting on THEM: counted and linked, not repeated (op#88 s13).
+        Verification says each one once, with the way to it. Only the
+        operator's half is counted: somebody waiting on us should not be sent
+        to chase what we already hold.
       */}
       {theirMove.length > 0 ? (
-        <section className="mt-8" aria-labelledby="waiting-on-you">
-          <h2 id="waiting-on-you" className="label text-terra-deep">
-            Waiting on you
-          </h2>
-          <ul className="mt-3 space-y-3">
-            {theirMove.map((blocker, i) => (
-              <li key={`${blocker.code}-${i}`}>
-                <Panel tone="alert" className="p-4">
-                  {/*
-                    `label` verbatim. The code set is closed so a client can
-                    branch on it, and `OTHER` exists "so a reason can be added
-                    operationally without a contract change" — provided the
-                    label is rendered for anything unrecognised. Rendering it
-                    for everything is simpler and cannot go stale.
-                  */}
-                  <p className="text-sm font-bold">{blocker.label}</p>
-                </Panel>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <Link
+          href="/account/verification"
+          className={panelClass(
+            "alert",
+            "ease-interaction hover:bg-paper mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
+          )}
+        >
+          <span className="text-base font-bold">
+            {theirMove.length === 1
+              ? "1 thing waiting on you"
+              : `${theirMove.length} things waiting on you`}
+          </span>
+          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+        </Link>
       ) : null}
 
       <div className="mt-8">
@@ -166,25 +155,24 @@ export default async function ProfilePage() {
       </div>
 
       {/*
-        Where the expiry dates live. Not repeated here — `/account` renders
+        Where the expiry dates live. Not repeated here: Verification renders
         every credential with the date and the sixty-day warning, and two
         copies of a date an operator plans a season around is two places for
-        them to disagree.
+        them to disagree. It used to point at `/account`, which stopped
+        holding them when the profile became a profile (#58).
       */}
-      <section className="mt-10" aria-labelledby="where-else">
-        <h2 id="where-else" className="label text-forest/75">
-          What we already hold
-        </h2>
-        <Panel className="mt-3 p-4">
-          <p className="text-sm">
-            Every document we have, and when it runs out, is on{" "}
-            <a href="/account" className="underline underline-offset-2">
-              your business
-            </a>
-            .
-          </p>
-        </Panel>
-      </section>
+      <Link
+        href="/account/verification"
+        className={panelClass(
+          "raised",
+          "ease-interaction hover:bg-paper mt-10 flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
+        )}
+      >
+        <span className="text-base font-bold">
+          Documents we hold, and when they run out
+        </span>
+        <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+      </Link>
     </Screen>
   );
 }

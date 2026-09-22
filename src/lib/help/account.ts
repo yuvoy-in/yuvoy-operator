@@ -87,4 +87,42 @@ export const ACCOUNT_HELP: readonly HelpTopic[] = [
       "Nothing in the portal pays anybody, so holding the whole account number would be a risk with nothing gained. We will call you to confirm the account number.",
     ],
   },
+
+  /* ------------------------------------------------------- Business --- */
+  {
+    id: "why-business-details",
+    area: "Business",
+    question: "Why does Yuvoy need my registered name and address?",
+    answer: [
+      "An invoice and a payout both need the name the business is registered under, and where. Asking now beats chasing them on the day your first payout runs.",
+      "Travellers never see them. What they read about you is Your story.",
+    ],
+  },
+  {
+    id: "who-checks",
+    area: "Business",
+    question: "Who checks what I send?",
+    answer: [
+      "A person at Yuvoy checks each thing waiting on you, and each document. Nothing you send verifies itself, and nothing about your account changes until they have.",
+      "If one was turned down, the reason is not shown in the portal yet. Call us and we will tell you.",
+    ],
+  },
+  {
+    id: "not-stopping-sales",
+    area: "Business",
+    question: "What does Not stopping sales mean?",
+    answer: [
+      "Some of what we ask for, like a logo or a registered address, is needed but does not stop travellers booking you. Documents and your account's status do.",
+      "A thing marked Not stopping sales can be finished when you have a moment. The others are costing you bookings until they are done.",
+    ],
+  },
+  {
+    id: "document-expiry",
+    area: "Business",
+    question: "When do I hear that a document is running out?",
+    answer: [
+      "Two months before its expiry date, on Verification. That is also when we start taking the new one.",
+      "An expired document stops your departures selling on the day it runs out.",
+    ],
+  },
 ];
