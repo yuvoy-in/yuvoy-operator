@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
  * blocker and goes back to it.
  */
 export default async function LogoPage() {
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
 
   /*
     Soft-failing. The uploader is the subject of this screen and works without
@@ -59,9 +59,16 @@ export default async function LogoPage() {
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
         Your logo
       </h1>
+      {/*
+        "We need one before you can be booked" used to close this sentence. It
+        stopped being true with yuvoy-api#139, which took a missing logo off
+        the list of things that stop a sale on a LIVE business. Whether it
+        stops THIS business is on Business, which reads `gates` per blocker
+        rather than guessing.
+      */}
       <p className="text-forest/70 mt-3 text-base">
         Travellers see it on a card with no clip, and on the page about your
-        business. We need one before you can be booked.
+        business.
       </p>
 
       <Panel className="mt-8">
@@ -101,14 +108,30 @@ export default async function LogoPage() {
         )}
 
         <div className="mt-6">
-          <LogoUploader hasLogo={hasLogo} />
+          {me.canManage ? (
+            <LogoUploader hasLogo={hasLogo} />
+          ) : (
+            /*
+              Refused before the tap rather than after it. Both the upload slot
+              and `PUT /logo` are OWNER, ADMIN or MANAGER only, so a staff
+              login offered the file picker chose a picture, waited for it,
+              and was then told their role could not do it.
+            */
+            <p className="text-forest/80 text-sm">
+              Only an owner, an admin or a manager can change the logo. Ask one
+              of them at your business.
+            </p>
+          )}
         </div>
       </Panel>
 
+      {/*
+        The one sentence that changes what somebody does: without it, an
+        operator whose new mark has not appeared yet uploads it again.
+      */}
       <p className="text-forest/70 mt-8 text-sm">
-        A logo is the one thing here you can change whenever you like. It is
-        presentation, not identity, and nothing is verified against it.
-        Replacing it removes the old picture rather than keeping both.
+        Once your account is live, we look at a new logo before it replaces the
+        one travellers see.
       </p>
     </Screen>
   );

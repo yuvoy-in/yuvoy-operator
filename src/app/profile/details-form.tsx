@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { saveDetails, type DetailsState } from "./actions";
 import {
   ENTITY_TYPES,
@@ -10,7 +10,6 @@ import {
   type DetailsFormValues,
 } from "@/lib/profile/details";
 import { Button } from "@/components/ui/button";
-import { Chip } from "@/components/ui/chip";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 
@@ -21,35 +20,45 @@ import { Panel } from "@/components/ui/panel";
  * which is the worst moment to discover an operator has no registered address
  * on file."
  *
- * ## Read-only once the account is live, and the reason is worth saying
+ * ## Editable after go-live, and checked when it is
  *
- * "The verified documents were checked against the legal name on file, so
- * changing it without anybody looking would make the verification
- * meaningless." That is copy that changes what somebody does — it tells them
- * to message us rather than hunt for an edit button — so it stays, where a
- * bare "you cannot edit this" would be the screen arguing with the reader.
+ * This form used to lock once the account was LIVE, behind a "Locked" panel
+ * that told the operator to message us. The API stopped refusing on
+ * D-032.3: a LIVE account's change is RECORDED FOR REVIEW (`202 in_review`)
+ * and the details on file stay in place until somebody at Yuvoy has checked
+ * it against the verified documents. So the form is always offered to
+ * whoever may change it, and the two answers get two different receipts:
+ * "Saved" only when something was saved (yuvoy-operator#89 f10).
+ *
+ * A staff login sees the details and no form: the API refuses the write to
+ * anybody but an OWNER, ADMIN or MANAGER.
  */
 export function DetailsForm({
   details,
   values,
-  editable,
+  canManage,
 }: {
   details: BusinessDetails | null;
   values: DetailsFormValues;
-  editable: boolean;
+  canManage: boolean;
 }) {
   const [state, act, pending] = useActionState<DetailsState, FormData>(
     saveDetails,
     {},
   );
+  /*
+    The receipt the operator last put away, remembered by identity.
+    `useActionState` keeps its last answer for the life of the component, so
+    "put it away" has to be remembered as WHICH answer; the next save returns
+    a new object and its receipt shows again.
+  */
+  const [dismissed, setDismissed] = useState<DetailsState | null>(null);
+  const receipt = dismissed === state ? null : state;
 
-  if (!editable) {
+  if (!canManage) {
     return (
       <Panel>
-        <div className="flex items-start justify-between gap-3">
-          <h2 className="font-display text-2xl">Business details</h2>
-          <Chip>Locked</Chip>
-        </div>
+        <h2 className="font-display text-2xl">Business details</h2>
         <dl className="mt-4 space-y-3">
           <Row label="Registered name" value={details?.legalName} />
           <Row label="Entity type" value={entityLabel(details?.entityType)} />
@@ -68,14 +77,39 @@ export function DetailsForm({
           />
         </dl>
         <p className="text-forest/70 mt-4 text-sm">
-          Your account is live, so these are fixed. The documents we verified
-          were checked against them. Message us if anything here has changed.
+          Only an owner, an admin or a manager can change these.
         </p>
       </Panel>
     );
   }
 
-  if (state.saved) {
+  if (receipt?.inReview) {
+    /*
+      Sent, and NOT applied. A 202 only ever answers a LIVE account, so saying
+      so is not a guess. What stays in place is named, because the form behind
+      this receipt still shows the old details and would otherwise read as the
+      change being lost.
+    */
+    return (
+      <Panel tone="done" role="status">
+        <p className="text-base font-bold">Sent to us for a check</p>
+        <p className="text-forest/80 mt-2 text-sm">
+          Your account is live, so we compare a change to your registered name
+          or address with the documents we verified. What is on file stays in
+          place until we have.
+        </p>
+        <Button
+          variant="secondary"
+          className="mt-4"
+          onClick={() => setDismissed(state)}
+        >
+          Back to your details
+        </Button>
+      </Panel>
+    );
+  }
+
+  if (receipt?.saved) {
     return (
       <Panel tone="done" role="status">
         <p className="text-base font-bold">Saved</p>
@@ -83,6 +117,13 @@ export function DetailsForm({
           We have what an invoice and a payout need. Nothing goes live on this
           alone. The documents are the other half.
         </p>
+        <Button
+          variant="secondary"
+          className="mt-4"
+          onClick={() => setDismissed(state)}
+        >
+          Back to your details
+        </Button>
       </Panel>
     );
   }

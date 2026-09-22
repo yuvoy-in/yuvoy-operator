@@ -25,12 +25,16 @@ import { suspendedMessage } from "@/lib/account/suspended";
  * already names. "Until it existed the screen named a blocker and then asked
  * them to ring us."
  *
- * ## No role gate on any of them
+ * ## Who may do which
  *
  * `PUT /profile`, `POST /credentials` and `PUT /logo` each declare a generic
- * `Forbidden` and name no role. Inventing one would tell a manager they may
- * not send us an insurance certificate the server would have accepted, which
- * is the direction that costs an operator a week.
+ * `Forbidden` and name no role. The handlers are more specific (read at
+ * yuvoy-api e7291e3): the business details and the logo are OWNER, ADMIN or
+ * MANAGER, and a document may be sent by anybody on the team. So the details
+ * form is read-only for a staff login (the page decides, from `canManage`),
+ * and the document form is offered to everybody: withholding it would tell a
+ * staff member they may not send us an insurance certificate the server
+ * would have accepted, which is the direction that costs an operator a week.
  */
 
 /* -------------------------------------------------------------- details -- */
@@ -39,6 +43,13 @@ export interface DetailsState {
   message?: string;
   field?: string;
   saved?: boolean;
+  /**
+   * Recorded for review, NOT applied: the account is LIVE, and the verified
+   * documents were checked against the name and address on file, so a change
+   * waits for somebody at Yuvoy (D-032.3). The details on file stay as they
+   * were. Never "saved".
+   */
+  inReview?: boolean;
 }
 
 const detailsSchema = z.object({
@@ -106,7 +117,7 @@ export async function saveDetails(
       contract means by optional, and an empty GSTIN string is a claim to be
       registered with no number.
     */
-    const { error } = await operatorApi(token).PUT("/profile", {
+    const { error, response } = await operatorApi(token).PUT("/profile", {
       body: {
         legalName: parsed.data.legalName,
         entityType: parsed.data.entityType,
@@ -122,6 +133,19 @@ export async function saveDetails(
       },
     });
     if (error) throw error;
+
+    /*
+      `202` is "recorded for review, not applied" (yuvoy-operator#89 f10). A
+      LIVE account's change waits for somebody at Yuvoy, and the details on
+      file stay in place until then. Read by STATUS: the contract declares
+      this answer under `GET /profile` rather than here (yuvoy-api#222), and
+      `openapi-fetch` hands any 2xx back as `data`, which is how it was read
+      as saved.
+
+      Nothing is revalidated: `missing` and the blockers on `/account` are
+      derived from what is on file, which this did not change.
+    */
+    if (response.status === 202) return { inReview: true };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was saved. Try again." };
@@ -129,9 +153,10 @@ export async function saveDetails(
     if (err instanceof OperatorApiError) {
       if (err.code === "details_locked" || err.status === 409) {
         /*
-          The account went LIVE between the render and the tap. Not an error to
-          apologise for — the details ARE right, they are simply not ours to
-          change any more, and the reason is the whole point of the lock.
+          Still declared on `PUT /profile`, and no longer returned: since
+          D-032.3 a LIVE account's change is queued for review (the 202 above)
+          rather than refused. Kept for an API that still sends it, because
+          the sentence is true of any API that does (yuvoy-api#222).
         */
         return {
           message:
@@ -151,11 +176,10 @@ export async function saveDetails(
   }
 
   /*
-    Revalidate: `missing` shrinks, `editable` may flip, and `/account`'s
-    blockers are derived from the same read. The list becoming right is a
-    better confirmation than a sentence — but a sentence goes with it here,
-    because the thing that changed is spread across two screens and neither
-    shows a diff.
+    Revalidate: `missing` shrinks, and `/account`'s blockers are derived from
+    the same read. The list becoming right is a better confirmation than a
+    sentence, but a sentence goes with it here, because the thing that changed
+    is spread across two screens and neither shows a diff.
   */
   revalidatePath("/profile");
   revalidatePath("/account");

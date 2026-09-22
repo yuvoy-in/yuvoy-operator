@@ -730,6 +730,59 @@ const NEEDS_MANAGE = [];
     passes without them — a stale exemption is worse than none, because it
     quietly covers whatever is written at that path next.
   */
+
+  /*
+    THE SAME GAP AGAIN, on 22 Sep 2026 (yuvoy-operator#89).
+
+    The logo and the business details are OWNER, ADMIN or MANAGER in the API
+    and silent in the contract's prose, so the logo screen refusing a staff
+    login before the upload read as a permission this build invented. Each
+    entry names where the rule is enforced. The contract fix is asked for on
+    yuvoy-api#222.
+
+    Unlike the first map, an entry the parse now finds by itself FAILS the
+    run: the contract caught up, and the exemption is from then on only a
+    cover for whatever is written at that path next.
+  */
+  const PROSE_GAPS = new Map([
+    [
+      "PUT /logo",
+      "OperatorLogo.Save refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the logo' (yuvoy-api operator_logo.go at e7291e3); the contract names no role. yuvoy-api#222.",
+    ],
+    [
+      "POST /logo/upload-intents",
+      "OperatorLogo.CreateUpload refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the logo' (yuvoy-api operator_logo.go at e7291e3); the contract names no role. yuvoy-api#222.",
+    ],
+    [
+      "PUT /profile",
+      "OperatorAccount.SaveBusinessDetails refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the business details' (yuvoy-api operator_account.go at e7291e3); the contract names no role. yuvoy-api#222.",
+    ],
+  ]);
+  for (const [operation, reason] of PROSE_GAPS) {
+    const [gapMethod, gapPath] = operation.split(" ");
+    if (!reason || reason.length < 40) {
+      problems.push(
+        `scripts/qa.mjs: PROSE_GAPS entry "${operation}" has no real reason.`,
+      );
+    }
+    if (!lines.includes(`  ${gapPath}:`)) {
+      problems.push(
+        `scripts/qa.mjs: PROSE_GAPS names ${operation}, which the contract no ` +
+          `longer has. A stale entry covers whatever is written at that path next.`,
+      );
+      continue;
+    }
+    if (
+      NEEDS_MANAGE.some((e) => e.method === gapMethod && e.path === gapPath)
+    ) {
+      problems.push(
+        `scripts/qa.mjs: the contract now names the roles on ${operation}, so ` +
+          `its PROSE_GAPS entry is stale. Remove it.`,
+      );
+      continue;
+    }
+    NEEDS_MANAGE.push({ method: gapMethod, path: gapPath });
+  }
 }
 
 /*

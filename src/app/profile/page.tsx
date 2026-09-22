@@ -6,11 +6,7 @@ import {
   type OperatorCredential,
   type Standing,
 } from "@/lib/account/standing";
-import {
-  canEdit,
-  toFormValues,
-  type BusinessDetails,
-} from "@/lib/profile/details";
+import { toFormValues, type BusinessDetails } from "@/lib/profile/details";
 import {
   suggestedCredentialType,
   waitingOnOperator,
@@ -51,7 +47,7 @@ export const dynamic = "force-dynamic";
  * asks for a document without saying which one is a guessing game.
  */
 export default async function ProfilePage() {
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
   const client = operatorApi(token);
 
   /*
@@ -135,7 +131,7 @@ export default async function ProfilePage() {
           <DetailsForm
             details={details}
             values={toFormValues(details)}
-            editable={canEdit(details)}
+            canManage={me.canManage}
           />
         )}
       </div>

@@ -88,19 +88,59 @@ test.describe.serial("the profile, read then written", () => {
     await expect(region.getByText("still needed")).toBeVisible();
   });
 
-  test("filling the details in says saved, and never says live", async ({
+  test("on a live account a change is sent for a check, and what is on file stays", async ({
+    page,
+  }, testInfo) => {
+    /*
+      yuvoy-operator#89 f10. A LIVE account's `PUT /profile` answers `202
+      in_review`: the change waits for somebody at Yuvoy and the details on
+      file stay in place (D-032.3). This screen said "Saved". Runs before the
+      save below, because it asserts the document is still incomplete after
+      it.
+    */
+    test.skip(
+      testInfo.project.name !== "mobile",
+      "the profile is one shared document, single-tenant by design, so it runs on the primary project only",
+    );
+
+    await signIn(page); // the owner of the LIVE fixture business
+    await page.goto("/profile");
+
+    await page.getByLabel("State or union territory").fill("Andaman & Nicobar");
+    await page.getByLabel("PIN code").fill("744211");
+    await page.getByRole("button", { name: "Save these details" }).click();
+
+    await expect(page.getByText("Sent to us for a check")).toBeVisible();
+    await expect(page.getByText("Saved", { exact: true })).toHaveCount(0);
+
+    // Back to the form: the change was not applied, so the field is empty.
+    await page.getByRole("button", { name: "Back to your details" }).click();
+    await expect(page.getByLabel("State or union territory")).toHaveValue("");
+
+    // And after a reload, which is the read an operator would trust.
+    await page.reload();
+    const region = page.locator("label", {
+      hasText: "State or union territory",
+    });
+    await expect(region.getByText("still needed")).toBeVisible();
+  });
+
+  test("filling the details in on a new account says saved, and never says live", async ({
     page,
   }, testInfo) => {
     /*
       Single-tenant: the profile is one document in the shared Next server, and
       the second project to run would find it already complete.
+
+      A PROSPECT, because a business that is not LIVE yet is the one whose
+      change is applied at once. The live owner's is sent for a check (above).
     */
     test.skip(
       testInfo.project.name !== "mobile",
-      "the profile is one shared document — single-tenant by design, so it runs on the primary project only",
+      "the profile is one shared document, single-tenant by design, so it runs on the primary project only",
     );
 
-    await signIn(page);
+    await signIn(page, "+919000000105"); // a PROSPECT's owner
     await page.goto("/profile");
 
     await page.getByLabel("State or union territory").fill("Andaman & Nicobar");
@@ -108,6 +148,7 @@ test.describe.serial("the profile, read then written", () => {
     await page.getByRole("button", { name: "Save these details" }).click();
 
     await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(page.getByText("Sent to us for a check")).toHaveCount(0);
     /*
       Details are half the gate, never the whole of it. An operator who fills
       these in and reads anything about going live will wait for a call that is
@@ -117,6 +158,24 @@ test.describe.serial("the profile, read then written", () => {
     expect(text).not.toContain("you are live");
     expect(text).not.toContain("your account is live");
   });
+});
+
+test("a staff login sees the details and is not offered the form", async ({
+  page,
+}) => {
+  /*
+    The API refuses the write to anybody but an OWNER, ADMIN or MANAGER, so a
+    form here would be a promise the next tap breaks.
+  */
+  await signIn(page, "+919000000103"); // STAFF
+  await page.goto("/profile");
+
+  await expect(
+    page.getByText("Only an owner, an admin or a manager can change these."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save these details" }),
+  ).toHaveCount(0);
 });
 
 test("a GSTIN may be left blank, and is checked when it is not", async ({

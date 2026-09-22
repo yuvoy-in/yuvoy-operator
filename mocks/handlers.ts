@@ -1108,7 +1108,6 @@ type MockProfile = {
     postalCode?: string;
     country?: string;
   };
-  editable: boolean;
   submittedAt?: string;
 };
 
@@ -1118,13 +1117,20 @@ function seedProfile(): MockProfile {
     legalName: "Nemo Reef Watersports",
     entityType: "sole_proprietor",
     address: { line1: "Beach 3", locality: "Havelock", country: "IN" },
-    // Editable, because the fixture account is still onboarding. The LIVE
-    // lock is exercised by `PROFILE_LOCKED_ID` below.
-    editable: true,
   };
 }
 
 let profile: MockProfile = seedProfile();
+
+/** The logo in use, or null for none. */
+let logo: { imageId: string; uploadedAt: string } | null = null;
+
+/** A logo the browser can draw without a network: a data URL, like the story's. */
+function mockLogoUrl(imageId: string): string {
+  const hue = [...imageId].reduce((n, c) => n + c.charCodeAt(0), 0) % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><circle cx="80" cy="80" r="80" fill="hsl(${hue} 40% 30%)"/><circle cx="80" cy="80" r="28" fill="#be7149"/></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
 
 /** Credentials filed this session, by type. See `POST /credentials`. */
 let filedCredentials: Record<string, { state: string; expiresOn?: string }> =
@@ -1585,6 +1591,57 @@ function applySwitches(
 }
 
 /** Reset between tests so one case cannot make the next pass. */
+/**
+ * The account block `GET /me` sends for this identity, or `undefined` for none.
+ *
+ * `account` is per-BUSINESS, not per-user, so it is keyed off the identity
+ * that stands in for one here. The upload-drop and API-failure identities
+ * deliberately get NO account block: absent is a real response shape and the
+ * contract says what it means ("unknown, never everything is fine"), so the
+ * screen that must not read it as approval has something to be tested
+ * against.
+ *
+ * One function rather than a branch inside `GET /me`, because the logo and
+ * business-details writes ask the same question (is this business LIVE?) and
+ * two copies of the answer would drift.
+ */
+function accountFor(me: { id: string }) {
+  if (me.id === SUSPENDED_ID) return ACCOUNT_SUSPENDED;
+  if (me.id === PROSPECT_ID || signups.some((sme) => sme.id === me.id)) {
+    /*
+      A brand-new account is PROSPECT and cannot be booked: that is the whole
+      safety property of self-signup, and a mock that handed one ACCOUNT_LIVE
+      would let this portal ship the congratulation the API never earns.
+    */
+    return ACCOUNT_PROSPECT;
+  }
+  if (me.id === AWAITING_ID) return ACCOUNT_AWAITING;
+  if (me.id === LIVE_OUTSTANDING_ID) {
+    /*
+      Live, selling, and still owing us the logo and the registered address
+      (yuvoy-operator#38). Checked BEFORE the `OTHER_MEMBERS` fallthrough,
+      which hands back no account block at all, because this identity exists
+      to render a screen rather than to hide one.
+    */
+    return ACCOUNT_LIVE_OUTSTANDING;
+  }
+  if (OTHER_MEMBERS.some((o) => o.id === me.id)) return undefined;
+  return ACCOUNT_LIVE;
+}
+
+/**
+ * Whether a logo or business-details write is RECORDED FOR REVIEW rather than
+ * applied: the API asks `operators.status = 'LIVE'` (D-032.3) and answers
+ * `202 { state: "in_review", next }` when it is.
+ *
+ * An identity with no account block is a colleague on the fixture business,
+ * which is LIVE, so it is treated as live: the block is withheld to test a
+ * screen, not because the business changed.
+ */
+function isLiveBusiness(me: { id: string }): boolean {
+  return (accountFor(me)?.state ?? "LIVE") === "LIVE";
+}
+
 export function __resetOperatorMocks() {
   blackouts = [];
   attendance = {};
@@ -1607,6 +1664,7 @@ export function __resetOperatorMocks() {
   uploadIntents = {};
   mediaAssets = seedMediaAssets();
   profile = seedProfile();
+  logo = null;
   filedCredentials = {};
   mockExperiences = seedWithBasis();
   createdSlots = [];
@@ -1635,7 +1693,13 @@ function profileResponse() {
   if (!profile.address.locality) missing.push("locality");
   if (!profile.address.region) missing.push("region");
   if (!profile.address.postalCode) missing.push("postalCode");
-  return { ...profile, missing };
+  /*
+    `editable` is sent as `true` for everybody, as the API has since D-032.3
+    (`operator_business_details.go`): a LIVE account's write is queued for
+    review rather than refused. The contract still describes the old lock
+    (yuvoy-api#222).
+  */
+  return { ...profile, editable: true, missing };
 }
 
 /**
@@ -2452,39 +2516,7 @@ export const handlers = [
     const failed = requireSession(request);
     if (failed) return failed;
     const me = sessionUser(request)!;
-    /*
-      `account` is per-BUSINESS, not per-user, so it is keyed off the identity
-      that stands in for one here. The upload-drop and API-failure identities
-      deliberately get NO account block: absent is a real response shape and
-      the contract says what it means — "unknown, never everything is fine" —
-      so the screen that must not read it as approval has something to be
-      tested against.
-    */
-    const account =
-      me.id === SUSPENDED_ID
-        ? ACCOUNT_SUSPENDED
-        : me.id === PROSPECT_ID || signups.some((sme) => sme.id === me.id)
-          ? /*
-            A brand-new account is PROSPECT and cannot be booked — that is the
-            whole safety property of self-signup, and a mock that handed one
-            ACCOUNT_LIVE would let this portal ship the congratulation the API
-            never earns.
-          */
-            ACCOUNT_PROSPECT
-          : me.id === AWAITING_ID
-            ? ACCOUNT_AWAITING
-            : me.id === LIVE_OUTSTANDING_ID
-              ? /*
-                Live, selling, and still owing us the logo and the registered
-                address — yuvoy-operator#38. Branched BEFORE the
-                `OTHER_MEMBERS` fallthrough, which hands back no account block
-                at all, because this identity exists to render a screen rather
-                than to hide one.
-              */
-                ACCOUNT_LIVE_OUTSTANDING
-              : OTHER_MEMBERS.some((o) => o.id === me.id)
-                ? undefined
-                : ACCOUNT_LIVE;
+    const account = accountFor(me);
 
     return HttpResponse.json({
       id: me.id,
@@ -2839,21 +2871,11 @@ export const handlers = [
    * a client ship a form that omits a field and never notice it was cleared.
    */
   http.put(url("/profile"), async ({ request }) => {
-    const failed = requireSession(request);
+    const failed = requireManager(
+      request,
+      "only an owner, admin or manager can change the business details",
+    );
     if (failed) return failed;
-
-    /*
-      The LIVE lock. "After that the verified documents were checked against
-      the legal name on file, so changing it without anybody looking would make
-      the verification meaningless."
-    */
-    if (!profile.editable) {
-      return envelope(
-        "details_locked",
-        "The account is live; these change by asking us.",
-        409,
-      );
-    }
 
     const body = (await request.json()) as Record<string, string | undefined>;
     const required = [
@@ -2883,6 +2905,24 @@ export const handlers = [
     // 15 characters, or absent. The checksum is the server's business.
     if (body.gstin !== undefined && String(body.gstin).trim().length !== 15) {
       return envelope("invalid_input", "A GSTIN is 15 characters.", 400);
+    }
+
+    /*
+      A LIVE business's change is RECORDED FOR REVIEW, not applied (D-032.3):
+      the verified documents were checked against the name and address on
+      file. 202 with no details, exactly as the API answers, and after the
+      validation above, which the API also runs first. Nothing on file
+      changes, so `GET /profile` goes on answering with the old details. The `409
+      details_locked` this replaced is no longer returned (yuvoy-api#222).
+    */
+    if (isLiveBusiness(sessionUser(request)!)) {
+      return HttpResponse.json(
+        {
+          state: "in_review",
+          next: "We check a change to your registered name or address, because your verified documents were checked against what is on file. Your current details stay in place until we do.",
+        },
+        { status: 202 },
+      );
     }
 
     profile = {
@@ -3259,6 +3299,68 @@ export const handlers = [
     if (denied) return denied;
 
     return HttpResponse.json(imageIntent(), { status: 201 });
+  }),
+
+  /**
+   * The mark in use. `logoUrl` absent when there is none, as the contract
+   * says; never the pending one, which is not up yet.
+   */
+  http.get(url("/logo"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    if (!logo) return HttpResponse.json({});
+    return HttpResponse.json({
+      imageId: logo.imageId,
+      logoUrl: mockLogoUrl(logo.imageId),
+      uploadedAt: logo.uploadedAt,
+    });
+  }),
+
+  /**
+   * Set the logo, the way the API does (`operator_logo.go` at e7291e3):
+   *
+   *   - OWNER, ADMIN or MANAGER only.
+   *   - The HOST is asked whether the file arrived, not the browser: an id the
+   *     mock image host never received is a 400.
+   *   - A LIVE business's new mark is RECORDED FOR REVIEW: `202 { state:
+   *     "in_review", next }` and deliberately no `logoUrl`, because the old
+   *     logo is still the live one (D-032.3). Nothing is stored, so `GET
+   *     /logo` goes on answering with the old mark. Declared under `GET /logo` in
+   *     the contract rather than here (yuvoy-api#222).
+   *   - Anybody else's is applied: `200 { logoUrl }`.
+   */
+  http.put(url("/logo"), async ({ request }) => {
+    const denied = requireManager(
+      request,
+      "only an owner, admin or manager can change the logo",
+    );
+    if (denied) return denied;
+
+    const body = (await request.json().catch(() => ({}))) as {
+      imageId?: unknown;
+    };
+    const imageId = typeof body.imageId === "string" ? body.imageId.trim() : "";
+    if (!imageId) return envelope("invalid_input", "which image?", 400);
+    if (!mockPhotoArrived(imageId)) {
+      return envelope(
+        "invalid_input",
+        "that upload has not arrived. Post the file to the upload URL first",
+        400,
+      );
+    }
+
+    if (isLiveBusiness(sessionUser(request)!)) {
+      return HttpResponse.json(
+        {
+          state: "in_review",
+          next: "We look at a new logo before it appears on your reels and listings. Your current one stays up until we do.",
+        },
+        { status: 202 },
+      );
+    }
+
+    logo = { imageId, uploadedAt: new Date().toISOString() };
+    return HttpResponse.json({ logoUrl: mockLogoUrl(imageId) });
   }),
 
   /**
