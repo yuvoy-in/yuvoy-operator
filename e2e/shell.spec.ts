@@ -25,23 +25,136 @@ test("the sign-in door draws no navigation", async ({ page }) => {
   );
 });
 
-test("a tab root names exactly four destinations, and says where you are", async ({
+test("a tab root names exactly five destinations, and says where you are", async ({
   page,
 }) => {
   /*
-    FOUR since D-036 (yuvoy-operator#56). Listings had two pages under it and
-    the tab pointed at the first, so the footage was a stop nobody found. Every
-    listing is on Home now, where an operator already looks, and creating or
-    editing one moved to the Business profile.
+    FIVE since yuvoy-operator#96: Money became a stop of its own, because it
+    was three taps away behind Business and it is the second reason an
+    operator opens the portal. The owner can manage, so the owner sees it.
 
-    The count is asserted rather than left loose: a fifth stop is a width
-    decision, not a routing one, and the bar was already about 330px at its
-    longest with five.
+    The count and the order are asserted rather than left loose: a stop is a
+    width decision on a 360px phone, and a stop that moves is a mis-tap.
   */
   await signIn(page);
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-  await expect(nav.getByRole("link")).toHaveCount(4);
+  await expect(nav.getByRole("link")).toHaveCount(5);
+  await expect(nav.getByRole("link")).toHaveText([
+    /Home/,
+    /Bookings/,
+    /Calendar/,
+    /Money/,
+    /Business/,
+  ]);
   await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Home/i);
+});
+
+test("every stop on the bar carries its word, not only the current one", async ({
+  page,
+  isMobile,
+}) => {
+  /*
+    yuvoy-operator#80 t6. The bar labelled only the stop you were on, so a
+    ticket and a briefcase had to be guessed as Bookings and Business. Every
+    label is visible text now, on the phone's bar as on the rail.
+  */
+  test.skip(
+    !isMobile,
+    "the floating bar is the phone's; the rail was always labelled",
+  );
+  await signIn(page);
+  const nav = page.getByRole("navigation", { name: /Primary/i }).first();
+  for (const word of ["Home", "Bookings", "Calendar", "Money", "Business"]) {
+    await expect(nav.getByText(word, { exact: true })).toBeVisible();
+  }
+});
+
+test("all five stops fit a 360px phone, with no sideways scroll", async ({
+  page,
+  isMobile,
+}) => {
+  /*
+    The bar used to scroll sideways below about 330px of room. Five labelled
+    stops share the width now, so on the narrowest common phone every stop is
+    on screen at once and still a comfortable target.
+  */
+  test.skip(!isMobile, "the floating bar is the phone's");
+  await page.setViewportSize({ width: 360, height: 740 });
+  await signIn(page);
+  const nav = page.getByRole("navigation", { name: /Primary/i }).first();
+  const links = nav.getByRole("link");
+  await expect(links).toHaveCount(5);
+  for (const link of await links.all()) {
+    const box = await link.boundingBox();
+    if (!box) throw new Error("a stop has no box");
+    expect(box.x, "starts on screen").toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, "ends on screen").toBeLessThanOrEqual(360);
+    expect(box.height, "a thumb-sized target").toBeGreaterThanOrEqual(44);
+    expect(box.width, "a thumb-sized target").toBeGreaterThanOrEqual(44);
+  }
+  // Nothing on the page scrolls sideways either.
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("the stage names the business beside the mark, with no tagline", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#80 t1: "Use the compact mark with no tagline, at half the
+    height, and put the business name beside it." The name is the business's
+    (`displayName`), never the signed-in person's.
+  */
+  await signIn(page);
+  await expect(
+    page.getByText("Reef Divers Havelock", { exact: true }).filter({
+      visible: true,
+    }),
+  ).toBeVisible();
+  const mark = page
+    .getByRole("img", { name: "Yuvoy" })
+    .filter({ visible: true })
+    .first();
+  await expect(mark).toHaveAttribute("src", /yuvoy-mark-compact/);
+  // The marketing caption went with the marketing lockup.
+  await expect(page.getByText("For operators")).toHaveCount(0);
+  // And the person holding the phone is not the business.
+  await expect(
+    page.getByText("Priya Raut", { exact: true }).filter({ visible: true }),
+  ).toHaveCount(0);
+});
+
+test("every signed-in screen carries the inbox, and it opens the conversations", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#96: a guest writes whatever screen the operator is on, so
+    the way to the conversations is on every stage rather than behind a tab.
+    Its count is conversations waiting on a reply, said in the link's name,
+    and absent at zero. Asserted as a shape: `messages.spec.ts` reads the one
+    unread conversation on the mobile project.
+  */
+  await signIn(page);
+  const inbox = /^Messages(, \d+ unread conversations?)?$/;
+  for (const path of ["/today", "/calendar", "/today/slot_dawn"]) {
+    await page.goto(path);
+    await expect(
+      page.getByRole("link", { name: inbox }),
+      `the inbox on ${path}`,
+    ).toBeVisible();
+  }
+  await page.getByRole("link", { name: inbox }).click();
+  await page.waitForURL("**/messages");
+  // Not a link to the page already open.
+  await expect(page.getByRole("link", { name: inbox })).toHaveCount(0);
+});
+
+test("a signed-out door carries no inbox", async ({ page }) => {
+  await page.goto("/sign-in");
+  await expect(page.getByRole("link", { name: /^Messages/ })).toHaveCount(0);
 });
 
 test("the bar reaches every destination", async ({ page }) => {
@@ -64,6 +177,24 @@ test("the bar reaches every destination", async ({ page }) => {
       page.getByRole("heading", { name: heading, exact: true }),
     ).toBeVisible();
   }
+
+  /*
+    Money, the stop yuvoy-operator#96 added. Asserted by where it lands and by
+    the stop it lights rather than by the screen's heading, which the Money
+    screen's own rework owns.
+  */
+  await page
+    .getByRole("navigation", { name: /Primary/i })
+    .first()
+    .getByRole("link", { name: "Money" })
+    .click();
+  await page.waitForURL("**/earnings");
+  await expect(
+    page
+      .getByRole("navigation", { name: /Primary/i })
+      .first()
+      .getByRole("link", { name: "Money" }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("a focused screen hides the bar and offers a way back", async ({
@@ -91,7 +222,7 @@ test("a focused screen hides the bar and offers a way back", async ({
   if (isMobile) {
     await expect(primary).toHaveCount(0);
   } else {
-    await expect(primary.getByRole("link")).toHaveCount(4);
+    await expect(primary.getByRole("link")).toHaveCount(5);
   }
 });
 
@@ -173,7 +304,7 @@ test("the rail stays put while the page scrolls", async ({
   // And it is still a usable navigation once you are down the page.
   await expect(
     page.getByRole("navigation", { name: /Primary/i }).getByRole("link"),
-  ).toHaveCount(4);
+  ).toHaveCount(5);
 });
 
 /*

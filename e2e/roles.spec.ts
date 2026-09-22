@@ -70,12 +70,23 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     stop for anybody. Asserted on the day rather than here: everything under
     `/account/` is a focused screen since #58, so the bar is deliberately not
     drawn on settings at all.
+
+    And no Money stop (yuvoy-operator#96). Every money read refuses STAFF, so
+    the stop would open onto a refusal: a staff phone sees four stops, in the
+    same order everybody else's are in.
   */
   await page.goto("/today");
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
   await expect(nav.getByRole("link", { name: "Home" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Calendar" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Listings" })).toHaveCount(0);
+  await expect(nav.getByRole("link", { name: "Money" })).toHaveCount(0);
+  await expect(nav.getByRole("link")).toHaveText([
+    /Home/,
+    /Bookings/,
+    /Calendar/,
+    /Business/,
+  ]);
 });
 
 test("a manager is offered all three, because the server allows them", async ({
@@ -91,6 +102,15 @@ test("a manager is offered all three, because the server allows them", async ({
     page.getByRole("link", { name: /Payout details/ }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: /Team access/ })).toBeVisible();
+
+  // And the Money stop, which a manager may open (yuvoy-operator#96).
+  await page.goto("/today");
+  await expect(
+    page
+      .getByRole("navigation", { name: /Primary/i })
+      .first()
+      .getByRole("link", { name: "Money" }),
+  ).toBeVisible();
 });
 
 test("a staff login sees the queue and cannot answer it — including the buttons", async ({

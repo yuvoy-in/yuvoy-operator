@@ -252,3 +252,36 @@ export function StoryIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/**
+ * An inbox tray: the messages control at the right edge of every signed-in
+ * screen's stage (yuvoy-operator#96). A tray rather than a speech bubble,
+ * because the bubble is already the business's own story in Settings.
+ */
+export function InboxIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 13h5l1.5 2.5h5L16 13h5" />
+      <path d="M6.2 5h11.6a2 2 0 0 1 1.8 1.1L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5l1.4-6.9A2 2 0 0 1 6.2 5z" />
+    </Icon>
+  );
+}
+
+/**
+ * The rupee sign, for the Money stop on the bar (yuvoy-operator#96).
+ *
+ * The currency every figure behind the stop is in, and a silhouette none of
+ * the other four stops has: the clock, the calendar and the briefcase are all
+ * a closed shape, and two coins read as two circles at 20px.
+ */
+export function RupeeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 4h12" />
+      <path d="M6 9h12" />
+      <path d="M9 14c6.7 0 6.7-10 0-10" />
+      <path d="M6 14h3" />
+      <path d="m6 14 8.5 7" />
+    </Icon>
+  );
+}

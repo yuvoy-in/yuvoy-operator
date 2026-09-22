@@ -94,28 +94,39 @@ describe("palette", () => {
   });
 
   /**
-   * The lockup drawn for a dark surface, against the canvas token.
+   * The mark drawn for a dark surface, against the canvas token.
    *
    * This portal has no brand generator at all: `public/brand` is a hand-copy
-   * of yuvoy-web's delivered art, and that art is drawn in `cream` and will
-   * stay that way. So the regression is a single careless copy away, and it is
-   * a quiet one — the drawing is right, the geometry is right, and only the
-   * colour is a year out of date.
+   * of yuvoy-app's compact mark, generated there from yuvoy-web's delivered
+   * art, and that art is drawn in `cream` and will stay that way. So the
+   * regression is a single careless copy away, and it is a quiet one: the
+   * drawing is right, the geometry is right, and only the colour is a year
+   * out of date.
    *
-   * It matters because a cream lockup beside white chrome text measures
+   * It matters because a cream mark beside white chrome text measures
    * 1.15:1: the "two whites" version of the failure v2.1 fixed when it merged
    * the two darks, which reads as a dirty logo rather than as a bug.
+   *
+   * The compact mark since yuvoy-operator#80 t1: the tagline lockup this used
+   * to read is gone from the portal, and `Wordmark` draws only this file.
    */
-  it("draws the dark-surface lockup in the canvas token", () => {
+  it("draws the dark-surface mark in the canvas token", () => {
     const css = readFileSync(join(SRC, "app/globals.css"), "utf8");
     const paper = /--color-paper:\s*(#[0-9a-fA-F]{6})/.exec(css)?.[1];
     expect(paper, "--color-paper").toBeDefined();
 
-    const mark = join(process.cwd(), "public/brand/yuvoy-lockup-on-dark.svg");
+    const mark = join(
+      process.cwd(),
+      "public/brand/yuvoy-mark-compact-on-dark.svg",
+    );
     const svg = readFileSync(mark, "utf8").toLowerCase();
-    expect(svg, "the lockup does not use the canvas token").toContain(paper!);
-    expect(svg, "the lockup is still drawn in the retired cream").not.toContain(
+    expect(svg, "the mark does not use the canvas token").toContain(paper!);
+    expect(svg, "the mark is still drawn in the retired cream").not.toContain(
       "#f4efe4",
+    );
+    // And it is the mark alone: the tagline and its underline are not in it.
+    expect(svg, "the mark still carries the tagline").not.toMatch(
+      /experience more/i,
     );
   });
 

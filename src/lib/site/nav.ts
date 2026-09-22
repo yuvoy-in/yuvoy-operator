@@ -1,68 +1,83 @@
 /**
- * The navigation registry — the single source of truth for every destination
+ * The navigation registry: the single source of truth for every destination
  * in the portal. The floating tab bar and the desktop rail both derive from
  * it, and a route is added here in the same change that ships its page.
  *
- * FOUR destinations since D-036 (yuvoy-operator#56). **Home** is what an
- * operator opens at 6am, and it now carries the requests, today's departures
- * and every listing; **bookings** is who is coming; **calendar** is where a
- * whole day is closed across every listing; and everything else about the
- * business — money, people, the listings themselves and whether the account
- * can trade — sits behind one door.
+ * FIVE destinations since yuvoy-operator#96, each named for the one job an
+ * operator opens it for:
  *
- * ## Why Listings stopped being a tab
+ *   Home      run today and miss nothing: whether the business is selling,
+ *             what needs an answer, what is running, the money in a line
+ *   Bookings  the customers: requests first, then who is coming
+ *   Calendar  what can sell and when: departures, seats, closures
+ *   Money     earned and owed: the next payout, cash held and owed, statements
+ *   Business  the shop window: the profile, its listings and reels, and the
+ *             settings behind the gear
  *
- * It had two pages under it and the tab pointed at the first, which meant the
- * footage was a stop nobody found. Every listing is now on Home, where an
- * operator already looks, and each one opens a hub with everything that can be
- * done to it. Creating and editing them moved to the Business profile (#58),
- * beside the other things that are set up once and rarely touched.
+ * Messages is not a stop. It is the inbox control at the right edge of every
+ * signed-in screen's stage, because a guest writes whatever screen the
+ * operator happens to be on.
  *
- * ## Why Services became Listings (yuvoy-operator#42)
+ * ## Why Money became a tab (yuvoy-operator#96)
  *
- * Owner ruling, 11 September 2026, on the product demo's five tabs: keep
- * Today and the Business door, rename Services to Listings, add the two
- * badges. The tab said "Services" while the screen under it said "Listings",
- * which is the one-word-per-thing rule (D-031 C10) broken in the most visible
- * place there is. The URLs stay under `/services`: they are in operators'
- * histories, and a path is not something anybody reads.
+ * It was three taps away: Business, then Settings, then Earnings, filed beside
+ * the logo and the notification switches. For an operator it is the second
+ * reason to open the portal at all, after the day itself. The three money
+ * screens (`/earnings`, `/cash`, `/payouts`) light this stop and no longer
+ * light Business.
  *
- * Earnings stays a door inside Business until the API behind the demo's
- * Earnings tab exists (yuvoy-operator#47).
+ * It is drawn only for a login that can manage (`audience: "manage"`). Every
+ * money read refuses STAFF, so for them the stop would open onto a refusal:
+ * a staff phone sees four stops, and the order of the four does not move.
  *
- * ## Why Requests became Bookings (yuvoy-operator#32, #34)
+ * ## Why every stop carries its label (yuvoy-operator#80 t6)
  *
- * Requests only ever held request-mode bookings awaiting an answer. Migration
- * 0054 changed the default booking mode from `request` to `allotment` (D-031
- * P5), because the product thesis is paid and confirmed inside sixty seconds
- * — so an operator on the new default has an EMPTY Requests tab, while the
- * confirmed bookings they actually need to see had no home at all. The
- * requests queue is still the first thing on the tab and still ordered by how
- * soon each expires; it is a section now rather than a destination.
+ * The bar used to name only the stop you were already on. A ticket and a
+ * briefcase are not words anybody guesses as Bookings and Business, and the
+ * one label shown was the one place nobody needed it. All five are labelled,
+ * always, on the bar and on the rail.
  *
- * ## Why Capacity became Calendar (yuvoy-operator#32, #36)
+ * ## Why Listings left Home (yuvoy-operator#96)
  *
- * A calendar is what an operator thinks they are looking at. "Capacity" is
- * our word for it, and D-031 C10 settles one word per thing: **listing** where
- * an operator edits, **experience** where a traveller reads, **departure** for
- * a dated occurrence.
+ * Home was half run sheet and half catalogue, and the catalogue grows with the
+ * business and pushes the day down. Every listing is on Business, where they
+ * are made and mended, and Home keeps a one-line count that opens it.
  *
- * ## Why listings is a stop rather than another thing behind Business
+ * ## The older renames, kept for the reasons they give
  *
- * Owner ruling, 6 September 2026 (yuvoy-operator#22). Reels lived under the
- * Business door and Activities did not exist at all, which meant an operator
- * could sign in, read what was outstanding on their account, and then do
- * nothing about the two things the business IS.
+ * Requests became Bookings (yuvoy-operator#32, #34): an operator on the
+ * default booking mode had an empty Requests tab while the confirmed bookings
+ * they needed had no home. Capacity became Calendar for the same reason: a
+ * calendar is what an operator thinks they are looking at, and D-031 C10
+ * settles one word per thing. Both old URLs still resolve and still light the
+ * right stop for the moment their redirect is on screen.
  */
 
-export type NavIcon = "home" | "bookings" | "calendar" | "business";
+export type NavIcon = "home" | "bookings" | "calendar" | "money" | "business";
 
 export interface NavItem {
   href: string;
   label: string;
   icon: NavIcon;
-  /** Matched as a prefix so `/today/<slot>` still highlights Today. */
+  /** Matched as a prefix so `/today/<slot>` still highlights Home. */
   match: (pathname: string) => boolean;
+  /**
+   * Who is shown this stop. Absent means every role.
+   *
+   * `manage` is OWNER, ADMIN or MANAGER, `me.canManage` exactly as `GET /me`
+   * defines it. A stop is not drawn for somebody the screen behind it refuses:
+   * a destination that opens onto "you cannot see this" is a stop somebody
+   * learns to avoid, and it pushes the others apart for nothing.
+   */
+  audience?: "manage";
+}
+
+/**
+ * `root` itself or anything under it, and nothing that merely starts with the
+ * same letters: `/earnings` and `/earnings/stl_1`, never `/earningsx`.
+ */
+function under(pathname: string, root: string): boolean {
+  return pathname === root || pathname.startsWith(`${root}/`);
 }
 
 export const NAV: readonly NavItem[] = [
@@ -72,9 +87,8 @@ export const NAV: readonly NavItem[] = [
     icon: "home",
     /*
       The path stays `/today`. It is in operators' histories and a path is not
-      something anybody reads — the same call the Services URLs got when that
-      tab was renamed. `/today/listing/{id}` is under it, so the listing hub
-      lights Home and draws as a focused screen.
+      something anybody reads. `/today/listing/{id}` is under it, so the
+      listing hub lights Home and draws as a focused screen.
     */
     match: (p) => p === "/today" || p.startsWith("/today/"),
   },
@@ -94,6 +108,19 @@ export const NAV: readonly NavItem[] = [
     match: (p) => p.startsWith("/calendar") || p.startsWith("/capacity"),
   },
   {
+    href: "/earnings",
+    label: "Money",
+    icon: "money",
+    audience: "manage",
+    /*
+      The three money screens. `/earnings` is the tab root; a settlement
+      (`/earnings/{id}`), what is owed on cash, and the payout details are
+      screens gone INTO from it, and still light it.
+    */
+    match: (p) =>
+      under(p, "/earnings") || under(p, "/cash") || under(p, "/payouts"),
+  },
+  {
     href: "/account",
     label: "Business",
     icon: "business",
@@ -101,14 +128,11 @@ export const NAV: readonly NavItem[] = [
       p.startsWith("/account") ||
       /*
         `/services` still lights Business, for the instant its redirect is on
-        screen: creating and editing listings and reels moved to the Business
-        profile (#58), and an old bookmark must not flash an unlit bar on its
-        way through.
+        screen: both halves of the old Listings tab now resolve to the business
+        profile, and an old bookmark must not flash an unlit bar on its way
+        through.
       */
       p.startsWith("/services") ||
-      p.startsWith("/earnings") ||
-      p.startsWith("/cash") ||
-      p.startsWith("/payouts") ||
       p.startsWith("/profile") ||
       p.startsWith("/logo") ||
       p.startsWith("/story") ||
@@ -117,19 +141,32 @@ export const NAV: readonly NavItem[] = [
 ] as const;
 
 /**
- * The two counts on the bar — yuvoy-operator#42.
+ * The stops this login is shown, in the registry's order.
+ *
+ * Filtered rather than reordered: the stops a staff phone keeps sit in the
+ * same order as everybody else's, because the bar is muscle memory and a stop
+ * that moves is a mis-tap.
+ */
+export function navFor(access: { canManage: boolean }): readonly NavItem[] {
+  return NAV.filter(
+    (item) => item.audience !== "manage" || access.canManage === true,
+  );
+}
+
+/**
+ * The two counts on the bar, yuvoy-operator#42.
  *
  * "Bookings shows the count of pending requests. Account shows the count of
  * missing required verification documents. These badges turn unfinished
  * obligations into visible work queues."
  *
  * Each count is the number of rows under the matching heading on the screen
- * the stop opens — "Waiting on you" on both — and never a figure worked out
+ * the stop opens, "Waiting on you" on both, and never a figure worked out
  * separately. A badge that says 3 over a screen listing 2 is the fastest way
  * to teach somebody to ignore it.
  *
  * **Absent means unknown, never zero.** A read that failed renders no badge,
- * which is the same thing a genuinely empty queue renders — the one wrong
+ * which is the same thing a genuinely empty queue renders: the one wrong
  * answer is a number nobody measured.
  */
 export interface NavBadges {
@@ -156,22 +193,23 @@ export function badgeText(count: number): string {
  * FOCUSED routes: screens an operator goes INTO rather than between.
  *
  * On a phone these hide the floating bar and carry a back control. The
- * manifest sits under Today; the money and people screens sit under Business,
- * and each goes back to the door it came through.
+ * manifest and the listing hub sit under Home; a settlement, the cash screen
+ * and the payout details sit under Money; the people and profile screens sit
+ * under Business; and each goes back to the door it came through.
  *
- * **Listings is NOT focused**, and that is the difference between a stop and a
- * screen you go into. Listings and Reels are two halves of one job — "this
- * listing has no video" and "this clip is attached to nothing" are the same
- * question asked from both ends — so an operator moves between them
- * constantly, and a back disc that leaves the section would be in the way
- * every time.
+ * **`/earnings` itself is NOT focused**, and the slash is the whole
+ * difference: it is the Money tab root (yuvoy-operator#96), so it carries the
+ * bar, while `/earnings/{id}` is one settlement and carries a way back.
+ * `nav.test.ts` pins both halves, because a prefix one slash short would take
+ * the bar off a tab root.
  */
 export const FOCUSED_ROUTE_PREFIXES = [
   "/today/",
   // One booking, opened from the list and closed back to it. The list itself
   // is a tab root; `/bookings/` with the slash is a booking.
   "/bookings/",
-  "/earnings",
+  // One settlement. `/earnings` without the slash is the Money tab root.
+  "/earnings/",
   "/cash",
   "/payouts",
   "/profile",
@@ -183,7 +221,7 @@ export const FOCUSED_ROUTE_PREFIXES = [
   "/story",
   "/team",
   /*
-    Everything UNDER Business, with the slash — yuvoy-operator#58. `/account`
+    Everything UNDER Business, with the slash, yuvoy-operator#58. `/account`
     itself is the tab root: the business profile, which is where an operator
     lands. Settings, verification and the listing screens are places they go
     INTO from it and close back out of.
@@ -192,8 +230,8 @@ export const FOCUSED_ROUTE_PREFIXES = [
 ] as const;
 
 /**
- * BARE routes: no session, so no chrome at all. The three doors — signing up,
- * signing in, and accepting an invitation — draw the mark and nothing else.
+ * BARE routes: no session, so no chrome at all. The three doors (signing up,
+ * signing in, and accepting an invitation) draw the mark and nothing else.
  *
  * `/signup` does not collide with `/sign-in` under `startsWith`: neither is a
  * prefix of the other. A test pins that, because a hyphen is a thin thing to
