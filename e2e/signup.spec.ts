@@ -34,6 +34,7 @@ async function fill(
     business: string;
     name: string;
     phone: string;
+    /** Defaults to a real-looking address; see the note in the body. */
     email?: string;
     /**
      * Own it, or run it for the owner (D15, yuvoy-operator#51 item 1).
@@ -63,7 +64,12 @@ async function fill(
     point of yuvoy-operator#19, and is why these tests can keep handing it one.
   */
   await page.getByLabel("Your phone number").fill(who.phone);
-  if (who.email) await page.getByLabel(/^Email/).fill(who.email);
+  /*
+    Always filled. The email is REQUIRED until WhatsApp delivers (owner, 21 Sep
+    2026, yuvoy-operator#91): every sign-in code goes to it, so the form will
+    not submit without one. A test about something else still has to give one.
+  */
+  await page.getByLabel(/^Email/).fill(who.email ?? "priya@reef.example");
 }
 
 test("the screen says creating an account is not being on sale, before the form", async ({
@@ -120,13 +126,18 @@ test("creating an account goes straight to the code, with no bounce to sign in",
   await expect(page.getByText(/congratulations/i)).toHaveCount(0);
 
   /*
-    And no claim that anything was delivered. A code may arrive by WhatsApp or
-    be issued by Yuvoy out of band (yuvoy-api#59) and this screen is never told
-    which — and on production nothing is delivered at all yet (yuvoy-api#68).
-    `pnpm qa` holds the same rule statically; this is the rendered half.
+    And no claim that anything was delivered. This screen is never told whether
+    a code went anywhere, and a number that already has an account is answered
+    exactly like a new one. What it says is where codes go, the email address
+    on the account (yuvoy-operator#91), and never that one arrived. `pnpm qa`
+    holds the same rule statically; this is the rendered half.
   */
+  await expect(
+    page.getByText(/We email the code to the address on your account/),
+  ).toBeVisible();
   await expect(page.getByText(/we (sent|have sent|messaged)/i)).toHaveCount(0);
   await expect(page.getByText(/sent to/i)).toHaveCount(0);
+  await expect(page.getByText(/WhatsApp|SMS/i)).toHaveCount(0);
 });
 
 test("the code finishes the job — signed in, in the portal, on an account that cannot sell", async ({
@@ -279,7 +290,7 @@ test("the phone field fixes +91 and takes ten digits, however they are typed", a
   ).toBeEnabled();
 });
 
-test("an email is optional, and a mistyped one is caught before it is stored", async ({
+test("a mistyped email is caught before it is stored", async ({
   page,
 }, testInfo) => {
   await page.goto("/signup");
@@ -290,9 +301,63 @@ test("an email is optional, and a mistyped one is caught before it is stored", a
     email: "priya@",
   });
   await page.getByRole("button", { name: "Create the account" }).click();
-  await expect(page.locator("form").getByRole("alert")).toContainText(
-    "email address",
+  const alert = page.locator("form").getByRole("alert");
+  await expect(alert).toContainText("does not look like an email address");
+  // It used to say "leave it blank if unsure", which is now refused.
+  await expect(alert).not.toContainText("blank");
+  await expect(page.getByLabel(/^Email/)).toHaveAttribute(
+    "aria-invalid",
+    "true",
   );
+  await expect(page.getByLabel("Your code")).toHaveCount(0);
+});
+
+test("the email is required until WhatsApp delivers, and says why", async ({
+  page,
+}, testInfo) => {
+  /*
+    Owner ruling, 21 September 2026 (yuvoy-operator#91 f22). Every sign-in code
+    goes to the email address on the account while there is no WhatsApp
+    sender, so an account created without one was an account its owner could
+    not sign back into. The contract keeps the field optional; the portal
+    does not.
+  */
+  await page.goto("/signup");
+  const email = page.getByLabel(/^Email/);
+  await expect(page.getByText(/\(optional\)/)).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "Your sign-in codes are emailed here for now, so we need it.",
+    ),
+  ).toBeVisible();
+
+  await fill(page, {
+    business: "No Email Divers",
+    name: "Priya Raut",
+    phone: newNumber(6, testInfo),
+    email: "",
+  });
+
+  // Caught on the phone first: the box is required, so nothing is sent.
+  await page.getByRole("button", { name: "Create the account" }).click();
+  await expect(page.getByLabel("Your code")).toHaveCount(0);
+  expect(
+    await email.evaluate(
+      (el) => (el as HTMLInputElement).validity.valueMissing,
+    ),
+  ).toBe(true);
+
+  /*
+    And refused by the Server Action for a request that never came from this
+    form. The attribute is removed to stand in for one: a Server Action is a
+    public POST endpoint, and the browser's check is a courtesy.
+  */
+  await email.evaluate((el) => el.removeAttribute("required"));
+  await page.getByRole("button", { name: "Create the account" }).click();
+  await expect(page.locator("form").getByRole("alert")).toHaveText(
+    "Add your email address. Your sign-in codes go there for now.",
+  );
+  await expect(page.getByLabel("Your code")).toHaveCount(0);
 });
 
 test("the sign-in door has the same field, and both its buttons wait for it", async ({
@@ -373,6 +438,8 @@ test("the question is asked, and not answering is refused rather than assumed", 
   await page.getByLabel("Your business name").fill("Unanswered Divers");
   await page.getByLabel("Your name", { exact: true }).fill("Nobody");
   await page.getByLabel("Your phone number").fill("+919900000099");
+  // Given, so the required email is not what stops the form.
+  await page.getByLabel(/^Email/).fill("nobody@unanswered.example");
   await page.getByRole("button", { name: "Create the account" }).click();
 
   await expect(page.locator("form").getByRole("alert")).toContainText(

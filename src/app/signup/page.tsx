@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { SignUpForm } from "./signup-form";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
+import { EMAIL_REQUIRED_AT_SIGNUP } from "@/lib/auth/signup";
 
 export const metadata: Metadata = { title: "Create an account" };
 
@@ -41,7 +42,14 @@ export default function SignUpPage() {
         Create your account
       </h1>
       <p className="text-forest/70 mt-3 text-base">
-        Your business, your name, and the number you will sign in with.
+        {/*
+          The email is named up front while it is required (owner, 21 Sep
+          2026): an operator who learns at the fourth field that they need an
+          address they do not keep in their head has already started typing.
+        */}
+        {EMAIL_REQUIRED_AT_SIGNUP
+          ? "Your business, your name, the number you will sign in with, and the email your sign-in codes go to."
+          : "Your business, your name, and the number you will sign in with."}
       </p>
 
       {/*
