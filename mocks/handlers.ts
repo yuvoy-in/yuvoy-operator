@@ -3085,6 +3085,20 @@ export const handlers = [
       const failed = requireSession(request);
       if (failed) return failed;
       /*
+        A service with no documents store, which is production today: every
+        upload intent answers `503 documents_unavailable` before anything else
+        is looked at (yuvoy-operator#93). Stood in for by the business waiting
+        on our review, the one identity whose pending document no upload test
+        needs to reach the bucket.
+      */
+      if (sessionUser(request)?.id === AWAITING_ID) {
+        return envelope(
+          "documents_unavailable",
+          "we cannot take documents just yet",
+          503,
+        );
+      }
+      /*
         NOT `requireWritable`. A suspended business may still send a document
         (#50), and refusing here would hold an operator at a state they are
         being asked to clear.

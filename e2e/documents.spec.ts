@@ -33,6 +33,11 @@ const MANAGER = "+919000000102";
 const STAFF_ID = "usr_staff_arun";
 /** Live and selling, with one required document unmet and its blocker. */
 const LIVE_OUTSTANDING = "+919000000115";
+/**
+ * Waiting on our review, with a pending document that takes a file, on a
+ * service with no documents store: its upload intents answer `503`.
+ */
+const AWAITING = "+919000000106";
 
 /** A one-pixel PNG, as the story suite uses. Small, real, and a valid kind. */
 const PNG = Buffer.from(
@@ -121,6 +126,82 @@ test("a document says whether we hold a file, and only a pending one takes one",
     .first();
   await expect(oxygen).toContainText("No file sent");
   await expect(oxygen.getByLabel(/^Send the file/)).toBeVisible();
+});
+
+test("a verified document we hold no file for says so, and asks for a copy", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#93, production's own row: "1 of 1 required documents are
+    verified", then "Directorate registration, Verified, ... No file sent",
+    with no way to act. Yuvoy had vouched for a document it could not produce.
+
+    Not simply "Verified" any more, and still no upload control: the
+    operator's upload answers `409 document_locked` for a verified document,
+    and only our staff attach a file to one (D56). The ask goes by the route
+    that can take the file.
+  */
+  await signIn(page);
+  await page.goto("/account/verification");
+
+  const row = page
+    .locator("li")
+    .filter({ hasText: "Directorate registration" })
+    .first();
+  await expect(
+    row.getByText("Verified, but we hold no file for it"),
+  ).toBeVisible();
+  await expect(row.getByText("Verified", { exact: true })).toHaveCount(0);
+  await expect(
+    row.getByText(/A checked document cannot take a file from this screen/),
+  ).toBeVisible();
+  await expect(
+    row.getByRole("link", { name: "+91 81216 57657" }),
+  ).toHaveAttribute("href", "tel:+918121657657");
+  await expect(row.getByLabel(/^Send the file/)).toHaveCount(0);
+
+  // The summary is about verification, and stays true: it is verified.
+  await expect(
+    page.getByText("4 of 4 required documents are verified"),
+  ).toBeVisible();
+
+  // A verified document WITH a file is still simply verified.
+  const boat = page.locator("li").filter({ hasText: "Boat papers" }).first();
+  await expect(boat.getByText("Verified", { exact: true })).toBeVisible();
+  await expect(boat.getByText(/we hold no file/)).toHaveCount(0);
+});
+
+test("a service with no documents store says so plainly, and offers no retry", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#93. Upload intents answer `503 documents_unavailable` in
+    production: no documents bucket is configured, which is an owner item and
+    nothing the operator can change. It read "Sending files is not available
+    yet." as a failure with "Pick another file" under it, a retry that cannot
+    work for as long as the bucket is missing.
+  */
+  await signIn(page, AWAITING);
+  await page.goto("/account/verification");
+
+  const row = page
+    .locator("li")
+    .filter({ hasText: "Directorate registration" })
+    .first();
+  await row.getByLabel(/^Send the file/).setInputFiles({
+    name: "registration.png",
+    mimeType: "image/png",
+    buffer: PNG,
+  });
+
+  await expect(row.getByRole("status")).toHaveText(
+    "Sending files is switched off for now. Nothing to do on your side.",
+  );
+  await expect(row.getByRole("alert")).toHaveCount(0);
+  await expect(
+    row.getByRole("button", { name: "Pick another file" }),
+  ).toHaveCount(0);
+  await expect(row.getByLabel(/^Send the file/)).toHaveCount(0);
 });
 
 test("a file over 10 MB is refused before anything is uploaded", async ({

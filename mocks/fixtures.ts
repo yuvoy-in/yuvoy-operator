@@ -1416,18 +1416,37 @@ export const ACCOUNT_LIVE = {
   blocking: [],
   credentials: [
     {
+      /*
+        VERIFIED with NO FILE: production's own case in yuvoy-operator#93, "1 of
+        1 required documents are verified", then "Directorate registration,
+        Verified, Valid until 31 January 2027, No file sent". The row must not
+        read as simply verified, and it offers no upload: the operator's upload
+        answers `409 document_locked` for a verified document, and only our
+        staff attach one (D56).
+      */
+      id: "cred_directorate_verified",
       type: "directorate_registration",
       state: "verified",
       mandatory: true,
       issuer: "A&N Tourism Directorate",
+      hasFile: false,
       // Far enough out to say nothing. The screen must not cry wolf.
       expiresOn: marketDay(400),
       verifiedAt: todayAt("10:00", -120),
     },
     {
+      /*
+        Verified WITH a file, so the one row above is the only one that says
+        we hold none. `id` and `hasFile` are required on every row, and a
+        fixture without them is a response the API cannot send.
+      */
+      id: "cred_insurance_verified",
       type: "insurance",
       state: "verified",
       mandatory: true,
+      hasFile: true,
+      filename: "public-liability-2026.pdf",
+      sizeBytes: 350_000,
       issuer: "New India Assurance",
       /*
         Inside the sixty-day window, so the one warning this portal raises
@@ -1557,10 +1576,18 @@ export const ACCOUNT_AWAITING = {
   ],
   credentials: [
     {
+      /*
+        Pending with no file, so it takes one, on a business whose service has
+        no documents store: the mock answers this identity's upload intents
+        `503 documents_unavailable`, which is what production answers today
+        (yuvoy-operator#93). It is how the plain "switched off" state runs.
+      */
+      id: "cred_directorate_awaiting",
       type: "directorate_registration",
       state: "pending",
       mandatory: true,
       issuer: "A&N Tourism Directorate",
+      hasFile: false,
       expiresOn: marketDay(300),
     },
   ],
