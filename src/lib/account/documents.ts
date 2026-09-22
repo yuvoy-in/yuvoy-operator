@@ -1,4 +1,5 @@
 import { credentialTypeLabel } from "@/lib/profile/credentials";
+import { verifiedWithoutFile } from "./standing";
 
 /**
  * Required documents, and the file behind one — yuvoy-operator#46 items 1 to 3.
@@ -18,6 +19,15 @@ import { credentialTypeLabel } from "@/lib/profile/credentials";
  * behind it would change the evidence under a decision nobody re-made", which
  * answers `409 document_locked`. So the control is withheld on every other
  * state rather than offered and refused.
+ *
+ * That includes a VERIFIED document we hold no file for (yuvoy-operator#93).
+ * The review asked for "Send the file" on those too, and the pinned API
+ * answers it the other way (D56): "our staff can put a file behind a verified
+ * document that has none: the file we already hold for it". The operator's
+ * own upload still answers `409 document_locked` for any state but pending,
+ * checked in the handler at e7291e3. So the row says we hold no file and asks
+ * for a copy by the one route that can take it, rather than offering a
+ * control that is refused the day a documents bucket exists.
  */
 
 export interface RequiredDocument {
@@ -71,9 +81,17 @@ export function blockerFor(
 
 /** What a document row says about its file. Never a blank. */
 export function fileLine(credential: {
+  state?: string;
   hasFile?: boolean;
   filename?: string;
 }): string {
+  /*
+    A verified document with no file is said from OUR side, because it is our
+    gap: we verified it, so "No file sent" would read as the operator's
+    omission, and the operator may well have shown it to us some other way
+    (yuvoy-operator#93).
+  */
+  if (verifiedWithoutFile(credential)) return "We hold no file for it";
   /*
     `hasFile` decides it, not the filename being present. A response with a name
     and no flag is one disagreeing with itself, and showing the name would tell
@@ -88,6 +106,15 @@ export function fileLine(credential: {
 export function takesFile(state: string | undefined): boolean {
   return state === "pending";
 }
+
+/**
+ * `503 documents_unavailable`: no documents store is configured on this
+ * service, which is production today (an owner item). It is a state, not a
+ * failure: nothing is wrong with the file, nothing the operator does changes
+ * it, and "try again" would have them retrying for weeks (yuvoy-operator#93).
+ */
+export const DOCUMENTS_SWITCHED_OFF =
+  "Sending files is switched off for now. Nothing to do on your side.";
 
 /* ------------------------------------------------- what may be sent ------ */
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { CLOSING_SENTENCE, alreadyConfirmedSentence } from "@/lib/day/calendar";
 import { closureLine, type Closure } from "@/lib/day/closures";
 import { marketTime } from "@/lib/format/market-time";
@@ -10,6 +10,13 @@ import { panelClass } from "@/components/ui/panel";
 import { BlackoutForm } from "./blackout-form";
 import { ReopenClosure } from "./reopen-closure";
 import { CloseDeparture } from "./close-departure";
+
+/** One thing the day's panel just did, said after the day re-reads. */
+interface DayReceipt {
+  key: string;
+  title: string;
+  note: string;
+}
 
 /**
  * Manage one day — yuvoy-operator#45. "Manage expands closure controls in
@@ -70,6 +77,19 @@ export function DayManage({
 }) {
   const [open, setOpen] = useState(false);
   const panelId = `manage-${day}`;
+  /*
+    What reopening a closure, or stopping one departure, just did. Kept HERE
+    because this panel survives the calendar re-reading and the row that did
+    the work does not: a reopened closure leaves "Already closed", and a
+    stopped departure leaves "Stop selling one departure" (op#89 f16). Cleared
+    by a real navigation, by which time the day itself is the truth.
+  */
+  const [receipts, setReceipts] = useState<DayReceipt[]>([]);
+  const onDone = useCallback((receipt: DayReceipt) => {
+    setReceipts((prev) =>
+      prev.some((r) => r.key === receipt.key) ? prev : [...prev, receipt],
+    );
+  }, []);
 
   return (
     <div className="mt-3">
@@ -103,6 +123,25 @@ export function DayManage({
           </ButtonLink>
 
           {/*
+            What reopening did, in the API's words: "it gives both counts in
+            words", and it is the only place that says which departures went
+            back on sale and which another closure still holds.
+          */}
+          {receipts.length > 0 ? (
+            <div role="status" className="border-paper-line mt-5 border-t pt-4">
+              <h4 className="label text-forest/75">Just now</h4>
+              <ul className="mt-2 space-y-3">
+                {receipts.map((r) => (
+                  <li key={r.key} className="text-sm">
+                    <p className="font-bold">{r.title}</p>
+                    <p className="text-forest/80 mt-1">{r.note}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/*
             What is already closed, and the way back. Above the form that closes
             more: somebody opening Manage on a day that says Closed is usually
             here to undo it, not to close it twice.
@@ -123,7 +162,12 @@ export function DayManage({
                     <p className="text-forest/80 mt-1 text-sm">
                       {closureLine(closure)}
                     </p>
-                    <ReopenClosure id={closure.id} />
+                    <ReopenClosure
+                      id={closure.id}
+                      onReopened={(id, note) =>
+                        onDone({ key: `reopen-${id}`, title: "Reopened", note })
+                      }
+                    />
                   </li>
                 ))}
               </ul>
@@ -156,6 +200,9 @@ export function DayManage({
                         slotId={slot.id}
                         title={slot.title}
                         time={marketTime(slot.startsAt, slot.timezone)}
+                        onClosed={(title, note) =>
+                          onDone({ key: `close-${slot.id}`, title, note })
+                        }
                       />
                     </li>
                   ))}

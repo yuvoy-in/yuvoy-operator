@@ -3,6 +3,7 @@ import {
   dayLine,
   listingGroup,
   listingLabel,
+  liveWithNothingToSell,
   nextDeparture,
   orderListings,
   posterFor,
@@ -250,5 +251,38 @@ describe("the fortnight", () => {
     expect(
       withinFortnight(rows, "2026-09-15", "2026-09-28").map((r) => r.id),
     ).toEqual(["in"]);
+  });
+});
+
+describe("a live listing with nothing to sell: yuvoy-operator#95 item 3", () => {
+  it("is a live listing the API says has no bookable dates", () => {
+    expect(
+      liveWithNothingToSell({ status: "live", bookableDatesNext30Days: 0 }),
+    ).toBe(true);
+    expect(
+      liveWithNothingToSell({
+        status: "live_changes_in_review",
+        bookableDatesNext30Days: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("is not a listing that has dates", () => {
+    expect(
+      liveWithNothingToSell({ status: "live", bookableDatesNext30Days: 4 }),
+    ).toBe(false);
+  });
+
+  it("is not a listing that is off the traveller app for another reason", () => {
+    // `not_selling` reads 0 too, because of the account. "Live" would be false.
+    for (const status of ["not_selling", "draft", "in_review", "withdrawn"]) {
+      expect(
+        liveWithNothingToSell({ status, bookableDatesNext30Days: 0 }),
+      ).toBe(false);
+    }
+  });
+
+  it("reads an absent count as unknown, never as zero", () => {
+    expect(liveWithNothingToSell({ status: "live" })).toBe(false);
   });
 });

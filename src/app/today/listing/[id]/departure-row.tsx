@@ -195,6 +195,19 @@ function MoveTime({
         {state.note ? (
           <p className="text-forest/80 mt-1.5 text-sm">{state.note}</p>
         ) : null}
+        {/*
+          The bookings nothing could carry the new time to (op#89). Said apart
+          from the API's sentence, because it is the one thing on this receipt
+          the operator has to act on: those travellers will turn up at the old
+          time unless somebody tells them.
+        */}
+        {state.notReached ? (
+          <p className="text-terra-deep mt-1.5 text-sm font-bold">
+            {state.notReached === 1
+              ? "1 booking could not be sent the new time: we hold no way to reach them. Tell them yourself if you can."
+              : `${state.notReached} bookings could not be sent the new time: we hold no way to reach them. Tell them yourself if you can.`}
+          </p>
+        ) : null}
       </Panel>
     );
   }
@@ -217,13 +230,15 @@ function MoveTime({
       />
 
       {/*
-        The whole consequence, before the tap. Everybody booked is told, and
-        each of them may cancel for a full refund until it leaves — which is
-        the part that makes moving a departure a decision rather than an edit.
+        The whole consequence, before the tap. Everybody booked is messaged,
+        and each of them may cancel for a full refund until it leaves, which
+        is the part that makes moving a departure a decision rather than an
+        edit. The receipt says who could not be reached.
       */}
       <p className="text-forest/80 mt-3 text-sm">
-        Move {slot.title} from {time} to {to}? Everyone booked is told the new
-        time and can cancel for a full refund until it leaves.
+        Move {slot.title} from {time} to {to}? We message everyone booked with
+        the new time, and each of them can cancel for a full refund until it
+        leaves.
       </p>
 
       {state.message ? (

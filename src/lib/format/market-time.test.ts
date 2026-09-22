@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { dayCaption, hasDeparted, marketDay, marketTime } from "./market-time";
+import {
+  dayCaption,
+  deadlineLabel,
+  hasDeparted,
+  marketDay,
+  marketTime,
+} from "./market-time";
 
 /**
  * Times in the market's zone.
@@ -51,5 +57,35 @@ describe("dayCaption", () => {
     expect(dayCaption("2026-08-17", "2026-08-18", "2026-08-19")).toBe(
       "Monday, 17 August",
     );
+  });
+});
+
+describe("a deadline as an operator chases it: yuvoy-operator#95", () => {
+  // 20:00 IST on Mon 21 Sep 2026.
+  const EVENING = Date.parse("2026-09-21T14:30:00Z");
+
+  it("is a bare time when it falls on the market's today", () => {
+    // 23:10 IST the same day.
+    expect(deadlineLabel("2026-09-21T17:40:00Z", "Asia/Kolkata", EVENING)).toBe(
+      "23:10",
+    );
+  });
+
+  it("names the day when it falls on another", () => {
+    // 08:00 IST the next morning: the twelve-hour hold's usual shape.
+    expect(deadlineLabel("2026-09-22T02:30:00Z", "Asia/Kolkata", EVENING)).toBe(
+      "08:00 on Tue 22 Sep",
+    );
+  });
+
+  it("reads the day in the market, not in UTC", () => {
+    // 00:30 IST on the 22nd is still the 21st in UTC.
+    expect(deadlineLabel("2026-09-21T19:00:00Z", "Asia/Kolkata", EVENING)).toBe(
+      "00:30 on Tue 22 Sep",
+    );
+  });
+
+  it("is empty for an instant it cannot read", () => {
+    expect(deadlineLabel("soon", "Asia/Kolkata", EVENING)).toBe("");
   });
 });

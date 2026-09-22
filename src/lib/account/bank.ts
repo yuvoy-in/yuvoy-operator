@@ -5,9 +5,10 @@
  * to redirect a season's takings."
  *
  * Three gates, and the UI's job is to explain them rather than apologise for
- * them: OWNER only, a code to the owner's phone, then two 24-hour clocks — one
- * before approval so the real owner can stop it, one after, so even an
- * approved change is still catchable.
+ * them: OWNER only, a code to an owner (by email since yuvoy-api 67e3213, as
+ * there is no phone sender), then two 24-hour clocks: one before approval so
+ * the real owner can stop it, one after, so even an approved change is still
+ * catchable.
  */
 
 export type ChangeState =
@@ -28,9 +29,18 @@ export function describeChange(state: ChangeState): {
 } {
   switch (state) {
     case "objection_window":
+      /*
+        It said "We messaged the owner the moment it was raised", and nobody
+        was messaged. The warning that a bank change was raised is PHONE ONLY
+        in yuvoy-api (`NoticeBankChangeRaised`, `phoneOnly`): an email would
+        land in the inbox open on a stolen phone, read by the one person it
+        exists to warn about. With no phone sender it is suppressed, so the
+        owner hears nothing (yuvoy-operator#91). This screen is where they can
+        see it and stop it, so that is what it says.
+      */
       return {
         title: "Raised: you can still stop this",
-        body: "We messaged the owner the moment it was raised. Nobody at Yuvoy has looked at it yet, and it becomes reviewable in 24 hours.",
+        body: "An owner or an admin can stop it from this screen. Nobody at Yuvoy has looked at it yet, and it becomes reviewable in 24 hours.",
         stoppable: true,
       };
     case "pending":

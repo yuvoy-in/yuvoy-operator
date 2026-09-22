@@ -150,6 +150,13 @@ export interface MockParty {
     collectedAt?: string;
     collectedPaise?: number;
   };
+  /**
+   * Mock-internal, and NOT part of any response: this traveller left no
+   * address anything can carry a message on (a WhatsApp number, on a
+   * deployment with no WhatsApp sender). A relay counts them in `notReached`
+   * rather than `recipients`, which is the case yuvoy-api#200 exists for.
+   */
+  unreachable?: boolean;
 }
 
 export interface MockSlot {
@@ -175,6 +182,12 @@ export interface MockSlot {
   calledOff?: { reasonCode: string };
   parties: MockParty[];
   seatsSoldOffline: number;
+  /**
+   * Mock-internal: seats set by hand that nobody has confirmed for two days,
+   * so the departure is off sale for that alone until
+   * `POST /slots/confirm-seats` confirms it (yuvoy-api#211).
+   */
+  seatsUnconfirmed?: boolean;
 }
 
 /**
@@ -279,6 +292,12 @@ export const SLOTS: MockSlot[] = [
         name: "Priya Raghavan",
         guests: 2,
         state: "confirmed",
+        /*
+          Left only a WhatsApp number, so nothing can carry a relay to her
+          today. A departure-wide update therefore reaches two of three, and
+          the receipt has to say so (op#89).
+        */
+        unreachable: true,
         arrived: false,
         screening: { declared: false, clear: false, needsAttention: false },
         /*
@@ -359,12 +378,31 @@ export const SLOTS: MockSlot[] = [
     startsAt: todayAt("17:00"),
     timezone: TZ,
     seats: 10,
-    sold: 2,
-    remaining: 8,
+    sold: 3,
+    remaining: 7,
     status: "open",
     meetingPoint: "Havelock jetty, gate 1",
     seatsSoldOffline: 0,
     parties: [
+      {
+        /*
+          Paid at the counter, and the cash is in the till. Calling this
+          departure off refunds nothing on it, because nothing reached us, so
+          the call-off answers with it in `cashToGiveBack` (op#95).
+        */
+        bookingId: "bkg_ca_cash",
+        reference: "YV-CA5HA7K2",
+        name: "Nadia Khan",
+        guests: 1,
+        state: "confirmed",
+        arrived: false,
+        cash: {
+          collectPaise: 450_000,
+          collected: true,
+          collectedAt: todayAt("08:15"),
+          collectedPaise: 450_000,
+        },
+      },
       {
         bookingId: "bkg_ca_1",
         reference: "YV-1A2B3C4D",
@@ -382,12 +420,31 @@ export const SLOTS: MockSlot[] = [
     startsAt: todayAt("17:30"),
     timezone: TZ,
     seats: 10,
-    sold: 3,
-    remaining: 7,
+    sold: 4,
+    remaining: 6,
     status: "open",
     meetingPoint: "Havelock jetty, gate 1",
     seatsSoldOffline: 0,
     parties: [
+      {
+        /*
+          Paid at the counter, and the cash is in the till. Calling this
+          departure off refunds nothing on it, because nothing reached us, so
+          the call-off answers with it in `cashToGiveBack` (op#95).
+        */
+        bookingId: "bkg_cb_cash",
+        reference: "YV-CB5HB8M3",
+        name: "Joel Mathew",
+        guests: 1,
+        state: "confirmed",
+        arrived: false,
+        cash: {
+          collectPaise: 450_000,
+          collected: true,
+          collectedAt: todayAt("08:15"),
+          collectedPaise: 450_000,
+        },
+      },
       {
         bookingId: "bkg_cb_1",
         reference: "YV-5E6F7G8H",
@@ -761,6 +818,30 @@ export const SLOTS: MockSlot[] = [
       },
     ],
   },
+  /*
+    OFF SALE BECAUSE NOBODY CONFIRMED ITS SEATS (yuvoy-operator#94).
+
+    On "Blue lagoon", a live listing with no other departures, ten days out:
+    the calendar's own tests keep +3, +5 and +6 empty and build on +9 and
+    +11, and +10 is nobody's. Confirming it is one-way in this mock, so the
+    walkthrough that confirms it runs on one project only.
+  */
+  {
+    id: "slot_unconfirmed",
+    experienceId: "exp_nofootage",
+    title: "Blue lagoon (no footage fixture)",
+    startsAt: todayAt("10:00", 10),
+    timezone: TZ,
+    seats: 6,
+    sold: 0,
+    remaining: 6,
+    bookingMode: "allotment",
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 1",
+    seatsSoldOffline: 0,
+    parties: [],
+    seatsUnconfirmed: true,
+  },
 ];
 
 export const DEV_CODE = "424242";
@@ -992,6 +1073,8 @@ TOTAL,,3,54000.00,5400.00,9000.00,38350.00
 export const COMMISSION_OWED = {
   bookings: 3,
   farePaise: 3_000_000,
+  // What was recorded taken on the three: the fares, less the shortfall below.
+  collectedPaise: 2_700_000,
   commissionPaise: 450_000,
   lines: [
     {
@@ -1018,6 +1101,50 @@ export const COMMISSION_OWED = {
       // Took ₹3,000 less than the fare. The share below is still on the fare.
       collectedPaise: 1_200_000,
       commissionPaise: 225_000,
+    },
+  ],
+  /*
+    HELD for trips still to run (yuvoy-api#211, op#94): the cash the screen
+    left out, which is how an operator holding ₹42,000 read ₹30,000. Two
+    trips, and their shares add up to the held share, as the owed ones do.
+  */
+  heldBookings: 2,
+  heldFarePaise: 1_500_000,
+  heldCollectedPaise: 1_500_000,
+  heldCommissionPaise: 225_000,
+  heldLines: [
+    {
+      bookingReference: "YV-H3LD0B2",
+      tripDate: marketDay(5),
+      guests: 1,
+      farePaise: 600_000,
+      collectedPaise: 600_000,
+      commissionPaise: 90_000,
+    },
+    {
+      bookingReference: "YV-H3LD0A1",
+      tripDate: marketDay(2),
+      guests: 2,
+      farePaise: 900_000,
+      collectedPaise: 900_000,
+      commissionPaise: 135_000,
+    },
+  ],
+  /*
+    A trip that RAN with no cash recorded (yuvoy-api#221): nothing says
+    whether the business was paid, so it is in no held or owed figure, and
+    only the operator can close it.
+  */
+  unrecordedBookings: 1,
+  unrecordedFarePaise: 450_000,
+  unrecordedLines: [
+    {
+      bookingReference: "YV-UNR3C0D",
+      tripDate: marketDay(-1),
+      guests: 1,
+      farePaise: 450_000,
+      collectedPaise: 0,
+      commissionPaise: 67_500,
     },
   ],
 };
@@ -1406,18 +1533,37 @@ export const ACCOUNT_LIVE = {
   blocking: [],
   credentials: [
     {
+      /*
+        VERIFIED with NO FILE: production's own case in yuvoy-operator#93, "1 of
+        1 required documents are verified", then "Directorate registration,
+        Verified, Valid until 31 January 2027, No file sent". The row must not
+        read as simply verified, and it offers no upload: the operator's upload
+        answers `409 document_locked` for a verified document, and only our
+        staff attach one (D56).
+      */
+      id: "cred_directorate_verified",
       type: "directorate_registration",
       state: "verified",
       mandatory: true,
       issuer: "A&N Tourism Directorate",
+      hasFile: false,
       // Far enough out to say nothing. The screen must not cry wolf.
       expiresOn: marketDay(400),
       verifiedAt: todayAt("10:00", -120),
     },
     {
+      /*
+        Verified WITH a file, so the one row above is the only one that says
+        we hold none. `id` and `hasFile` are required on every row, and a
+        fixture without them is a response the API cannot send.
+      */
+      id: "cred_insurance_verified",
       type: "insurance",
       state: "verified",
       mandatory: true,
+      hasFile: true,
+      filename: "public-liability-2026.pdf",
+      sizeBytes: 350_000,
       issuer: "New India Assurance",
       /*
         Inside the sixty-day window, so the one warning this portal raises
@@ -1547,10 +1693,18 @@ export const ACCOUNT_AWAITING = {
   ],
   credentials: [
     {
+      /*
+        Pending with no file, so it takes one, on a business whose service has
+        no documents store: the mock answers this identity's upload intents
+        `503 documents_unavailable`, which is what production answers today
+        (yuvoy-operator#93). It is how the plain "switched off" state runs.
+      */
+      id: "cred_directorate_awaiting",
       type: "directorate_registration",
       state: "pending",
       mandatory: true,
       issuer: "A&N Tourism Directorate",
+      hasFile: false,
       expiresOn: marketDay(300),
     },
   ],

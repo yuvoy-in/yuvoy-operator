@@ -27,10 +27,17 @@ import { Panel } from "@/components/ui/panel";
 export function CashBack({
   bookingId,
   amountPaise,
+  refreshLabel = "Show the booking",
 }: {
   bookingId: string;
   /** What was recorded as taken, which is all of what goes back. */
   amountPaise: number | null;
+  /**
+   * The receipt's way on, which re-reads the screen it sits on. The booking's
+   * own page says "Show the booking"; the manifest's give-back list, where the
+   * party leaves the list once it is recorded, says what the tap does there.
+   */
+  refreshLabel?: string;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [state, act, pending] = useActionState<CashBackState, FormData>(
@@ -53,7 +60,7 @@ export function CashBack({
             block={false}
             onClick={() => router.refresh()}
           >
-            Show the booking
+            {refreshLabel}
           </Button>
         </div>
       </Panel>

@@ -141,8 +141,19 @@ export async function listSlots(
   );
 }
 
+/** Every media item read, and whether the read reached the end. */
+export interface MediaList {
+  items: MediaItem[];
+  /**
+   * False when the walk stopped short: a later page failed, or the ceiling
+   * below was reached. A screen says so rather than letting the oldest items
+   * quietly not exist.
+   */
+  complete: boolean;
+}
+
 /**
- * Every media item this operator holds.
+ * Every media item this operator holds, paged to the end.
  *
  * One read for the whole screen: Home shows a tile per listing and `posterFor`
  * picks each one out of this list, rather than asking per listing — the same
@@ -150,11 +161,47 @@ export async function listSlots(
  * profile's Reels tab draws the same list, and its sheet reads the rest of each
  * row, which is why the type is the contract's own rather than the three fields
  * a poster needs.
+ *
+ * ## Paged since yuvoy-api#204 (op#95 item 2)
+ *
+ * It read one call, which is the 50 newest, so past 50 the oldest reels
+ * vanished from Home and from the Reels grid, and could then be neither
+ * published nor withdrawn from either. It now walks `nextCursor` the way the
+ * bookings list does, and stops on `complete` ("stop when there is no
+ * `nextCursor`, not when a page comes back short"). An older API sends neither
+ * field and one page, which reads as complete: what it always was.
+ *
+ * The FIRST page failing is the read failing, and it throws for the caller to
+ * degrade as it always has. A LATER page failing keeps what arrived and says
+ * it is partial, because a grid of the newest two hundred is worth more than
+ * an empty one.
  */
-export async function listMedia(token: string): Promise<MediaItem[]> {
-  const { data, error } = await operatorApi(token).GET("/media", {});
-  if (error) throw error;
-  return data.items ?? [];
+export async function listMedia(token: string): Promise<MediaList> {
+  const items: MediaItem[] = [];
+  let cursor: string | undefined;
+
+  // 25 pages of 200 is 5,000 items: a ceiling so a broken cursor cannot spin.
+  for (let page = 0; page < 25; page += 1) {
+    let data;
+    try {
+      const res = await operatorApi(token).GET("/media", {
+        params: { query: { limit: 200, ...(cursor ? { cursor } : {}) } },
+      });
+      if (res.error) throw res.error;
+      data = res.data;
+    } catch (err) {
+      if (page === 0) throw err;
+      return { items, complete: false };
+    }
+
+    items.push(...(data.items ?? []));
+    if (data.complete !== false || !data.nextCursor) {
+      return { items, complete: true };
+    }
+    cursor = data.nextCursor;
+  }
+
+  return { items, complete: false };
 }
 
 /**
@@ -259,6 +306,10 @@ export async function listListings(
       // Presence IS the state, so it is carried rather than read. See the
       // field's note on `OperatorListing`.
       ...(e.sentBack ? { sentBack: e.sentBack } : {}),
+      ...(Number.isInteger(e.bookableDatesNext30Days) &&
+      (e.bookableDatesNext30Days as number) >= 0
+        ? { bookableDatesNext30Days: e.bookableDatesNext30Days }
+        : {}),
     }))
     .sort((a, b) => a.title.localeCompare(b.title, "en"));
 }

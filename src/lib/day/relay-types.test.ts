@@ -3,6 +3,8 @@ import {
   CALL_OFF_REASONS,
   NOTE_MAX,
   RELAY_INTENTS,
+  notReachedSentence,
+  relayHeadline,
   validateRelay,
 } from "./relay-types";
 
@@ -96,5 +98,82 @@ describe("a relay", () => {
       "safety",
       "insufficient_numbers",
     ]);
+  });
+});
+
+describe("the relay receipt: yuvoy-operator#89", () => {
+  it("says how many people were told, and how", () => {
+    expect(
+      relayHeadline(
+        { intent: "time_change", recipients: 3, byChannel: { email: 3 } },
+        "departure",
+      ),
+    ).toBe("Told 3 people by email");
+    expect(
+      relayHeadline(
+        { intent: "time_change", recipients: 1, byChannel: { whatsapp: 1 } },
+        "booking",
+      ),
+    ).toBe("Told 1 person on WhatsApp");
+  });
+
+  it("splits a mixed send by channel", () => {
+    expect(
+      relayHeadline(
+        {
+          intent: "weather_watch",
+          recipients: 3,
+          byChannel: { whatsapp: 2, email: 1 },
+        },
+        "departure",
+      ),
+    ).toBe("Told 3 people: 2 on WhatsApp, 1 by email");
+  });
+
+  it("leaves the channel out rather than guessing at one", () => {
+    // Absent, unknown, or not adding up to the total: no phrase at all.
+    expect(
+      relayHeadline({ intent: "time_change", recipients: 2 }, "departure"),
+    ).toBe("Told 2 people");
+    expect(
+      relayHeadline(
+        { intent: "time_change", recipients: 2, byChannel: { pigeon: 2 } },
+        "departure",
+      ),
+    ).toBe("Told 2 people");
+    expect(
+      relayHeadline(
+        { intent: "time_change", recipients: 3, byChannel: { email: 2 } },
+        "departure",
+      ),
+    ).toBe("Told 3 people");
+  });
+
+  it("never says told when nobody was", () => {
+    expect(
+      relayHeadline(
+        { intent: "time_change", recipients: 0, byChannel: {} },
+        "booking",
+      ),
+    ).toBe("Nobody was told");
+  });
+
+  it("gives a note no number, because its count is not bookings", () => {
+    expect(relayHeadline({ intent: "note", recipients: 4 }, "departure")).toBe(
+      "Note left on their booking pages",
+    );
+    expect(relayHeadline({ intent: "note", recipients: 0 }, "booking")).toBe(
+      "Note left on their booking page",
+    );
+  });
+
+  it("names the people nothing could reach, in the API's words first", () => {
+    expect(notReachedSentence(undefined, undefined)).toBeNull();
+    expect(notReachedSentence(0, "ignored")).toBeNull();
+    expect(notReachedSentence(2, "  2 people have no address on file.  ")).toBe(
+      "2 people have no address on file.",
+    );
+    expect(notReachedSentence(1, undefined)).toMatch(/^1 person could not/);
+    expect(notReachedSentence(3, "")).toMatch(/^3 people could not/);
   });
 });

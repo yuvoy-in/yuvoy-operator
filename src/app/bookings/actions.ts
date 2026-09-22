@@ -7,6 +7,8 @@ import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { DECLINE_REASONS, type DeclineReason } from "@/lib/day/request-types";
 import { suspendedMessage } from "@/lib/account/suspended";
+import { sentence } from "@/lib/format/sentence";
+import { deadlineLabel, now } from "@/lib/format/market-time";
 
 /**
  * Answering a request — the two writes on O9.
@@ -34,6 +36,24 @@ export interface RequestActionState {
   /** A granted hold's deadline, so the screen can say what the traveller now has. */
   holdExpiresAt?: string | null;
   granted?: boolean;
+  /**
+   * The API's whole sentence for the operator, "as it is" (yuvoy-api#203):
+   * how many seats are held, how the traveller is being told or that nobody
+   * could reach them, and when the seats come back, in the departure's market
+   * time. Preferred over anything this portal would write.
+   */
+  receipt?: string;
+  /**
+   * The pay-by time for a response with no `receipt`: "14:41", or "08:00 on
+   * Tue 22 Sep" when the twelve-hour hold ends on another day.
+   */
+  payBy?: string;
+  /**
+   * `toldBy` came back EMPTY: nothing could carry the news, so the traveller
+   * does not know they were accepted and the operator is the only one who can
+   * tell them. An absent `toldBy` (an older API) is not this.
+   */
+  untold?: boolean;
 }
 
 const acceptSchema = z.object({ requestId: z.string().min(1) });
@@ -77,7 +97,17 @@ function explain(err: unknown, verb: string): string {
       return "Already answered, or out of time. Refresh to see the queue.";
     }
     if (err.code === "grant_ceiling_exceeded") {
-      return "That would put more people on the boat than it holds. Nothing was granted.";
+      /*
+        The API's own sentence, because it says WHICH ceiling: when seats sold
+        at the operator's counter are what fill the boat, "and only then, the
+        message names them", and points at where a wrong count is corrected
+        (op#90). This used to reach the portal as a 500 and read as a dropped
+        network.
+      */
+      const why =
+        sentence(err.message) ||
+        "That would put more people on the boat than it holds.";
+      return `${why} Nothing was granted.`;
     }
     /*
       The business cannot sell right now — yuvoy-operator#28, from yuvoy-api's
@@ -122,6 +152,12 @@ export async function acceptRequest(
   if (!parsed.success) return { message: "That request cannot be answered." };
 
   const { requestId } = parsed.data;
+  /*
+    The departure's zone, for a pay-by time written here when the API sends
+    no `receipt`. Display only, and the market's own zone when the row did
+    not carry one.
+  */
+  const timezone = String(form.get("timezone") ?? "").trim() || "Asia/Kolkata";
   const { token, me } = await requireOperator();
   if (!me.canManage) return { requestId, message: ROLE_REFUSAL };
 
@@ -157,7 +193,20 @@ export async function acceptRequest(
       reconciles underneath, the receipt stays until a real navigation. The
       page is force-dynamic and no-store, so nothing stale survives one.
     */
-    return { granted: true, holdExpiresAt: data.holdExpiresAt ?? null };
+    const holdExpiresAt = data.holdExpiresAt ?? null;
+    const payBy = holdExpiresAt
+      ? deadlineLabel(holdExpiresAt, timezone, await now())
+      : "";
+    const receipt = data.receipt ? sentence(data.receipt) : "";
+    return {
+      granted: true,
+      holdExpiresAt,
+      ...(receipt ? { receipt } : {}),
+      ...(payBy ? { payBy } : {}),
+      ...(Array.isArray(data.toldBy) && data.toldBy.length === 0
+        ? { untold: true }
+        : {}),
+    };
   } catch (err) {
     return {
       requestId,

@@ -14,6 +14,7 @@ import {
   splitByWaitingOn,
   standingOf,
   stateLabel,
+  verifiedWithoutFile,
   type AccountStanding,
   type Blocker,
   type OperatorCredential,
@@ -41,8 +42,10 @@ const credential = (
     "so a screen offers an upload or shows the file without inferring either
     from a field being absent".
 
-    Set here so the fixture is a shape the API can actually send. Nothing in
-    `standing.ts` reads either, which is why this was only a type error.
+    Set here so the fixture is a shape the API can actually send. `hasFile`
+    is read by `credentialText` since yuvoy-operator#93 (a verified document
+    we hold no file for is not simply "Verified"), so a test about a plain
+    verified row says `hasFile: true` rather than leaning on this default.
   */
   id: "cred_insurance",
   hasFile: false,
@@ -409,7 +412,9 @@ describe("what expires, and when", () => {
 
 describe("what a credential row says", () => {
   it("branches on the closed `state` enum", () => {
-    expect(credentialText(credential({ state: "verified" }), NOW)).toEqual({
+    expect(
+      credentialText(credential({ state: "verified", hasFile: true }), NOW),
+    ).toEqual({
       tone: "ok",
       text: "Verified",
     });
@@ -433,6 +438,60 @@ describe("what a credential row says", () => {
     );
     expect(row.tone).toBe("warn");
     expect(row.text).toBe("Expires in 7 days");
+  });
+
+  it("never says simply 'Verified' over a document we hold no file for", () => {
+    /*
+      yuvoy-operator#93: the review read "Verified" and "No file sent" on one
+      row, with no way to act on either. Yuvoy had vouched for a document it
+      could not produce.
+    */
+    const row = credentialText(
+      credential({ state: "verified", hasFile: false }),
+      NOW,
+    );
+    expect(row).toEqual({
+      tone: "warn",
+      text: "Verified, but we hold no file for it",
+      saysNoFile: true,
+    });
+    expect(verifiedWithoutFile({ state: "verified", hasFile: false })).toBe(
+      true,
+    );
+  });
+
+  it("still leads with an approaching expiry when there is no file", () => {
+    // The date is the one that takes a listing down; the file line under it
+    // says the rest, so the status does not claim to have said it.
+    const row = credentialText(
+      credential({
+        state: "verified",
+        hasFile: false,
+        expiresOn: "2026-09-12",
+      }),
+      NOW,
+    );
+    expect(row).toEqual({ tone: "warn", text: "Expires in 7 days" });
+  });
+
+  it("leaves the row as it was when an older API sends no flag", () => {
+    // Absent is not false. A row that never said is not accused of anything.
+    const withoutFlag = {
+      ...credential({ state: "verified" }),
+    } as Partial<OperatorCredential>;
+    delete withoutFlag.hasFile;
+    const row = credentialText(withoutFlag as OperatorCredential, NOW);
+    expect(row).toEqual({ tone: "ok", text: "Verified" });
+    expect(verifiedWithoutFile(withoutFlag)).toBe(false);
+  });
+
+  it("is only about verified documents: pending with no file is just waiting", () => {
+    expect(verifiedWithoutFile({ state: "pending", hasFile: false })).toBe(
+      false,
+    );
+    expect(verifiedWithoutFile({ state: "verified", hasFile: true })).toBe(
+      false,
+    );
   });
 
   it("says something for a state it does not know", () => {

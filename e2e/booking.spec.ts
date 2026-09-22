@@ -218,11 +218,18 @@ test("cancelling works, reports what it cost, and a second press is not an error
   await expect(page.getByText("This booking is cancelled")).toBeVisible();
   await expect(page.getByText(/seats are back on the departure/)).toBeVisible();
 
-  // The booking itself now reads cancelled, with why and by whom.
-  await page.getByRole("button", { name: "Show the booking" }).click();
+  /*
+    The booking itself now reads cancelled, with why and by whom, and with no
+    tap: the page re-reads underneath the receipt (op#89 f16). It used to keep
+    "Collect" and a Cash taken button under the words "This booking is
+    cancelled" until somebody pressed "Show the booking".
+  */
   await expect(
     page.getByText(/^Cancelled by your team on \d+ \w+: Not enough people$/),
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cash taken" })).toHaveCount(0);
+  // And the receipt is still there, beside the new state rather than gone.
+  await expect(page.getByText("This booking is cancelled")).toBeVisible();
 
   /*
     And the control is gone rather than offered again. "Retrying after it worked

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { cancelBooking, type CancelState } from "@/app/bookings/cancel-actions";
 import { CALL_OFF_REASONS } from "@/lib/day/relay-types";
@@ -36,17 +36,36 @@ export function CancelBooking({
   bookingId,
   reference,
   isCash,
-  onCancelled,
+  available = true,
+  context = "booking",
+  heading,
+  onDone,
 }: {
   bookingId: string;
   reference: string;
   /** A booking the traveller pays at the counter. Decides the money sentence. */
   isCash: boolean;
   /**
-   * Called once the booking is cancelled, so a caller that is not a whole page
-   * can react. The booking screen refreshes; #56's manifest row closes itself.
+   * Whether the booking can still be cancelled. The control stays MOUNTED when
+   * it cannot, drawing nothing, so the receipt of a cancel survives the
+   * refresh that follows it (the refreshed page no longer offers the cancel).
    */
-  onCancelled?: () => void;
+  available?: boolean;
+  /**
+   * Where it sits, which decides what happens after a cancel (op#89 f16):
+   *
+   *   `booking`   its own page. The page behind the receipt re-reads at once,
+   *               so "Collect ₹15,000" and "Cash taken" do not sit under the
+   *               words "This booking is cancelled".
+   *   `manifest`  a row. The row puts its other controls away (`onDone`), and
+   *               "Update the list" re-reads it. Re-reading at once would take
+   *               the row, and the receipt with it, straight off the list.
+   */
+  context?: "booking" | "manifest";
+  /** Drawn over the control on the booking page, only when it shows anything. */
+  heading?: string;
+  /** Called once, when the booking is cancelled. */
+  onDone?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [state, act, pending] = useActionState<CancelState, FormData>(
@@ -56,20 +75,39 @@ export function CancelBooking({
   const router = useRouter();
 
   /*
-    Both outcomes reload, and `alreadyCancelled` is one of them: it is what a
-    lost response on one bar of signal looks like, and the issue is explicit
-    that "pressing again after it worked shows the booking as cancelled, not an
-    error."
+    Both outcomes count as done, and `alreadyCancelled` is one of them: it is
+    what a lost response on one bar of signal looks like, and the issue is
+    explicit that "pressing again after it worked shows the booking as
+    cancelled, not an error."
 
     `router.refresh()` rather than leaving it to `revalidatePath`: the action
-    revalidates the route, but this component's caller may be a manifest row
-    inside a page that has not re-fetched, and the returned figures have to stay
-    on screen while the page behind them catches up.
+    does not revalidate, because a re-render that dropped this control would
+    drop its receipt too. The booking page keeps this control mounted
+    (`available`), so it can re-read underneath it.
   */
   const finished = Boolean(state.done || state.alreadyCancelled);
+  useEffect(() => {
+    if (!finished) return;
+    onDone?.();
+    if (context === "booking") router.refresh();
+    // `finished` flips once, from false to true; the rest are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished]);
+
+  const wrap = (body: ReactNode) =>
+    heading ? (
+      <section className="mt-8" aria-labelledby={`cancel-${bookingId}`}>
+        <h2 id={`cancel-${bookingId}`} className="label text-forest/75">
+          {heading}
+        </h2>
+        {body}
+      </section>
+    ) : (
+      body
+    );
 
   if (finished) {
-    return (
+    return wrap(
       <Panel tone="done" role="status" className="mt-4 p-4">
         <p className="text-base font-bold">This booking is cancelled</p>
         {state.done ? (
@@ -99,33 +137,34 @@ export function CancelBooking({
             It was already cancelled, and nothing was refunded twice.
           </p>
         )}
-        <div className="mt-4">
-          <Button
-            variant="secondary"
-            block={false}
-            onClick={() => {
-              onCancelled?.();
-              router.refresh();
-            }}
-          >
-            Show the booking
-          </Button>
-        </div>
-      </Panel>
+        {context === "manifest" ? (
+          <div className="mt-4">
+            <Button
+              variant="secondary"
+              block={false}
+              onClick={() => router.refresh()}
+            >
+              Update the list
+            </Button>
+          </div>
+        ) : null}
+      </Panel>,
     );
   }
 
+  if (!available) return null;
+
   if (!open) {
-    return (
+    return wrap(
       <div className="mt-4">
         <Button variant="danger" onClick={() => setOpen(true)}>
           Cancel this booking
         </Button>
-      </div>
+      </div>,
     );
   }
 
-  return (
+  return wrap(
     <form action={act} className="border-paper-line mt-4 border-t pt-4">
       <input type="hidden" name="bookingId" value={bookingId} />
 
@@ -227,6 +266,6 @@ export function CancelBooking({
           Keep it
         </Button>
       </div>
-    </form>
+    </form>,
   );
 }

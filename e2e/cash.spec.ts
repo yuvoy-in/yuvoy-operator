@@ -51,11 +51,23 @@ test("it leads with what was collected, and the share reads as a share", async (
   /*
     Collected first, share second. The order is the argument: our cut reads as
     a share of money already in their hand rather than a bill out of nowhere.
+
+    And ALL of what is in their hand (op#94 item 4): ₹27,000 recorded on the
+    completed trips plus ₹15,000 taken for trips still to run. It showed the
+    first half only, which is how ₹10,000 sat on screen against ₹25,000 taken.
   */
-  await expect(page.getByText("₹30,000")).toBeVisible();
-  await expect(page.getByText("taken from travellers")).toBeVisible();
-  await expect(page.getByText("₹4,500")).toBeVisible();
-  await expect(page.getByText(/Yuvoy.{1,3}s share/)).toBeVisible();
+  await expect(page.getByText("₹42,000")).toBeVisible();
+  await expect(
+    page.getByText("recorded as taken from travellers"),
+  ).toBeVisible();
+  /*
+    The two shares, read off the summary's own rows: a trip line can carry the
+    same figure (YV-7T4WPZ's share is ₹2,250 too).
+  */
+  const share = (label: RegExp) =>
+    page.locator("dl > div").filter({ hasText: label }).locator("dd");
+  await expect(share(/owed now/)).toHaveText("₹4,500");
+  await expect(share(/trips still to run/)).toHaveText("₹2,250");
 
   /*
     The wording rules, as assertions. "Cash taken" and "collected", never
@@ -73,17 +85,58 @@ test("every trip behind the number is listed and checkable", async ({
   await signIn(page, OWNER);
   await page.goto("/cash");
 
-  // Reference, date, guests, fare and share — the five things that let an
+  // Reference, date, guests, fare and share: the five things that let an
   // operator check a line against their own book.
-  await expect(page.getByText("YV-8F3K2A")).toBeVisible();
-  await expect(page.getByText("YV-2M9QX1")).toBeVisible();
-  await expect(page.getByText("YV-7T4WPZ")).toBeVisible();
-  await expect(page.getByText("2 guests")).toBeVisible();
-  await expect(page.getByText("1 guest", { exact: true })).toBeVisible();
+  const owed = page.getByRole("region", { name: "Owed now" });
+  await expect(owed.getByText("YV-8F3K2A")).toBeVisible();
+  await expect(owed.getByText("YV-2M9QX1")).toBeVisible();
+  await expect(owed.getByText("YV-7T4WPZ")).toBeVisible();
+  await expect(owed.getByText("2 guests")).toBeVisible();
+  await expect(owed.getByText("1 guest", { exact: true })).toBeVisible();
 
   // Most recent first, so two loads do not disagree about the top row.
-  const refs = await page.locator("li p.font-mono").allTextContents();
+  const refs = await owed.locator("li p.font-mono").allTextContents();
   expect(refs).toEqual(["YV-8F3K2A", "YV-2M9QX1", "YV-7T4WPZ"]);
+});
+
+test("cash taken for trips still to run is shown apart from what is owed", async ({
+  page,
+}) => {
+  /*
+    op#94 item 4. Held cash is the operator's, with our share owed only once
+    the trip is done, so it is its own list, soonest trip first: the next one
+    is the one they are about to take money for.
+  */
+  await signIn(page, OWNER);
+  await page.goto("/cash");
+
+  const held = page.getByRole("region", { name: "Held, trip still to run" });
+  const refs = await held.locator("li p.font-mono").allTextContents();
+  expect(refs).toEqual(["YV-H3LD0A1", "YV-H3LD0B2"]);
+  await expect(
+    page.getByRole("region", { name: "Owed now" }),
+  ).not.toContainText("YV-H3LD0A1");
+});
+
+test("a trip that ran with no cash recorded is named, with the way to close it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-api#221. The trip happened and nothing says whether the business was
+    paid, so it is in no held or owed figure, and only the operator can close
+    it: record the cash, or mark the party a no-show.
+  */
+  await signIn(page, OWNER);
+  await page.goto("/cash");
+
+  const unrecorded = page.getByRole("region", { name: "No cash recorded" });
+  await expect(
+    unrecorded.getByText("1 past cash trip has no payment recorded"),
+  ).toBeVisible();
+  await expect(unrecorded.getByText("YV-UNR3C0D")).toBeVisible();
+  await expect(
+    unrecorded.getByRole("link", { name: "Open the booking" }),
+  ).toHaveAttribute("href", "/bookings?view=past&q=YV-UNR3C0D");
 });
 
 test("a shortfall is explained rather than left looking like an error", async ({

@@ -304,17 +304,20 @@ export default async function BookingPage({
         `me.canManage` is the role gate — STAFF never sees it — and it stays
         drawn while the business is suspended (#50).
       */}
-      {me.canManage && canCancelBooking(booking.state, booking.startsAt, at) ? (
-        <section className="mt-8" aria-labelledby="cancel">
-          <h2 id="cancel" className="label text-forest/75">
-            Cannot run this one
-          </h2>
-          <CancelBooking
-            bookingId={booking.id || id}
-            reference={booking.reference}
-            isCash={Boolean(booking.cash)}
-          />
-        </section>
+      {/*
+        Mounted for every manager whether or not the booking can still be
+        cancelled, drawing nothing when it cannot. That is what lets the
+        receipt of a cancel stay on screen while the page underneath re-reads
+        to the cancelled booking (op#89 f16).
+      */}
+      {me.canManage ? (
+        <CancelBooking
+          bookingId={booking.id || id}
+          reference={booking.reference}
+          isCash={Boolean(booking.cash)}
+          available={canCancelBooking(booking.state, booking.startsAt, at)}
+          heading="Cannot run this one"
+        />
       ) : null}
 
       {thread ? (
@@ -344,10 +347,9 @@ export default async function BookingPage({
 
       <p className="text-forest/70 border-paper-line mt-10 border-t pt-6 text-xs">
         We do not show traveller phone numbers, and neither side can type one
-        into the conversation. Read the reference back to them at the jetty
-        (they have it in every message we send), and to tell everybody on a
-        departure something at once, use the message box on that day under
-        Today.
+        into the conversation. Read the reference back to them at the jetty (it
+        is on their booking page), and to tell everybody on a departure
+        something at once, use the message box on that day under Today.
       </p>
     </Screen>
   );

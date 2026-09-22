@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import { readShape } from "@/lib/account/read-shape";
 import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
+import { getChangeRequests } from "@/lib/money/fetch";
+import { reviewNote, reviewOf } from "@/lib/account/review";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
+import { ReviewPanel } from "@/components/account/review-panel";
 import { LogoUploader } from "./logo-uploader";
 
 export const metadata: Metadata = { title: "Your logo" };
@@ -22,7 +25,7 @@ export const dynamic = "force-dynamic";
  * blocker and goes back to it.
  */
 export default async function LogoPage() {
-  const { token } = await requireOperator();
+  const { token, me } = await requireOperator();
 
   /*
     Soft-failing. The uploader is the subject of this screen and works without
@@ -30,16 +33,25 @@ export default async function LogoPage() {
     "replace" wording, not the ability to set a logo. An operator whose
     account is blocked on a missing logo must not be stopped by a read.
   */
-  const current = await operatorApi(token)
-    .GET("/logo", {})
+  const [current, changes] = await Promise.all([
+    operatorApi(token)
+      .GET("/logo", {})
+      /*
+        `readShape` because the contract declares a `202` on this GET whose
+        body is the "recorded for review" acknowledgement, not a logo: see
+        src/lib/account/read-shape.ts. A read cannot record anything for
+        review, so that shape is treated as "nothing to show" rather than
+        rendered.
+      */
+      .then((r) => (r.error ? null : readShape(r.data)))
+      .catch(() => null),
     /*
-      `readShape` because the contract declares a `202` on this GET whose body
-      is the "recorded for review" acknowledgement, not a logo — see
-      src/lib/account/read-shape.ts. A read cannot record anything for review,
-      so that shape is treated as "nothing to show" rather than rendered.
+      Whether a new mark is waiting on us (yuvoy-operator#89 f10). Soft, like
+      the read above: `[]` on failure, which says nothing rather than
+      something false.
     */
-    .then((r) => (r.error ? null : readShape(r.data)))
-    .catch(() => null);
+    getChangeRequests(token),
+  ]);
 
   /*
     "`logoUrl` is absent when there is no logo, and ALSO when image hosting is
@@ -49,6 +61,7 @@ export default async function LogoPage() {
   */
   const hasLogo = Boolean(current?.imageId);
   const logoUrl = current?.logoUrl;
+  const review = reviewNote(reviewOf(changes, "logo", current?.uploadedAt));
 
   return (
     <Screen
@@ -59,9 +72,16 @@ export default async function LogoPage() {
       <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
         Your logo
       </h1>
+      {/*
+        "We need one before you can be booked" used to close this sentence. It
+        stopped being true with yuvoy-api#139, which took a missing logo off
+        the list of things that stop a sale on a LIVE business. Whether it
+        stops THIS business is on Business, which reads `gates` per blocker
+        rather than guessing.
+      */}
       <p className="text-forest/70 mt-3 text-base">
         Travellers see it on a card with no clip, and on the page about your
-        business. We need one before you can be booked.
+        business.
       </p>
 
       <Panel className="mt-8">
@@ -100,15 +120,37 @@ export default async function LogoPage() {
           <p className="text-base font-bold">You have not set one yet</p>
         )}
 
+        {review ? (
+          <div className="mt-6">
+            <ReviewPanel note={review} subject="logo" hasCurrent={hasLogo} />
+          </div>
+        ) : null}
+
         <div className="mt-6">
-          <LogoUploader hasLogo={hasLogo} />
+          {me.canManage ? (
+            <LogoUploader hasLogo={hasLogo} />
+          ) : (
+            /*
+              Refused before the tap rather than after it. Both the upload slot
+              and `PUT /logo` are OWNER, ADMIN or MANAGER only, so a staff
+              login offered the file picker chose a picture, waited for it,
+              and was then told their role could not do it.
+            */
+            <p className="text-forest/80 text-sm">
+              Only an owner, an admin or a manager can change the logo. Ask one
+              of them at your business.
+            </p>
+          )}
         </div>
       </Panel>
 
+      {/*
+        The one sentence that changes what somebody does: without it, an
+        operator whose new mark has not appeared yet uploads it again.
+      */}
       <p className="text-forest/70 mt-8 text-sm">
-        A logo is the one thing here you can change whenever you like. It is
-        presentation, not identity, and nothing is verified against it.
-        Replacing it removes the old picture rather than keeping both.
+        Once your account is live, we look at a new logo before it replaces the
+        one travellers see.
       </p>
     </Screen>
   );

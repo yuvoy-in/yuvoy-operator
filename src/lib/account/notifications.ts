@@ -9,6 +9,17 @@
  * that a payout summary was never going to reach them." A portal writing its own
  * copy would have to know which messages reach which role, and it does not.
  *
+ * ## Only the switches the API sends, never one it did not
+ *
+ * The set grows by contract change: `seat_confirmations` arrived at yuvoy-api
+ * e7291e3 (yuvoy-operator#94 item 3), a once-a-day list of departures off sale
+ * or going off sale because nobody confirmed their seats, on by default. It
+ * needs no code here: it is drawn where the API puts it, in the API's words,
+ * like the five before it. And an older API that does not send it gets no row,
+ * because a row it did not send has no true state: drawn off, it tells
+ * somebody they silenced something they never touched, and drawn on, it
+ * promises a message that service never sends.
+ *
  * ## A switch that is off is not a message that vanishes
  *
  * "A switch that is off does not make a message vanish: it is recorded as not

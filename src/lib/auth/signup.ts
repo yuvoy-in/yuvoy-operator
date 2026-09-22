@@ -1,4 +1,26 @@
 import { z } from "zod";
+import { EMAIL_MAX_LENGTH, looksLikeEmail } from "./email";
+
+/**
+ * Whether creating an account insists on an email address.
+ *
+ * OWNER RULING, 21 September 2026 (yuvoy-operator#91 f22): **required until
+ * WhatsApp delivers.** The contract keeps `email` optional on
+ * `POST /auth/signup` and that does not change; the requirement is this
+ * portal's, for a reason that is about signing in rather than signing up.
+ *
+ * There is no WhatsApp sender (yuvoy-api#68), and since yuvoy-api 67e3213 every
+ * sign-in code goes to the email address on the account. An account created
+ * without one was an account its owner could not sign back into: the code for
+ * their second visit had nowhere to go, and the only way in was a person at
+ * Yuvoy reading one out. The review found exactly that (f22).
+ *
+ * One switch, here, so relaxing it is one line. The day a phone sender
+ * delivers codes, set this to `false`: the schema goes back to taking a blank
+ * address, and the form reads it to drop the `required` and the hint that says
+ * codes are emailed. Both halves read this constant, so they cannot disagree.
+ */
+export const EMAIL_REQUIRED_AT_SIGNUP = true;
 
 /**
  * O1 — what an operator types to create their own account.
@@ -47,50 +69,83 @@ const phone = z
       ),
   );
 
-export const signUpSchema = z.object({
-  businessName: z
+/**
+ * The address, required or not.
+ *
+ * Required (the ruling above): an empty field is refused with the reason it is
+ * needed, before anything is sent, and a malformed one with what to fix.
+ *
+ * Optional (once relaxed): an empty field is OMITTED from the body rather than
+ * sent as "". The request body is `additionalProperties: false` and an empty
+ * string is a value, not an absence, so sending it would store a blank address
+ * that looks like a real one to whoever tries to use it later. A malformed one
+ * is still refused: a typo stored is a code emailed to nobody.
+ */
+function emailField(required: boolean) {
+  const shaped = z
     .string()
     .trim()
-    .min(2, "What is the business called? Travellers will see this.")
-    .max(120, "That is longer than a name travellers would read. Shorten it."),
-  name: z
-    .string()
-    .trim()
-    .min(2, "Your name, so we know who we are talking to.")
-    .max(120, "That is longer than a name we can use. Shorten it."),
-  phone,
-  /*
-    REQUIRED here, and optional in the contract.
+    .max(EMAIL_MAX_LENGTH, "That is longer than an email address can be.")
+    .refine(
+      looksLikeEmail,
+      "That does not look like an email address. Check it and try again.",
+    );
+  const missing =
+    "Add your email address. Your sign-in codes go there for now.";
+  return required
+    ? /*
+        The same sentence for a field that is empty and one that never
+        arrived: a hand-built POST without the key is as unanswered as a blank
+        box, and zod's own "expected string" is not a sentence for anybody.
+      */
+      z.string({ message: missing }).trim().min(1, missing).pipe(shaped)
+    : shaped.optional().or(z.literal("").transform(() => undefined));
+}
 
-    "Absent means `own`, which is what every sign-up meant before the question
-    was asked" — a sensible default for an older client, and the wrong thing for
-    a form that can simply ask. Defaulting silently would make somebody who runs
-    a business for its owner into its owner, and the first they would hear of it
-    is a bank change they are allowed to make. The issue asks for "a required
-    choice with two options" and this is why.
+/**
+ * The form's schema, for either answer to `EMAIL_REQUIRED_AT_SIGNUP`.
+ *
+ * Built by a function so the relaxed form is tested today rather than
+ * discovered the day somebody flips the switch.
+ */
+export function signUpSchemaFor({ emailRequired }: { emailRequired: boolean }) {
+  return z.object({
+    businessName: z
+      .string()
+      .trim()
+      .min(2, "What is the business called? Travellers will see this.")
+      .max(
+        120,
+        "That is longer than a name travellers would read. Shorten it.",
+      ),
+    name: z
+      .string()
+      .trim()
+      .min(2, "Your name, so we know who we are talking to.")
+      .max(120, "That is longer than a name we can use. Shorten it."),
+    phone,
+    /*
+      REQUIRED here, and optional in the contract.
 
-    No `.default()` either: a default here would turn "they did not answer" into
-    an answer, which is the same mistake by a shorter route.
-  */
-  relationship: z.enum(["own", "run"], {
-    message: "Say whether you own this business or run it for the owner.",
-  }),
-  /*
-    Optional in the contract, and genuinely optional here: an operator on a
-    jetty may not have an email and must not be stopped by one. An empty field
-    is OMITTED from the body rather than sent as "" — the request body is
-    `additionalProperties: false` and an empty string is a value, not an
-    absence, so sending it would store a blank address that looks like a real
-    one to whoever tries to use it later.
-  */
-  email: z
-    .string()
-    .trim()
-    .email(
-      "That does not look like an email address. Leave it blank if unsure.",
-    )
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
+      "Absent means `own`, which is what every sign-up meant before the question
+      was asked": a sensible default for an older client, and the wrong thing
+      for a form that can simply ask. Defaulting silently would make somebody
+      who runs a business for its owner into its owner, and the first they
+      would hear of it is a bank change they are allowed to make. The issue
+      asks for "a required choice with two options" and this is why.
+
+      No `.default()` either: a default here would turn "they did not answer"
+      into an answer, which is the same mistake by a shorter route.
+    */
+    relationship: z.enum(["own", "run"], {
+      message: "Say whether you own this business or run it for the owner.",
+    }),
+    email: emailField(emailRequired),
+  });
+}
+
+export const signUpSchema = signUpSchemaFor({
+  emailRequired: EMAIL_REQUIRED_AT_SIGNUP,
 });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;

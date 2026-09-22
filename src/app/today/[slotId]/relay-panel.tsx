@@ -2,7 +2,13 @@
 
 import { useActionState, useState } from "react";
 import { sendRelay, type RelayState } from "./actions";
-import { NOTE_MAX, RELAY_INTENTS, relayIntent } from "@/lib/day/relay-types";
+import {
+  NOTE_MAX,
+  RELAY_INTENTS,
+  notReachedSentence,
+  relayHeadline,
+  relayIntent,
+} from "@/lib/day/relay-types";
 import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -59,27 +65,40 @@ function RelayRound({
   const sendsToPhone = spec?.detail !== "none";
 
   if (state.recipients !== undefined) {
+    const unreached = notReachedSentence(
+      state.notReached,
+      state.notReachedNote,
+    );
     return (
-      <Panel tone="done" className="mt-4 p-4">
-        <p className="text-sm font-bold">
-          {state.intent === "note"
-            ? `Note left for ${state.recipients} ${state.recipients === 1 ? "booking" : "bookings"}`
-            : `Told ${state.recipients} ${state.recipients === 1 ? "person" : "people"}`}
-        </p>
+      <Panel tone="done" role="status" className="mt-4 p-4">
         {/*
-          A relay that reached nobody looks identical to one that reached
-          eleven people unless the number is on screen. Zero is worth saying
-          out loud — every party on a departure being a live hold does it.
+          Who was told, and how. The count is people a message is actually
+          going to, not bookings written (yuvoy-api#200, op#89): this panel
+          said "Told 1 person" about a departure nobody heard from.
         */}
-        {state.recipients === 0 ? (
-          <p className="text-terra-deep mt-1.5 text-sm">
-            Nobody was reached. There may be no confirmed bookings on this
-            departure yet.
-          </p>
-        ) : null}
+        <p className="text-sm font-bold">
+          {relayHeadline(
+            {
+              intent: state.intent,
+              recipients: state.recipients,
+              byChannel: state.byChannel,
+            },
+            bookingId ? "booking" : "departure",
+          )}
+        </p>
         {state.intent === "note" ? (
           <p className="text-forest/80 mt-1.5 text-sm">
-            It is on their booking page. It was not sent to a phone.
+            Its words were not sent to a phone.
+          </p>
+        ) : null}
+        {/*
+          The people nothing could reach, in the API's words. The one line on
+          this receipt that changes what the operator does next: those people
+          have not heard, and only the operator can tell them another way.
+        */}
+        {unreached ? (
+          <p className="text-terra-deep mt-1.5 text-sm font-bold">
+            {unreached}
           </p>
         ) : null}
         <Button onClick={onAgain} variant="secondary" className="mt-3">
