@@ -6668,8 +6668,15 @@ export const handlers = [
       return envelope("forbidden", "Only the owner can change this.", 403);
     }
 
+    /*
+      Open BANK changes only. The list also carries logo and details changes
+      waiting for review (the same table, another `kind`), and one of those in
+      flight says nothing about where the money goes: counting it refused
+      every bank change raised after a live business sent a new logo.
+    */
     const open = changesFor(request).filter(
       (r) =>
+        (r as { kind?: string }).kind === "bank" &&
         !stoppedChanges.includes(String((r as { id?: string }).id)) &&
         ["objection_window", "pending", "cooling", "approved"].includes(
           String((r as { state?: string }).state),
