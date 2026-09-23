@@ -4,7 +4,6 @@ import { requireOperator } from "@/lib/auth/session";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError } from "@/lib/api/errors";
 import {
-  STEP_LABEL,
   openingStep,
   previousStep,
   nextStep,
@@ -69,7 +68,6 @@ export default async function EditListingPage({
         nav={{
           back: { href: `/account/listings/${id}`, label: "the listing" },
         }}
-        stageLabel="Edit listing"
       >
         <h1 className="font-display tracking-display text-3xl leading-tight">
           Edit
@@ -113,7 +111,7 @@ export default async function EditListingPage({
 
   if (status !== "draft") {
     return (
-      <Screen nav={{ back }} stageLabel="Edit listing">
+      <Screen nav={{ back }}>
         <h1 className="font-display tracking-display text-4xl leading-[1.05]">
           Edit
         </h1>
@@ -177,9 +175,8 @@ export default async function EditListingPage({
       : [];
 
   return (
-    <Screen nav={{ back }} stageLabel="Add a listing">
-      <p className="eyebrow text-terra-deep">Step {STEP_LABEL[step]}</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    <Screen nav={{ back }}>
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         {listing.title || "Your listing"}
       </h1>
 

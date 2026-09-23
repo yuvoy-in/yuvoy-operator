@@ -42,3 +42,19 @@ export function choiceClass(checked?: boolean, className?: string): string {
     className,
   );
 }
+
+/**
+ * The words that name a field.
+ *
+ * NOT the `label` utility, which is uppercase and wide-tracked. That is the
+ * brand's editorial voice and it belongs over a section, not on a box somebody
+ * is about to type in: set in it, an ordinary question becomes "WHAT IS IT
+ * CALLED", which is the same question shouted (yuvoy-operator#85 s11).
+ *
+ * Sentence case, at 14px, a step above the 12px hint underneath it and a step
+ * below the 16px the field itself is set in. Inline, like the `<label>` it
+ * dresses, so a label sitting beside its control still can.
+ */
+export function fieldLabelClass(className?: string): string {
+  return cn("text-forest/75 text-sm font-medium", className);
+}

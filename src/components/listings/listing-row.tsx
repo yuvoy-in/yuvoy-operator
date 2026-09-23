@@ -13,7 +13,7 @@ import { activityChoices, type Vocabulary } from "@/lib/services/vocabulary";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { PauseResume } from "./pause-resume";
-import { inputClass } from "@/components/ui/input";
+import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 
 /**
@@ -290,9 +290,9 @@ export function ListingRow({
           <div>
             <label
               htmlFor={`title-${listing.id}`}
-              className="label text-forest/75"
+              className={fieldLabelClass()}
             >
-              What it is called
+              Name
             </label>
             <input
               id={`title-${listing.id}`}
@@ -307,9 +307,9 @@ export function ListingRow({
           <div className="mt-4">
             <label
               htmlFor={`summary-${listing.id}`}
-              className="label text-forest/75"
+              className={fieldLabelClass()}
             >
-              The short line
+              One line about it
             </label>
             <input
               id={`summary-${listing.id}`}
@@ -336,9 +336,9 @@ export function ListingRow({
             <div className="mt-4">
               <label
                 htmlFor={`activity-${listing.id}`}
-                className="label text-forest/75"
+                className={fieldLabelClass()}
               >
-                What kind of activity
+                Activity
               </label>
               <select
                 id={`activity-${listing.id}`}
@@ -368,9 +368,9 @@ export function ListingRow({
           <div className="mt-4">
             <label
               htmlFor={`description-${listing.id}`}
-              className="label text-forest/75"
+              className={fieldLabelClass()}
             >
-              What actually happens
+              What happens on the day
             </label>
             <textarea
               id={`description-${listing.id}`}
@@ -384,7 +384,7 @@ export function ListingRow({
           <div className="mt-4">
             <label
               htmlFor={`meeting-${listing.id}`}
-              className="label text-forest/75"
+              className={fieldLabelClass()}
             >
               Where to meet
             </label>
@@ -399,7 +399,7 @@ export function ListingRow({
           <div className="mt-4">
             <label
               htmlFor={`price-${listing.id}`}
-              className="label text-forest/75"
+              className={fieldLabelClass()}
             >
               Price
             </label>
@@ -432,7 +432,7 @@ export function ListingRow({
             then clear a basis the operator never touched.
           */}
           <fieldset className="mt-4">
-            <legend className="label text-forest/75">
+            <legend className={fieldLabelClass()}>
               Is that per person, or for the whole group?
             </legend>
             <div className="mt-3 space-y-2">
@@ -478,9 +478,9 @@ export function ListingRow({
             <div>
               <label
                 htmlFor={`duration-${listing.id}`}
-                className="label text-forest/75"
+                className={fieldLabelClass()}
               >
-                How long, in minutes
+                How long
               </label>
               <input
                 id={`duration-${listing.id}`}
@@ -488,12 +488,19 @@ export function ListingRow({
                 inputMode="numeric"
                 defaultValue={listing.durationMinutes ?? ""}
                 className={inputClass("mt-2")}
+                aria-describedby={`duration-help-${listing.id}`}
               />
+              <p
+                id={`duration-help-${listing.id}`}
+                className="text-forest/70 mt-1.5 text-xs"
+              >
+                In minutes.
+              </p>
             </div>
             <div>
               <label
                 htmlFor={`party-${listing.id}`}
-                className="label text-forest/75"
+                className={fieldLabelClass()}
               >
                 Most people per booking
               </label>
@@ -510,7 +517,7 @@ export function ListingRow({
           <div className="mt-4">
             <label
               htmlFor={`inclusions-${listing.id}`}
-              className="label text-forest/75"
+              className={fieldLabelClass()}
             >
               What is included
             </label>
@@ -529,9 +536,9 @@ export function ListingRow({
           <div className="mt-4">
             <label
               htmlFor={`requirements-${listing.id}`}
-              className="label text-forest/75"
+              className={fieldLabelClass()}
             >
-              What a traveller needs to bring or be able to do
+              What a traveller needs
             </label>
             <textarea
               id={`requirements-${listing.id}`}
@@ -541,14 +548,15 @@ export function ListingRow({
               className={inputClass("mt-2")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
-              One per line. This is the field a review comes back on most often.
+              What to bring, and what they need to be able to do, one per line.
+              This is the field a review comes back on most often.
             </p>
           </div>
 
           <div className="mt-4">
             <label
               htmlFor={`safety-${listing.id}`}
-              className="label text-forest/75"
+              className={fieldLabelClass()}
             >
               Safety notes
             </label>

@@ -5,7 +5,7 @@ import { saveSelling, type StepState } from "../builder-actions";
 import { PRICING_UNITS } from "@/lib/services/listings";
 import { commissionPreview, formatRate } from "@/lib/services/commission";
 import { formatPaise } from "@/lib/format/money";
-import { inputClass } from "@/components/ui/input";
+import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
 
 /**
@@ -79,7 +79,7 @@ export function SellingStep({
       <input type="hidden" name="id" value={id} />
 
       <div>
-        <label htmlFor="s-price" className="label text-forest/75">
+        <label htmlFor="s-price" className={fieldLabelClass()}>
           Price
         </label>
         <input
@@ -102,7 +102,7 @@ export function SellingStep({
       </div>
 
       <fieldset>
-        <legend className="label text-forest/75">How it is charged</legend>
+        <legend className={fieldLabelClass()}>How it is charged</legend>
         <div className="mt-2 flex flex-wrap gap-5 text-sm">
           {PRICING_UNITS.map((unit) => (
             <label key={unit.value} className="flex items-center gap-2">
@@ -127,7 +127,7 @@ export function SellingStep({
       </fieldset>
 
       <div>
-        <label htmlFor="s-party" className="label text-forest/75">
+        <label htmlFor="s-party" className={fieldLabelClass()}>
           Most people per booking
         </label>
         <input
@@ -143,8 +143,8 @@ export function SellingStep({
       </div>
 
       <div>
-        <label htmlFor="s-duration" className="label text-forest/75">
-          How long, in minutes
+        <label htmlFor="s-duration" className={fieldLabelClass()}>
+          How long
         </label>
         <input
           id="s-duration"
@@ -154,12 +154,16 @@ export function SellingStep({
           required
           defaultValue={listing.durationMinutes ?? 120}
           className={inputClass("mt-2")}
+          aria-describedby="s-duration-help"
           aria-invalid={marked("durationMinutes")}
         />
+        <p id="s-duration-help" className="text-forest/70 mt-1.5 text-xs">
+          In minutes.
+        </p>
       </div>
 
       <fieldset>
-        <legend className="label text-forest/75">How it sells</legend>
+        <legend className={fieldLabelClass()}>How it sells</legend>
         <div className="mt-2 space-y-2 text-sm">
           <label className="flex items-center gap-2">
             <input
