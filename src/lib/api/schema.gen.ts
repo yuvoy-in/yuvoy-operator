@@ -209,6 +209,8 @@ export interface paths {
          * @description A number nobody invited is refused **before anything is sent**. That this reveals whether a number was invited is deliberate: the alternative is a page that fires one-time codes at any phone somebody types, which is a free SMS gateway pointed at strangers.
          *
          *     On success the response says what they are joining as, and — if this number already works with another business — names the one they would be leaving, so the screen can ask before they accept.
+         *
+         *     `sent` says whether the code is actually on its way. It is read back from the queued message, so an invitation made without an email address, on a deployment with no phone sender, answers `false` and `note` says what the person can do about it. Read `sent` and show `note`: until this landed the answer was always `true`, and somebody invited by number alone waited for a message nothing was carrying.
          */
         post: operations["requestJoinCode"];
         delete?: never;
@@ -1084,6 +1086,32 @@ export interface paths {
          */
         post: operations["recordOfflineSale"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/slots/{id}/offline-sales/{saleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * That counter sale was a mistake
+         * @description Takes back one entry recorded by `POST /slots/{id}/offline-sales`, with the `id` that call returned. This is the correction this document sends you to from `seatsGrantable` and from the counter-sales flavour of `grant_ceiling_exceeded`: a mistyped 20 instead of 2 takes the whole boat and refuses every accept on the departure, and this is what raises those numbers again.
+         *
+         *     **The entry is not deleted.** Taking it back writes a second row cancelling the first and both stay on the record, so what you told us and when is still there on a departure that ended in an incident. What changes is the arithmetic: the pair nets to nothing, the seats come back, and `GET /slots` reports the departure's new `soldOffline` straight away.
+         *
+         *     **An honour incident already raised is not withdrawn.** If the report left travellers without a seat when you made it, that happened, and somebody at our end closes it with what they found. Taking a counter sale back only ever gives seats back, so it never strands anybody and never opens an incident of its own.
+         *
+         *     The same roles as recording one, which is everybody signed in: the person who mistypes the count is the person at the counter, and a correction only an owner can reach is a wrong number left standing all day.
+         */
+        delete: operations["takeBackOfflineSale"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2494,6 +2522,15 @@ export interface components {
             sold?: number;
             remaining?: number;
             /**
+             * @description Seats sold at your own counter on this departure. Always present, `0` when there are none.
+             *
+             *     **Already taken off `seats`.** It is carried separately because `seats` and `sold` cannot say why a six-seat departure shows four: the count used to exist only in the answer to the tap that recorded it, so the next visit read "0 of 4 sold · 4 left" with nothing naming the two people at the counter.
+             *
+             *     The same number the manifest reports as `totals.seatsSoldOffline`, read from the same place, so the card and the manifest cannot disagree about it. It falls again when an entry is taken back with `DELETE /slots/{id}/offline-sales/{saleId}`.
+             * @example 2
+             */
+            soldOffline?: number;
+            /**
              * @description Whether this departure holds seats (`allotment`) or waits on the operator to answer (`request`). The same enum the traveller catalog uses, because it is the same fact.
              *
              *     On the departure rather than the listing: a listing can carry both, and this screen is looking at departures. Without it the portal could only infer request mode indirectly, by noticing a row in the requests queue — an inference, and a wrong one for any departure nobody has asked about yet.
@@ -2868,7 +2905,7 @@ export interface components {
              *
              *     **Counter sales count as seats used.** A seat you sold at your own counter has a person in it, so it lowers this number by one. A six-seat departure with two sold at the counter offers 4. It used to offer 8, because the arithmetic added the counter sale instead of subtracting it, and accepting then failed with a 500: the database refused the oversell the number had invited.
              *
-             *     **Never more than an accept will allow.** The same expression the accept refuses on, so a party this number says you have room for is one `POST /requests/{id}/accept` will say yes to. `0` means the departure is full, counting what you sold at the counter. If that count is wrong, correcting it on the counter sales screen is what raises this number again.
+             *     **Never more than an accept will allow.** The same expression the accept refuses on, so a party this number says you have room for is one `POST /requests/{id}/accept` will say yes to. `0` means the departure is full, counting what you sold at the counter. If that count is wrong, taking the entry back with `DELETE /slots/{id}/offline-sales/{saleId}` is what raises this number again.
              * @example 4
              */
             seatsGrantable?: number;
@@ -3051,6 +3088,8 @@ export interface components {
             returnedPaise?: number;
         };
         OfflineSaleResult: {
+            /** @description This entry, which is what `DELETE /slots/{id}/offline-sales/{saleId}` takes back. Keep it on the receipt: this screen is the one place that knows a wrong count was just recorded, and without the id it would be the only one that cannot correct it. */
+            id?: string;
             seatsRecorded?: number;
             /** @description Never negative. An oversell is an incident, not a number on a screen. */
             seatsRemaining?: number;
@@ -3062,6 +3101,15 @@ export interface components {
                 message?: string;
                 incidentId?: string;
             };
+        };
+        /** @description The departure after one counter sale was taken back. */
+        OfflineSaleTakeBack: {
+            /** @description The entry's own count, positive. What has just been unsaid. */
+            seatsTakenBack: number;
+            /** @description Seats left on the departure now those came back. */
+            seatsRemaining: number;
+            /** @description What is still recorded as sold at your counter on this departure, the take-back counted. The same number `GET /slots` reports as `soldOffline` and the manifest reports as `totals.seatsSoldOffline`. */
+            totalSoldOffline: number;
         };
         /**
          * @description **Money you are holding that is not yours.** These travellers paid you in cash at the counter and paid us nothing online, so there is nothing for us to refund and nothing will reach them from our side. Hand it back, then record it with `POST /bookings/{id}/cash-returned`, which is what takes a party off this list.
@@ -3161,6 +3209,12 @@ export interface components {
             objectionUntil?: string | null;
             /** Format: date-time */
             coolingUntil?: string | null;
+            /**
+             * @description Why we refused it, in a sentence written for the business. Present only when `state` is `rejected` and somebody recorded a reason at the time; absent means none was recorded, and the portal should then say nothing rather than invent one.
+             *
+             *     Never the words our staff typed. That note is written for our records and can name the bank we rang or the person we spoke to, which is the same reason a suspension's reason is kept off `GET /me`. The sentence here is chosen from the kind of change, the way the suspension sentence is chosen from the status.
+             */
+            rejectionReason?: string;
         };
         /** @description One person's notification switches, every one of them, in the order a screen shows them. A switch nobody has changed is on. */
         NotificationSettings: {
@@ -3729,25 +3783,8 @@ export interface operations {
                     };
                 };
             };
-            /**
-             * @description **Recorded for review, not applied.** Returned once the account is LIVE: a new mark is looked at before it appears on every reel and listing.
-             *
-             *     Deliberately carries NO `logoUrl`. The current logo is still the live one, and returning the new image's URL would have the portal render a logo that is not up yet. The old image is not purged for the same reason.
-             */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        state: "in_review";
-                        /** @description Say this out loud. */
-                        next: string;
-                    };
-                };
-            };
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     setOperatorLogo: {
@@ -3777,6 +3814,24 @@ export interface operations {
                     };
                 };
             };
+            /**
+             * @description **Recorded for review, not applied.** Returned once the account is LIVE: a new mark is looked at before it appears on every reel and listing.
+             *
+             *     Deliberately carries NO `logoUrl`. The current logo is still the live one, and returning the new image's URL would have the portal render a logo that is not up yet. The old image is not purged for the same reason.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        state: "in_review";
+                        /** @description Say this out loud. */
+                        next: string;
+                    };
+                };
+            };
             /** @description The upload has not arrived at the host yet. */
             400: {
                 headers: {
@@ -3788,6 +3843,15 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            /** @description No such image: the id was minted for another business, or nobody minted it. Also the answer when the account itself is not there. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description `media_unavailable` — the image host could not be reached. Retry safely. */
             502: {
                 headers: {
@@ -3908,13 +3972,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description A code is on its way. */
+            /** @description The invitation's code was refreshed. `sent` says whether anything is carrying it. */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
+                        /** @description Whether the code was queued for delivery. `false` when we hold no address we can reach the person on, which is an invitation made without an email address while there is no phone sender. The code still exists and still works, so somebody who already has it can accept. */
                         sent?: boolean;
                         businessName?: string;
                         /**
@@ -3924,6 +3989,7 @@ export interface operations {
                         role?: "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
                         name?: string;
                         leavingBusiness?: string;
+                        /** @description What the person joining should read. Present when `sent` is `false`, saying to ask whoever invited them to add them again with an email address, and when accepting would remove them from another business. Both can be true at once, and the sentences then arrive together in this one field. */
                         note?: string;
                         /** @description Non-production only. */
                         devCode?: string;
@@ -4035,24 +4101,6 @@ export interface operations {
                     "application/json": components["schemas"]["BusinessDetails"];
                 };
             };
-            /**
-             * @description **Recorded for review, not applied.** Returned once the account is LIVE.
-             *
-             *     The current details stay in place until an admin approves. A client that renders the submitted values as current is telling the operator something that is not yet true — branch on the status code, not on the body.
-             */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        state: "in_review";
-                        /** @description Say this out loud. */
-                        next: string;
-                    };
-                };
-            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
@@ -4093,18 +4141,28 @@ export interface operations {
                     "application/json": components["schemas"]["BusinessDetails"];
                 };
             };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description `details_locked` — the account is LIVE; these change by asking us. */
-            409: {
+            /**
+             * @description **Recorded for review, not applied.** Returned once the account is LIVE.
+             *
+             *     The current details stay in place until an admin approves. A client that renders the submitted values as current is telling the operator something that is not yet true, so branch on the status code rather than on the body.
+             */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": {
+                        /** @enum {string} */
+                        state: "in_review";
+                        /** @description Say this out loud. */
+                        next: string;
+                    };
                 };
             };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     submitCredential: {
@@ -4521,7 +4579,7 @@ export interface operations {
                     /**
                      * @description Optional. Where the invitation goes when no phone channel can carry it, which today is always: there is no WhatsApp sender. It is not a second way in. The code is still checked against the number, and accepting still proves the phone.
                      *
-                     *     Leave it out and the invitation is still created; `sent` is then `false` and `note` says to pass the link on yourself.
+                     *     Leave it out and the invitation is still created, but nothing carries it: `sent` is then `false` and `note` says to add them again with an email address.
                      */
                     email?: string;
                     /**
@@ -4550,7 +4608,7 @@ export interface operations {
                         /**
                          * @description Present when `role` is not the role that was asked for, and says so: they join as staff, and their role can be changed once they have joined. Show it to the person inviting.
                          *
-                         *     Also present when `sent` is `false`, saying to pass the join link and the code on by hand.
+                         *     Also present when `sent` is `false`, saying to add the person again with an email address. It no longer says to pass the code on: the code is in this answer only as `devCode`, in a development build, so the inviter has none to pass, and the link on its own opens nothing.
                          */
                         note?: string;
                         /**
@@ -5424,7 +5482,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description `request_not_open` — already answered, or out of time. `grant_ceiling_exceeded` — that would put more people on the departure than it physically holds. Counter sales count towards that: seats sold at your own counter are seats used. When they are the reason a party does not fit, and only then, the message names them rather than leaving you to guess, so you know that correcting the count on the counter sales screen is what lets the accept through. This is a 409 in every case, including the one the database's own backstop catches, which used to reach the portal as a 500 that drew as a dropped network. `operator_not_sellable` — new in 0053. Accepting is a sale, so it is gated on the same eligibility as every other sale: the business is not selling, a kill switch is engaged, the listing lost its price, or a required credential lapsed while the request sat waiting. The request is deliberately NOT auto-declined, so an operator who fixes the gap within the window can still say yes. */
+            /** @description `request_not_open` — already answered, or out of time. `grant_ceiling_exceeded` — that would put more people on the departure than it physically holds. Counter sales count towards that: seats sold at your own counter are seats used. When they are the reason a party does not fit, and only then, the message names them rather than leaving you to guess, so you know that correcting the count is what lets the accept through. Taking the wrong entry back with `DELETE /slots/{id}/offline-sales/{saleId}` is how that is done. This is a 409 in every case, including the one the database's own backstop catches, which used to reach the portal as a 500 that drew as a dropped network. `operator_not_sellable` — new in 0053. Accepting is a sale, so it is gated on the same eligibility as every other sale: the business is not selling, a kill switch is engaged, the listing lost its price, or a required credential lapsed while the request sat waiting. The request is deliberately NOT auto-declined, so an operator who fixes the gap within the window can still say yes. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5807,6 +5865,50 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    takeBackOfflineSale: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description The `id` from the `recordOfflineSale` answer. */
+                saleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Taken back. The seats are back on the departure. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflineSaleTakeBack"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
+            /** @description No such counter sale on this departure. The same answer for an entry belonging to another business, an entry recorded on another departure, and an id that is nothing at all — telling those apart would say what exists in somebody else's account. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `already_taken_back` — this entry has been taken back once and its seats are already back on the departure. Nothing moved a second time, so a client that lost the first answer has nothing left to do and can treat this as done. `counter_sales_below_zero` — taking it back would leave the departure having sold fewer than none at its own counter. It cannot happen through this route and is a guard against a correction made some other way; the message says to record what was actually sold, or to call us. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     callOffDeparture: {

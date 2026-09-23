@@ -747,15 +747,15 @@ const NEEDS_MANAGE = [];
   const PROSE_GAPS = new Map([
     [
       "PUT /logo",
-      "OperatorLogo.Save refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the logo' (yuvoy-api operator_logo.go at e7291e3); the contract names no role. yuvoy-api#222.",
+      "OperatorLogo.Save refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the logo' (yuvoy-api operator_logo.go at 2afd7b4); the contract names no role. yuvoy-api#222.",
     ],
     [
       "POST /logo/upload-intents",
-      "OperatorLogo.CreateUpload refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the logo' (yuvoy-api operator_logo.go at e7291e3); the contract names no role. yuvoy-api#222.",
+      "OperatorLogo.CreateUpload refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the logo' (yuvoy-api operator_logo.go at 2afd7b4); the contract names no role. yuvoy-api#222.",
     ],
     [
       "PUT /profile",
-      "OperatorAccount.SaveBusinessDetails refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the business details' (yuvoy-api operator_account.go at e7291e3); the contract names no role. yuvoy-api#222.",
+      "OperatorAccount.SaveBusinessDetails refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the business details' (yuvoy-api operator_account.go at 2afd7b4); the contract names no role. yuvoy-api#222.",
     ],
   ]);
   for (const [operation, reason] of PROSE_GAPS) {
@@ -1833,6 +1833,41 @@ for (const f of files) {
       );
     }
 
+    /*
+      A CONTRACT GAP, not a client one (23 Sep 2026, yuvoy-api#226).
+
+      `DELETE /slots/{id}/offline-sales/{saleId}` answers `409
+      already_taken_back` when an entry was taken back once already. The code
+      is named in that operation's prose and sent by the handler, and it is
+      missing from the envelope's enum, which is all this check reads. The
+      portal branches on it because the answer means "done, the seats are
+      back", not "failed", and a retried tap whose first answer was lost must
+      not be told it failed.
+
+      Each entry names where the code is sent. The same rule as `PROSE_GAPS`:
+      an entry the enum now declares FAILS the run, because from then on it
+      only covers whatever is written under that name next.
+    */
+    const UNDECLARED_CODES = new Map([
+      [
+        "already_taken_back",
+        "TakeBackOfflineSale writes 409 already_taken_back for postgres.ErrAlreadyTakenBack (yuvoy-api internal/handler/operator_day.go at 2afd7b4); declared in the operation's prose, not in the Error code enum. Asked on yuvoy-api#226.",
+      ],
+    ]);
+    for (const [gap, reason] of UNDECLARED_CODES) {
+      if (!reason || reason.length < 40) {
+        problems.push(
+          `scripts/qa.mjs: UNDECLARED_CODES entry "${gap}" has no real reason.`,
+        );
+      }
+      if (declared.has(gap)) {
+        problems.push(
+          `scripts/qa.mjs: the contract now declares "${gap}" in the error ` +
+            `code enum, so its UNDECLARED_CODES entry is stale. Remove it.`,
+        );
+      }
+    }
+
     for (const f of files) {
       if (/\.test\.tsx?$/.test(f)) continue;
       const s = code(f);
@@ -1843,7 +1878,7 @@ for (const f of files) {
       for (const m of s.matchAll(
         /(?<![A-Za-z0-9$_.])err\.code\s*===\s*"([a-z_]+)"/g,
       )) {
-        if (!declared.has(m[1])) {
+        if (!declared.has(m[1]) && !UNDECLARED_CODES.has(m[1])) {
           problems.push(
             `${rel(f)}: branches on error code "${m[1]}", which the pinned ` +
               `contract does not declare. A code the API never sends is a ` +
