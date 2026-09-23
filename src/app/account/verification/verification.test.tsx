@@ -25,6 +25,8 @@ vi.mock("@/lib/api/server-client", () => ({
 vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
   useRouter: () => ({ refresh: vi.fn() }),
+  // The stage's inbox link reads it to know which screen it is on.
+  usePathname: () => "/account/verification",
 }));
 // The document upload is a Server Action; the control only needs to render.
 vi.mock("@/app/account/document-actions", () => ({

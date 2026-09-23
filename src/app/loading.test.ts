@@ -146,6 +146,9 @@ describe("loading boundaries", () => {
       "/today",
       "/bookings",
       "/calendar",
+      // The Money tab (yuvoy-operator#96). Its page sits in an `(root)`
+      // group so the boundary is the tab's and not one settlement's.
+      "/earnings",
       "/account",
       "/messages",
       "/notifications",

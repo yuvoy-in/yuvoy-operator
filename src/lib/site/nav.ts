@@ -221,6 +221,16 @@ export const FOCUSED_ROUTE_PREFIXES = [
   "/story",
   "/team",
   /*
+    Conversations with travellers, and the two notification screens.
+
+    All three are gone INTO: the inbox rides the stage on every screen, and
+    notifications open from Settings or from a member on the team. None of
+    them was listed here, so each drew a back control AND the floating bar,
+    over a sheet with no room left for it.
+  */
+  "/messages",
+  "/notifications",
+  /*
     Everything UNDER Business, with the slash, yuvoy-operator#58. `/account`
     itself is the tab root: the business profile, which is where an operator
     lands. Settings, verification and the listing screens are places they go

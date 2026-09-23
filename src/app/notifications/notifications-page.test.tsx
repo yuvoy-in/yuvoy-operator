@@ -33,6 +33,8 @@ const SETTINGS = {
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
   notFound: vi.fn(),
+  // The stage's inbox link reads it to know which screen it is on.
+  usePathname: () => "/notifications",
 }));
 vi.mock("@/lib/auth/session", () => ({
   requireOperator: async () => ({

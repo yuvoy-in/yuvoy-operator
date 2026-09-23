@@ -39,7 +39,7 @@ import {
   ChevronRightIcon,
 } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
-import { DownloadStatement } from "./[id]/download-statement";
+import { DownloadStatement } from "@/app/earnings/[id]/download-statement";
 
 export const metadata: Metadata = { title: "Money" };
 
