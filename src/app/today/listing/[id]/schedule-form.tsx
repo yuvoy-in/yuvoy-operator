@@ -19,6 +19,14 @@ import { inputClass } from "@/components/ui/input";
  * Closed, not cancelled. That distinction is the whole reason the confirmation
  * says it: an operator who clears a schedule believing it cancelled the
  * bookings does not turn up.
+ *
+ * ## Save appears once there is something to save (yuvoy-operator#85 s8)
+ *
+ * "Save the schedule" was the loudest button on the listing's screen, above
+ * the departures, with nothing to save: the first dark button committed a form
+ * nobody had filled in. It is drawn only once the rows differ from what the
+ * listing has, beside a way to put them back, and the screen's loudest thing
+ * stays the departures above it.
  */
 const WEEKDAYS = [
   "Sunday",
@@ -47,6 +55,12 @@ export function ScheduleForm({
 }) {
   const [rows, setRows] = useState<Row[]>(weekly);
   const [confirming, setConfirming] = useState(false);
+  /*
+    Compared field by field and in order, because the schedule is sent whole
+    and in order: the same days in a different order is a different body, and
+    nothing changed is nothing to send.
+  */
+  const dirty = !sameSchedule(rows, weekly);
   const [state, act, pending] = useActionState<ScheduleState, FormData>(
     saveSchedule,
     {},
@@ -97,9 +111,7 @@ export function ScheduleForm({
       <input type="hidden" name="weekly" value={JSON.stringify(rows)} />
 
       {rows.length === 0 ? (
-        <p className="text-forest/70 text-sm">
-          No weekly schedule. Departures are added by hand from Calendar.
-        </p>
+        <p className="text-forest/70 text-sm">No weekly schedule.</p>
       ) : (
         <ul className="space-y-3">
           {rows.map((row, i) => {
@@ -169,9 +181,15 @@ export function ScheduleForm({
                     setRows((was) => was.filter((_, at) => at !== i))
                   }
                 >
-                  Remove
+                  {/*
+                    The space belongs to the visible word, not to the hidden
+                    one: an accessible name is built by joining each child's
+                    own text with the whitespace trimmed off, so a space that
+                    starts the hidden span disappears and the button is
+                    announced as "RemoveTuesday 09:00".
+                  */}
+                  Remove{" "}
                   <span className="sr-only">
-                    {" "}
                     {WEEKDAYS[row.weekday]} {row.startTime}
                   </span>
                 </Button>
@@ -210,17 +228,20 @@ export function ScheduleForm({
       {/*
         An empty save on a listing that HAS a schedule is a question first. It
         removes every departure the schedule made, and "closed to new bookings"
-        rather than cancelled is the half an operator has to hear.
+        rather than cancelled is the half an operator has to hear. The control
+        that asks is quiet text (#81); the one that removes is the loud one.
       */}
-      {removingAll && !confirming ? (
-        <div className="mt-4">
+      {!dirty ? null : removingAll && !confirming ? (
+        <div className="mt-4 flex flex-wrap items-center gap-x-4">
           <Button
-            variant="danger"
+            variant="danger-quiet"
+            size="md"
             block={false}
             onClick={() => setConfirming(true)}
           >
             Remove the weekly schedule
           </Button>
+          <UndoChanges onUndo={() => setRows(weekly)} />
         </div>
       ) : removingAll ? (
         <Panel tone="alert" className="mt-4 p-4">
@@ -251,12 +272,46 @@ export function ScheduleForm({
           </div>
         </Panel>
       ) : (
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
           <Button type="submit" block={false} disabled={pending}>
             {pending ? "Saving…" : "Save the schedule"}
           </Button>
+          <UndoChanges onUndo={() => setRows(weekly)} disabled={pending} />
         </div>
       )}
     </form>
+  );
+}
+
+/** The rows as the listing has them, back, with nothing sent. */
+function UndoChanges({
+  onUndo,
+  disabled,
+}: {
+  onUndo: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onUndo}
+      disabled={disabled}
+      className="text-forest/80 decoration-forest/40 inline-flex min-h-11 items-center text-sm underline underline-offset-4 disabled:opacity-55"
+    >
+      Undo changes
+    </button>
+  );
+}
+
+/** Whether two schedules would send the same body. */
+function sameSchedule(a: readonly Row[], b: readonly Row[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (row, i) =>
+        row.weekday === b[i].weekday &&
+        row.startTime === b[i].startTime &&
+        row.seats === b[i].seats,
+    )
   );
 }

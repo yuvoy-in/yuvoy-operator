@@ -262,22 +262,23 @@ test("a cash booking says what to take, and a card booking says nothing", async 
 
   const owed = page.locator("li").filter({ hasText: "Anil Kumar" });
   await expect(owed.getByText("₹9,000 to take in cash")).toBeVisible();
-  await expect(owed.getByRole("button", { name: "Cash taken" })).toBeVisible();
+  // One button that names the amount it records (yuvoy-operator#81 s5).
+  await expect(owed.getByRole("button", { name: "Take ₹9,000" })).toBeVisible();
   // A separate act from arriving — "somebody can turn up and not pay".
   await expect(
-    owed.getByRole("button", { name: "Here", exact: true }),
+    owed.getByRole("button", { name: "Check in", exact: true }),
   ).toBeVisible();
 
   // Paid online: nothing to collect, and nothing said about cash.
   const card = page.locator("li").filter({ hasText: "Sofia Alves" });
-  await expect(card.getByRole("button", { name: /Cash taken/ })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /^Take / })).toHaveCount(0);
   await expect(card.getByText(/to take in cash|taken ·/)).toHaveCount(0);
 
   // Already taken: read plainly, "with no way to tap it again".
   const taken = page.locator("li").filter({ hasText: "Meera Das" });
   await expect(taken.getByText("₹9,000 taken · 08:10")).toBeVisible();
   await expect(
-    taken.getByRole("button", { name: /Cash taken|Took less/ }),
+    taken.getByRole("button", { name: /^Take |different amount/ }),
   ).toHaveCount(0);
 });
 
@@ -293,20 +294,22 @@ test("the whole fare is one tap, and a second phone's tap is not an error", asyn
   await second.goto(CASH_DEPARTURE);
   const theirs = second.locator("li").filter({ hasText: who });
   await expect(
-    theirs.getByRole("button", { name: "Cash taken" }),
+    theirs.getByRole("button", { name: "Take ₹9,000" }),
   ).toBeVisible();
 
   const mine = page.locator("li").filter({ hasText: who });
-  await mine.getByRole("button", { name: "Cash taken" }).click();
+  await mine.getByRole("button", { name: "Take ₹9,000" }).click();
   await expect(mine.getByText(/^₹9,000 taken · \d\d:\d\d$/)).toBeVisible();
-  await expect(mine.getByRole("button", { name: "Cash taken" })).toHaveCount(0);
+  await expect(mine.getByRole("button", { name: "Take ₹9,000" })).toHaveCount(
+    0,
+  );
 
   /*
     The retry, which "will happen" and "must not be punished": the API answers
     it with the first report and `alreadyRecorded`. The stale phone shows the
     recorded state — not an error, and not a second confirmation.
   */
-  await theirs.getByRole("button", { name: "Cash taken" }).click();
+  await theirs.getByRole("button", { name: "Take ₹9,000" }).click();
   await expect(theirs.getByText(/^₹9,000 taken · \d\d:\d\d$/)).toBeVisible();
   await expect(theirs.getByRole("alert")).toHaveCount(0);
   await expect(theirs.getByText(/short of the fare/)).toHaveCount(0);
@@ -330,7 +333,9 @@ test("taking less says the gap before it is recorded, and once after", async ({
   await page.goto(CASH_DEPARTURE);
 
   const row = page.locator("li").filter({ hasText: who });
-  await row.getByRole("button", { name: "Took less" }).click();
+  await row
+    .getByRole("button", { name: "They paid a different amount" })
+    .click();
   const box = row.getByLabel("What you took, in rupees");
 
   // More than the fare is refused before anything is sent.
@@ -390,7 +395,17 @@ test("a cash booking's own page offers the collection, and no card arithmetic", 
   await expect(
     page.getByRole("heading", { name: "Cash at the counter" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Cash taken" })).toBeVisible();
+  /*
+    The screen's one primary action while the fare is owed (yuvoy-operator#81
+    s5): a filled button naming the amount, and a quieter link for any other.
+  */
+  const take = page.getByRole("button", { name: "Take ₹9,000" });
+  await expect(take).toBeVisible();
+  await expect(take).toHaveClass(/bg-forest/);
+  await page
+    .getByRole("button", { name: "They paid a different amount" })
+    .click();
+  await expect(page.getByLabel("What you took, in rupees")).toBeVisible();
 
   /*
     The API sends `money` on a cash booking as gross ₹0, the share as
@@ -410,7 +425,7 @@ test("staff can take the cash — whoever holds the phone at the gangway", async
   await signIn(page, STAFF);
   await page.goto(CASH_DEPARTURE);
   const owed = page.locator("li").filter({ hasText: "Anil Kumar" });
-  await expect(owed.getByRole("button", { name: "Cash taken" })).toBeEnabled();
+  await expect(owed.getByRole("button", { name: "Take ₹9,000" })).toBeEnabled();
 });
 
 test("/today/slot_cash has no accessibility violations", async ({ page }) => {

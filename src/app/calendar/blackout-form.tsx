@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId, useState } from "react";
+import { useActionState, useId, useState, type ReactNode } from "react";
 import { addBlackout, type BlackoutState } from "./actions";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,15 @@ import { Panel, panelClass } from "@/components/ui/panel";
  *
  * Given a `day`, the same form closes that day alone: the dates are fixed to
  * it, the words name it, and a day that is already closed says so rather than
- * offering to close it again. There is no reopen — no endpoint removes a
- * closure — and the screen says that instead of leaving somebody to look for
- * a button that does not exist.
+ * offering to close it again. Reopening is the day's own control, beside the
+ * closure it undoes.
+ *
+ * ## Quiet until asked, loud to confirm (yuvoy-operator#81)
+ *
+ * Closing dates stops sales, so it is destructive: the range form's trigger is
+ * text in the warning colour, and the button that closes carries the `danger`
+ * pill. A day's form is opened by the day's own quiet "Close this day", which
+ * hands it the day's two verbatim sentences to say first.
  */
 export interface ClosingDay {
   /** `YYYY-MM-DD`, in the market's calendar. */
@@ -39,9 +45,18 @@ export interface ClosingDay {
 export function BlackoutForm({
   today,
   day,
+  onCancel,
+  children,
 }: {
   today: string;
   day?: ClosingDay;
+  /** A way back out of a day's form, for the screen that opened it. */
+  onCancel?: () => void;
+  /**
+   * What a day says before it is closed, in place of the form's own sentence:
+   * the calendar's two verbatim sentences about the people already booked.
+   */
+  children?: ReactNode;
 }) {
   /*
     Remounted per closure. `useActionState` keeps its last result for the
@@ -54,19 +69,26 @@ export function BlackoutForm({
       key={round}
       today={today}
       day={day}
+      onCancel={onCancel}
       onAgain={() => setRound((r) => r + 1)}
-    />
+    >
+      {children}
+    </BlackoutRound>
   );
 }
 
 function BlackoutRound({
   today,
   day,
+  onCancel,
   onAgain,
+  children,
 }: {
   today: string;
   day?: ClosingDay;
+  onCancel?: () => void;
   onAgain: () => void;
+  children?: ReactNode;
 }) {
   const [state, act, pending] = useActionState<BlackoutState, FormData>(
     addBlackout,
@@ -124,16 +146,25 @@ function BlackoutRound({
   }
 
   if (day?.closed) {
+    /*
+      It said "Reopening a closed day is not something the portal can do yet",
+      which stopped being true when the day gained Reopen beside its closure.
+    */
     return (
       <p className="text-forest/80 text-sm">
-        {`${day.label} is already closed to new bookings. Reopening a closed day is not something the portal can do yet.`}
+        {`${day.label} is already closed to new bookings.`}
       </p>
     );
   }
 
   if (!open) {
     return (
-      <Button onClick={() => setOpen(true)} variant="secondary">
+      <Button
+        onClick={() => setOpen(true)}
+        variant="danger-quiet"
+        size="md"
+        block={false}
+      >
         Close dates to new bookings
       </Button>
     );
@@ -146,10 +177,12 @@ function BlackoutRound({
           ? `Close ${spoken} to new bookings`
           : "Close dates to new bookings"}
       </p>
-      <p className="text-forest/80 mt-2 text-sm">
-        This stops new sales. It does <strong>not</strong> cancel bookings you
-        already have.
-      </p>
+      {children ?? (
+        <p className="text-forest/80 mt-2 text-sm">
+          This stops new sales. It does <strong>not</strong> cancel bookings you
+          already have.
+        </p>
+      )}
 
       {day ? (
         <>
@@ -230,19 +263,31 @@ function BlackoutRound({
         <Button
           type="submit"
           disabled={pending}
+          variant="danger"
           block={false}
           className="flex-1"
         >
           {pending ? "Closing…" : day ? `Close ${spoken}` : "Close them"}
         </Button>
-        {day ? null : (
+        {day ? (
+          onCancel ? (
+            <Button
+              onClick={onCancel}
+              variant="secondary"
+              block={false}
+              className="flex-1"
+            >
+              Keep it open
+            </Button>
+          ) : null
+        ) : (
           <Button
             onClick={() => setOpen(false)}
             variant="secondary"
             block={false}
             className="flex-1"
           >
-            Cancel
+            Keep them open
           </Button>
         )}
       </div>

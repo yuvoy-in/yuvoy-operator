@@ -660,7 +660,7 @@ export async function closeDeparture(
       out of the list it was in and unmounts the panel holding it. The receipt
       stays; the day catches up on the operator's tap.
     */
-    return { done: true, ...(data.note ? { note: data.note } : {}) };
+    return { done: true, ...(data.note ? { note: dedash(data.note) } : {}) };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. It is still selling. Try again." };
@@ -675,7 +675,7 @@ export async function closeDeparture(
           so there is nothing to close, or it has already left. The API writes
           both, and one sentence of ours would lose whichever it was.
         */
-        return { message: err.message };
+        return { message: dedash(err.message) };
       }
       const refusal = suspendedMessage(err);
       if (refusal) return { message: refusal };

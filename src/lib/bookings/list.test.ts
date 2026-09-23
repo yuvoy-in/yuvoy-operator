@@ -8,7 +8,9 @@ import {
   defaultView,
   emptyLine,
   matchesRequest,
+  nothingBooked,
   pillHref,
+  pillScrollLeft,
   rangeLabel,
   readFilters,
   readSearch,
@@ -139,17 +141,68 @@ describe("the date choices", () => {
 });
 
 describe("which pill opens by default", () => {
-  it("is Requests when any are waiting, and Upcoming otherwise", () => {
-    /*
-      "Past and Cancelled are never the default." A request has a clock on it
-      and a traveller behind it; nothing else on this screen expires.
-    */
+  it("is Requests whenever any are waiting, even beside a busy Upcoming", () => {
+    // A request has a clock on it and a traveller behind it; nothing else on
+    // this screen expires, so pill order keeps it first.
     expect(
       defaultView({ requests: 2, upcoming: 14, past: 120, cancelled: 6 }),
     ).toBe("requests");
+  });
+
+  it("is the first pill with anything in it, never an empty one", () => {
+    /*
+      yuvoy-operator#83 s4: the screen opened on "Upcoming 0" while Past held
+      ten, which is a blank screen as the first thing an operator sees.
+    */
     expect(
-      defaultView({ requests: 0, upcoming: 0, past: 120, cancelled: 6 }),
+      defaultView({ requests: 0, upcoming: 0, past: 10, cancelled: 6 }),
+    ).toBe("past");
+    expect(
+      defaultView({ requests: 0, upcoming: 0, past: 0, cancelled: 3 }),
+    ).toBe("cancelled");
+    expect(
+      defaultView({ requests: 0, upcoming: 4, past: 10, cancelled: 3 }),
     ).toBe("upcoming");
+  });
+
+  it("is Upcoming when every pill is empty, where the next booking lands", () => {
+    expect(
+      defaultView({ requests: 0, upcoming: 0, past: 0, cancelled: 0 }),
+    ).toBe("upcoming");
+  });
+});
+
+describe("a business with nothing booked at all", () => {
+  it("is every pill at zero, and only that", () => {
+    expect(
+      nothingBooked({ requests: 0, upcoming: 0, past: 0, cancelled: 0 }),
+    ).toBe(true);
+    expect(
+      nothingBooked({ requests: 0, upcoming: 0, past: 0, cancelled: 1 }),
+    ).toBe(false);
+    expect(
+      nothingBooked({ requests: 1, upcoming: 0, past: 0, cancelled: 0 }),
+    ).toBe(false);
+  });
+});
+
+describe("scrolling the selected pill into view", () => {
+  it("leaves the row at the start for a pill that already fits", () => {
+    expect(pillScrollLeft(24, 120, 360, 640)).toBe(0);
+  });
+
+  it("centres a pill that starts off screen", () => {
+    // Cancelled at 480px on a 360px row: centred is 480 - (360 - 140) / 2.
+    expect(pillScrollLeft(480, 140, 360, 800)).toBe(370);
+  });
+
+  it("never scrolls past the end of the row", () => {
+    // Centring the last pill would ask for 390, and the row ends at 280.
+    expect(pillScrollLeft(500, 140, 360, 640)).toBe(280);
+  });
+
+  it("does nothing on a row that does not scroll", () => {
+    expect(pillScrollLeft(480, 140, 900, 700)).toBe(0);
   });
 });
 

@@ -147,7 +147,16 @@ test("every listing says where it is, including the ones that are not selling", 
   */
   await openListing(page, "Island boat day");
   await expect(page.getByText("Draft", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Still missing/)).toBeVisible();
+  /*
+    What is outstanding is marked on the fields themselves now (#85 s10) and
+    counted on the send button, which stays put rather than waiting for the
+    listing to be finished before it appears.
+  */
+  await expect(
+    page.getByRole("button", {
+      name: /^Send for review \(\d+ things? missing\)$/,
+    }),
+  ).toBeDisabled();
 
   /*
     An edit under review does NOT take a live listing off sale, and the badge
@@ -186,9 +195,24 @@ test("a listing with no price says so while it is being written", async ({
   */
   await signIn(page);
 
-  // On the listing, which leads with what is missing on a draft (#58 item 4).
+  /*
+    On the listing, which reads a draft back as it stands and marks each
+    missing field in place (#85 s10). The price is marked on its own row, and
+    that row is the way to the step that answers it.
+  */
   await openListing(page, "Island boat day");
-  await expect(page.getByText(/Still missing:.*a price/)).toBeVisible();
+  const costs = page.getByRole("region", { name: "What it costs" });
+  const priceRow = costs.getByRole("listitem").filter({ hasText: /^Price/ });
+  await expect(priceRow).toContainText("Still needed");
+  await expect(priceRow.getByRole("link")).toHaveAttribute(
+    "href",
+    /\/edit\?step=selling$/,
+  );
+
+  // What it DOES say is on the screen too, which the old sentence never was.
+  await expect(
+    page.getByRole("region", { name: "What it says" }),
+  ).toContainText("Island boat day");
 
   /*
     And in the builder, where it can be answered: the step holding the price is
@@ -243,7 +267,18 @@ test("an operator writes a listing, and it lands as a draft", async ({
   // It is on the profile, badged for what it is, and reaching nobody.
   await openListing(page, title);
   await expect(page.getByText("Draft", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Still missing/)).toBeVisible();
+  // Read back as it stands, with what is left counted on the send (#85 s10).
+  await expect(
+    page.getByRole("region", { name: "What it says" }),
+  ).toContainText(title);
+  await expect(
+    page.getByRole("region", { name: "What it costs" }),
+  ).toContainText("For the group");
+  await expect(
+    page.getByRole("button", {
+      name: /^Send for review \(\d+ things? missing\)$/,
+    }),
+  ).toBeDisabled();
 });
 
 test("another market's destination cannot be chosen at all", async ({
@@ -958,6 +993,13 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
   await openHub(page, "Sunrise paddle");
 
   const row = page.locator("body");
+  /*
+    Quiet, and with the rest of what pausing does one tap away rather than two
+    paragraphs above the button (yuvoy-operator#85 s8, #80 t4).
+  */
+  await expect(
+    row.getByRole("link", { name: "What pausing does" }),
+  ).toHaveAttribute("href", "/account/help#pausing-a-listing");
   await row.getByRole("button", { name: "Pause", exact: true }).click();
 
   // Warned BEFORE the decision, too.

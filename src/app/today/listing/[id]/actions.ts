@@ -6,7 +6,6 @@ import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { suspendedMessage } from "@/lib/account/suspended";
-import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
 import { dedash } from "@/lib/format/dedash";
 
 /**
@@ -215,8 +214,7 @@ export async function moveDeparture(
       */
       if (err.code === "departure_started") {
         return {
-          message:
-            "Too close to its start to move. Cancel the departure instead.",
+          message: "Too close to its start to move. Call it off instead.",
         };
       }
       if (err.code === "different_day") {
@@ -234,58 +232,5 @@ export async function moveDeparture(
         return { message: "That departure is no longer here." };
     }
     return { message: "Nothing was moved. Try again." };
-  }
-}
-
-/**
- * Stop selling one departure, from the hub.
- *
- * The same endpoint the Calendar's control uses, and the same sentence after
- * it: "closing is not cancelling people. The bookings on it still stand, and
- * `note` says so when there are any."
- */
-export async function stopSellingDeparture(
-  _prev: DepartureState,
-  form: FormData,
-): Promise<DepartureState> {
-  const slotId = String(form.get("slotId") ?? "");
-  const reasonCode = String(form.get("reasonCode") ?? "");
-  const note = String(form.get("note") ?? "").trim();
-  if (!slotId) return { message: "Nothing to close." };
-  if (!BLACKOUT_REASONS.some((r) => r.code === reasonCode)) {
-    return { message: "Choose why it is not selling." };
-  }
-
-  const { token } = await requireOperator();
-
-  try {
-    const { data, error } = await operatorApi(token).POST("/slots/{id}/close", {
-      params: { path: { id: slotId } },
-      body: {
-        reasonCode: reasonCode as (typeof BLACKOUT_REASONS)[number]["code"],
-        ...(note ? { note } : {}),
-      },
-    });
-    if (error) throw error;
-
-    revalidatePath("/today");
-    revalidatePath("/calendar");
-    return { done: true, ...(data.note ? { note: dedash(data.note) } : {}) };
-  } catch (err) {
-    if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. It is still selling." };
-    }
-    if (err instanceof OperatorApiError) {
-      if (err.code === "already_called_off") {
-        return { message: "This departure is already called off." };
-      }
-      if (err.code === "departure_started") {
-        return { message: "It has already left." };
-      }
-      const refusal = suspendedMessage(err);
-      if (refusal) return { message: refusal };
-      if (err.status === 403) return { message: ROLE_REFUSAL };
-    }
-    return { message: "It is still selling. Try again." };
   }
 }

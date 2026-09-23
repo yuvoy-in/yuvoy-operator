@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { RelayPanel } from "./relay-panel";
 import { CashCollect } from "@/app/bookings/cash-collect";
 import { Button } from "@/components/ui/button";
+import { CheckIcon } from "@/components/ui/icons";
 
 /**
  * One party on the manifest.
@@ -233,6 +234,10 @@ export function PartyRow({
             keeps the first arrival time and is not an error somebody has to
             read while eleven people wait" — so the button stays live rather
             than disabling, and simply reads as done.
+
+            "Check in", and "Checked in" once done: the words the totals above
+            use (yuvoy-operator#88 s3). "Here" read as a question on a jetty.
+            The tick is drawn, not a character, so it matches every other icon.
           */}
           <Button
             type="submit"
@@ -243,7 +248,14 @@ export function PartyRow({
             block={false}
             className="flex-1"
           >
-            {arrived ? "Here ✓" : "Here"}
+            {arrived ? (
+              <>
+                <CheckIcon className="size-5" />
+                Checked in
+              </>
+            ) : (
+              "Check in"
+            )}
           </Button>
 
           {/*

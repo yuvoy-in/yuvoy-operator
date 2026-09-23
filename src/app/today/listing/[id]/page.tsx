@@ -26,7 +26,13 @@ import { DepartureRow } from "./departure-row";
 export const metadata: Metadata = { title: "Listing" };
 export const dynamic = "force-dynamic";
 
-const BACK = { href: "/today", label: "home" };
+/*
+  Back to Business, not to Home: listings live under Business now, so that is
+  where somebody who came here from a listing expects to land. A focused
+  screen's way back is a stated fallback rather than `history.back()`, so it
+  has to name the place the listings are, whatever path was taken in.
+*/
+const BACK = { href: "/account", label: "your business" };
 
 /**
  * One listing, and everything that can be done to it — yuvoy-operator#56
@@ -40,6 +46,17 @@ const BACK = { href: "/today", label: "home" };
  * and the whole media library to find the handful of rows that belong to it. On
  * island 4G that is three requests and most of a business's data to render one
  * screen."
+ *
+ * ## What is running comes first (yuvoy-operator#85 s8)
+ *
+ * "The operator came here to see what is running. Instead the first dark
+ * button commits a form they have not filled in." The next departures come
+ * straight after what the listing is, the weekly schedule under them with its
+ * Save drawn only once something changed, and pausing the whole listing last:
+ * it is the one control here that takes the listing off sale, so it is quiet
+ * and at the foot. It stays in one place in every state, because its receipt
+ * (what pausing did, and who is still owed a trip) must survive the re-read
+ * that turns the listing Paused.
  *
  * ## What a STAFF login gets
  *
@@ -111,7 +128,7 @@ export default async function ListingHubPage({
   }
 
   return (
-    <Screen nav={{ back: BACK }} stageLabel="Listing">
+    <Screen nav={{ back: BACK }}>
       <div className="flex items-start justify-between gap-3">
         <h1 className="font-display tracking-display text-4xl leading-[1.05]">
           {listing.title}
@@ -158,7 +175,7 @@ export default async function ListingHubPage({
           : null}
       </p>
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {/*
           Every control below is withheld from STAFF and from a suspended
           business, except the traveller preview: one is a role the API refuses,
@@ -169,6 +186,7 @@ export default async function ListingHubPage({
           <ButtonLink
             href={`/account/listings/${id}/edit`}
             variant="secondary"
+            size="md"
             block={false}
           >
             Edit
@@ -178,6 +196,7 @@ export default async function ListingHubPage({
           <ButtonLink
             href={`${travellerAppOrigin()}/e/${listing.slug}`}
             variant="secondary"
+            size="md"
             block={false}
             target="_blank"
             rel="noreferrer"
@@ -187,38 +206,7 @@ export default async function ListingHubPage({
         ) : null}
       </div>
 
-      {me.canManage && !suspended ? (
-        <div className="mt-4">
-          {/*
-            The existing control, moved here unchanged (#56 item 7). #58 moves
-            the file itself when the Listings pages move under Business.
-          */}
-          <PauseResume
-            experienceId={id}
-            title={listing.title ?? "this listing"}
-            publicationState={listing.publicationState}
-          />
-        </div>
-      ) : null}
-
-      {me.canManage && !suspended ? (
-        <section className="mt-10" aria-labelledby="schedule">
-          <h2 id="schedule" className="label text-forest/75">
-            Weekly schedule
-          </h2>
-          <ScheduleForm
-            experienceId={id}
-            repeatsWeekly={listing.schedule?.repeatsWeekly === true}
-            weekly={(listing.schedule?.weekly ?? []).map((row) => ({
-              weekday: row.weekday ?? 1,
-              startTime: row.startTime ?? "09:00",
-              seats: row.seats ?? 8,
-            }))}
-          />
-        </section>
-      ) : null}
-
-      <section className="mt-10" aria-labelledby="departures">
+      <section className="mt-8" aria-labelledby="departures">
         <h2 id="departures" className="label text-forest/75">
           Next departures
         </h2>
@@ -252,6 +240,37 @@ export default async function ListingHubPage({
           </div>
         )}
       </section>
+
+      {me.canManage && !suspended ? (
+        <section className="mt-10" aria-labelledby="schedule">
+          <h2 id="schedule" className="label text-forest/75">
+            Weekly schedule
+          </h2>
+          <ScheduleForm
+            experienceId={id}
+            repeatsWeekly={listing.schedule?.repeatsWeekly === true}
+            weekly={(listing.schedule?.weekly ?? []).map((row) => ({
+              weekday: row.weekday ?? 1,
+              startTime: row.startTime ?? "09:00",
+              seats: row.seats ?? 8,
+            }))}
+          />
+        </section>
+      ) : null}
+
+      {me.canManage && !suspended ? (
+        <div className="border-paper-line mt-10 border-t pt-2">
+          {/*
+            The existing control, moved here unchanged (#56 item 7). #58 moves
+            the file itself when the Listings pages move under Business.
+          */}
+          <PauseResume
+            experienceId={id}
+            title={listing.title ?? "this listing"}
+            publicationState={listing.publicationState}
+          />
+        </div>
+      ) : null}
     </Screen>
   );
 }

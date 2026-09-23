@@ -246,14 +246,18 @@ test("an email address and a link are refused too", async ({ page }) => {
   await expect(alert).toContainText("cannot contain a link");
 });
 
-test("the conversations list names the trip, never the traveller", async ({
+test("a conversation row leads with the trip, and the reference comes last", async ({
   page,
 }) => {
   /*
-    `MessageThreadSummary` "carries neither the traveller's name nor any contact
-    detail, by design (D-018)", and never any message text. A list that previewed
-    the last line would put a traveller's words where anybody at the business can
-    read them over a shoulder, to save one tap.
+    yuvoy-operator#83 s6: every row led with a booking reference in monospace,
+    which is what a support agent reads out and not how anybody finds a
+    conversation. The trip and its time lead now, then who wrote last, and the
+    reference sits last in small type.
+
+    And never any message text: `MessageThreadSummary` carries none, and a list
+    that previewed the last line would put a traveller's words where anybody at
+    the business can read them over a shoulder, to save one tap.
   */
   await signIn(page);
   await page.goto("/messages");
@@ -264,15 +268,20 @@ test("the conversations list names the trip, never the traveller", async ({
 
   const row = page.locator("li").filter({ hasText: "YV-4K2M9P7Q" });
   await expect(row).toBeVisible();
-  await expect(row).toContainText("Try-dive at Nemo Reef");
+  const text = await row.innerText();
+  const trip = text.indexOf("Try-dive at Nemo Reef");
+  const written = text.search(/(You|They) wrote/);
+  const reference = text.indexOf("YV-4K2M9P7Q");
+  expect(trip, "the trip is on the row").toBeGreaterThanOrEqual(0);
+  expect(written, "who wrote last comes after the trip").toBeGreaterThan(trip);
+  expect(reference, "the reference comes last").toBeGreaterThan(written);
 
   const body = await page.locator("main").innerText();
-  expect(body, "a traveller's name is not on this list").not.toContain(
-    "Asha Menon",
-  );
   expect(body, "message text is not on this list").not.toContain(
     "somewhere to leave a bag",
   );
+  // One title: the eyebrow and the sentence explaining the list are gone.
+  expect(body).not.toContain("One per booking");
 });
 
 test("a row opens that booking's conversation", async ({ page }) => {
@@ -326,12 +335,13 @@ test("Home counts unread, and opening the conversation clears it", async ({
   await strip.click();
   await page.waitForURL("**/messages");
   /*
-    The chip on the row carries the same two, which is what makes the list worth
-    opening rather than scanning every booking.
+    The row carries the same two, which is what makes the list worth opening
+    rather than scanning every booking: a dot to the eye, and the count in the
+    row's name to a screen reader (yuvoy-operator#83 s6).
   */
   await expect(
-    page.locator("li").filter({ hasText: "YV-CARD6N7P" }),
-  ).toContainText("2");
+    page.getByRole("link", { name: /YV-CARD6N7P/ }),
+  ).toHaveAccessibleName(/2 unread messages/);
 
   await page.locator("li").filter({ hasText: "YV-CARD6N7P" }).click();
   await page.waitForURL(`**/bookings/${UNREAD}**`);

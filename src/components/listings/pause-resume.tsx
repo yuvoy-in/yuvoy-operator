@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import {
   pauseListing,
   resumeListing,
@@ -8,6 +9,7 @@ import {
   type ResumeState,
 } from "./actions";
 import { PAUSE_REASONS } from "@/lib/services/listings";
+import { helpHref } from "@/lib/help/types";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -47,6 +49,14 @@ type Stamped<T> = T & { at?: number };
  * applied would unmount it at exactly the moment it has something to say. So
  * this component is always mounted and decides for itself, and a receipt is
  * held in action state until a real navigation.
+ *
+ * ## Quiet until asked, loud to confirm (yuvoy-operator#81)
+ *
+ * Taking a listing off sale is destructive, so "Pause" is text in the warning
+ * colour rather than a pill beside Edit, and the button that pauses carries
+ * the `danger` pill, under the one sentence that changes the decision: it does
+ * not cancel the bookings already made. The rest of what pausing does, and
+ * does not do, is one tap away in help rather than two paragraphs here.
  */
 export function PauseResume({
   experienceId,
@@ -163,13 +173,27 @@ export function PauseResume({
 
   if (!open) {
     return (
-      <Button
-        onClick={() => setOpen(true)}
-        variant="secondary"
-        className="mt-3"
-      >
-        Pause
-      </Button>
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <Button
+          onClick={() => setOpen(true)}
+          variant="danger-quiet"
+          size="md"
+          block={false}
+        >
+          Pause
+        </Button>
+        {/*
+          What pausing does not do is three paragraphs, and it used to be two
+          of them above this button. The one sentence that changes the decision
+          is in the confirm; the rest is one tap away (#80 t4).
+        */}
+        <Link
+          href={helpHref("pausing-a-listing")}
+          className="text-forest/80 decoration-forest/40 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
+        >
+          What pausing does
+        </Link>
+      </div>
     );
   }
 
@@ -184,12 +208,8 @@ export function PauseResume({
 
       <Panel tone="alert">
         <p className="text-sm font-bold">
-          Pausing stops new bookings. It does not cancel the ones you have.
-        </p>
-        <p className="text-forest/80 mt-1.5 text-sm">
-          Anybody already booked still expects their trip, and you still owe it
-          to them. To cancel a departure and refund its travellers, open it from
-          Calendar and call it off: one at a time, each confirmed on its own.
+          Pause {title}? It stops new bookings. It does not cancel the ones you
+          have, and those travellers still expect their trip.
         </p>
       </Panel>
 
@@ -270,7 +290,7 @@ export function PauseResume({
         <Button
           type="submit"
           disabled={pausing}
-          variant="primary"
+          variant="danger"
           block={false}
           className="flex-1"
         >

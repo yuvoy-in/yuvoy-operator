@@ -4,14 +4,17 @@ import { notFound } from "next/navigation";
 import { requireOperator } from "@/lib/auth/session";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError } from "@/lib/api/errors";
-import { describeBlockers, describeRejection } from "@/lib/services/listings";
+import { describeRejection } from "@/lib/services/listings";
 import { listingLabel, posterFor } from "@/lib/services/home";
+import { missingCount } from "@/lib/services/draft";
+import { categoryChoices, destinationChoices } from "@/lib/services/vocabulary";
 import { ReelsTab } from "@/app/account/reels-tab";
 import { Screen } from "@/components/chrome/screen";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
 import { SubmitButton } from "./submit-button";
+import { DraftReadback } from "./draft-readback";
 
 export const metadata: Metadata = { title: "Listing" };
 export const dynamic = "force-dynamic";
@@ -30,10 +33,18 @@ export const dynamic = "force-dynamic";
  * ## What it shows depends entirely on the state
  *
  * A sent-back listing leads with the reason, because that is the only thing
- * worth reading. A draft leads with what is missing. A live one has nothing to
- * say but Edit. And one in review has no buttons at all: there is nothing an
- * operator can usefully do while somebody is looking at it, and a control that
- * answered `409` would be worse than the absence.
+ * worth reading. A live one has nothing to say but Edit. And one in review has
+ * no buttons at all: there is nothing an operator can usefully do while
+ * somebody is looking at it, and a control that answered `409` would be worse
+ * than the absence.
+ *
+ * ## A draft shows the listing, not a list of holes (yuvoy-operator#85 s10)
+ *
+ * It led with "Still missing: a short summary, a price, where to meet", which
+ * names what is absent and nothing that is there. A draft now reads back as it
+ * stands, field by field, with each missing one marked on its own row and each
+ * row a link to the builder step that answers it. Send for review stays on the
+ * screen throughout, disabled, counting what is left.
  */
 export default async function ListingPage({
   params,
@@ -79,15 +90,33 @@ export default async function ListingPage({
     .catch(() => []);
 
   const sentBack = listing.sentBack;
-  const blockers = describeBlockers(listing.publishBlockers);
   const inReview =
     status === "in_review" || status === "live_changes_in_review";
 
+  /*
+    A draft, including one a reviewer sent back before it was ever on sale:
+    `publicationState` says what the listing IS, where `status` folds in the
+    latest revision. Both read back the same way, and both can be sent.
+  */
+  const isDraft = listing.publicationState === "draft";
+  const missing = missingCount(listing);
+
+  /*
+    The words for `category` and `destination`, which the listing carries only
+    as codes. A soft read: a failed vocabulary call falls back to the code,
+    which is ugly and still true, and must not take the screen down.
+  */
+  const vocabulary = isDraft
+    ? await operatorApi(token)
+        .GET("/catalog/vocabulary", {})
+        .then((r) => (r.error ? null : r.data))
+        .catch(() => null)
+    : null;
+  const labelFor = (choices: { value: string; label: string }[], code = "") =>
+    choices.find((c) => c.value === code)?.label ?? code;
+
   return (
-    <Screen
-      nav={{ back: { href: "/account", label: "your business" } }}
-      stageLabel="Listing"
-    >
+    <Screen nav={{ back: { href: "/account", label: "your business" } }}>
       {poster ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -125,12 +154,6 @@ export default async function ListingPage({
             </p>
           ) : null}
         </Panel>
-      ) : status === "draft" && blockers.length > 0 ? (
-        <Panel tone="alert" className="mt-4 p-4">
-          <p className="text-sm font-bold">
-            Still missing: {blockers.join(", ")}
-          </p>
-        </Panel>
       ) : status === "changes_rejected" && listing.review ? (
         <Panel tone="alert" className="mt-4 p-4">
           <p className="text-sm font-bold">
@@ -164,12 +187,47 @@ export default async function ListingPage({
           >
             Edit
           </ButtonLink>
+          {/*
+            Counting and disabled while anything is outstanding (#85 s10). It
+            stays where it is in both states, so the operator can see what they
+            are working towards rather than waiting for a button to appear.
+          */}
           {sentBack ? (
-            <SubmitButton experienceId={id} label="Send again" />
-          ) : status === "draft" ? (
-            <SubmitButton experienceId={id} label="Send for review" />
+            <SubmitButton
+              experienceId={id}
+              label="Send again"
+              missing={missing}
+            />
+          ) : isDraft ? (
+            <SubmitButton
+              experienceId={id}
+              label="Send for review"
+              missing={missing}
+            />
           ) : null}
         </div>
+      ) : null}
+
+      {/*
+        The listing as it stands, with each missing field marked on its own row
+        (#85 s10). Drawn for every role: a staff login cannot change a draft
+        and can still be asked what is on it.
+      */}
+      {isDraft ? (
+        <DraftReadback
+          id={id}
+          listing={listing}
+          mediaCount={media.length}
+          editable={canAct}
+          categoryLabel={labelFor(
+            categoryChoices(vocabulary),
+            listing.category,
+          )}
+          destinationLabel={labelFor(
+            destinationChoices(vocabulary),
+            listing.destination,
+          )}
+        />
       ) : null}
 
       {/*

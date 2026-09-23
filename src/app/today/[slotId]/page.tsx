@@ -15,7 +15,7 @@ import {
   marketTime,
   now,
 } from "@/lib/format/market-time";
-import { Empty, Problem } from "@/components/ui/states";
+import { Problem } from "@/components/ui/states";
 import { PartyRow } from "./party-row";
 import { RelayPanel } from "./relay-panel";
 import { CallOffPanel } from "./call-off-panel";
@@ -37,7 +37,9 @@ import { Panel, panelClass } from "@/components/ui/panel";
  *
  * Every failure falls back to the plain word rather than throwing: a title is
  * not worth a 500, and `notFound()` from here would pre-empt the page's own
- * handling of the same 404, which is deliberately shaped to be no oracle.
+ * handling of the same 404, which is deliberately shaped to be no oracle. The
+ * plain word is "Departure": "Manifest" is a shipping word, not one an
+ * operator uses (yuvoy-operator#96).
  */
 export async function generateMetadata({
   params,
@@ -47,7 +49,7 @@ export async function generateMetadata({
   try {
     const { slotId } = await params;
     const token = await readSessionToken();
-    if (!token) return { title: "Manifest" };
+    if (!token) return { title: "Departure" };
 
     const manifest = await getManifest(token, slotId);
     const startsAt = manifest.startsAt ?? "";
@@ -55,9 +57,9 @@ export async function generateMetadata({
       ? marketTime(startsAt, manifest.timezone ?? "Asia/Kolkata")
       : "";
     const title = [time, manifest.experience].filter(Boolean).join(" ");
-    return { title: title || "Manifest" };
+    return { title: title || "Departure" };
   } catch {
-    return { title: "Manifest" };
+    return { title: "Departure" };
   }
 }
 
@@ -79,6 +81,10 @@ export const dynamic = "force-dynamic";
  * and there is no proxy route to reach it through — so the parties are in the
  * HTML on first paint, which on one bar of signal is the difference between a
  * usable screen and a spinner.
+ *
+ * One title (yuvoy-operator#80 t2): the time and the trip. The day moved out
+ * of the eyebrow above it into the line under it, beside where to meet, and
+ * the "Manifest" stage caption went. Nothing explains the screen (#80 t4).
  */
 export default async function ManifestPage({
   params,
@@ -176,22 +182,29 @@ export default async function ManifestPage({
   const departed = startsAt ? hasDeparted(startsAt, await now()) : false;
 
   return (
-    <Screen
-      nav={{ back: { href: "/today", label: "the day" } }}
-      stageLabel="Manifest"
-    >
+    <Screen nav={{ back: { href: "/today", label: "the day" } }}>
       <RefreshOnFocus />
 
-      <p className="eyebrow text-terra-deep">
-        {startsAt ? marketDay(startsAt, timezone) : "Departure"}
-      </p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
-        {startsAt ? marketTime(startsAt, timezone) : "-"}{" "}
-        <span className="text-3xl">{manifest.experience}</span>
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        {startsAt ? (
+          <>
+            <span className="tabular-nums">
+              {marketTime(startsAt, timezone)}
+            </span>{" "}
+          </>
+        ) : null}
+        <span className="text-3xl">{manifest.experience || "Departure"}</span>
       </h1>
 
-      {manifest.meetingPoint ? (
-        <p className="text-forest/80 mt-3 text-base">{manifest.meetingPoint}</p>
+      {startsAt || manifest.meetingPoint ? (
+        <p className="text-forest/80 mt-2 text-base">
+          {[
+            startsAt ? marketDay(startsAt, timezone) : "",
+            manifest.meetingPoint,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
       ) : null}
 
       {/*
@@ -288,14 +301,18 @@ export default async function ManifestPage({
         <dl className="mt-8 grid grid-cols-3 gap-3">
           <Total label="Parties" value={totals.parties} />
           <Total label="Guests" value={totals.guests} />
-          <Total label="Here" value={totals.arrived} />
+          {/*
+            "Checked in", not "Here" (yuvoy-operator#88 s3): "Here" is our
+            word, and on a jetty it reads as a question.
+          */}
+          <Total label="Checked in" value={totals.arrived} />
         </dl>
       )}
       {!manifest.calledOff && totals.seatsSoldOffline ? (
         <p className="text-forest/70 mt-3 text-sm">
-          {totals.seatsSoldOffline} more seat
-          {totals.seatsSoldOffline === 1 ? "" : "s"} sold at your own counter.
-          They are not on this list.
+          {totals.seatsSoldOffline === 1
+            ? "1 more seat sold at your counter is not on this list."
+            : `${totals.seatsSoldOffline} more seats sold at your counter are not on this list.`}
         </p>
       ) : null}
 
@@ -303,14 +320,13 @@ export default async function ManifestPage({
         Telling the whole departure something. Above the list rather than
         below it: at 6am the thing an operator most often needs is to move a
         time or a meeting point for everybody, not to tick one person off.
+
+        No heading: "Tell everybody" over a button saying "Tell everybody on
+        this departure" was the same words twice where the guest list should
+        be (yuvoy-operator#88 s3). The button carries it.
       */}
       {!manifest.calledOff ? (
-        <section className="mt-8" aria-labelledby="relay-all">
-          <h2 id="relay-all" className="label text-forest/75">
-            Tell everybody
-          </h2>
-          <RelayPanel slotId={slotId} who="everybody on this departure" />
-        </section>
+        <RelayPanel slotId={slotId} who="everyone booked" />
       ) : null}
 
       {/*
@@ -368,12 +384,7 @@ export default async function ManifestPage({
             Coming
           </h2>
           {confirmedRows.length === 0 ? (
-            <div className="mt-3">
-              <Empty
-                title="Nobody booked yet"
-                body="When somebody books this departure they appear here, with the reference they will read out to you."
-              />
-            </div>
+            <p className="text-forest/70 mt-3 text-base">Nobody booked yet</p>
           ) : (
             <ul className="mt-3 space-y-3">
               {confirmedRows.map(({ party, signal }) => (
@@ -403,10 +414,7 @@ export default async function ManifestPage({
           <h2 id="holding" className="label text-forest/75">
             Still paying
           </h2>
-          <p className="text-forest/70 mt-2 text-sm">
-            Not confirmed seats. They may finish paying and turn up, or the hold
-            may lapse.
-          </p>
+          {/* Each row says what a hold means, so the section need not. */}
           <ul className="mt-3 space-y-3">
             {holdRows.map(({ party, signal }, i) => (
               <PartyRow
@@ -424,10 +432,16 @@ export default async function ManifestPage({
         </section>
       ) : null}
 
+      {/*
+        Last, and quiet (yuvoy-operator#81 t5): text in the warning colour,
+        behind a confirm that names the time and what happens to everyone on
+        it.
+      */}
       <CallOffPanel
         slotId={slotId}
         alreadyCalledOff={Boolean(manifest.calledOff)}
         canManage={me.canManage}
+        time={startsAt ? marketTime(startsAt, timezone) : undefined}
       />
     </Screen>
   );

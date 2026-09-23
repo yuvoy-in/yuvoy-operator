@@ -30,22 +30,32 @@ const TAKES_CASH = new Set(["paid_pending_ops", "confirmed"]);
  *
  * ## What it shows, in order of what is true
  *
- *   1. **Recorded** — by this tap, by a retry, or before this page loaded —
+ *   1. **Recorded** (by this tap, by a retry, or before this page loaded)
  *      reads plainly, `₹10,000 taken · 09:04`, with nothing to tap into a
  *      different number. A retry's answer renders exactly like this: "show
  *      the recorded state, not an error and not a second confirmation."
- *   2. **Owed, and the booking can still take it** — the fare, one tap for
- *      the whole of it, and "Took less" for the rest.
- *   3. **Completed without being recorded** — said, with no button: the API
+ *   2. **Owed, and the booking can still take it**: one button naming the
+ *      amount, "Take ₹10,000", and under it a text link, "They paid a
+ *      different amount", for the rest (yuvoy-operator#81 s5).
+ *   3. **Completed without being recorded**: said, with no button. The API
  *      takes money only from a `paid_pending_ops` or `confirmed` booking, so
  *      a button here would be a 409.
- *   4. **Cancelled, declined, no-show** — nothing. A no-show who never paid
+ *   4. **Cancelled, declined, no-show**: nothing. A no-show who never paid
  *      them owes nobody anything.
  *
- * ## Took less
+ * ## One button, and the amount on it
+ *
+ * It was two buttons of equal weight, "Cash taken" and "Took less". "Took
+ * less" meant nothing on its own, and a mis-tap between two equal buttons
+ * records the wrong amount on money that has already changed hands. The
+ * button now says the number it records, and the other amount is a quieter
+ * link a thumb does not land on by accident. "They" is the traveller, who
+ * paid the operator; nothing here says Yuvoy was paid.
+ *
+ * ## A different amount
  *
  * A collection is recorded once and never overwritten, so the gap is said
- * while the box is still open — from the fare this row already holds — and
+ * while the box is still open (from the fare this row already holds) and
  * more than the fare is refused before it is sent, because the API refuses it
  * outright rather than trimming it. The shortfall the answer carries is then
  * said once, quietly, and is not treated as an error.
@@ -56,6 +66,7 @@ export function CashCollect({
   state,
   cash,
   timezone,
+  emphasis = "secondary",
 }: {
   bookingId: string;
   /** The departure this row sits on, so its manifest re-reads. Empty on a booking's own page. */
@@ -64,6 +75,12 @@ export function CashCollect({
   state: string;
   cash: BookingCash;
   timezone: string;
+  /**
+   * How loud "Take ₹X" is. The booking's own page makes it the one primary
+   * action (#81); on a departure it stays secondary, beside checking the party
+   * in, which is what a row there is mostly for.
+   */
+  emphasis?: "primary" | "secondary";
 }) {
   const [result, record, pending] = useActionState<CashState, FormData>(
     recordCashCollected,
@@ -194,33 +211,26 @@ export function CashCollect({
         </form>
       ) : (
         <>
-          <form action={record} className="mt-3 flex flex-wrap gap-2">
+          <form action={record} className="mt-3">
             <input type="hidden" name="bookingId" value={bookingId} />
             <input type="hidden" name="slotId" value={slotId} />
             <input type="hidden" name="mode" value="fare" />
-            <Button
-              type="submit"
-              disabled={pending}
-              variant="secondary"
-              block={false}
-              className="flex-1"
-            >
+            <Button type="submit" disabled={pending} variant={emphasis}>
               <CoinsIcon className="size-5" />
-              {pending ? "Recording…" : "Cash taken"}
-            </Button>
-            <Button
-              onClick={() => {
-                setTyped(result.typed ?? "");
-                setLess(true);
-              }}
-              disabled={pending}
-              variant="outline"
-              block={false}
-              className="flex-1"
-            >
-              Took less
+              {pending ? "Recording…" : takeLabel(cash.collectPaise)}
             </Button>
           </form>
+          <button
+            type="button"
+            onClick={() => {
+              setTyped(result.typed ?? "");
+              setLess(true);
+            }}
+            disabled={pending}
+            className="text-forest decoration-forest/40 mt-1 inline-flex min-h-11 items-center text-sm underline underline-offset-4 disabled:opacity-55"
+          >
+            They paid a different amount
+          </button>
           {result.message ? (
             <p role="alert" className="text-terra-deep mt-2 text-sm font-bold">
               {result.message}
@@ -232,7 +242,17 @@ export function CashCollect({
   );
 }
 
-/** "Record ₹3,000" once the box holds an amount — the button repeats the number. */
+/**
+ * "Take ₹10,000": the one tap names the amount it records. With no fare to
+ * name, it still records the whole fare, which the server knows.
+ */
+function takeLabel(collectPaise: number | null): string {
+  return collectPaise === null
+    ? "Take the full fare"
+    : `Take ${formatPaise(collectPaise)}`;
+}
+
+/** "Record ₹3,000" once the box holds an amount: the button repeats the number. */
 function recordLabel(typed: string): string {
   const paise = rupeesToPaise(typed);
   return paise === null ? "Record it" : `Record ${formatPaise(paise)}`;

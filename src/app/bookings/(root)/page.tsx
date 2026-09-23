@@ -30,6 +30,7 @@ import {
   defaultView,
   emptyLine,
   matchesRequest,
+  nothingBooked,
   pillHref,
   readFilters,
   readView,
@@ -41,6 +42,8 @@ import { Problem } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
 import { BookingFilters } from "@/app/bookings/filters";
 import { BookingList } from "@/app/bookings/booking-list";
+import { NothingBooked } from "@/app/bookings/nothing-booked";
+import { PillRow } from "@/app/bookings/pill-row";
 import { RequestQueue } from "@/app/bookings/request-queue";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
@@ -71,9 +74,11 @@ export const dynamic = "force-dynamic";
  *
  * ## The pills, and which one opens
  *
- * Requests · Upcoming · Past · Cancelled. With no `view` in the URL: Requests
- * when any are waiting, otherwise Upcoming. "Past and Cancelled are never the
- * default" — a request has a clock on it and nothing else on this screen does.
+ * Requests · Upcoming · Past · Cancelled, in one row that scrolls sideways.
+ * With no `view` in the URL the screen opens on the first of them that has
+ * anything in it (yuvoy-operator#83 s4), so a request waiting on an answer
+ * still comes first, and a season that is over opens on Past rather than on
+ * "Upcoming 0" and a blank screen.
  *
  * ## Requests are not bookings
  *
@@ -118,7 +123,7 @@ export default async function BookingsPage({
   const listView: "upcoming" | "past" | "cancelled" =
     asked === "past" || asked === "cancelled" ? asked : "upcoming";
 
-  const [page, requests, listings] = await Promise.all([
+  const [first, requests, listings] = await Promise.all([
     searchBookings(token, {
       view: listView,
       ...filters,
@@ -128,9 +133,36 @@ export default async function BookingsPage({
     listListings(token).catch(() => []),
   ]);
 
-  const counts = page?.counts ?? NO_COUNTS;
+  const counts = first?.counts ?? NO_COUNTS;
   const view: View = asked ?? defaultView(counts);
   const filtered = anyFilter(filters);
+
+  /*
+    The rows for the pill the counts chose, when that is not the one the first
+    read fetched. Only Past and Cancelled can be chosen that way, and only when
+    Requests and Upcoming are both empty, so this second read happens on the
+    quiet screens and never on a busy morning's. Its own failure is the screen's
+    failure: the badges from the first read still stand, the rows do not.
+  */
+  const page =
+    first !== null &&
+    asked === null &&
+    (view === "past" || view === "cancelled")
+      ? await searchBookings(token, { view, ...filters, limit: 100 })
+      : first;
+
+  /*
+    Nothing at all, under no filter: a new business, or one whose calendar has
+    nothing on sale. The one empty state with a way forward rather than a line
+    saying so. `page.items` is checked as well as the counts, so rows that
+    arrived beside counts that did not can never be called nothing.
+  */
+  const nothingYet =
+    page !== null &&
+    !filtered &&
+    view !== "requests" &&
+    nothingBooked(counts) &&
+    page.items.length === 0;
 
   const listingOptions = [...(listings ?? [])]
     .map((l) => ({ id: l.id ?? "", title: l.title ?? "" }))
@@ -160,12 +192,12 @@ export default async function BookingsPage({
       {/*
         The pills. Links rather than buttons: the URL holds the place, so back
         and refresh restore the pill somebody was on, and a pill can be opened
-        in a new tab like anything else on the web.
+        in a new tab like anything else on the web. 44px tall, for a wet thumb.
 
         No badges at all when the read failed. A number from a failed read is
         one an operator would plan against.
       */}
-      <nav aria-label="Which bookings" className="mt-5 flex flex-wrap gap-2">
+      <PillRow label="Which bookings" selected={view}>
         {VIEWS.map((pill) => {
           const selected = pill === view;
           return (
@@ -173,19 +205,19 @@ export default async function BookingsPage({
               key={pill}
               href={pillHref(pill, filters)}
               variant={selected ? "primary" : "secondary"}
-              size="sm"
+              size="md"
               block={false}
               aria-current={selected ? "page" : undefined}
               className={cn(selected && "pointer-events-none")}
             >
               {PILL_LABEL[pill]}
-              {page ? (
+              {first ? (
                 <span className="tabular-nums">{countFor(counts, pill)}</span>
               ) : null}
             </ButtonLink>
           );
         })}
-      </nav>
+      </PillRow>
 
       {page === null ? (
         /*
@@ -271,6 +303,8 @@ export default async function BookingsPage({
             </div>
           ) : null}
         </div>
+      ) : nothingYet ? (
+        <NothingBooked />
       ) : (
         <>
           <BookingList
