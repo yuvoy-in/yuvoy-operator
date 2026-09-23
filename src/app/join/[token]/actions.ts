@@ -6,6 +6,7 @@ import { operatorApi } from "@/lib/api/server-client";
 import { writeSessionToken } from "@/lib/auth/session-writes";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { codeSchema } from "@/lib/auth/code";
+import { dedash } from "@/lib/format/dedash";
 
 /**
  * Joining a business from its link — yuvoy-operator#23.
@@ -56,6 +57,16 @@ export interface JoinState {
   leavingBusiness?: string;
   /** Whatever the API wants said about that. Rendered verbatim. */
   note?: string;
+  /**
+   * Whether the code is actually on its way (yuvoy-api#227).
+   *
+   * Read back from what the API queued. `false` when it holds no address that
+   * can reach the person, which is an invitation made without an email
+   * address while there is no phone sender: `note` then says to ask whoever
+   * invited them to add them again with one. Absent from an API older than
+   * 2afd7b4, which answered `true` for everybody, so absent is read as sent.
+   */
+  sent?: boolean;
   /** Development only, exactly as everywhere else. Never in production. */
   devCode?: string;
 }
@@ -98,7 +109,9 @@ export async function requestJoinCode(
         name: data.name,
       },
       leavingBusiness: data.leavingBusiness,
-      note: data.note,
+      // The API's words, with any long dash taken out on the way in.
+      note: data.note ? dedash(data.note) : undefined,
+      ...(typeof data.sent === "boolean" ? { sent: data.sent } : {}),
       devCode: MOCKING ? data.devCode : undefined,
     };
   } catch (err) {
@@ -122,7 +135,7 @@ export async function requestJoinCode(
         return {
           step: "phone",
           message:
-            err.message ||
+            dedash(err.message) ||
             "That number has not been invited to this business. Ask whoever sent you the link to add it.",
         };
       }

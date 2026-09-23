@@ -1292,6 +1292,15 @@ export interface MockTeamMember {
    * field the same way, so the two cannot disagree.
    */
   phone: string;
+  /**
+   * Mock-internal too: the email address an invitation was made with.
+   *
+   * Only an INVITATION carries one, and only so the join page can be told the
+   * truth. With no WhatsApp sender an email address is the one thing that can
+   * carry a join code, so `POST /join/{token}/code` answers `sent: false` for
+   * an invitation made without one (yuvoy-api#227). Never in a response.
+   */
+  inviteEmail?: string;
 }
 
 /**
@@ -1436,6 +1445,7 @@ export const TEAM: MockTeamMember[] = [
     state: "invited",
     pending: true,
     phone: "+919000000104",
+    inviteEmail: "ramesh@example.com",
   },
   {
     /*
@@ -1458,6 +1468,7 @@ export const TEAM: MockTeamMember[] = [
       needs a fixture nobody else reads.
     */
     phone: "+919000000113",
+    inviteEmail: "sunil@example.com",
   },
   {
     id: "inv_lakshmi",
@@ -1466,6 +1477,7 @@ export const TEAM: MockTeamMember[] = [
     state: "invited",
     pending: true,
     phone: LEAVING_PHONE,
+    inviteEmail: "lakshmi@example.com",
   },
   {
     /*
@@ -1486,6 +1498,7 @@ export const TEAM: MockTeamMember[] = [
     state: "invited",
     pending: true,
     phone: "+919000000117",
+    inviteEmail: "seema@example.com",
   },
 ];
 

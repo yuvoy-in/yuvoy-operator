@@ -1849,8 +1849,8 @@ function profileResponse() {
   /*
     `editable` is sent as `true` for everybody, as the API has since D-032.3
     (`operator_business_details.go`): a LIVE account's write is queued for
-    review rather than refused. The contract still describes the old lock
-    (yuvoy-api#222).
+    review rather than refused. The contract's description of `editable`
+    still says the old lock, at 2afd7b4 (asked again on yuvoy-api#222).
   */
   return { ...profile, editable: true, missing };
 }
@@ -2005,7 +2005,8 @@ function requireSession(request: Request) {
  * mask" (yuvoy-api#62), and this mock keeps that property.
  */
 function publicMember(member: MockTeamMember) {
-  const { phone, ...rest } = member;
+  // `inviteEmail` is dropped with the number: neither is in `TeamMember`.
+  const { phone, inviteEmail: _inviteEmail, ...rest } = member;
   return { ...rest, phoneMasked: `••••${phone.slice(-4)}` };
 }
 
@@ -2923,6 +2924,8 @@ export const handlers = [
       state: "invited",
       pending: true,
       phone,
+      // What `POST /join/{token}/code` reads to say whether a code can go.
+      ...(email ? { inviteEmail: email } : {}),
     });
 
     /*
@@ -2930,15 +2933,17 @@ export const handlers = [
 
       There is no WhatsApp sender, so the only thing that can carry an
       invitation is the email address, and with none the message is written
-      suppressed: `sent: false`, and a `note` saying to pass the link on. The
-      API's own words, and the same override it makes: a role it did not grant
-      as asked replaces the note, because that is the sentence the inviter
-      must not miss. It asserted `true` for every invitation before, which is
-      how an owner came to believe a colleague had been told.
+      suppressed: `sent: false`, and a `note` saying to add them again with an
+      email address. The API's own words since yuvoy-api#227 (it used to say to
+      pass on "the code yourself", which the inviter never has), and the same
+      override it makes: a role it did not grant as asked replaces the note,
+      because that is the sentence the inviter must not miss. It asserted
+      `true` for every invitation before, which is how an owner came to believe
+      a colleague had been told.
     */
     const sent = email !== "";
     const notSent =
-      "We could not send that invitation to them. Give them the join link and the code yourself, or add them again with an email address.";
+      "We could not send that invitation to them. Add them again with an email address, so we have somewhere to send it.";
 
     /*
       `joinUrl` alongside the queued message, because "on an island the person
@@ -3054,18 +3059,35 @@ export const handlers = [
     const leaving =
       phone === LEAVING_PHONE ? "Havelock Water Sports" : undefined;
 
+    /*
+      `sent` read back from what could be queued (yuvoy-api#227), where it used
+      to be `true` for everybody: with no phone sender an invitation made
+      without an email address has nowhere to send its code. Both sentences
+      can be true at once and then arrive together in `note`, the one about
+      the code first, in the API's own words.
+    */
+    const sent = Boolean(invite.inviteEmail);
+    const notes = [
+      ...(sent
+        ? []
+        : [
+            "We could not send your code. Ask whoever invited you to add you again with an email address, so we have somewhere to send it.",
+          ]),
+      ...(leaving
+        ? [
+            `Accepting removes you from ${leaving}. One number works with one business at a time.`,
+          ]
+        : []),
+    ];
+
     return HttpResponse.json(
       {
-        sent: true,
+        sent,
         businessName: BUSINESS_NAME,
         role: invite.roles[0] ?? "STAFF",
         name: invite.name,
-        ...(leaving
-          ? {
-              leavingBusiness: leaving,
-              note: `One number works with one business at a time. Joining ${BUSINESS_NAME} ends your access to ${leaving} straight away, including on any device already signed in.`,
-            }
-          : {}),
+        ...(leaving ? { leavingBusiness: leaving } : {}),
+        ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
         devCode: DEV_CODE,
       },
       { status: 202 },
@@ -3659,8 +3681,8 @@ export const handlers = [
    *     "in_review", next }` and deliberately no `logoUrl`, because the old
    *     logo is still the live one (D-032.3). `GET /logo` goes on answering
    *     with the old mark, and the new one is listed on `GET
-   *     /change-requests` as `logo`, pending. Declared under `GET /logo` in
-   *     the contract rather than here (yuvoy-api#222).
+   *     /change-requests` as `logo`, pending. Declared under this `PUT` in
+   *     the contract since yuvoy-api#222.
    *   - Anybody else's is applied: `200 { logoUrl }`.
    */
   http.put(url("/logo"), async ({ request }) => {

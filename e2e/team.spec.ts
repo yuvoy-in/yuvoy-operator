@@ -507,6 +507,23 @@ test("an invitation with no email says nothing was sent, and what makes it go", 
   await expect(receipt.getByText(/the code yourself/)).toHaveCount(0);
   await expect(receipt.getByText(/We also sent them/)).toHaveCount(0);
   await expect(page.getByText(/We message them/)).toHaveCount(0);
+
+  /*
+    And the invitee is told the same thing (yuvoy-api#227). Their join code
+    has nowhere to go either, and `POST /join/{token}/code` used to answer
+    `sent: true` regardless, so the join page asked for a code that nothing
+    was carrying. It now says so, in the API's words, before anything else.
+  */
+  await page.context().clearCookies();
+  await page.goto(`/join/${JOIN_TOKEN}`);
+  await page.getByLabel("Your phone number").fill(who.phone.slice(3));
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "We could not send your code." })
+      .getByText(/Ask whoever invited you to add you again with an email/),
+  ).toBeVisible();
 });
 
 test("an invitation with an email says it was sent, and still leads with the link", async ({
@@ -1102,7 +1119,10 @@ test("joining from another business asks first, and names what is lost", async (
   await expect(
     page.getByText(/This will take you off Havelock Water Sports/),
   ).toBeVisible();
-  await expect(page.getByText(/including on any device already/)).toBeVisible();
+  // The API's own sentence, carried in `note` (yuvoy-api#227 kept its words).
+  await expect(
+    page.getByText(/Accepting removes you from Havelock Water Sports/),
+  ).toBeVisible();
 
   // Nothing may be sent while the question is unanswered.
   const submit = page.getByRole("button", {
