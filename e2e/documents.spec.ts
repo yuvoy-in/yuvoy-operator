@@ -595,6 +595,48 @@ test("an invitation is not a person, so it has no switches", async ({
   ).toHaveCount(0);
 });
 
+test("both notification screens lead with their title, and nothing above it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#80 t2 and t4, on both of them. Each opened with an eyebrow
+    over its heading, repeated its title as a caption in the bar, and then
+    said what the screen is, over a list where every switch already carries
+    the API's own description of what it covers.
+
+    One sentence survives, on somebody else's screen, and it survives because
+    this route lives under /team: "no switch exists that could silence a
+    security warning", so what turning one off does NOT do is worth saying
+    before somebody turns it off expecting it to.
+  */
+  await signIn(page);
+  await page.goto("/notifications");
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Notifications" }),
+  ).toBeVisible();
+  await expect(page.locator(".eyebrow")).toHaveCount(0);
+  // The stage caption is the one `<p>` the screen's header can carry.
+  await expect(page.locator("header p")).toHaveCount(0);
+  await expect(
+    page.getByText(/Which messages about the business reach you/),
+  ).toHaveCount(0);
+
+  await page.goto(`/team/${STAFF_ID}/notifications`);
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Arun Biswas" }),
+  ).toBeVisible();
+  await expect(page.locator(".eyebrow")).toHaveCount(0);
+  await expect(page.locator("header p")).toHaveCount(0);
+  await expect(
+    page.getByText(/Which messages about the business reach them/),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Changing a switch here does not change what they can do."),
+  ).toBeVisible();
+});
+
 test("/notifications has no accessibility violations", async ({ page }) => {
   await signIn(page);
   await page.goto("/notifications");

@@ -9,14 +9,14 @@ import { cn } from "@/lib/cn";
  * 44px. The user of this screen has wet hands, direct sun and eleven people
  * waiting, and a mis-tap here marks the wrong person off a manifest.
  *
- *   primary   — the forest fill, for the one action a screen is for
- *   secondary — a raised paper-deep pill, for the other choice
- *   outline   — a hairline pill, for a quieter action
- *   danger    — the accent hairline. Not red-as-decoration: the destructive
+ *   primary:   the forest fill, for the one action a screen is for
+ *   secondary: a raised paper-deep pill, for the other choice
+ *   outline:   a hairline pill, for a quieter action
+ *   danger:    the accent hairline. Not red-as-decoration: the destructive
  *               actions here (calling off a departure, stopping a bank
  *               change) should not look like a save button.
- *   danger-quiet
- *             — the same accent as text, with no pill: a destructive action
+ *   danger-quiet:
+ *               the same accent as text, with no pill: a destructive action
  *               DEMOTED below the screen's one primary action
  *               (yuvoy-operator#81). Removing somebody from the team or
  *               cancelling a booking must not carry the weight of the safe

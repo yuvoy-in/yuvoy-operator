@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { readShape } from "@/lib/account/read-shape";
+import { helpHref } from "@/lib/help";
 import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
 import { getChangeRequests } from "@/lib/money/fetch";
@@ -64,25 +66,20 @@ export default async function LogoPage() {
   const review = reviewNote(reviewOf(changes, "logo", current?.uploadedAt));
 
   return (
-    <Screen
-      nav={{ back: { href: "/account/settings", label: "settings" } }}
-      stageLabel="Your logo"
-    >
-      <p className="eyebrow text-terra-deep">Your account</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>
+      {/*
+        One title, no eyebrow and no stage caption (yuvoy-operator#80 t2).
+
+        The line under it said where travellers see the mark, which is what
+        the screen is rather than anything to do here, so it is an answer in
+        Help now (#80 t4). It used to close on "we need one before you can be
+        booked", and that stopped being true with yuvoy-api#139: a missing
+        logo no longer stops a sale on a LIVE business. Whether it stops THIS
+        business is on Business, which reads `gates` per blocker.
+      */}
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Your logo
       </h1>
-      {/*
-        "We need one before you can be booked" used to close this sentence. It
-        stopped being true with yuvoy-api#139, which took a missing logo off
-        the list of things that stop a sale on a LIVE business. Whether it
-        stops THIS business is on Business, which reads `gates` per blocker
-        rather than guessing.
-      */}
-      <p className="text-forest/70 mt-3 text-base">
-        Travellers see it on a card with no clip, and on the page about your
-        business.
-      </p>
 
       <Panel className="mt-8">
         {hasLogo ? (
@@ -146,12 +143,20 @@ export default async function LogoPage() {
 
       {/*
         The one sentence that changes what somebody does: without it, an
-        operator whose new mark has not appeared yet uploads it again.
+        operator whose new mark has not appeared yet uploads it again. Where
+        travellers see it, which changes nothing anybody does here, is the
+        answer this links to.
       */}
       <p className="text-forest/70 mt-8 text-sm">
         Once your account is live, we look at a new logo before it replaces the
         one travellers see.
       </p>
+      <Link
+        href={helpHref("where-logo-appears")}
+        className="text-forest/80 hover:text-forest mt-3 inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4"
+      >
+        Where travellers see your logo
+      </Link>
     </Screen>
   );
 }
