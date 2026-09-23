@@ -333,7 +333,7 @@ test("the category and destination are pickers, not text boxes", async ({
   await signIn(page);
   await page.goto("/account/listings/new");
 
-  const category = page.getByLabel("What kind of thing it is");
+  const category = page.getByLabel("Category", { exact: true });
   await expect(category).toHaveJSProperty("tagName", "SELECT");
   await expect(
     category.locator("option", { hasText: "Nature & wildlife" }),
@@ -357,9 +357,9 @@ test("a listing can be created straight from the pickers", async ({
   await signIn(page);
   await page.goto("/account/listings/new");
 
-  await page.getByLabel("What is it called").fill(title);
+  await page.getByLabel("Name", { exact: true }).fill(title);
   await page
-    .getByLabel("What kind of thing it is")
+    .getByLabel("Category", { exact: true })
     .selectOption({ label: "Nature & wildlife" });
   await page
     .getByLabel("Where it runs")
@@ -406,9 +406,11 @@ test("a price must say whether it is per person or for the group", async ({
   await signIn(page);
   await page.goto("/account/listings/new");
 
-  await page.getByLabel("What is it called").fill(`Unstated basis ${suffix}`);
   await page
-    .getByLabel("What kind of thing it is")
+    .getByLabel("Name", { exact: true })
+    .fill(`Unstated basis ${suffix}`);
+  await page
+    .getByLabel("Category", { exact: true })
     .selectOption({ label: "Nature & wildlife" });
   await page
     .getByLabel("Where it runs")
@@ -451,9 +453,9 @@ test("a listing with no price is not asked for a basis", async ({
   await signIn(page);
   await page.goto("/account/listings/new");
 
-  await page.getByLabel("What is it called").fill(title);
+  await page.getByLabel("Name", { exact: true }).fill(title);
   await page
-    .getByLabel("What kind of thing it is")
+    .getByLabel("Category", { exact: true })
     .selectOption({ label: "Nature & wildlife" });
   await page
     .getByLabel("Where it runs")

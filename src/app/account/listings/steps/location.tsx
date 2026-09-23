@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { saveLocation, type StepState } from "../builder-actions";
 import { screenerChoices, type Vocabulary } from "@/lib/services/vocabulary";
-import { inputClass } from "@/components/ui/input";
+import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
 
 /**
@@ -51,7 +51,7 @@ export function LocationStep({
       <input type="hidden" name="id" value={id} />
 
       <div>
-        <label htmlFor="l-meeting" className="label text-forest/75">
+        <label htmlFor="l-meeting" className={fieldLabelClass()}>
           Where to meet
         </label>
         <input
@@ -65,20 +65,24 @@ export function LocationStep({
       </div>
 
       <div>
-        <label htmlFor="l-landmark" className="label text-forest/75">
-          A landmark to find it by
+        <label htmlFor="l-landmark" className={fieldLabelClass()}>
+          What to look for
         </label>
         <input
           id="l-landmark"
           name="meetingLandmark"
           defaultValue={listing.meetingLandmark ?? ""}
           className={inputClass("mt-2")}
+          aria-describedby="l-landmark-help"
           aria-invalid={marked("meetingLandmark")}
         />
+        <p id="l-landmark-help" className="text-forest/70 mt-1.5 text-xs">
+          A landmark nearby: the blue boat shed, the temple gate.
+        </p>
       </div>
 
       <div>
-        <label htmlFor="l-inclusions" className="label text-forest/75">
+        <label htmlFor="l-inclusions" className={fieldLabelClass()}>
           What is included
         </label>
         <textarea
@@ -95,8 +99,8 @@ export function LocationStep({
       </div>
 
       <div>
-        <label htmlFor="l-requirements" className="label text-forest/75">
-          What a traveller needs to bring or be able to do
+        <label htmlFor="l-requirements" className={fieldLabelClass()}>
+          What a traveller needs
         </label>
         <textarea
           id="l-requirements"
@@ -107,12 +111,12 @@ export function LocationStep({
           aria-describedby="l-requirements-help"
         />
         <p id="l-requirements-help" className="text-forest/70 mt-1.5 text-xs">
-          One per line.
+          What to bring, and what they need to be able to do. One per line.
         </p>
       </div>
 
       <div>
-        <label htmlFor="l-safety" className="label text-forest/75">
+        <label htmlFor="l-safety" className={fieldLabelClass()}>
           Safety notes
         </label>
         <textarea
@@ -126,7 +130,7 @@ export function LocationStep({
 
       {screeners.length > 0 ? (
         <div>
-          <label htmlFor="l-screener" className="label text-forest/75">
+          <label htmlFor="l-screener" className={fieldLabelClass()}>
             Health check before booking
           </label>
           <select

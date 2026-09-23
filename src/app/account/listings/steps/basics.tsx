@@ -7,7 +7,7 @@ import {
   type Choice,
   type Vocabulary,
 } from "@/lib/services/vocabulary";
-import { inputClass } from "@/components/ui/input";
+import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
 
 /**
@@ -56,8 +56,8 @@ export function BasicsStep({
       <input type="hidden" name="id" value={id} />
 
       <div>
-        <label htmlFor="b-title" className="label text-forest/75">
-          What is it called
+        <label htmlFor="b-title" className={fieldLabelClass()}>
+          Name
         </label>
         <input
           id="b-title"
@@ -76,8 +76,8 @@ export function BasicsStep({
       </div>
 
       <div>
-        <label htmlFor="b-category" className="label text-forest/75">
-          What kind of thing it is
+        <label htmlFor="b-category" className={fieldLabelClass()}>
+          Category
         </label>
         <select
           id="b-category"
@@ -105,8 +105,8 @@ export function BasicsStep({
       */}
       {activities.length > 0 ? (
         <div>
-          <label htmlFor="b-activity" className="label text-forest/75">
-            What kind of activity
+          <label htmlFor="b-activity" className={fieldLabelClass()}>
+            Activity
           </label>
           <select
             id="b-activity"
@@ -131,7 +131,7 @@ export function BasicsStep({
       ) : null}
 
       <div>
-        <label htmlFor="b-destination" className="label text-forest/75">
+        <label htmlFor="b-destination" className={fieldLabelClass()}>
           Where it runs
         </label>
         <select
@@ -152,7 +152,7 @@ export function BasicsStep({
       </div>
 
       <div>
-        <label htmlFor="b-summary" className="label text-forest/75">
+        <label htmlFor="b-summary" className={fieldLabelClass()}>
           One line about it
         </label>
         <input
@@ -165,7 +165,7 @@ export function BasicsStep({
       </div>
 
       <div>
-        <label htmlFor="b-description" className="label text-forest/75">
+        <label htmlFor="b-description" className={fieldLabelClass()}>
           What happens on the day
         </label>
         <textarea

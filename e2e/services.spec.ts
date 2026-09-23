@@ -67,8 +67,8 @@ async function openHub(page: Page, title: string) {
  */
 async function startDraft(page: Page, title: string, category = "adventure") {
   await page.goto("/account/listings/new");
-  await page.getByLabel("What is it called").fill(title);
-  await page.getByLabel("What kind of thing it is").selectOption(category);
+  await page.getByLabel("Name", { exact: true }).fill(title);
+  await page.getByLabel("Category", { exact: true }).selectOption(category);
   await page.getByLabel("Where it runs").selectOption("andaman/havelock");
   await page.getByRole("button", { name: "Next" }).click();
   await page.waitForURL(/\/account\/listings\/[^/]+\/edit\?step=selling/);
@@ -787,13 +787,13 @@ test("an edit can change the fields that were only ever defaults", async ({
   const row = page.getByRole("main").getByRole("listitem").first();
   await row.getByRole("button", { name: "Propose a change" }).click();
 
-  await expect(row.getByLabel("How long, in minutes")).toHaveValue("180");
+  await expect(row.getByLabel("How long", { exact: true })).toHaveValue("180");
   await expect(row.getByLabel("Most people per booking")).toHaveValue("6");
   await expect(row.getByLabel("What is included")).toHaveValue(
     "Mask and fins\nOne guided dive\nDrinking water",
   );
   await expect(
-    row.getByLabel("What a traveller needs to bring or be able to do"),
+    row.getByLabel("What a traveller needs", { exact: true }),
   ).toHaveValue("Able to swim 50m\nNo diving within 24h of flying");
   await expect(row.getByLabel("Safety notes")).toHaveValue(
     "Two guides in the water on every dive.",
@@ -845,12 +845,12 @@ test("the activity picker narrows to the chosen category", async ({ page }) => {
 
   // Nothing before a category is chosen: an unfiltered list would let somebody
   // pick a pair the API refuses.
-  await expect(page.getByLabel("What kind of activity")).toBeHidden();
+  await expect(page.getByLabel("Activity", { exact: true })).toBeHidden();
 
   await page
-    .getByLabel("What kind of thing it is")
+    .getByLabel("Category", { exact: true })
     .selectOption("nature_wildlife");
-  const activity = page.getByLabel("What kind of activity");
+  const activity = page.getByLabel("Activity", { exact: true });
   await expect(activity).toBeVisible();
   await expect(
     activity.locator("option", { hasText: "Birdwatching" }),
@@ -858,7 +858,7 @@ test("the activity picker narrows to the chosen category", async ({ page }) => {
   await expect(activity.locator("option", { hasText: "Scuba" })).toHaveCount(0);
 
   // Switching category re-narrows rather than keeping a now-invalid pair.
-  await page.getByLabel("What kind of thing it is").selectOption("adventure");
+  await page.getByLabel("Category", { exact: true }).selectOption("adventure");
   await expect(
     activity.locator("option", { hasText: "Scuba diving" }),
   ).toHaveCount(1);
@@ -905,7 +905,7 @@ test("a listing that predates the taxonomy can be given an activity type", async
     `scuba` here would move the composite-key 400 to after the form is filled
     in, exactly as it would on the create form.
   */
-  const activity = row.getByLabel("What kind of activity");
+  const activity = row.getByLabel("Activity", { exact: true });
   await expect(activity).toBeVisible();
   await expect(activity).toHaveValue("");
   await expect(
@@ -947,7 +947,7 @@ test("a listing's own name can be corrected", async ({ page }) => {
     revision fixtures. The send path is the same `submitRevision` the revision
     test already exercises.
   */
-  const title = row.getByLabel("What it is called");
+  const title = row.getByLabel("Name", { exact: true });
   await expect(title).toHaveValue("Reef dive");
   await expect(title).toBeEditable();
 });
