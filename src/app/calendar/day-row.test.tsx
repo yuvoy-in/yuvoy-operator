@@ -7,6 +7,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("./actions", () => ({
   setCapacity: vi.fn(async () => ({})),
   recordOfflineSale: vi.fn(async () => ({})),
+  takeBackOfflineSale: vi.fn(async () => ({})),
   closeDeparture: vi.fn(async () => ({})),
   reopenClosure: vi.fn(async () => ({})),
   addBlackout: vi.fn(async () => ({})),
@@ -44,7 +45,11 @@ const UNCONFIRMED = {
 
 function row(
   departures: OperatorSlot[],
-  over: { closures?: Closure[]; canManage?: boolean } = {},
+  over: {
+    closures?: Closure[];
+    canManage?: boolean;
+    canSellAtCounter?: boolean;
+  } = {},
 ) {
   return (
     <DayRow
@@ -54,6 +59,7 @@ function row(
       guests={2}
       closures={over.closures ?? []}
       canManage={over.canManage ?? true}
+      canSellAtCounter={over.canSellAtCounter ?? true}
     />
   );
 }

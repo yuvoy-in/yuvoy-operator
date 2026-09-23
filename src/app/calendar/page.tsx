@@ -90,11 +90,18 @@ export default async function CapacityPage() {
     closed dates, reopening and counter sales are none of them on the list a
     suspended business may still write, so the whole write surface goes rather
     than each control answering the suspension sentence one tap at a time. And
-    a STAFF login is offered none of it: every write here is OWNER, ADMIN or
-    MANAGER, closing dates included, which used to be drawn for staff and
-    refused after the tap.
+    a STAFF login is offered none of the rest: every other write here is
+    OWNER, ADMIN or MANAGER, closing dates included, which used to be drawn for
+    staff and refused after the tap.
+
+    A counter sale is the exception, and staff DO get it. The API has never
+    role-gated recording one or taking one back ("the person who mistypes the
+    count is the person at the counter", yuvoy-api#226), and the owner
+    confirmed on 23 Sep 2026 that everybody signed in may do both. A walk-up
+    sale nobody may record is a seat we go on selling.
   */
   const canWrite = me.canManage && !me.suspension;
+  const canSellAtCounter = !me.suspension;
 
   /*
     Departures in the fortnight off sale only because nobody confirmed their
@@ -119,8 +126,7 @@ export default async function CapacityPage() {
       */}
       {!me.canManage ? (
         <p className="text-forest/80 mt-3 text-base">
-          Only owners, admins and managers can change seats, close dates or
-          record counter sales.
+          Only owners, admins and managers can change seats or close dates.
         </p>
       ) : null}
 
@@ -170,6 +176,7 @@ export default async function CapacityPage() {
                 guests={guests ? (guests.get(day) ?? 0) : null}
                 closures={closures}
                 canManage={canWrite}
+                canSellAtCounter={canSellAtCounter}
               />
             ))}
           </div>

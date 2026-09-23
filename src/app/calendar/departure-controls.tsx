@@ -31,16 +31,22 @@ import { inputClass } from "@/components/ui/input";
  *   4. The seat count, then a counter sale.
  *   5. Stop selling, last and quiet, because it is the destructive one.
  *
- * A staff login gets 1 and 2: every write here is OWNER, ADMIN or MANAGER, and
- * a control the API would refuse is not offered.
+ * A staff login gets 1, 2 and the counter sale. Every other write here is
+ * OWNER, ADMIN or MANAGER, and a control the API would refuse is not offered.
+ * A counter sale is not one of them: the API has never role-gated recording
+ * one, and the person at the counter is often staff (yuvoy-api#226; owner
+ * ruling, 23 Sep 2026).
  */
 export function DepartureControls({
   slot,
   canManage,
+  canSellAtCounter,
 }: {
   slot: OperatorSlot;
   /** OWNER, ADMIN or MANAGER, on a business that is not suspended. */
   canManage: boolean;
+  /** Anybody signed in, on a business that is not suspended. */
+  canSellAtCounter: boolean;
 }) {
   /*
     The counter-sale form is remounted for each sale: `useActionState` keeps
@@ -56,6 +62,14 @@ export function DepartureControls({
       <div className="space-y-1.5 text-sm">
         <p className="text-forest/80">
           {slot.sold} of {slot.seats} sold · {slot.remaining} left
+          {/*
+            Why six seats read as four (yuvoy-api#226). The count is already
+            taken off `seats`, so this names the people it went to rather than
+            adding anything up again. Drawn only when the API said so.
+          */}
+          {slot.soldOffline
+            ? ` · ${slot.soldOffline} sold at your counter`
+            : ""}
           {/*
             How it sells, as a fact rather than a paragraph. Said only when the
             API says which: defaulting to instant booking would claim held
@@ -94,21 +108,25 @@ export function DepartureControls({
         <>
           <ConfirmDepartureSeats slot={slot} />
           <SeatsForm slot={slot} />
-          <CounterSale
-            key={round}
-            slot={slot}
-            // "Record another sale" means another sale, not another button:
-            // the fresh form opens straight onto the field.
-            initiallyOpen={round > 0}
-            onAgain={() => setRound((r) => r + 1)}
-          />
-          <CloseDeparture
-            slotId={slot.id}
-            title={slot.title}
-            time={time}
-            available={slot.status === "open"}
-          />
         </>
+      ) : null}
+      {canSellAtCounter && !calledOff ? (
+        <CounterSale
+          key={round}
+          slot={slot}
+          // "Record another sale" means another sale, not another button:
+          // the fresh form opens straight onto the field.
+          initiallyOpen={round > 0}
+          onAgain={() => setRound((r) => r + 1)}
+        />
+      ) : null}
+      {canManage && !calledOff ? (
+        <CloseDeparture
+          slotId={slot.id}
+          title={slot.title}
+          time={time}
+          available={slot.status === "open"}
+        />
       ) : null}
     </div>
   );

@@ -1,7 +1,12 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { recordOfflineSale, type OfflineSaleState } from "./actions";
+import {
+  recordOfflineSale,
+  takeBackOfflineSale,
+  type OfflineSaleState,
+  type TakeBackState,
+} from "./actions";
 import type { OperatorSlot } from "@/lib/day/types";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
@@ -18,6 +23,19 @@ import { Panel } from "@/components/ui/panel";
  * What a counter sale is and why an oversell is still recorded is in help
  * (yuvoy-operator#80 t4). The form keeps the one thing it must say: an
  * oversell is an incident, never a tick.
+ *
+ * ## "That was a mistake" (yuvoy-api#226, op#89 f12)
+ *
+ * The receipt is the one screen that knows a wrong count was just recorded,
+ * so the correction lives on it: a mistyped 20 instead of 2 takes the whole
+ * boat and refuses every accept on the departure. It is quiet text behind a
+ * confirm that names what happens, because taking back a sale that was real
+ * puts seats on sale that somebody is already sitting in (#81). Once taken
+ * back, the receipt says the new state and the old controls go (#89 f16).
+ *
+ * Offered to everybody who may record one, which is everybody signed in, and
+ * only when the API returned the entry's `id`: an older API did not, and then
+ * there is nothing the undo could name.
  */
 export function CounterSale({
   slot,
@@ -33,15 +51,67 @@ export function CounterSale({
     recordOfflineSale,
     {},
   );
+  const [takeState, takeBack, takingBack] = useActionState<
+    TakeBackState,
+    FormData
+  >(takeBackOfflineSale, {});
   const [sellingOpen, setSellingOpen] = useState(initiallyOpen);
 
   const oversold = saleState.result?.oversold;
+  const saleId = saleState.result?.id;
 
   const again = (
     <Button onClick={onAgain} variant="secondary" className="mt-4">
       Record another sale
     </Button>
   );
+
+  if (takeState.result) {
+    const taken = takeState.result;
+    return (
+      <Panel tone="done" role="status" className="p-4">
+        {"already" in taken ? (
+          <p className="text-sm font-bold">
+            Already taken back. Its seats are on sale again.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm font-bold">
+              {seatCount(taken.seatsTakenBack)} taken back and on sale again
+            </p>
+            <p className="text-forest/80 mt-1.5 text-sm">
+              {taken.seatsRemaining} left for us to sell ·{" "}
+              {taken.totalSoldOffline} sold at the counter in total.
+            </p>
+          </>
+        )}
+        {/*
+          An incident the sale raised stays open whatever happens here: "if
+          the report left travellers without a seat when you made it, that
+          happened, and somebody at our end closes it" (yuvoy-api#226).
+        */}
+        {oversold?.incidentId ? (
+          <p className="text-forest/80 mt-1.5 text-sm">
+            Incident {oversold.incidentId} stays open until we close it.
+          </p>
+        ) : null}
+        {again}
+      </Panel>
+    );
+  }
+
+  const undo =
+    saleId && saleState.result ? (
+      <TakeBack
+        slotId={slot.id}
+        saleId={saleId}
+        seats={saleState.result.seatsRecorded}
+        incident={Boolean(oversold)}
+        state={takeState}
+        act={takeBack}
+        pending={takingBack}
+      />
+    ) : null;
 
   if (oversold) {
     /*
@@ -81,6 +151,7 @@ export function CounterSale({
           The sale was still recorded. Sort the seats out before the boat
           leaves.
         </p>
+        {undo}
         {again}
       </Panel>
     );
@@ -96,6 +167,7 @@ export function CounterSale({
           {saleState.result.seatsRemaining} left for us to sell ·{" "}
           {saleState.result.totalSoldOffline} sold at the counter in total.
         </p>
+        {undo}
         {again}
       </Panel>
     );
@@ -151,5 +223,97 @@ export function CounterSale({
     <Button onClick={() => setSellingOpen(true)} variant="secondary">
       I sold seats at my counter
     </Button>
+  );
+}
+
+function seatCount(n: number): string {
+  return n === 1 ? "1 seat" : `${n} seats`;
+}
+
+/**
+ * The correction, asked before it is sent.
+ *
+ * Quiet text until tapped, then a question that says what happens: the seats
+ * go back on sale on Yuvoy straight away, and an incident the sale raised is
+ * not withdrawn by it. The loud button is inside the question, never outside.
+ */
+function TakeBack({
+  slotId,
+  saleId,
+  seats,
+  incident,
+  state,
+  act,
+  pending,
+}: {
+  slotId: string;
+  saleId: string;
+  /** What the entry recorded, so the question names it. */
+  seats: number;
+  /** Whether the sale oversold the departure and raised an incident. */
+  incident: boolean;
+  state: TakeBackState;
+  act: (form: FormData) => void;
+  pending: boolean;
+}) {
+  const [asking, setAsking] = useState(false);
+
+  if (!asking) {
+    return (
+      <div className="mt-3">
+        <Button
+          variant="danger-quiet"
+          size="md"
+          block={false}
+          onClick={() => setAsking(true)}
+        >
+          That was a mistake
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <form action={act} className="border-paper-line mt-4 border-t pt-4">
+      <input type="hidden" name="slotId" value={slotId} />
+      <input type="hidden" name="saleId" value={saleId} />
+      <p className="text-sm font-bold">
+        Take back the {seatCount(seats)} you just recorded?
+      </p>
+      <p className="text-forest/80 mt-1 text-sm">
+        {seats === 1 ? "It goes" : "They go"} back on sale straight away. Only
+        do this if {seats === 1 ? "it was" : "they were"} not sold.
+        {incident ? " The incident stays open until we close it." : ""}
+      </p>
+      {state.message ? (
+        <p role="alert" className="text-terra-deep mt-2 text-sm font-bold">
+          {state.message}
+        </p>
+      ) : null}
+      <div className="mt-3 flex gap-2">
+        <Button
+          type="submit"
+          variant="danger"
+          block={false}
+          className="flex-1"
+          disabled={pending}
+        >
+          {pending
+            ? "Taking back…"
+            : seats === 1
+              ? "Take it back"
+              : "Take them back"}
+        </Button>
+        <Button
+          variant="secondary"
+          block={false}
+          className="flex-1"
+          disabled={pending}
+          onClick={() => setAsking(false)}
+        >
+          {seats === 1 ? "Keep it" : "Keep them"}
+        </Button>
+      </div>
+    </form>
   );
 }

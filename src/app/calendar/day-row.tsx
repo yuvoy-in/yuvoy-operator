@@ -50,6 +50,7 @@ export function DayRow({
   guests,
   closures,
   canManage,
+  canSellAtCounter,
 }: {
   /** `YYYY-MM-DD`, the market's. */
   day: string;
@@ -62,6 +63,8 @@ export function DayRow({
   closures: readonly Closure[];
   /** OWNER, ADMIN or MANAGER, on a business that is not suspended. */
   canManage: boolean;
+  /** Anybody signed in, on a business that is not suspended. */
+  canSellAtCounter: boolean;
 }) {
   /*
     Closed is READ, not inferred (yuvoy-operator#45 item 1): a day with no
@@ -163,6 +166,7 @@ export function DayRow({
                     key={slot.id}
                     slot={slot}
                     canManage={canManage}
+                    canSellAtCounter={canSellAtCounter}
                   />
                 ))}
               </ul>
@@ -198,9 +202,11 @@ export function DayRow({
 function DepartureRow({
   slot,
   canManage,
+  canSellAtCounter,
 }: {
   slot: OperatorSlot;
   canManage: boolean;
+  canSellAtCounter: boolean;
 }) {
   const chip = saleChip(slot);
 
@@ -232,7 +238,11 @@ function DepartureRow({
           <ChevronRightIcon className="text-forest/75 ease-interaction size-5 shrink-0 transition-transform duration-200 group-open/dep:rotate-90" />
         </summary>
         <div className="border-paper-line border-t px-4 pt-3 pb-5">
-          <DepartureControls slot={slot} canManage={canManage} />
+          <DepartureControls
+            slot={slot}
+            canManage={canManage}
+            canSellAtCounter={canSellAtCounter}
+          />
         </div>
       </details>
     </li>

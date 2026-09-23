@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 vi.mock("./actions", () => ({
   setCapacity: (prev: unknown, form: FormData) => setCapacity(prev, form),
   recordOfflineSale: vi.fn(async () => ({})),
+  takeBackOfflineSale: vi.fn(async () => ({})),
   closeDeparture: (prev: unknown, form: FormData) => closeDeparture(prev, form),
 }));
 
@@ -51,7 +52,7 @@ const UNCONFIRMED = {
 */
 describe("an opened departure", () => {
   it("says what is sold and how it sells, and the way in is 'Who is booked'", () => {
-    render(<DepartureControls slot={slot()} canManage />);
+    render(<DepartureControls slot={slot()} canManage canSellAtCounter />);
     expect(
       screen.getByText(/2 of 6 sold · 4 left · Instant booking/),
     ).toBeInTheDocument();
@@ -66,12 +67,14 @@ describe("an opened departure", () => {
   it("says nothing about how it sells when the API does not", () => {
     const { bookingMode: _mode, ...unknown } = slot();
     void _mode;
-    render(<DepartureControls slot={unknown} canManage />);
+    render(<DepartureControls slot={unknown} canManage canSellAtCounter />);
     expect(screen.getByText(/2 of 6 sold · 4 left$/)).toBeInTheDocument();
   });
 
   it("offers the seat count, a counter sale, and stopping it, in that order", () => {
-    const { container } = render(<DepartureControls slot={slot()} canManage />);
+    const { container } = render(
+      <DepartureControls slot={slot()} canManage canSellAtCounter />,
+    );
     const text = container.textContent ?? "";
     const seats = text.indexOf("Seats offered");
     const counter = text.indexOf("I sold seats at my counter");
@@ -82,13 +85,52 @@ describe("an opened departure", () => {
     expect(screen.queryByRole("button", { name: /^Confirm/ })).toBeNull();
   });
 
-  it("offers a staff login the facts and the way in, and nothing to change", () => {
-    render(<DepartureControls slot={slot()} canManage={false} />);
+  it("offers a staff login the facts, the way in and a counter sale, and nothing else", () => {
+    /*
+      A counter sale is open to everybody signed in, as it is in the API
+      (yuvoy-api#226; owner ruling, 23 Sep 2026): the person at the counter is
+      often staff. The seat count and stopping a sale stay with managers.
+    */
+    render(
+      <DepartureControls slot={slot()} canManage={false} canSellAtCounter />,
+    );
     expect(
       screen.getByRole("link", { name: "Who is booked" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "I sold seats at my counter",
+    ]);
     expect(screen.queryByLabelText("Seats offered")).toBeNull();
+  });
+
+  it("offers a suspended business nothing to change, not even a counter sale", () => {
+    render(
+      <DepartureControls
+        slot={slot()}
+        canManage={false}
+        canSellAtCounter={false}
+      />,
+    );
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("names the seats sold at the counter, which are already off the count", () => {
+    /*
+      yuvoy-api#226: a six-seat departure with two walk-ups reads "0 of 4 sold
+      · 4 left", and without this nothing says why six became four.
+    */
+    render(
+      <DepartureControls
+        slot={slot({ seats: 4, sold: 0, remaining: 4, soldOffline: 2 })}
+        canManage
+        canSellAtCounter
+      />,
+    );
+    expect(
+      screen.getByText(
+        /^0 of 4 sold · 4 left · 2 sold at your counter · Instant booking$/,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("offers nothing to change on a departure that was called off, and says why it is not selling", () => {
@@ -101,6 +143,7 @@ describe("an opened departure", () => {
           notOnSaleDetail: "This departure was called off.",
         })}
         canManage
+        canSellAtCounter
       />,
     );
     expect(
@@ -112,7 +155,9 @@ describe("an opened departure", () => {
 
 describe("seats nobody confirmed", () => {
   it("is the one primary button, naming the count it keeps, with the reason and a way to learn more", () => {
-    render(<DepartureControls slot={slot(UNCONFIRMED)} canManage />);
+    render(
+      <DepartureControls slot={slot(UNCONFIRMED)} canManage canSellAtCounter />,
+    );
     expect(
       screen.getByText(/Nobody has confirmed the seats on this departure/),
     ).toBeInTheDocument();
@@ -126,7 +171,7 @@ describe("seats nobody confirmed", () => {
   it("sends the count as it is, and keeps its receipt once the departure is back on sale", async () => {
     setCapacity.mockResolvedValue({ slotId: "slot_1", seats: 6 });
     const { rerender } = render(
-      <DepartureControls slot={slot(UNCONFIRMED)} canManage />,
+      <DepartureControls slot={slot(UNCONFIRMED)} canManage canSellAtCounter />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Confirm 6 seats" }));
 
@@ -139,7 +184,7 @@ describe("seats nobody confirmed", () => {
       await screen.findByText("6 seats confirmed as they were."),
     ).toBeInTheDocument();
     // What the re-read passes: it is selling again.
-    rerender(<DepartureControls slot={slot()} canManage />);
+    rerender(<DepartureControls slot={slot()} canManage canSellAtCounter />);
     expect(
       screen.getByText("6 seats confirmed as they were."),
     ).toBeInTheDocument();
@@ -148,7 +193,7 @@ describe("seats nobody confirmed", () => {
 
 describe("stopping one departure", () => {
   it("is quiet text, and its confirm names the departure over the loud button", () => {
-    render(<DepartureControls slot={slot()} canManage />);
+    render(<DepartureControls slot={slot()} canManage canSellAtCounter />);
     const trigger = screen.getByRole("button", { name: "Stop selling" });
     expect(trigger).toHaveClass("text-terra-deep");
     expect(trigger).not.toHaveClass("border-2");
@@ -171,7 +216,9 @@ describe("stopping one departure", () => {
       done: true,
       note: "The bookings already on this departure still stand.",
     });
-    const { rerender } = render(<DepartureControls slot={slot()} canManage />);
+    const { rerender } = render(
+      <DepartureControls slot={slot()} canManage canSellAtCounter />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Stop selling" }));
     fireEvent.click(screen.getByRole("radio", { name: "Weather" }));
     fireEvent.click(screen.getByRole("button", { name: "Stop selling it" }));
@@ -189,6 +236,7 @@ describe("stopping one departure", () => {
           notOnSaleReason: "departure_closed",
         })}
         canManage
+        canSellAtCounter
       />,
     );
     expect(
