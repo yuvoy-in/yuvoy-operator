@@ -1,3 +1,4 @@
+import { OPERATOR_ROLES, describeRole } from "@/lib/team/roles";
 import type { HelpTopic } from "./types";
 
 /**
@@ -10,6 +11,22 @@ import type { HelpTopic } from "./types";
  * control it explains (yuvoy-operator#80 t4), moved rather than rewritten: the
  * facts are the ones the screens stated, which are the contract's.
  */
+
+/**
+ * What each role may do, read from `describeRole` rather than copied.
+ *
+ * Every line is a promise about access, and an owner hands a crew phone to a
+ * skipper on the strength of one. Two copies of a promise drift, and the copy
+ * that drifts here would be the one nobody is looking at. The disclosure on
+ * Team reads the same function, and every claim in it is taken from
+ * `contracts/operator-openapi.yaml`.
+ */
+const ROLE_ANSWER: readonly string[] = OPERATOR_ROLES.flatMap((role) => {
+  const described = describeRole(role);
+  if (!described) return [];
+  const cannot = described.cannot ? ` ${described.cannot}` : "";
+  return [`${described.label}. ${described.can}${cannot}`];
+});
 export const ACCOUNT_HELP: readonly HelpTopic[] = [
   /* ---------------------------------------------------------- Money --- */
   {
@@ -123,6 +140,72 @@ export const ACCOUNT_HELP: readonly HelpTopic[] = [
     answer: [
       "Two months before its expiry date, on Verification. That is also when we start taking the new one.",
       "An expired document stops your departures selling on the day it runs out.",
+    ],
+  },
+  {
+    id: "where-logo-appears",
+    area: "Business",
+    question: "Where do travellers see my logo?",
+    answer: [
+      "On your card in the app, shown whole rather than cropped, and on the page about your business.",
+      "Once your account is live, a person here looks at a new logo before it replaces the one travellers see.",
+    ],
+  },
+  {
+    id: "what-travellers-see",
+    area: "Business",
+    question: "What do travellers read about my business?",
+    answer: [
+      "Your story: what you write about yourself, the languages your crew speaks, your photographs, and the two facts Yuvoy has checked.",
+      "Your registered name and address are not on it. They are under Business details, where an invoice and a payout need them, and travellers never see them.",
+    ],
+  },
+  {
+    id: "story-photographs",
+    area: "Business",
+    question: "What should the photographs on my page show?",
+    answer: [
+      "The boat, the shop, the crew. Not the trip itself: footage of the experience belongs on a listing's reel, which is where travellers look for it.",
+      "Five at most. Your page shows no photographs until you add one.",
+    ],
+  },
+  {
+    id: "story-languages",
+    area: "Business",
+    question: "Why do the languages my crew speaks matter?",
+    answer: [
+      "For a traveller who is nervous in the water, this is often what decides it.",
+      "Separate them with commas: English, Hindi, Bengali. Eight at most.",
+    ],
+  },
+
+  /* ----------------------------------------------------------- Team --- */
+  {
+    id: "what-each-role-can-do",
+    area: "Team",
+    question: "What can each role do?",
+    answer: ROLE_ANSWER,
+  },
+  {
+    id: "why-roles-differ",
+    area: "Team",
+    question: "Why are the roles different?",
+    answer: [
+      "The crew phone goes out on the boat and gets left on a bench. It should be able to tick people off a manifest and nothing else.",
+      "Payout details are the owner's alone. A stolen manager login plus one convincing phone call is otherwise enough to redirect a season's takings.",
+      "Who is on the account is an owner's or an admin's, because an owner who is off the island cannot be the only person who can let somebody in.",
+      "Making somebody an owner hands them the payout details too. An admin who does it cannot change that person's access afterwards.",
+    ],
+  },
+  {
+    id: "removing-somebody",
+    area: "Team",
+    question: "What happens when I remove somebody?",
+    answer: [
+      "Their sessions end immediately, on the next thing they tap, not at their next sign-in. That is the difference between removing somebody now and removing them a fortnight from now.",
+      "Their name comes off the list, and you can invite them again afterwards.",
+      "Pausing is the smaller one. It stops the login and keeps the person, their role and their history, and you can give access back from the same row.",
+      "Revoking an invitation nobody has accepted is a different thing again: the invitation and its code stop working, and nobody ever had access to end.",
     ],
   },
 ];
