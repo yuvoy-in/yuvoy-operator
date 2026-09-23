@@ -448,10 +448,17 @@ test("the day surfaces requests, because a request nobody sees expires", async (
   page,
 }) => {
   await signIn(page);
-  const banner = page.getByRole("link", { name: /request(s)? waiting/ });
-  await expect(banner).toBeVisible();
-  // `req_urgent` is never answered, so "within the hour" is always true.
-  await expect(banner).toContainText("within the hour");
+  /*
+    First in Home's "Needs you" since yuvoy-operator#96, each with its clock
+    (#82 s2). `req_urgent` is never answered and has 24 minutes on it, so it
+    is always the first row.
+  */
+  const first = page
+    .getByRole("region", { name: "Needs you" })
+    .getByRole("listitem")
+    .first();
+  await expect(first).toBeVisible();
+  await expect(first).toContainText("answer within 24 min");
 });
 
 test("requests arrive soonest-to-expire, and that order is not ours to change", async ({

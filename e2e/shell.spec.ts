@@ -203,9 +203,10 @@ test("a focused screen hides the bar and offers a way back", async ({
 }) => {
   await signIn(page);
   /*
-    The DEPARTURE row, not the listing tile. Home carries both since #56, and
-    they share a title: the row goes to that day's manifest and the tile goes to
-    the listing hub. Scoped by the region rather than by the words.
+    A departure on the day's sheet, found by its region rather than by its
+    words: every row on it opens that departure's manifest, and the titles are
+    a fixture other suites edit. The listings left Home for Business in
+    yuvoy-operator#96, so nothing else here shares a row's name.
   */
   await page
     .getByRole("region", { name: /departures?/ })

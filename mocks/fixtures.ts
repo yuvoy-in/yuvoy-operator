@@ -842,6 +842,64 @@ export const SLOTS: MockSlot[] = [
     parties: [],
     seatsUnconfirmed: true,
   },
+  /*
+    CASH TO TAKE TODAY (yuvoy-operator#96, Home's "Needs you").
+
+    Every other cash party is on tomorrow's `slot_cash` or on a call-off
+    fixture whose cash is already taken, so nothing put a "collect" row on
+    Home. One party, never recorded by any test, so the row reads the same
+    on both projects: "Collect ₹4,500 from 1 party on the 20:30". Late in the
+    day and on the dive listing, so no count another suite reads moves.
+  */
+  {
+    id: "slot_cash_today",
+    experienceId: "exp_dive",
+    title: "Reef dive (cash today fixture)",
+    startsAt: todayAt("20:30"),
+    timezone: TZ,
+    seats: 8,
+    sold: 1,
+    remaining: 7,
+    bookingMode: "allotment",
+    status: "open",
+    meetingPoint: "Beach 3 dive hut",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_cash_today",
+        reference: "YV-T0DAY4K5",
+        name: "Hana Ito",
+        guests: 1,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 450_000, collected: false },
+      },
+    ],
+  },
+  /*
+    OFF SALE FOR UNCONFIRMED SEATS, for Home's "Confirm all"
+    (yuvoy-operator#96). Home confirms every listing at once, so it cannot
+    share `slot_unconfirmed` with the listing hub's own walkthrough: the two
+    run in order in one serial block, the hub's first, and this is what is
+    still off sale when Home's turn comes. On "Sunset cruise", whose hub no
+    suite reads, on the same day as the other, which is nobody else's.
+  */
+  {
+    id: "slot_unconfirmed_home",
+    experienceId: "exp_sunset",
+    title: "Sunset cruise (seats fixture)",
+    startsAt: todayAt("11:00", 10),
+    timezone: TZ,
+    seats: 6,
+    sold: 0,
+    remaining: 6,
+    bookingMode: "allotment",
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 1",
+    seatsSoldOffline: 0,
+    parties: [],
+    seatsUnconfirmed: true,
+  },
 ];
 
 export const DEV_CODE = "424242";
@@ -976,6 +1034,41 @@ export const REQUESTS: MockRequest[] = [
     contactName: "Yuki Tanabe",
     seatsGrantable: 6,
     minutesToAnswer: 1_805,
+  },
+  /*
+    Answered from HOME, one per Playwright project (yuvoy-operator#96).
+
+    Home draws the three soonest requests, so these sit inside that three
+    whatever else has been answered: after the one that is never answered,
+    before every other. Nothing else answers them.
+  */
+  {
+    id: "req_home_mobile",
+    slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
+    experience: "Snorkel trip to Elephant Beach",
+    guests: 2,
+    startsAt: todayAt("23:30"),
+    timezone: TZ,
+    requestedAt: todayAt("04:30"),
+    expiresAt: todayAt("09:00"),
+    contactName: "Meenakshi Rao",
+    seatsGrantable: 6,
+    minutesToAnswer: 90,
+  },
+  {
+    id: "req_home_desktop",
+    slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
+    experience: "Snorkel trip to Elephant Beach",
+    guests: 2,
+    startsAt: todayAt("23:30"),
+    timezone: TZ,
+    requestedAt: todayAt("04:35"),
+    expiresAt: todayAt("09:05"),
+    contactName: "Tobias Klein",
+    seatsGrantable: 6,
+    minutesToAnswer: 95,
   },
 ];
 
@@ -1501,6 +1594,20 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
     state: "active",
     phone: "+919000000108",
   },
+  {
+    /*
+      A business with nothing yet: no listing, no departure, no booking, no
+      reel, and two documents to send (yuvoy-operator#96, "New operator,
+      nothing live"). Every other identity reads the fixture dive shop's
+      listings and departures, so without this one Home's start-selling
+      checklist could never be rendered.
+    */
+    id: "usr_new_business",
+    name: "Kiran Das",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000118",
+  },
 ];
 
 /* ------------------------------------------------------ account standing - */
@@ -1818,6 +1925,8 @@ export const CONTENDED_ID = "usr_upload_contended";
 /** `GET /slots` refuses their wide range, and answers the fortnight. */
 export const WIDE_READ_FAILS_ID = "usr_wide_read_fails";
 export const FAILING_ID = "usr_api_failing";
+/** A business with nothing on it yet: Home's start-selling checklist. */
+export const NEW_BUSINESS_ID = "usr_new_business";
 
 /* --------------------------------------------------- conversations ------- */
 

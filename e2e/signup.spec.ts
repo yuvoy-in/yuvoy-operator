@@ -164,9 +164,16 @@ test("the code finishes the job — signed in, in the portal, on an account that
     And the reassurance that used to sit on the confirmation panel is here
     instead, where it can be acted on: a brand-new account is PROSPECT, so the
     day says so rather than showing an empty day with no explanation.
+
+    It is the selling line since yuvoy-operator#96, the first thing on Home,
+    which names what is missing rather than only the state: two documents.
+    Tapping it opens each one with the place it is sent.
   */
+  const status = page.getByText("Not selling: 2 documents needed");
+  await expect(status).toBeVisible();
+  await status.click();
   await expect(
-    page.getByRole("link", { name: /You cannot be booked yet/ }),
+    page.getByRole("link", { name: "Send us the document" }).first(),
   ).toBeVisible();
 
   /*

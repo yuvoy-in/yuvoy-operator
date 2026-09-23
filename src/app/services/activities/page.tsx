@@ -3,17 +3,16 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
 /**
- * Gone to Home — yuvoy-operator#56.
+ * Gone to the business profile, where the listings are: yuvoy-operator#96.
  *
- * Listings stopped being a stop on the bar: every listing this operator has is
- * on Home, in the order it needs attention, and one of them opens the hub at
- * `/today/listing/{id}`. Creating and editing moved to the business profile
- * (#58): `/account/listings/new` and `/account/listings/{id}/edit`.
+ * This URL was the old Listings stop (#22), then a redirect to Home while Home
+ * listed every listing (#56). Home is the day now, with the listings counted
+ * in one line, and the listings themselves live on Business, where they are
+ * made and mended (#58). So an old bookmark lands on them there.
  *
  * A redirect rather than a delete, because this URL is in operators' history
- * and on at least one printed handout. The form components under this folder
- * are still the live ones and are imported by the screens above.
+ * and on at least one printed handout.
  */
 export default function ActivitiesPage() {
-  redirect("/today");
+  redirect("/account");
 }

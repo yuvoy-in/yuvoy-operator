@@ -46,6 +46,7 @@ import {
   type MockThread,
   type MockParty,
   WIDE_READ_FAILS_ID,
+  NEW_BUSINESS_ID,
   type MockSlot,
   type MockTeamMember,
 } from "./fixtures";
@@ -124,6 +125,17 @@ function businessOf(request: Request): string {
   const me = sessionUser(request);
   if (!me) return "none";
   return team.some((m) => m.id === me.id) ? "reef" : `solo:${me.id}`;
+}
+
+/**
+ * Whether this session is the business with nothing on it yet
+ * (yuvoy-operator#96): no listings, departures, requests, reels or
+ * conversations. Every other identity reads the fixture dive shop's, which is
+ * what their own screens are tested against, so this one is answered empty by
+ * name rather than by changing what a business owns for everybody.
+ */
+function isNewBusiness(request: Request): boolean {
+  return sessionUser(request)?.id === NEW_BUSINESS_ID;
 }
 
 /**
@@ -1734,6 +1746,8 @@ function accountFor(me: { id: string }) {
     return ACCOUNT_PROSPECT;
   }
   if (me.id === AWAITING_ID) return ACCOUNT_AWAITING;
+  // A business with nothing yet, two documents to send (yuvoy-operator#96).
+  if (me.id === NEW_BUSINESS_ID) return ACCOUNT_PROSPECT;
   if (me.id === LIVE_OUTSTANDING_ID) {
     /*
       Live, selling, and still owing us the logo and the registered address
@@ -3962,6 +3976,7 @@ export const handlers = [
     if (sessionUser(request)?.id === WIDE_READ_FAILS_ID) {
       return envelope("internal_error", "Something went wrong.", 500);
     }
+    if (isNewBusiness(request)) return HttpResponse.json({ experiences: [] });
     return HttpResponse.json({
       experiences: mockExperiences.map((e) => ({
         ...e,
@@ -4767,6 +4782,9 @@ export const handlers = [
   http.get(url("/media"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    if (isNewBusiness(request)) {
+      return HttpResponse.json({ items: [], complete: true });
+    }
 
     const query = new URL(request.url).searchParams;
     const asked = Number(query.get("limit"));
@@ -5382,6 +5400,9 @@ export const handlers = [
   http.get(url("/slots"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    if (isNewBusiness(request)) {
+      return HttpResponse.json({ items: [], complete: true });
+    }
 
     const u = new URL(request.url);
     const from = u.searchParams.get("from");
@@ -5942,6 +5963,9 @@ export const handlers = [
   http.get(url("/message-threads"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    if (isNewBusiness(request)) {
+      return HttpResponse.json({ threads: [], complete: true });
+    }
 
     const rows = threads
       .map((t) => {
@@ -6243,6 +6267,7 @@ export const handlers = [
   http.get(url("/requests"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    if (isNewBusiness(request)) return HttpResponse.json({ requests: [] });
 
     // Answered requests leave the queue. Ordered soonest-to-expire, which is
     // the endpoint's own order and the whole shape of the screen.
@@ -6519,8 +6544,17 @@ export const handlers = [
       — this repo has no scenario switch — and it buys the zero case a real
       screen to be rendered on. `bookings: 0` is not an error and not a
       spinner, and it is common: every cash trip settled, or none taken yet.
+
+      The business with nothing on it yet answers the same way, and has to:
+      it has no listings and no departures, so it can have taken no cash and
+      left no past trip unrecorded. Without this it read the fixture dive
+      shop's figures and Home put "1 past cash trip has no payment recorded"
+      in front of an operator who has never sold anything (yuvoy-operator#96).
     */
-    if (sessionUser(request)!.id === "usr_manager_dev") {
+    if (
+      sessionUser(request)!.id === "usr_manager_dev" ||
+      isNewBusiness(request)
+    ) {
       return HttpResponse.json({
         bookings: 0,
         farePaise: 0,

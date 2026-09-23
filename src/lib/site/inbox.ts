@@ -1,6 +1,12 @@
 import "server-only";
 import { cache } from "react";
 import { listThreads } from "@/lib/messages/fetch";
+import type { InboxCount } from "./inbox-count";
+
+export type { InboxCount } from "./inbox-count";
+
+/** Pages of 200 walked before stopping. */
+const MAX_PAGES = 10;
 
 /**
  * What is unread across every conversation, read once per render.
@@ -28,15 +34,6 @@ import { listThreads } from "@/lib/messages/fetch";
  * per row. The ceiling stops a broken cursor spinning; stopping at it
  * undercounts a figure that is only a prompt to look, and says what it has.
  */
-export interface InboxCount {
-  /** Messages from travellers nobody at the business has marked read. */
-  messages: number;
-  /** Conversations with at least one of those in them: one guest each. */
-  conversations: number;
-}
-
-const MAX_PAGES = 10;
-
 export const readInbox = cache(
   async (token: string): Promise<InboxCount | null> => {
     try {

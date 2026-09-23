@@ -307,8 +307,21 @@ test("Home counts unread, and opening the conversation clears it", async ({
   await signIn(page);
   await page.goto("/today");
 
-  const strip = page.getByRole("link", { name: /unread message/ });
-  await expect(strip).toContainText("2 unread messages");
+  /*
+    A row in Home's "Needs you" since yuvoy-operator#96, counted in guests:
+    one conversation with two unread messages is one guest waiting on a
+    reply. The inbox on the stage says the same number.
+  */
+  const strip = page
+    .getByRole("region", { name: "Needs you" })
+    .getByRole("link", { name: /guests? wrote to you/ });
+  await expect(strip).toContainText("1 guest wrote to you");
+  await expect(
+    page.getByRole("link", {
+      name: "Messages, 1 unread conversation",
+      exact: true,
+    }),
+  ).toBeVisible();
 
   await strip.click();
   await page.waitForURL("**/messages");
@@ -335,8 +348,12 @@ test("Home counts unread, and opening the conversation clears it", async ({
   await expect(async () => {
     await page.goto("/today");
     await expect(
-      page.getByRole("link", { name: /unread message/ }),
+      page.getByRole("link", { name: /guests? wrote to you/ }),
     ).toHaveCount(0);
+    // And the inbox carries no count.
+    await expect(
+      page.getByRole("link", { name: "Messages", exact: true }),
+    ).toBeVisible();
   }).toPass({ timeout: 10_000 });
 });
 

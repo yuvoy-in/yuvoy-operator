@@ -2,26 +2,34 @@ import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 /**
- * Home and the listing hub — yuvoy-operator#56.
+ * Home and the listing hub: yuvoy-operator#96 and #82 for Home, #56 for the
+ * hub.
  *
  * ## What Home is for
  *
- * One glance at six in the morning on one bar of signal: what is waiting on an
- * answer, what is running today, and every listing with its state. It was
- * Today, which showed the day and nothing else, while the listings lived behind
- * a tab nobody found.
+ * "Run today, miss nothing." Top to bottom: whether the business is selling,
+ * what needs the operator sorted by deadline, today's departures with
+ * Tomorrow one tap away, money today for a login that can manage, and the
+ * listings at a glance. The listing list itself left for Business.
  *
  * ## And what it must not do
  *
- * Explain itself. "One heading per block, and body text only for an error or an
- * empty day." The previous screen opened with the operator's own name and a
- * paragraph about what a manifest is.
+ * Explain itself, greet anybody, or put a departure nobody can be on beside
+ * the ones that run.
  */
 
 const DEV_CODE = "424242";
 const OWNER = "+919000000101";
-/** Arun, STAFF: gets the manifest and nothing to change. */
+/** Dev Kapoor, MANAGER: can manage, and owes nothing on cash. */
+const MANAGER = "+919000000102";
+/** Arun, STAFF: gets the day and nothing to change. */
 const STAFF = "+919000000103";
+/** A new account with two documents to send. */
+const PROSPECT = "+919000000105";
+/** Signs in fine; the business is on hold. */
+const SUSPENDED = "+919000000109";
+/** A business with nothing on it yet: the start-selling checklist. */
+const NEW_BUSINESS = "+919000000118";
 /** The dive listing: live, and its only departure has already left today. */
 const TRY_DIVE = "exp_try_dive";
 /**
@@ -42,97 +50,319 @@ async function signIn(page: Page, phone = OWNER) {
   await page.waitForURL("**/today");
 }
 
-test("Home leads with what is waiting, and never with a name", async ({
+const needsYou = (page: Page) =>
+  page.getByRole("region", { name: "Needs you" });
+const today = (page: Page) =>
+  page.getByRole("region", { name: /^Today · \d+ departures? · \d+ guests?$/ });
+
+/* ---------------------------------------------------------------- Home -- */
+
+test("Home opens on whether the business is selling, and never on a name", async ({
   page,
 }) => {
   await signIn(page);
 
   /*
-    The requests strip, first, because it is the only thing on this screen with
-    a clock on it. "{n} requests waiting · {u} within the hour" when any are
-    close to expiring.
+    Block 1, always, and first: one line. The owner's account can sell and
+    has listings live, so it says so, with a "but" whenever something is off
+    sale or has nothing to sell, which other suites change as they run.
   */
-  const strip = page.getByRole("link", { name: /requests? waiting/ });
-  await expect(strip).toBeVisible();
-  await expect(strip).toContainText(/within the hour/);
-  await strip.click();
-  await page.waitForURL(/view=requests/);
+  const main = page.locator("main");
+  await expect(main.getByText(/^Selling(, but | · )/).first()).toBeVisible();
 
   /*
-    And nobody's name. The screen opened with `me.name` in an eyebrow, which is
-    a greeting rather than information, on the screen an operator opens most.
+    And nobody's name. Home opened with `me.name` once, a greeting rather than
+    information on the screen an operator opens most.
   */
-  await page.goto("/today");
-  const main = await page.locator("main").innerText();
-  expect(main, "Home does not greet anybody").not.toContain("Priya Raut");
+  expect(await main.innerText(), "Home greets nobody").not.toContain(
+    "Priya Raut",
+  );
 });
 
-test("the day says what is running, and a called-off departure says so", async ({
+test("Needs you leads with the requests, each with its clock", async ({
   page,
 }) => {
+  /*
+    #82 s2: "requests waiting first, then messages, then anything else, and
+    each labelled with the time pressure". `req_urgent` is never answered and
+    has 24 minutes on it, so it is always the first row.
+  */
   await signIn(page);
+  const first = needsYou(page).getByRole("listitem").first();
+  await expect(first).toContainText("Snorkel trip to Elephant Beach");
+  await expect(first).toContainText(
+    /2 people · (today|tomorrow|[A-Z][a-z]{2}( \d+ [A-Z][a-z]{2})?) \d\d:\d\d · answer within 24 min/,
+  );
+  await expect(first.getByRole("button", { name: "Accept" })).toBeEnabled();
+  await expect(first.getByRole("button", { name: "Decline" })).toBeEnabled();
 
   /*
-    "{Today} · {n} departure(s) · {g} guest(s)", where the guests are only the
-    ones still going: a called-off departure's seats were cancelled and
-    refunded, and counting them would tell an operator to expect people who are
-    not coming.
+    No more than three requests on Home, the rest one row that opens
+    Bookings. Asserted as a ceiling, not a count: other suites answer requests
+    against the same server while this runs.
   */
+  expect(
+    await needsYou(page).getByRole("button", { name: "Accept" }).count(),
+  ).toBeLessThanOrEqual(3);
+  const more = needsYou(page).getByRole("link", {
+    name: /more requests? waiting/,
+  });
+  if (await more.count()) {
+    await expect(more).toHaveAttribute("href", "/bookings?view=requests");
+  }
+});
+
+test("a request accepted on Home keeps its receipt through a refresh", async ({
+  page,
+}, testInfo) => {
+  /*
+    The one thing an accept leaves behind: the traveller holds seats and
+    "still has to pay". The request leaves the queue the moment it is
+    accepted, and the list re-reads on every focus, so the receipt must live
+    above the rows. One fixture per project: accepting is one-way.
+  */
+  const mine =
+    testInfo.project.name === "mobile"
+      ? { clock: "answer within 1h 30m", who: "Meenakshi Rao" }
+      : { clock: "answer within 1h 35m", who: "Tobias Klein" };
+  await signIn(page);
+
+  const row = needsYou(page)
+    .getByRole("listitem")
+    .filter({ hasText: mine.clock });
+  await row.getByRole("button", { name: "Accept" }).click();
+
+  const receipt = needsYou(page)
+    .getByRole("listitem")
+    .filter({ hasText: `Seats granted to ${mine.who}` });
+  await expect(receipt).toBeVisible();
+  await expect(receipt).toContainText("still have to pay");
+
+  // The page re-reads on focus; the request is gone from it, the receipt is not.
+  const refreshed = page.waitForResponse((r) => r.url().includes("_rsc"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await refreshed;
+  await expect(receipt).toBeVisible();
   await expect(
-    page.getByRole("heading", {
-      name: /^Today · \d+ departures? · \d+ guests?$/,
-    }),
-  ).toBeVisible();
-
-  const off = page
-    .getByRole("region", { name: /departures?/ })
-    .getByRole("link")
-    .filter({ hasText: "Private boat charter" });
-  await expect(off).toContainText("Called off");
+    needsYou(page).getByRole("listitem").filter({ hasText: mine.clock }),
+  ).toHaveCount(0);
 });
 
-test("every listing is on Home, with its state and its next departure", async ({
+test("cash to take today is on Home twice: what needs doing, and its departure", async ({
   page,
 }) => {
+  /*
+    #96 block 2d and block 3. `slot_cash_today` carries one party paying at
+    the counter whom no test records, so both projects read the same.
+  */
   await signIn(page);
+  await expect(
+    needsYou(page).getByRole("link", {
+      name: /^Collect ₹4,500 from 1 party on the 20:30/,
+    }),
+  ).toHaveAttribute("href", "/today/slot_cash_today");
+  await expect(
+    today(page)
+      .getByRole("link")
+      .filter({ hasText: "Reef dive (cash today fixture)" }),
+  ).toContainText("₹4,500 to collect");
+});
 
-  const listings = page.getByRole("region", { name: "Your listings" });
-  await expect(listings).toBeVisible();
+test("the day leaves out what nobody can be on, and says each state in words", async ({
+  page,
+}) => {
+  /*
+    #82 s1 and #96 block 3: "Only departures that can hold people." The
+    charter was called off, so everybody on it was cancelled and it is not
+    part of the day. Every row says its state in words beside sold/seats.
+  */
+  await signIn(page);
+  const day = today(page);
+  await expect(day).toBeVisible();
+  await expect(day).not.toContainText("Private boat charter");
 
-  const dive = listings
+  // The dawn dive has always left by the time anybody looks.
+  const dawn = day
     .getByRole("link")
     .filter({ hasText: "Try-dive at Nemo Reef" });
-  await expect(dive).toContainText("Live");
+  await expect(dawn).toContainText("Departed");
+  await expect(dawn).toContainText(/\d+\/\d+/);
+});
 
+test("Tomorrow is one tap away, and needs no second read", async ({ page }) => {
+  await signIn(page);
+  await page.getByText("Tomorrow", { exact: true }).click();
+
+  const tomorrow = page.getByRole("region", {
+    name: /^Tomorrow · \d+ departures? · \d+ guests?$/,
+  });
+  await expect(tomorrow).toBeVisible();
+  // Tomorrow's cash dive, which today's sheet does not carry.
+  await expect(
+    tomorrow.getByRole("link").filter({ hasText: "Reef dive" }),
+  ).toHaveCount(1);
+  await expect(today(page)).toHaveCount(0);
+});
+
+test("money today is one line for a login that can manage", async ({
+  page,
+}) => {
   /*
-    "Next: {day} {time} · {sold}/{seats}", found inside the ONE fortnight read
-    rather than a request per listing. "Never one call per listing", and a shop
-    with nine would otherwise make nine on the screen opened first.
-
-    SOME listing carries it, rather than a named one, and no listing is asserted
-    to lack it. Every listing with a future departure is one another suite
-    closes, calls off or moves, and `calendar.spec.ts` CREATES departures on the
-    dive listing nine days out — so both halves of a named assertion are coupled
-    to whatever ran first.
-
-    `nextDeparture` being "later than NOW" rather than "later than today" is
-    covered where it belongs, in `home.test.ts`, against a fixed clock.
+    #96 block 4: the payout week, when it can be paid, and what is owed on
+    cash. The owner owes on three cash trips; the manager's figures owe
+    nothing, so the cash half is left out rather than said as zero.
   */
-  /*
-    SOME listing carries it, rather than a named one. Every listing with a
-    future departure is a listing another suite closes, calls off or moves —
-    `slot_late_morning` alone is acted on by the calendar, the day and the hub
-    tests — so naming one here couples this assertion to whatever ran first.
+  await signIn(page);
+  const owner = page.getByRole("region", { name: "Money" }).getByRole("link");
+  await expect(owner).toContainText("₹40,150");
+  await expect(owner).toContainText(
+    /payout (due|from [A-Z][a-z]{2} \d+ [A-Z][a-z]{2})/,
+  );
+  await expect(owner).toContainText("cash owed to Yuvoy ₹4,500");
+  await expect(owner).toHaveAttribute("href", "/earnings");
 
-    What is named is the listing that must NOT carry it: the dive fixture's only
-    departure is this morning's, which has left. `nextDeparture` is "later than
-    NOW", not "later than today", so a 06:00 boat is not next at 09:00, and a
-    listing whose boats have gone says nothing rather than "Next:" with a blank
-    after it.
+  await page.context().clearCookies();
+  await signIn(page, MANAGER);
+  const manager = page.getByRole("region", { name: "Money" }).getByRole("link");
+  await expect(manager).toContainText("₹40,150");
+  await expect(manager).not.toContainText("cash owed");
+});
+
+test("past cash trips nobody recorded are a row, opening what closes them", async ({
+  page,
+}) => {
+  // yuvoy-api#221, on #96: "7 past cash trips have no payment recorded".
+  await signIn(page);
+  await expect(
+    needsYou(page).getByRole("link", {
+      name: /^1 past cash trip has no payment recorded/,
+    }),
+  ).toHaveAttribute("href", "/cash#unrecorded");
+});
+
+test("the listings are one line that opens Business", async ({ page }) => {
+  await signIn(page);
+  const glance = page
+    .getByRole("region", { name: "Listings" })
+    .getByRole("link");
+  await expect(glance).toContainText(/^\d+ live/);
+  await expect(glance).toContainText(/draft/);
+  await glance.click();
+  await page.waitForURL("**/account");
+
+  // And the listing tiles are not on Home any more.
+  await page.goto("/today");
+  await expect(page.getByRole("region", { name: "Your listings" })).toHaveCount(
+    0,
+  );
+});
+
+test("a staff phone gets the day, the queue as one row, and nothing it would be refused", async ({
+  page,
+}) => {
+  /*
+    Every money read refuses STAFF, and so do answering a request, confirming
+    seats and adding departures. So: no money block, and no button that would
+    come back as a refusal. The queue is still said, because a request nobody
+    sees is a request that expires.
+  */
+  await signIn(page, STAFF);
+  await expect(page.getByRole("region", { name: "Money" })).toHaveCount(0);
+  await expect(needsYou(page).getByRole("button")).toHaveCount(0);
+  await expect(
+    needsYou(page).getByRole("link", {
+      name: /requests? (is|are) waiting on an answer/,
+    }),
+  ).toHaveAttribute("href", "/bookings?view=requests");
+  await expect(today(page)).toBeVisible();
+});
+
+test("an account that cannot sell says so first, and leads with what fixes it", async ({
+  page,
+}) => {
+  /*
+    #96 "States": "Blocked: block 1 red, and Needs you leads with the one
+    thing that unblocks selling". This account owes two documents.
+  */
+  await signIn(page, PROSPECT);
+  const status = page.getByText("Not selling: 2 documents needed");
+  await expect(status).toBeVisible();
+
+  // Tapping the line opens the reasons, each with its way forward.
+  await status.click();
+  await expect(
+    page.getByRole("link", { name: "Send us the document" }).first(),
+  ).toBeVisible();
+
+  const first = needsYou(page).getByRole("link").first();
+  await expect(first).toContainText(
+    "We still need your tourism department registration",
+  );
+  await expect(first).toHaveAttribute("href", "/profile#documents");
+});
+
+test("an account on hold is told so, offered the call, and never offered a sale", async ({
+  page,
+}) => {
+  await signIn(page, SUSPENDED);
+  await expect(
+    page.getByText("Not selling: your account is on hold"),
+  ).toBeVisible();
+  const call = needsYou(page).getByRole("link").first();
+  await expect(call).toContainText("Your account is on hold");
+  await expect(call).toHaveAttribute("href", "tel:+918121657657");
+  /*
+    Accepting takes a traveller on, which an account on hold may not do; a
+    decline lets one go, which it always may (yuvoy-operator#50).
   */
   await expect(
-    listings.getByText(/^Next: .+\d\d:\d\d · \d+\/\d+$/).first(),
+    needsYou(page).getByRole("button", { name: "Accept" }),
+  ).toHaveCount(0);
+  await expect(
+    needsYou(page).getByRole("button", { name: "Decline" }).first(),
   ).toBeVisible();
+});
+
+test("a new business gets the start-selling checklist in place of the day", async ({
+  page,
+}) => {
+  /*
+    #96 "States": "New operator, nothing live: a start-selling checklist
+    (details, documents, first listing, first departure, first reel) replaces
+    blocks 3 to 5 until the first sale."
+  */
+  await signIn(page, NEW_BUSINESS);
+  const steps = page.getByRole("region", { name: "Start selling" });
+  await expect(steps).toBeVisible();
+  await expect(steps).toContainText("1 of 5 done");
+  await expect(steps.getByRole("listitem")).toHaveText([
+    /Tell us about your business/,
+    /Send your documents/,
+    /Write your first listing/,
+    /Add your first departure/,
+    /Add your first reel/,
+  ]);
+  await expect(
+    steps.getByRole("link", { name: "Write your first listing" }),
+  ).toHaveAttribute("href", "/account/listings/new");
+
+  // Blocks 3 to 5 are what it replaced.
+  await expect(page.getByRole("region", { name: /departures?/ })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("region", { name: "Money" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Listings" })).toHaveCount(0);
+
+  /*
+    And nothing needs them but the two documents. A business that has sold
+    nothing can have no cash to take, no request waiting and no past trip
+    with cash unrecorded, so a row saying otherwise is this portal reading
+    somebody else's figures.
+  */
+  await expect(needsYou(page).getByRole("listitem")).toHaveCount(2);
+  await expect(needsYou(page).getByRole("listitem").first()).toContainText(
+    "We still need your tourism department registration",
+  );
 });
 
 test("Home has no paragraph explaining itself", async ({ page }) => {
@@ -144,19 +374,15 @@ test("Home has no paragraph explaining itself", async ({ page }) => {
     "No departures today. If that is wrong",
     "A departure that is not here is one Yuvoy cannot sell",
     "Nothing scheduled",
+    "Your listings",
   ]) {
     expect(main, `"${gone}" came off Home`).not.toContain(gone);
   }
 });
 
-test("a listing opens its hub, with everything about it", async ({ page }) => {
+test("a listing's hub has everything about it", async ({ page }) => {
   await signIn(page);
-  await page
-    .getByRole("region", { name: "Your listings" })
-    .getByRole("link")
-    .filter({ hasText: "Try-dive at Nemo Reef" })
-    .click();
-  await page.waitForURL(`**/today/listing/${TRY_DIVE}`);
+  await page.goto(`/today/listing/${TRY_DIVE}`);
 
   await expect(
     page.getByRole("heading", { name: "Try-dive at Nemo Reef" }),
@@ -168,8 +394,8 @@ test("a listing opens its hub, with everything about it", async ({ page }) => {
     page.getByText(/180 minutes · Up to 6 per booking/),
   ).toBeVisible();
 
-  // A focused screen: the way back is to Home.
-  await expect(page.getByRole("link", { name: /Back to home/i })).toBeVisible();
+  // A focused screen with a way back.
+  await expect(page.getByRole("link", { name: /^Back to/i })).toBeVisible();
 });
 
 test("the hub carries the weekly schedule, and asks before removing it", async ({
@@ -349,9 +575,10 @@ test("a staff login cannot cancel a booking from the manifest", async ({
 
 test("Home has no accessibility violations", async ({ page }) => {
   await signIn(page);
-  await expect(
-    page.getByRole("region", { name: "Your listings" }),
-  ).toBeVisible();
+  await expect(today(page)).toBeVisible();
+  // The selling line open too, when it has reasons, so they are audited.
+  const reasons = page.locator("main details summary");
+  if (await reasons.count()) await reasons.first().click();
 
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
@@ -405,38 +632,82 @@ test("a live listing with no dates to sell says so, and one with dates does not"
   ).toContainText("No dates in 30 days");
 });
 
-test("departures off sale for unconfirmed seats are named, and one tap confirms them", async ({
-  page,
-}, testInfo) => {
-  /*
-    yuvoy-operator#94 items 1 and 2. "Seats set by hand stop being offered to
-    travellers once nobody has confirmed them for two days", and no screen said
-    so: Sky diving had 19 of 20 departures off sale for it. `exp_nofootage`
-    has one such departure, ten days out.
+/*
+  Confirming seats is one-way in the mock, and Home confirms EVERY listing's
+  at once, so the listing hub's own walkthrough and Home's cannot share a
+  fixture or run in parallel. Serial, on one project, the hub's first: it
+  confirms `slot_unconfirmed` on its listing, and `slot_unconfirmed_home` is
+  what is still off sale when Home's turn comes.
+*/
+test.describe.serial("confirming seats", () => {
+  test("departures off sale for unconfirmed seats are named, and one tap confirms them", async ({
+    page,
+  }, testInfo) => {
+    /*
+      yuvoy-operator#94 items 1 and 2. "Seats set by hand stop being offered to
+      travellers once nobody has confirmed them for two days", and no screen said
+      so: Sky diving had 19 of 20 departures off sale for it. `exp_nofootage`
+      has one such departure, ten days out.
 
-    Confirming is one-way in the mock, so this runs on one project.
-  */
-  test.skip(
-    testInfo.project.name !== "mobile",
-    "confirming seats is one-way in the shared mock, so single-tenant by design",
-  );
-  await signIn(page);
-  await page.goto("/today/listing/exp_nofootage");
+      Confirming is one-way in the mock, so this runs on one project.
+    */
+    test.skip(
+      testInfo.project.name !== "mobile",
+      "confirming seats is one-way in the shared mock, so single-tenant by design",
+    );
+    await signIn(page);
+    await page.goto("/today/listing/exp_nofootage");
 
-  await expect(page.getByText("1 departure is not on sale")).toBeVisible();
-  // Its only departure is off sale, so it is also live with nothing to sell.
-  await expect(
-    page.getByText("Live, but no dates in the next 30 days"),
-  ).toBeVisible();
+    await expect(page.getByText("1 departure is not on sale")).toBeVisible();
+    // Its only departure is off sale, so it is also live with nothing to sell.
+    await expect(
+      page.getByText("Live, but no dates in the next 30 days"),
+    ).toBeVisible();
 
-  await page
-    .getByRole("button", { name: "Confirm seats for the next 30 days" })
-    .click();
+    await page
+      .getByRole("button", { name: "Confirm seats for the next 30 days" })
+      .click();
 
-  await expect(page.getByText("Seats confirmed on 1 departure")).toBeVisible();
-  // The hub re-read underneath the receipt: it has a date to sell now.
-  await expect(
-    page.getByText("Live, but no dates in the next 30 days"),
-  ).toHaveCount(0);
-  await expect(page.getByText("1 departure is not on sale")).toHaveCount(0);
+    await expect(
+      page.getByText("Seats confirmed on 1 departure"),
+    ).toBeVisible();
+    // The hub re-read underneath the receipt: it has a date to sell now.
+    await expect(
+      page.getByText("Live, but no dates in the next 30 days"),
+    ).toHaveCount(0);
+    await expect(page.getByText("1 departure is not on sale")).toHaveCount(0);
+  });
+
+  test("Home confirms every listing's seats in one tap, and keeps the receipt", async ({
+    page,
+  }, testInfo) => {
+    /*
+      yuvoy-operator#94 item 1, on Home (#96 block 2b): the counts added up
+      across listings, with one control that confirms them all. The receipt
+      is the half that matters: confirming revalidates Home, and the row that
+      offered it is gone in the very render that carries the answer.
+    */
+    test.skip(
+      testInfo.project.name !== "mobile",
+      "confirming seats is one-way in the shared mock, so single-tenant by design",
+    );
+    await signIn(page);
+
+    const row = needsYou(page)
+      .getByRole("listitem")
+      .filter({ hasText: "off sale: seats not confirmed" });
+    await expect(row).toContainText("1 departure is off sale");
+    await row.getByRole("button", { name: "Confirm all" }).click();
+
+    await expect(
+      needsYou(page).getByText("Seats confirmed on 1 departure"),
+    ).toBeVisible();
+    // The re-read has nothing off sale left, and the receipt still stands.
+    await expect(
+      needsYou(page).getByRole("button", { name: "Confirm all" }),
+    ).toHaveCount(0);
+    await expect(
+      needsYou(page).getByText("Seats confirmed on 1 departure"),
+    ).toBeVisible();
+  });
 });

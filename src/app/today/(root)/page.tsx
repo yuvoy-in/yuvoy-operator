@@ -3,11 +3,12 @@
   one reason: to SCOPE the loading boundary beside it.
 
   `/today` is a tab root and wants a fallback, so its tap paints in the first
-  frame. Its children do not: /today/[slotId] and /today/listing/[id] call `notFound()`, and a loading
-  boundary makes a route stream — the shell flushes with HTTP 200 before the
-  page can set a status, so the 404 becomes a 200 with the not-found screen
-  inside it. That was measured, not assumed: the first version of this change
-  turned five detail routes into 200s and eleven e2e tests caught it.
+  frame. Its children do not: /today/[slotId] and /today/listing/[id] call
+  `notFound()`, and a loading boundary makes a route stream: the shell flushes
+  with HTTP 200 before the page can set a status, so the 404 becomes a 200
+  with the not-found screen inside it. That was measured, not assumed: the
+  first version of this change turned five detail routes into 200s and eleven
+  e2e tests caught it.
 
   A route group is not part of the URL, so `/today` is unchanged, and
   `loading.tsx` in here covers this page alone rather than the whole subtree.
@@ -17,38 +18,31 @@
   `loading.test.ts` pins all of it.
 */
 import type { Metadata } from "next";
-import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import { listOpenRequests } from "@/lib/day/requests";
-import { listListings, listMedia, listSlots } from "@/lib/day/manifest";
-import { urgencyOf } from "@/lib/day/request-types";
-import { headline } from "@/lib/account/standing";
-import { totalUnread } from "@/lib/messages/fetch";
-import { unreadLabel } from "@/lib/messages/thread";
+import { listSlots } from "@/lib/day/manifest";
+import { departuresOn } from "@/lib/day/calendar";
+import { marketDays, now } from "@/lib/format/market-time";
+import { readInbox } from "@/lib/site/inbox";
+import { isNewOperator, startSelling } from "@/lib/home/checklist";
+import { cashToCollect, runDay } from "@/lib/home/day";
 import {
-  dayLine,
-  listingLabel,
-  nextDeparture,
-  orderListings,
-  posterFor,
-  requestsLine,
-  seatsLine,
-} from "@/lib/services/home";
-import { shiftDay } from "@/lib/day/calendar";
-import {
-  dayCaption,
-  marketDays,
-  marketTime,
-  now,
-} from "@/lib/format/market-time";
-import { ButtonLink } from "@/components/ui/button";
-import { Chip } from "@/components/ui/chip";
-import { ChevronRightIcon } from "@/components/ui/icons";
-import { panelClass } from "@/components/ui/panel";
+  readHomeListings,
+  readManifests,
+  readMoneyToday,
+  readReelCount,
+} from "@/lib/home/fetch";
+import { listingsGlance } from "@/lib/home/listings";
+import { moneyLine } from "@/lib/home/money";
+import { needsYou, type TodayCash } from "@/lib/home/needs";
+import { sellingStatus } from "@/lib/home/status";
 import { Screen } from "@/components/chrome/screen";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
-import { cn } from "@/lib/cn";
-import type { OperatorSlot } from "@/lib/day/types";
+import { StatusLine } from "./status-line";
+import { NeedsYou } from "./needs-you";
+import { DaySheet } from "./day-sheet";
+import { Glance, MoneyGlance } from "./glance";
+import { StartSelling } from "./start-selling";
 
 export const metadata: Metadata = { title: "Home" };
 
@@ -59,325 +53,202 @@ export const metadata: Metadata = { title: "Home" };
 export const dynamic = "force-dynamic";
 
 /**
- * Home — yuvoy-operator#56.
+ * Home: run today, miss nothing (yuvoy-operator#96, #82).
  *
- * ## What this screen is for
+ * Top to bottom, in the order an operator needs them at six in the morning:
  *
- * One glance, at six in the morning, on one bar of signal: what is waiting on
- * an answer, what is running today, and every listing with its state. It was
- * Today, which showed the day and nothing else, while the listings lived behind
- * a tab nobody found and the requests behind another.
+ *   1. Whether the business is selling, in one line, always.
+ *   2. What needs them, sorted by deadline, one action a row, and nothing at
+ *      all when nothing is waiting.
+ *   3. Today's departures, always, with Tomorrow one tap away.
+ *   4. Money today, for a login that can manage.
+ *   5. The listings at a glance, opening Business.
+ *
+ * A business that has never had anything on sale gets the start-selling
+ * checklist in place of 3 to 5, and one that cannot sell leads 1 and 2 with
+ * why and with the one thing that fixes it.
  *
  * ## Nothing here explains itself
  *
- * One heading per block, and body text only for an error or an empty day
- * (`Do not build`). The previous screen opened with the operator's own name and
- * a paragraph about what a manifest is. Neither is information; both are
- * between an operator and the boat.
+ * One heading per block, and a sentence only for an error, an empty day, or
+ * the consequence of a tap (yuvoy-operator#80 t4). The listing list left: it
+ * grew with the business and pushed the day down, and Business already has it.
  *
- * ## The fortnight is read ONCE
+ * ## One bar of signal
  *
- * "Never one call per listing", and the issue says it twice. Nine listings
- * would otherwise be nine slot requests on the screen somebody opens first.
- * `nextDeparture` finds each listing's next boat inside the one read.
+ * Every read starts at once and each fails on its own: a read that did not
+ * answer hides or explains its own block and never blanks the screen. Nothing
+ * is read per listing. Both days are one `GET /slots`, `/me`, `/requests` and
+ * the inbox are the reads the root layout already made (each `cache`d for
+ * the request), and the only per-row reads are the manifests of TODAY's
+ * departures that have somebody on them, started the moment the day's
+ * departures arrive rather than after everything else.
  */
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ day?: string }>;
-}) {
+export default async function HomePage() {
   const { token, me } = await requireOperator();
-  const { day } = await searchParams;
+  const [{ today, tomorrow }, at] = await Promise.all([marketDays(), now()]);
 
-  const { today, tomorrow } = await marketDays();
-  // Only ever today or tomorrow from the UI, but the value arrives in a URL,
-  // so it is validated rather than trusted.
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(day ?? "") ? day! : today;
-  const fortnightEnd = shiftDay(today, 13);
+  const slots = listSlots(token, today, tomorrow).then(
+    (rows) => rows,
+    () => null,
+  );
+  const manifests = slots.then((rows) =>
+    rows ? readManifests(token, departuresOn(rows, today)) : new Map(),
+  );
 
-  /*
-    Six reads, in parallel, and none of them can take the screen down on its
-    own: every one degrades to a line of its own rather than an error page.
-
-    The fortnight covers BOTH the day's rows and every listing's next
-    departure, which is why it is asked for once and sliced twice.
-  */
-  const [daySlots, fortnight, listings, media, requests, unreadTotal, at] =
+  const [requests, listings, days, dayManifests, inbox, money] =
     await Promise.all([
-      listSlots(token, date, date).then(
-        (rows) => ({ ok: true as const, rows }),
-        () => ({ ok: false as const, rows: [] }),
-      ),
-      listSlots(token, today, fortnightEnd).catch(() => []),
-      listListings(token).catch(() => []),
-      listMedia(token)
-        .then((list) => list.items)
-        .catch(() => []),
       listOpenRequests(token).catch(() => null),
-      totalUnread(token),
-      now(),
+      readHomeListings(token),
+      slots,
+      manifests,
+      readInbox(token),
+      /*
+        Every money read refuses STAFF, so a staff login does not ask: a
+        refusal read on their behalf is a request spent on the one bar of
+        signal to learn nothing.
+      */
+      me.canManage ? readMoneyToday(token) : Promise.resolve(null),
     ]);
 
+  const todaySlots = days ? departuresOn(days, today) : [];
+  const tomorrowSlots = days ? departuresOn(days, tomorrow) : [];
+  const todaySheet = days
+    ? runDay({
+        caption: "Today",
+        slots: todaySlots,
+        listings,
+        manifests: dayManifests,
+        now: at,
+      })
+    : null;
+  const tomorrowSheet = days
+    ? runDay({
+        caption: "Tomorrow",
+        slots: tomorrowSlots,
+        listings,
+        now: at,
+      })
+    : null;
+
   /*
-    `me.account` is already a narrowed `Standing | null` — `null` when the API
-    sent no account block at all, which the contract says is "unknown, never
-    everything is fine". A screen that read that as fine would tell somebody who
-    cannot sell that they can.
+    Cash still to take on today's departures, from the manifests the sheet
+    already read. The rows the sheet leaves out are left out here too: a
+    called-off departure's parties are not on the boat.
   */
-  const standing = me.account;
-  const urgent = (requests ?? []).filter(
-    (r) => urgencyOf(r.minutesToAnswer ?? 0) === "critical",
-  ).length;
-  const waiting = requestsLine((requests ?? []).length, urgent);
-  const ordered = orderListings(listings ?? []);
-  const caption = dayCaption(date, today, tomorrow);
+  const shownToday = new Set(todaySheet?.rows.map((r) => r.id));
+  const cash: TodayCash[] = todaySlots.flatMap((slot) => {
+    const manifest = dayManifests.get(slot.id);
+    if (!manifest || !shownToday.has(slot.id)) return [];
+    const owed = cashToCollect(manifest);
+    return owed.parties > 0
+      ? [
+          {
+            slotId: slot.id,
+            startsAt: slot.startsAt,
+            timezone: slot.timezone,
+            title: slot.title,
+            parties: owed.parties,
+            collectPaise: owed.collectPaise,
+          },
+        ]
+      : [];
+  });
+
+  const suspended = me.suspension !== null;
+  const status = sellingStatus({
+    standing: me.account,
+    suspension: me.suspension,
+    listings,
+    canManage: me.canManage,
+  });
+  const needs = needsYou({
+    standing: me.account,
+    suspended,
+    canManage: me.canManage,
+    requests,
+    listings,
+    cash,
+    unrecorded: money?.unrecorded ?? null,
+    inbox,
+    today,
+    now: at,
+  });
+
+  /*
+    A business none of whose listings has ever been on sale, and nobody booked
+    on either day read, is new: nothing can have sold. It gets the checklist
+    in place of the day, the money and the listings, until something has.
+  */
+  const booked = [...todaySlots, ...tomorrowSlots].some((s) => s.sold > 0);
+  const fresh = isNewOperator(listings, booked);
+  const steps =
+    fresh && listings
+      ? startSelling({
+          standing: me.account,
+          listings,
+          reels: await readReelCount(token),
+          canManage: me.canManage,
+        })
+      : null;
+
+  // "Next: tomorrow 09:00", for an empty today, only when the read says so.
+  const firstTomorrow = tomorrowSheet?.rows[0];
+  const next =
+    todaySheet && todaySheet.rows.length === 0 && firstTomorrow
+      ? `tomorrow ${firstTomorrow.time}`
+      : null;
 
   return (
     <Screen>
       <RefreshOnFocus />
 
       {/*
-        One `h1`, and it is not on screen. The heading an operator needs is the
-        day's line below; a second one saying "Home" above it is the screen
-        naming itself. It stays in the document because a page without one is a
-        page a screen reader cannot orient in.
+        One `h1`, and it is not on screen. The screen does not name itself in
+        large type (yuvoy-operator#80 t2); the first thing drawn is whether the
+        business is selling. It stays in the document, because a page without
+        one is a page a screen reader cannot orient in.
       */}
       <h1 className="sr-only">Home</h1>
 
-      {/*
-        The account, first, and only when it cannot sell. `headline` is the one
-        sentence Verification leads with, so the two cannot disagree about what
-        is wrong — and the strip opens that screen rather than the profile,
-        because the outstanding list is what it is promising.
-      */}
-      {standing && !standing.bookable ? (
-        <Link href="/account/verification" className={stripClass("alert")}>
-          <span className="text-base font-bold">
-            {headline(standing).title}
-          </span>
-          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
-        </Link>
-      ) : null}
+      <StatusLine status={status} />
 
       {/*
-        Requests, which are the only thing on this screen with a clock on them.
-        A failed read says so rather than showing nothing: an empty strip and a
-        broken one look identical, and one of them is a queue expiring.
+        Always rendered, and it draws nothing when nothing is waiting: it holds
+        the receipts of what was just done, which must outlive the rows they
+        came from. See `needs-you.tsx`.
       */}
-      {requests === null ? (
-        <Link href="/bookings?view=requests" className={stripClass("alert")}>
-          <span className="text-base font-bold">
-            Requests did not load. Open Bookings
-          </span>
-          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
-        </Link>
-      ) : waiting ? (
-        <Link href="/bookings?view=requests" className={stripClass("alert")}>
-          <span className="text-base font-bold">{waiting}</span>
-          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
-        </Link>
-      ) : null}
+      <NeedsYou needs={needs} canAccept={me.canManage && !suspended} />
 
-      {/*
-        Unread messages, directly under the requests strip, by the owner's
-        decision of 14 September (yuvoy-operator#52 item 4). Quieter on purpose:
-        a request expires and a message waits.
-      */}
-      {unreadTotal > 0 ? (
-        <Link href="/messages" className={stripClass("raised")}>
-          <span className="text-base font-bold">
-            {unreadLabel(unreadTotal)}
-          </span>
-          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
-        </Link>
-      ) : null}
+      {steps ? (
+        <StartSelling steps={steps} />
+      ) : (
+        <>
+          <DaySheet today={todaySheet} tomorrow={tomorrowSheet} next={next} />
 
-      <nav className="mt-6 flex flex-wrap gap-2" aria-label="Which day">
-        <DayLink label="Today" href="/today" active={date === today} />
-        <DayLink
-          label="Tomorrow"
-          href={`/today?day=${tomorrow}`}
-          active={date === tomorrow}
-        />
-      </nav>
+          {me.canManage ? (
+            <MoneyGlance
+              line={
+                money
+                  ? moneyLine({
+                      week: money.week,
+                      owedPaise: money.owedPaise,
+                      today,
+                    })
+                  : null
+              }
+            />
+          ) : null}
 
-      <section className="mt-5" aria-labelledby="the-day">
-        <h2 id="the-day" className="label text-forest/75">
-          {dayLine(caption, daySlots.rows)}
-        </h2>
-
-        {!daySlots.ok ? (
-          <div className="mt-3">
-            <p className="text-terra-deep text-base font-bold">
-              Departures did not load. Try again.
-            </p>
-            <ButtonLink
-              href={date === today ? "/today" : `/today?day=${date}`}
-              variant="secondary"
-              block={false}
-              className="mt-3"
-            >
-              Try again
-            </ButtonLink>
-          </div>
-        ) : daySlots.rows.length === 0 ? (
-          /*
-            One line. The panel that stood here explained what a departure is
-            and what to do about not having one, on the screen an operator opens
-            when they already know.
-          */
-          <p className="text-forest/70 mt-2 text-base">
-            {date === tomorrow
-              ? "Nothing running tomorrow"
-              : "Nothing running today"}
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {daySlots.rows.map((slot: OperatorSlot) => (
-              <li key={slot.id}>
-                <Link
-                  href={`/today/${slot.id}`}
-                  className={panelClass(
-                    "raised",
-                    "ease-interaction hover:bg-paper flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
-                  )}
-                >
-                  <span className="flex min-w-0 items-baseline gap-3">
-                    <span className="shrink-0 font-mono text-sm tabular-nums">
-                      {marketTime(slot.startsAt, slot.timezone)}
-                    </span>
-                    <span className="truncate text-base font-bold">
-                      {slot.title}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1.5">
-                    <span
-                      className={cn(
-                        "label",
-                        slot.status === "cancelled"
-                          ? "text-terra-deep"
-                          : "text-forest/75",
-                      )}
-                    >
-                      {seatsLine(slot)}
-                    </span>
-                    <ChevronRightIcon className="text-terra-deep size-5" />
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mt-10" aria-labelledby="listings">
-        <h2 id="listings" className="label text-forest/75">
-          Your listings
-        </h2>
-
-        {ordered.length === 0 ? (
-          <Link
+          <Glance
+            id="home-listings"
+            heading="Listings"
             href="/account"
-            className="text-terra-deep tap-target mt-2 block text-base font-bold underline underline-offset-4"
-          >
-            No listings yet
-          </Link>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {ordered.map((listing) => {
-              const id = listing.id ?? "";
-              const next = nextDeparture(fortnight, id, at);
-              const poster = posterFor(media, id);
-              return (
-                <li key={id}>
-                  <Link
-                    href={`/today/listing/${id}`}
-                    className={panelClass(
-                      "raised",
-                      "ease-interaction hover:bg-paper flex items-center gap-3 px-4 py-3 transition-colors duration-200",
-                    )}
-                  >
-                    {/*
-                      A blank tile rather than a placeholder photograph.
-                      `OperatorMedia` has no hero field yet, and a stand-in
-                      picture on a listing is a picture of somebody else's boat.
-                    */}
-                    {poster ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={poster}
-                        alt=""
-                        className="rounded-control size-12 shrink-0 object-cover"
-                      />
-                    ) : (
-                      <span
-                        aria-hidden
-                        className="rounded-control bg-paper-deep size-12 shrink-0"
-                      />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-base font-bold">
-                        {listing.title}
-                      </span>
-                      {next ? (
-                        <span className="text-forest/70 block truncate text-sm">
-                          Next:{" "}
-                          {dayCaption(
-                            marketDayOfSlot(next.startsAt, next.timezone),
-                            today,
-                            tomorrow,
-                          )}{" "}
-                          {marketTime(next.startsAt, next.timezone)} ·{" "}
-                          {next.sold}/{next.seats}
-                        </span>
-                      ) : null}
-                    </span>
-                    <Chip>{listingLabel(listing)}</Chip>
-                    <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+            text={listings ? listingsGlance(listings) : "Listings did not load"}
+            tone={listings ? "plain" : "alert"}
+          />
+        </>
+      )}
     </Screen>
-  );
-}
-
-/** The market day a departure falls on, for its caption. */
-function marketDayOfSlot(startsAt: string, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(
-    new Date(startsAt),
-  );
-}
-
-/** A full-width strip: one line, a chevron, and the whole thing a tap target. */
-function stripClass(tone: "alert" | "raised"): string {
-  return panelClass(
-    tone,
-    "ease-interaction hover:bg-paper mt-3 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
-  );
-}
-
-function DayLink({
-  label,
-  href,
-  active,
-}: {
-  label: string;
-  href: string;
-  active: boolean;
-}) {
-  return (
-    <ButtonLink
-      href={href}
-      variant={active ? "primary" : "secondary"}
-      size="sm"
-      block={false}
-      aria-current={active ? "page" : undefined}
-    >
-      {label}
-    </ButtonLink>
   );
 }

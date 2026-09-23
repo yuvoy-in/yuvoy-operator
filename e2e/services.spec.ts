@@ -51,11 +51,19 @@ async function openEdit(page: Page, title: string) {
   await page.waitForURL(/\/edit$/);
 }
 
-/** Where a listing is RUN, from Home — #56. Pause and resume live here. */
+/**
+ * Where a listing is RUN (#56): its hub, where pause and resume live.
+ *
+ * Found from Business since yuvoy-operator#96 took the listing tiles off
+ * Home: the tile opens the listing, and its id opens the hub. By the id rather
+ * than by a link's words, so a reworded link on the listing screen cannot
+ * take every walkthrough through here with it.
+ */
 async function openHub(page: Page, title: string) {
-  await page.goto("/today");
-  await tile(page, title).first().click();
-  await page.waitForURL(/\/today\/listing\//);
+  await openListing(page, title);
+  const id = /\/account\/listings\/([^/?#]+)/.exec(page.url())?.[1];
+  if (!id) throw new Error(`no listing id in ${page.url()}`);
+  await page.goto(`/today/listing/${id}`);
 }
 
 /**
@@ -92,16 +100,19 @@ test("the two old section URLs land where their content went", async ({
 }) => {
   /*
     D-036, yuvoy-operator#56 and #58. The tab had two pages under it and pointed
-    at the first, so the footage was a stop nobody found. Every listing is on
-    Home now, the library is a tab of the business profile, and both old URLs
-    are redirects: operators have them in a browser history and on a printed
-    onboarding note, and a dead link is how somebody decides the portal is
-    broken.
+    at the first, so the footage was a stop nobody found. The listings are on
+    the business profile since yuvoy-operator#96 took them off Home, the
+    library is a tab of the same profile, and both old URLs are redirects:
+    operators have them in a browser history and on a printed onboarding
+    note, and a dead link is how somebody decides the portal is broken.
   */
   await signIn(page);
 
   await page.goto("/services/activities");
-  await page.waitForURL("**/today");
+  await page.waitForURL(/\/account$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Reef Divers Havelock" }),
+  ).toBeVisible();
 
   await page.goto("/services/reels");
   await page.waitForURL(/\/account\?tab=reels/);

@@ -343,15 +343,18 @@ test("Home explains an empty day the account is the reason for", async ({
   await page.waitForURL("**/today");
 
   /*
-    ONE line and a chevron since #56 item 3. It carried a second line saying
-    "See what is outstanding", which is what a chevron already says: Home is
-    four blocks an operator scans at six in the morning, and every extra line is
-    one between them and the boat.
+    The selling line since yuvoy-operator#96: the first thing on Home, one
+    line, and red for an account that cannot sell ("Not selling: 2 documents
+    needed"). Tapping it opens the reasons, each with its way forward, and
+    the way to the whole list on Verification.
   */
-  const banner = page.getByRole("link", { name: /You cannot be booked yet/ });
-  await expect(banner).toBeVisible();
+  const status = page.getByText("Not selling: 2 documents needed");
+  await expect(status).toBeVisible();
 
-  await banner.click();
+  await status.click();
+  await page
+    .getByRole("link", { name: "See everything on Verification" })
+    .click();
   await page.waitForURL("**/account/verification");
   await expect(
     page.getByRole("heading", { name: "Waiting on you" }),
@@ -359,13 +362,17 @@ test("Home explains an empty day the account is the reason for", async ({
 });
 
 test("a live account gets no banner on the day screen", async ({ page }) => {
-  // The banner is an exception, not decoration. An operator who can sell must
-  // never see a warning about selling.
+  // The warning is an exception, not decoration. An operator who can sell must
+  // never be told they cannot: the selling line says selling.
   await signIn(page, OWNER);
   await page.waitForURL("**/today");
+  await expect(page.getByText(/^Not selling/)).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: /You cannot be booked yet/ }),
-  ).toHaveCount(0);
+    page
+      .locator("main")
+      .getByText(/^Selling(, but | · )/)
+      .first(),
+  ).toBeVisible();
 });
 
 test("a suspended business signs in, and every screen says why", async ({
