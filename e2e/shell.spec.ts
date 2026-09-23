@@ -119,8 +119,12 @@ test("the stage names the business beside the mark, with no tagline", async ({
     .filter({ visible: true })
     .first();
   await expect(mark).toHaveAttribute("src", /yuvoy-mark-compact/);
-  // The marketing caption went with the marketing lockup.
-  await expect(page.getByText("For operators")).toHaveCount(0);
+  // The marketing caption went with the marketing lockup. Visible only: the
+  // sign-in door keeps its caption, and the router keeps the page it left in
+  // the document, hidden.
+  await expect(
+    page.getByText("For operators").filter({ visible: true }),
+  ).toHaveCount(0);
   // And the person holding the phone is not the business.
   await expect(
     page.getByText("Priya Raut", { exact: true }).filter({ visible: true }),

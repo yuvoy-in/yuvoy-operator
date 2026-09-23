@@ -831,16 +831,30 @@ test("a draft names everything still missing, not just the price", async ({
   await signIn(page);
 
   /*
-    On the listing screen, which leads with it for a draft (#58 item 4), and in
-    the builder's Review, which says the same list beside the steps that own it.
+    On the listing screen, which reads a draft back as it stands (#85 s10):
+    each gap is marked on its own row, where it belongs, rather than gathered
+    into one sentence, and the send says how many there are.
   */
   await openListing(page, "Island boat day");
-  const missing = page.getByText(/Still missing:/);
-  await expect(missing).toContainText("a price");
-  await expect(missing).toContainText("a short summary");
-  await expect(missing).toContainText(
-    "whether that price is per person or for the group",
-  );
+  const says = page.getByRole("region", { name: "What it says" });
+  const costs = page.getByRole("region", { name: "What it costs" });
+  await expect(
+    costs.getByRole("listitem").filter({ hasText: /^Price/ }),
+  ).toContainText("Still needed");
+  await expect(
+    says.getByRole("listitem").filter({ hasText: /^One line about it/ }),
+  ).toContainText("Still needed");
+  // The subtle one: a basis nobody stated is a gap, never a guessed phrase.
+  const basis = costs
+    .getByRole("listitem")
+    .filter({ hasText: /^That price is/ });
+  await expect(basis).toContainText("Still needed");
+  await expect(basis).not.toContainText("Per person");
+  await expect(
+    page.getByRole("button", {
+      name: /^Send for review \(\d+ things? missing\)$/,
+    }),
+  ).toBeDisabled();
   // The wire spelling never reaches the operator.
   await expect(page.getByText("unitPricePaise")).toHaveCount(0);
 });

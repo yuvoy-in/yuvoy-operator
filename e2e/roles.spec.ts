@@ -208,15 +208,18 @@ test("a staff login sees capacity and is told it cannot change it", async ({
   await signIn(page, STAFF);
   await page.goto("/calendar");
 
-  await expect(
-    page.getByText("You can see these, but not change them"),
-  ).toBeVisible();
   /*
     Reworded on 15 September (yuvoy-operator#45 item 7). Three sentences on this
     screen opened "Your role cannot ...", which addresses the reader by their
     role rather than saying who to ask; they are one `canManage` gate, so they
-    are one sentence now and the banner uses it too.
+    are one sentence now. Since the Calendar rework (#84, #80 t2) it is the
+    whole of it: the panel's title, "You can see these, but not change them",
+    went with the other headings that only said what the screen already
+    showed.
   */
+  await expect(
+    page.getByText("You can see these, but not change them"),
+  ).toHaveCount(0);
   await expect(
     page.getByText(
       "Only owners, admins and managers can change seats, close dates or record counter sales.",

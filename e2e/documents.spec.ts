@@ -68,6 +68,9 @@ test("the document count comes from the API, and names what is missing", async (
   */
   await signIn(page, LIVE_OUTSTANDING);
   await page.goto("/account/verification");
+  // Hydrated first: a file set before React attaches `onChange` uploads
+  // nothing and says nothing (the trap logo.spec.ts and story.spec.ts hit).
+  await page.waitForLoadState("networkidle");
 
   await expect(
     page.getByText("4 of 5 required documents are verified"),
@@ -107,6 +110,9 @@ test("a business with everything met says so, counting what the API requires", a
   */
   await signIn(page);
   await page.goto("/account/verification");
+  // Hydrated first: a file set before React attaches `onChange` uploads
+  // nothing and says nothing (the trap logo.spec.ts and story.spec.ts hit).
+  await page.waitForLoadState("networkidle");
   await expect(
     page.getByText("4 of 4 required documents are verified"),
   ).toBeVisible();
@@ -117,6 +123,9 @@ test("a document says whether we hold a file, and only a pending one takes one",
 }) => {
   await signIn(page);
   await page.goto("/account/verification");
+  // Hydrated first: a file set before React attaches `onChange` uploads
+  // nothing and says nothing (the trap logo.spec.ts and story.spec.ts hit).
+  await page.waitForLoadState("networkidle");
 
   // Verified, with a file: the name, and nothing to send.
   const boat = page.locator("li").filter({ hasText: "Boat papers" }).first();
@@ -152,6 +161,9 @@ test("a verified document we hold no file for says so, and asks for a copy", asy
   */
   await signIn(page);
   await page.goto("/account/verification");
+  // Hydrated first: a file set before React attaches `onChange` uploads
+  // nothing and says nothing (the trap logo.spec.ts and story.spec.ts hit).
+  await page.waitForLoadState("networkidle");
 
   const row = page
     .locator("li")
@@ -192,6 +204,9 @@ test("a service with no documents store says so plainly, and offers no retry", a
   */
   await signIn(page, AWAITING);
   await page.goto("/account/verification");
+  // Hydrated first: a file set before React attaches `onChange` uploads
+  // nothing and says nothing (the trap logo.spec.ts and story.spec.ts hit).
+  await page.waitForLoadState("networkidle");
 
   const row = page
     .locator("li")
@@ -227,6 +242,9 @@ test("a file over 10 MB is refused before anything is uploaded", async ({
   */
   await signIn(page);
   await page.goto("/account/verification");
+  // Hydrated first: a file set before React attaches `onChange` uploads
+  // nothing and says nothing (the trap logo.spec.ts and story.spec.ts hit).
+  await page.waitForLoadState("networkidle");
 
   const oxygen = page
     .locator("li")
@@ -248,6 +266,9 @@ test("a kind we cannot take names the three we can", async ({ page }) => {
   // a PNG" and cannot act on "unsupported file type".
   await signIn(page);
   await page.goto("/account/verification");
+  // Hydrated first: a file set before React attaches `onChange` uploads
+  // nothing and says nothing (the trap logo.spec.ts and story.spec.ts hit).
+  await page.waitForLoadState("networkidle");
 
   const oxygen = page
     .locator("li")
@@ -282,6 +303,9 @@ test("the file goes to the bucket, and the row then names it", async ({
 
   await signIn(page);
   await page.goto("/account/verification");
+  // Hydrated first: a file set before React attaches `onChange` uploads
+  // nothing and says nothing (the trap logo.spec.ts and story.spec.ts hit).
+  await page.waitForLoadState("networkidle");
 
   /*
     The GST row, which nothing else reads. `cred_oxygen_pending` is asserted
