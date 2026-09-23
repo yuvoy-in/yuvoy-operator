@@ -31,15 +31,21 @@ async function signIn(page: Page, phone: string) {
   await page.waitForURL("**/today");
 }
 
-test("the business door leads to it", async ({ page }) => {
+test("Money leads to it, and it goes back to Money", async ({ page }) => {
+  /*
+    Cash sits behind the Money tab (yuvoy-operator#96), not behind Settings,
+    so the way in is the cash summary there and the way back is to Money.
+  */
   await signIn(page, OWNER);
-  // The doors moved behind the gear on the profile, #58 item 9.
-  await page.goto("/account/settings");
+  await page.goto("/earnings");
   await page.getByRole("link", { name: /Cash you.{1,3}ve collected/ }).click();
   await page.waitForURL("**/cash");
   await expect(
     page.getByRole("heading", { name: /Cash you.{1,3}ve collected/ }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to Money" }),
+  ).toHaveAttribute("href", "/earnings");
 });
 
 test("it leads with what was collected, and the share reads as a share", async ({
@@ -77,6 +83,15 @@ test("it leads with what was collected, and the share reads as a share", async (
   const body = (await page.locator("body").textContent()) ?? "";
   expect(body).not.toMatch(/commission due|amount due|outstanding balance/i);
   expect(body).not.toMatch(/we are holding|held by Yuvoy/i);
+
+  /*
+    Nothing above the heading: not the signed-in person's name, which read as
+    one staff member's takings on a shared phone (op#87 t3), and not an
+    eyebrow saying "The money" over a heading that already said it (op#80 t2).
+  */
+  const main = await page.locator("main").innerText();
+  expect(main).not.toContain("Priya Raut");
+  expect(main).not.toMatch(/the money/i);
 });
 
 test("every trip behind the number is listed and checkable", async ({
@@ -167,13 +182,15 @@ test("owing nothing is a sentence, not a table of zeroes", async ({ page }) => {
   await expect(page.getByText("₹0")).toHaveCount(0);
 });
 
-test("there is no way to pay from this screen, and it says why", async ({
+test("there is no way to pay from this screen, and why is one tap away", async ({
   page,
 }) => {
   /*
-    Deliberate. Settling is money moving back to us — the same class of act as
-    money leaving — and the payout run spends two tables and three signatures
-    getting that right. A silence here would read as an omission.
+    Deliberate. Settling is money moving back to us, the same class of act as
+    money leaving, and the payout run spends two tables and three signatures
+    getting that right. The reason used to close every visit as a paragraph
+    ("There is nothing to tap here", op#80 t4); it is an answer in Help now,
+    one tap from the foot of the screen.
   */
   await signIn(page, OWNER);
   await page.goto("/cash");
@@ -181,7 +198,13 @@ test("there is no way to pay from this screen, and it says why", async ({
   await expect(page.getByRole("button", { name: /pay|settle/i })).toHaveCount(
     0,
   );
-  await expect(page.getByText(/nothing to tap here/i)).toBeVisible();
+  await expect(page.getByText(/nothing to tap here/i)).toHaveCount(0);
+
+  await page.getByRole("link", { name: /How to settle Yuvoy.s share/ }).click();
+  await page.waitForURL("**/account/help#settling-cash");
+  const answer = page.locator("#settling-cash");
+  await expect(answer).toHaveAttribute("open", "");
+  await expect(answer.getByText(/There is no pay button/)).toBeVisible();
 });
 
 test("staff are told, not refused into the error boundary", async ({

@@ -264,18 +264,45 @@ test("the expiry field says what an expired document costs", async ({
   ).toBeVisible();
 });
 
-test("it does not repeat the expiry dates /account already owns", async ({
+test("it does not repeat the expiry dates Verification already owns", async ({
   page,
 }) => {
   /*
     Two copies of a date an operator plans a season around is two places for
-    them to disagree. This screen points at the one that owns them.
+    them to disagree. This screen points at the one that owns them, which is
+    Verification since the profile became a profile (#58).
   */
   await signIn(page);
   await page.goto("/profile");
   await expect(
-    page.getByRole("link", { name: "your business" }).last(),
-  ).toBeVisible();
+    page.getByRole("link", {
+      name: "Documents we hold, and when they run out",
+    }),
+  ).toHaveAttribute("href", "/account/verification");
+});
+
+test("it links to what is waiting instead of repeating it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#88 s13: "Both items then repeat word for word on Business
+    details, so the operator meets the same two sentences twice ... Show each
+    blocker in one place only, and link to it from the other."
+  */
+  await signIn(page, "+919000000115"); // live, with three things outstanding
+  await page.goto("/profile");
+
+  await expect(
+    page.getByRole("link", { name: /3 things waiting on you/ }),
+  ).toHaveAttribute("href", "/account/verification");
+  await expect(
+    page.getByText("We still need your registered business name and address"),
+  ).toHaveCount(0);
+  await expect(page.getByText("We still need your logo")).toHaveCount(0);
+  // One title: the form under it no longer says it again.
+  await expect(
+    page.getByRole("heading", { name: "Business details" }),
+  ).toHaveCount(1);
 });
 
 test("/profile has no accessibility violations", async ({ page }) => {

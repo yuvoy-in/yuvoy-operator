@@ -25,17 +25,16 @@ export default async function NotificationsPage() {
   const { data, error } = await operatorApi(token).GET("/me/notifications", {});
 
   return (
-    <Screen
-      nav={{ back: { href: "/account", label: "your business" } }}
-      stageLabel="Notifications"
-    >
-      <p className="eyebrow text-terra-deep">Your account</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    <Screen nav={{ back: { href: "/account", label: "your business" } }}>
+      {/*
+        One title, no eyebrow and no stage caption (yuvoy-operator#80 t2). The
+        line under it said the title again in a sentence, and every switch
+        below carries the API's own description of what it covers, which is
+        the part that tells somebody anything.
+      */}
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Notifications
       </h1>
-      <p className="text-forest/70 mt-3 text-base">
-        Which messages about the business reach you.
-      </p>
 
       <div className="mt-8">
         {error || !data ? (

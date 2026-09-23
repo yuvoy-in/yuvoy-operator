@@ -15,12 +15,23 @@ import { panelClass } from "@/components/ui/panel";
 /**
  * One person, or one invitation nobody has accepted.
  *
- * Removing is two taps, not one. The asymmetry is the same one that makes
- * declining a request two taps: a wet thumb on a 56px target at 6am costs
- * nothing if it adds a seat and costs a skipper their access if it does not.
- * It is not typed-confirmation territory — calling off a departure is
- * irreversible and this is not, because they can be invited again — but it is
- * not one tap either.
+ * ## The role is the chip, and only the chip (yuvoy-operator#88 s16)
+ *
+ * "Each person carries a paragraph describing their role ... Three people
+ * means three paragraphs of nearly identical text to read past." The chip
+ * already named the role, so the row keeps the chip, and what each role may
+ * do is said once, for the whole list, behind "What each role can do".
+ *
+ * ## Removing is quiet, and two taps (yuvoy-operator#81)
+ *
+ * "Remove somebody from the team is a full-width button with the same weight
+ * as Change role." It is the one irreversible thing on the row, so it is the
+ * warning-coloured words below the row's controls, never a pill beside them,
+ * and it opens a confirm that names the person and what happens, whose button
+ * carries the danger pill. The asymmetry is the one that makes declining a
+ * request two taps: a wet thumb costs nothing if it adds a seat and costs a
+ * skipper their access if it does not. Not typed-confirmation territory
+ * (they can be invited again), but not one tap either.
  */
 export function MemberRow({
   member,
@@ -69,6 +80,10 @@ export function MemberRow({
   );
   const [confirming, setConfirming] = useState(false);
 
+  /*
+    A role this build cannot describe is the one case the chip alone cannot
+    cover: the chip shows the raw word, and the row says so.
+  */
   const strongest = strongestRole(member.roles);
   const described = strongest ? describeRole(strongest) : null;
 
@@ -131,17 +146,10 @@ export function MemberRow({
         </div>
       </div>
 
-      {described ? (
-        <p className="text-forest/80 mt-2 text-sm">
-          {described.can}
-          {described.cannot ? (
-            <span className="text-forest/70"> {described.cannot}</span>
-          ) : null}
-        </p>
-      ) : (
+      {described ? null : (
         /*
           A role this build does not recognise. Said plainly rather than
-          described with the nearest guess — telling an owner somebody has less
+          described with the nearest guess: telling an owner somebody has less
           access than they do is how a phone gets handed over.
         */
         <p className="text-forest/70 mt-2 text-sm">
@@ -174,10 +182,7 @@ export function MemberRow({
 
       <p className="text-forest/70 mt-2 text-xs">
         {member.pending ? (
-          <>
-            Invited. They have not signed in yet, so nothing is granted until
-            they do.
-          </>
+          <>Invited. They have not signed in yet.</>
         ) : (
           <>
             {/*
@@ -253,7 +258,7 @@ export function MemberRow({
       {removability.removable || removability.reason ? (
         removability.removable ? (
           confirming ? (
-            <form action={act} className="mt-4">
+            <form action={act} className="border-paper-line mt-4 border-t pt-4">
               <input type="hidden" name="id" value={member.id} />
               <p className="text-sm font-bold">
                 {member.pending
@@ -289,8 +294,10 @@ export function MemberRow({
           ) : (
             <Button
               onClick={() => setConfirming(true)}
-              variant="secondary"
-              className="mt-4"
+              variant="danger-quiet"
+              size="md"
+              block={false}
+              className="mt-3"
             >
               {member.pending ? "Revoke invitation" : "Remove"}
             </Button>

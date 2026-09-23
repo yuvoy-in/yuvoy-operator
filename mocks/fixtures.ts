@@ -1254,6 +1254,23 @@ export const CHANGE_REQUESTS = [
     objectionUntil: null,
     coolingUntil: todayAt("09:00", 1),
   },
+  {
+    id: "chg_bank_0",
+    kind: "bank",
+    /*
+      What is ON FILE: the newest bank change that went live, which Payout
+      details shows as text with one Change button (yuvoy-operator#87 s14).
+      Written in the API's own summary shape, `Bank ····last4 (IFSC)`
+      (yuvoy-api `BankChange.Summary`), so the screen's reading of it is
+      exercised against what production sends rather than against this
+      mock's own shape above.
+    */
+    state: "applied",
+    summary: "HDFC Bank ····4412 (HDFC0001234)",
+    requestedAt: todayAt("09:00", -40),
+    objectionUntil: null,
+    coolingUntil: todayAt("09:00", -38),
+  },
 ];
 
 /* --------------------------------------------------------------- team ---- */

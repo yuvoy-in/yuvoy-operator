@@ -30,6 +30,30 @@ export async function getChangeRequests(
 }
 
 /**
+ * The same list, for the one screen whose subject it is: Payout details.
+ *
+ * `null` when the read failed, where `getChangeRequests` answers `[]`. On the
+ * screens that borrow the list for a warning, a failed read is a missing
+ * warning; on Payout details an empty list means "nothing on file, nothing in
+ * flight" and draws the form straight away, which is the wrong thing to show
+ * an owner whose account and open change simply did not load.
+ */
+export async function readChangeRequests(
+  token: string,
+): Promise<ChangeRequest[] | null> {
+  try {
+    const { data, error } = await operatorApi(token).GET(
+      "/change-requests",
+      {},
+    );
+    if (error) throw error;
+    return data.requests ?? [];
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The bookings departing in a window, with what each contributed.
  *
  * Soft-failing, but not the way `getChangeRequests` is. That one degrades to
@@ -172,6 +196,25 @@ export async function getCommissionOwed(token: string): Promise<Commission> {
   const { data, error } = await operatorApi(token).GET("/commission-owed", {});
   if (error) throw error;
   return toCommission(data);
+}
+
+/**
+ * The same read, for a screen where cash is one section among several: the
+ * Money tab's summary (yuvoy-operator#96).
+ *
+ * SOFT-failing, where `getCommissionOwed` is hard, and for the reason that one
+ * is hard: on `/cash` the balance IS the screen, while on Money a failed read
+ * must cost the cash figures and nothing else. `null` is "we could not read
+ * it", and the caller draws no owed figure at all rather than a ₹0.
+ */
+export async function readCommissionOwed(
+  token: string,
+): Promise<Commission | null> {
+  try {
+    return await getCommissionOwed(token);
+  } catch {
+    return null;
+  }
 }
 
 /* ---------------------------------------------------- settlements (op#47) -- */

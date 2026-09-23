@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { ComponentType, ReactNode } from "react";
 import { requireOperator } from "@/lib/auth/session";
+import { SUPPORT_PHONE, SUPPORT_PHONE_HREF } from "@/lib/site/contact";
 import { Screen } from "@/components/chrome/screen";
 import { SignOutButton } from "@/components/chrome/sign-out-button";
 import {
-  BankIcon,
   BellIcon,
   BriefcaseIcon,
   CheckIcon,
   ChevronRightIcon,
-  CoinsIcon,
+  HelpIcon,
   ImageIcon,
+  PhoneIcon,
   StoryIcon,
   UsersIcon,
 } from "@/components/ui/icons";
@@ -20,32 +22,36 @@ export const metadata: Metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
 
 /**
- * Settings — yuvoy-operator#58 item 9.
+ * Settings: yuvoy-operator#58 item 9, regrouped by #88 s12.
  *
  * Everything that is set up once and rarely touched, behind the gear on the
  * business profile. One line per row: an icon, a label, a chevron.
+ *
+ * ## A group only where there are two or more rows
+ *
+ * "Three groups exist to hold one row each, and the group heading repeats the
+ * row: VERIFICATION → Verification, NOTIFICATIONS → Notifications, TEAM → Team
+ * access. It doubles the length of the screen and makes the groups
+ * meaningless." So Business keeps its heading over three rows, Help over
+ * three, and Verification, Notifications and Team access are plain rows.
+ *
+ * ## Money is not here
+ *
+ * It is a tab of its own (yuvoy-operator#96): Earnings, Cash and Payout
+ * details are reached from Money, and a second way in from here would be two
+ * doors to one room.
  *
  * ## No sentence under any row
  *
  * The profile listed these as doors with a line of explanation each, which made
  * the Business tab a page of prose an operator scrolled past to reach the one
- * thing they came for. A label and a chevron is the whole of what a settings
- * row has ever needed to be.
- *
- * ## A group with nothing in it is not drawn
- *
- * "STAFF see no Money or Team heading." A heading over an empty space is a
- * screen telling somebody what they are not allowed to have, which is the
- * pattern yuvoy-operator#25 §4 removed everywhere else.
+ * thing they came for. The explanations are in Help, one row down the list.
  */
 export default async function SettingsPage() {
   const { me } = await requireOperator();
 
   return (
-    <Screen
-      nav={{ back: { href: "/account", label: "your business" } }}
-      stageLabel="Settings"
-    >
+    <Screen nav={{ back: { href: "/account", label: "your business" } }}>
       <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Settings
       </h1>
@@ -56,52 +62,40 @@ export default async function SettingsPage() {
         <Row href="/story" icon={StoryIcon} label="Your story" />
       </Group>
 
-      <Group title="Verification">
+      <div className="mt-8 space-y-2">
         <Row
           href="/account/verification"
           icon={CheckIcon}
           label="Verification"
         />
-      </Group>
-
-      <Group title="Notifications">
-        {/*
-          Not in the issue's table, because the screen did not exist when it was
-          written (#46 shipped it). Left out, an operator who turned a switch off
-          would have no way back to it: the only other door was the one this
-          screen replaced.
-        */}
         <Row href="/notifications" icon={BellIcon} label="Notifications" />
-      </Group>
-
-      {/*
-        Money and Team are OWNER, ADMIN or MANAGER. Every screen behind them
-        refuses a staff login, so offering the row would be offering a refusal.
-      */}
-      {me.canManage ? (
-        <Group title="Money">
-          <Row href="/earnings" icon={CoinsIcon} label="Earnings" />
-          <Row href="/cash" icon={CoinsIcon} label="Cash you've collected" />
-          <Row href="/payouts" icon={BankIcon} label="Payout details" />
-        </Group>
-      ) : null}
-
-      {me.canManage ? (
-        <Group title="Team">
+        {/*
+          OWNER, ADMIN or MANAGER, as it was. A staff login is not offered the
+          team's controls; the screen would only tell them they cannot change
+          it.
+        */}
+        {me.canManage ? (
           <Row href="/team" icon={UsersIcon} label="Team access" />
-        </Group>
-      ) : null}
+        ) : null}
+      </div>
 
       <Group title="Help">
+        <Row href="/account/help" icon={HelpIcon} label="Help" />
         {/*
           A telephone number, because the person reading this is on a jetty and
-          the answer they need is not on a screen.
+          the answer they need is not on a screen. The number itself stands
+          where the chevron would: this row does not open a screen, it dials.
         */}
         <Row
-          href="tel:+918121657657"
-          icon={BriefcaseIcon}
+          href={SUPPORT_PHONE_HREF}
+          icon={PhoneIcon}
           label="Call Yuvoy"
           external
+          trailing={
+            <span className="text-forest/80 text-sm whitespace-nowrap tabular-nums">
+              {SUPPORT_PHONE}
+            </span>
+          }
         />
         <div className="mt-2">
           <SignOutButton />
@@ -111,16 +105,11 @@ export default async function SettingsPage() {
   );
 }
 
-function Group({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  const id = `group-${title.toLowerCase()}`;
   return (
-    <section className="mt-8" aria-labelledby={`group-${title}`}>
-      <h2 id={`group-${title}`} className="label text-forest/75">
+    <section className="mt-8" aria-labelledby={id}>
+      <h2 id={id} className="label text-forest/75">
         {title}
       </h2>
       <div className="mt-2 space-y-2">{children}</div>
@@ -133,11 +122,14 @@ function Row({
   icon: Icon,
   label,
   external,
+  trailing,
 }: {
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   external?: boolean;
+  /** What stands at the right edge instead of the chevron. */
+  trailing?: ReactNode;
 }) {
   const inside = (
     <>
@@ -145,7 +137,9 @@ function Row({
         <Icon className="text-terra-deep size-5 shrink-0" />
         <span className="truncate text-base font-bold">{label}</span>
       </span>
-      <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+      {trailing ?? (
+        <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+      )}
     </>
   );
   const className = panelClass(

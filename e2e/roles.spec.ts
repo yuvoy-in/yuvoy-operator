@@ -34,11 +34,9 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
 
   /*
     "The crew phone goes out on the boat and gets left on a bench. It should be
-    able to tick people off a manifest and nothing else." Three of these are
-    OWNER-or-MANAGER on the server, so offering them would be offering a 403.
-    The doors moved behind the gear on the business profile (#58 item 9), and a
-    group with no visible rows is not drawn at all — so a staff login sees no
-    Money and no Team heading, not headings over empty space.
+    able to tick people off a manifest and nothing else." Money is a tab of its
+    own now (yuvoy-operator#96) and not in Settings for anybody, and Team access
+    is offered to an owner, an admin or a manager only.
   */
   await page.goto("/account/settings");
   await expect(page.getByRole("link", { name: /Earnings/ })).toHaveCount(0);
@@ -89,18 +87,26 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
   ]);
 });
 
-test("a manager is offered all three, because the server allows them", async ({
+test("a manager is offered Money and the team, because the server allows them", async ({
   page,
 }) => {
   await signIn(page, MANAGER);
-  await page.goto("/account/settings");
 
-  // The positive control. A test that only ever asserts an absence passes just
-  // as well when the links have been deleted for everybody.
-  await expect(page.getByRole("link", { name: /Earnings/ })).toBeVisible();
+  /*
+    The positive control. A test that only ever asserts an absence passes just
+    as well when the links have been deleted for everybody. Money is a tab of
+    its own (yuvoy-operator#96), so its screens are reached from the tab's
+    page, and Payout details is its last door.
+  */
+  await page.goto("/earnings");
   await expect(
-    page.getByRole("link", { name: /Payout details/ }),
+    page.getByRole("heading", { level: 1, name: "Money" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /^Payout details/ }).last(),
+  ).toBeVisible();
+
+  await page.goto("/account/settings");
   await expect(page.getByRole("link", { name: /Team access/ })).toBeVisible();
 
   // And the Money stop, which a manager may open (yuvoy-operator#96).
