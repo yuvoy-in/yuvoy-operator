@@ -635,27 +635,43 @@ test("a day marks what is off sale under it, and only that", async ({
     the only clue was a sentence in the middle of a card. The day row carries
     the mark now.
 
-    Blue lagoon's departure ten days out is off sale for unconfirmed seats until
-    `home.spec.ts` confirms it, one way, on one project. This reads whichever is
-    true when it runs and holds the day to it: marked while the departure under
-    it is off sale, and not once it sells.
+    Two departures ten days out are off sale for unconfirmed seats: Blue
+    lagoon's, and the Sunset cruise Home's own tests confirm. A "Confirm all"
+    on Home puts both back on sale at once, on whichever project gets there
+    first, so the number is read from the rows rather than assumed: the mark
+    on the day must say exactly what is under it, and nothing once it sells.
   */
   await signIn(page);
   await page.goto("/calendar");
 
   const day = await openDay(page, dayLabel(10));
   const summary = day.locator(":scope > details > summary");
-  const row = day
-    .locator("li")
+  const rows = day.locator("li");
+  let offSale = 0;
+  for (let i = 0, n = await rows.count(); i < n; i++) {
+    offSale += await rows
+      .nth(i)
+      .locator(":scope > details > summary")
+      .getByText("Not on sale", { exact: true })
+      .count();
+  }
+
+  if (offSale > 0) {
+    await expect(summary).toContainText(`${offSale} not on sale`);
+  } else {
+    await expect(summary).not.toContainText("not on sale");
+  }
+
+  // Blue lagoon's own departure, while it is off sale: one tap to confirm,
+  // and the reason one link away.
+  const lagoon = rows
     .filter({ hasText: "Blue lagoon (no footage fixture)" })
     .first();
-  const offSale = await row
+  const lagoonOffSale = await lagoon
     .locator(":scope > details > summary")
     .getByText("Not on sale", { exact: true })
     .count();
-
-  if (offSale > 0) {
-    await expect(summary).toContainText("1 not on sale");
+  if (lagoonOffSale > 0) {
     const opened = await openDeparture(day, "Blue lagoon (no footage fixture)");
     await expect(
       opened.getByRole("button", { name: /^Confirm \d+ seats?$/ }),
@@ -663,8 +679,6 @@ test("a day marks what is off sale under it, and only that", async ({
     await expect(
       opened.getByRole("link", { name: "Why seats need confirming" }),
     ).toHaveAttribute("href", "/account/help#confirming-seats");
-  } else {
-    await expect(summary).not.toContainText("not on sale");
   }
 });
 

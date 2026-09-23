@@ -144,8 +144,11 @@ test("each step saves on Next, and Review sends it", async ({ page }) => {
   await page.getByRole("button", { name: "Send for review" }).click();
   await page.waitForURL(/\/account\/listings\/[^/]+$/);
   await expect(page.getByText("In review")).toBeVisible();
-  // And with no reel on it, which submit never required.
-  await expect(page.getByText("Nothing on it yet")).toBeVisible();
+  // And with no reel on it, which submit never required. Exact, because the
+  // read-back of what it will look like says the same words in a sentence.
+  await expect(
+    page.getByText("Nothing on it yet", { exact: true }),
+  ).toBeVisible();
   expect(page.url()).toContain(id);
 });
 
