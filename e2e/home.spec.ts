@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 /**
@@ -168,8 +168,10 @@ test("a listing opens its hub, with everything about it", async ({ page }) => {
     page.getByText(/180 minutes · Up to 6 per booking/),
   ).toBeVisible();
 
-  // A focused screen: the way back is to Home.
-  await expect(page.getByRole("link", { name: /Back to home/i })).toBeVisible();
+  // A focused screen, and its way back is where the listings live: Business.
+  await expect(
+    page.getByRole("link", { name: /Back to your business/i }),
+  ).toBeVisible();
 });
 
 test("the hub carries the weekly schedule, and asks before removing it", async ({
@@ -210,27 +212,54 @@ test("the hub carries the weekly schedule, and asks before removing it", async (
   await page.getByRole("button", { name: "Keep it" }).click();
 });
 
-test("a departure offers Stop selling and Cancel departure as two buttons", async ({
+/** Every row's Manage opened, so what is behind it can be read. */
+async function openEveryManage(departures: Locator) {
+  const manage = departures.getByRole("button", { name: /^Manage/ });
+  const rows = await manage.count();
+  for (let i = 0; i < rows; i += 1) await manage.nth(i).click();
+  return rows;
+}
+
+test("a departure shows one tap, and keeps the rest behind Manage", async ({
   page,
 }) => {
   /*
-    op#56 item 9's own words: "always two separate buttons with these exact
-    labels", and "the money effect is said only in the confirm step, never in
-    text on the row." They are the two acts an operator confuses, and the
-    difference is everything.
+    yuvoy-operator#85 s8: "each departure row offers five choices of equal
+    weight, of which one cancels a trip." The row carries the time, what is
+    sold and the way into the manifest; Change time, Seats, Stop selling and
+    Call off sit behind one Manage.
+
+    Stop selling and Call off stay two controls with those words (op#56 item
+    9): they are the two acts an operator confuses, and the difference is
+    everything. "Cancel departure" is not one of the product's words and is
+    gone. And op#56's other rule holds, "the money effect is said only in the
+    confirm step, never in text on the row."
   */
   await signIn(page);
   await page.goto(`/today/listing/${SNORKEL}`);
 
   const departures = page.getByRole("region", { name: "Next departures" });
   await expect(
+    departures.getByRole("link", { name: "Who is coming" }).first(),
+  ).toBeVisible();
+  for (const act of ["Change time", "Seats", "Stop selling", "Call off"]) {
+    await expect(
+      departures.getByRole("button", { name: act }).first(),
+    ).toBeHidden();
+  }
+
+  expect(await openEveryManage(departures)).toBeGreaterThan(0);
+  await expect(
     departures.getByRole("button", { name: "Stop selling" }).first(),
   ).toBeVisible();
   await expect(
-    departures.getByRole("button", { name: "Cancel departure" }).first(),
+    departures.getByRole("button", { name: "Call off" }).first(),
   ).toBeVisible();
+  await expect(
+    departures.getByRole("button", { name: "Cancel departure" }),
+  ).toHaveCount(0);
 
-  // And no money on the row itself.
+  // And no money on the row itself, opened or not.
   const rows = await departures.innerText();
   expect(rows).not.toContain("refund");
 });
@@ -252,13 +281,17 @@ test("moving a departure says what it did, and to how many", async ({
   await page.goto(`/today/listing/${SNORKEL}`);
 
   /*
-    A row that actually offers the move, not the first one. Change time is drawn
-    on an `open` or `closed` departure and withheld on a called-off one, and
-    this listing's departures are acted on by the calendar and day suites —
-    whichever ran first decides what the first row is.
+    Every row's Manage first, because Change time only exists once one is
+    opened (#85 s8). Then a row that actually offers the move, not the first
+    one: Change time is drawn on an `open` or `closed` departure and withheld
+    on a called-off one, and this listing's departures are acted on by the
+    calendar and day suites, so whichever ran first decides what the first row
+    is.
   */
-  const row = page
-    .getByRole("region", { name: "Next departures" })
+  const departures = page.getByRole("region", { name: "Next departures" });
+  await openEveryManage(departures);
+
+  const row = departures
     .locator("li")
     .filter({ has: page.getByRole("button", { name: "Change time" }) })
     .first();
@@ -290,16 +323,16 @@ test("a staff login gets the manifest and nothing to change", async ({
   await signIn(page, STAFF);
   await page.goto(`/today/listing/${SNORKEL}`);
 
-  await expect(page.getByRole("button", { name: "Stop selling" })).toHaveCount(
-    0,
-  );
-  await expect(
-    page.getByRole("button", { name: "Cancel departure" }),
-  ).toHaveCount(0);
+  // Not even the control that would open the rest: there is nothing behind it.
+  await expect(page.getByRole("button", { name: /^Manage/ })).toHaveCount(0);
+  for (const act of ["Change time", "Seats", "Stop selling", "Call off"]) {
+    await expect(page.getByRole("button", { name: act })).toHaveCount(0);
+  }
   await expect(
     page.getByRole("heading", { name: "Weekly schedule" }),
   ).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Edit" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Pause" })).toHaveCount(0);
 
   // What they do get: the way into each departure.
   await expect(

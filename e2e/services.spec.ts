@@ -947,6 +947,13 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
   await openHub(page, "Sunrise paddle");
 
   const row = page.locator("body");
+  /*
+    Quiet, and with the rest of what pausing does one tap away rather than two
+    paragraphs above the button (yuvoy-operator#85 s8, #80 t4).
+  */
+  await expect(
+    row.getByRole("link", { name: "What pausing does" }),
+  ).toHaveAttribute("href", "/account/help#pausing-a-listing");
   await row.getByRole("button", { name: "Pause", exact: true }).click();
 
   // Warned BEFORE the decision, too.

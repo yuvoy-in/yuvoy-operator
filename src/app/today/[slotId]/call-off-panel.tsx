@@ -7,6 +7,7 @@ import { formatPaise } from "@/lib/format/money";
 import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
+import { cn } from "@/lib/cn";
 
 /**
  * Calling a departure off: "Call this departure off", the words used
@@ -41,6 +42,7 @@ export function CallOffPanel({
   time,
   startOpen = false,
   onKeep,
+  className = "mt-10",
 }: {
   slotId: string;
   alreadyCalledOff: boolean;
@@ -54,6 +56,11 @@ export function CallOffPanel({
   startOpen?: boolean;
   /** Where "Keep it" goes when the screen that opened this should close it. */
   onKeep?: () => void;
+  /**
+   * The space above it: the foot of a manifest wants a gap, a row on the
+   * listing hub does not.
+   */
+  className?: string;
 }) {
   const [state, act, pending] = useActionState<CallOffState, FormData>(
     callOffDeparture,
@@ -64,7 +71,7 @@ export function CallOffPanel({
   if (state.result) {
     const r = state.result;
     return (
-      <section className={panelClass("alert", "mt-10")}>
+      <section className={panelClass("alert", className)}>
         {/*
           The banner at the top of the page already says the departure is off —
           it renders from the manifest, which the call-off revalidated. This
@@ -120,7 +127,7 @@ export function CallOffPanel({
   */
   if (!canManage) {
     return (
-      <p className="text-forest/70 mt-10 text-sm">
+      <p className={cn("text-forest/70 text-sm", className)}>
         Calling off a departure needs an owner, an admin or a manager.
       </p>
     );
@@ -128,7 +135,7 @@ export function CallOffPanel({
 
   if (!open) {
     return (
-      <div className="mt-10">
+      <div className={className}>
         <Button
           onClick={() => setOpen(true)}
           variant="danger-quiet"
@@ -142,7 +149,10 @@ export function CallOffPanel({
   }
 
   return (
-    <form action={act} className={panelClass("alert", "bg-paper mt-10")}>
+    <form
+      action={act}
+      className={panelClass("alert", cn("bg-paper", className))}
+    >
       <h2 className="text-base font-bold">
         {time ? `Call off ${time}?` : "Call off this departure?"}
       </h2>

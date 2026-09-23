@@ -35,6 +35,9 @@ import { Panel } from "@/components/ui/panel";
  * The receipt is kept HERE. The departure stays in its day after it closes, so
  * this component stays mounted through the re-read that turns the row Closed:
  * `available` goes false and the receipt is still what it draws.
+ *
+ * The listing hub opens it straight on the question (#85 s8), from its own
+ * Manage row, so the one confirm serves both screens.
  */
 export function CloseDeparture({
   slotId,
@@ -42,6 +45,8 @@ export function CloseDeparture({
   time,
   available,
   onClosed,
+  startOpen = false,
+  onKeep,
 }: {
   slotId: string;
   title: string;
@@ -51,8 +56,12 @@ export function CloseDeparture({
   available: boolean;
   /** Told once it is closed, for a screen that also wants the words. */
   onClosed?: (title: string, note: string) => void;
+  /** Opens on the question, for a screen that already asked which act. */
+  startOpen?: boolean;
+  /** Where "Keep selling" goes when the screen that opened this closes it. */
+  onKeep?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [state, act, pending] = useActionState<CloseDepartureState, FormData>(
     closeDeparture,
     {},
@@ -174,7 +183,7 @@ export function CloseDeparture({
           block={false}
           className="flex-1"
           disabled={pending}
-          onClick={() => setOpen(false)}
+          onClick={() => (onKeep ? onKeep() : setOpen(false))}
         >
           Keep selling
         </Button>

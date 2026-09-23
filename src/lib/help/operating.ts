@@ -3,6 +3,10 @@ import type { HelpTopic } from "./types";
 /**
  * Help for Bookings, messages, Calendar, listings and the departure screen.
  *
+ * Pausing is here rather than beside the control (yuvoy-operator#85 s8): what
+ * it does not do is three paragraphs, and three paragraphs above a destructive
+ * button is a screen nobody finishes reading.
+ *
  * One file per area of the portal, so each can grow without touching the
  * others. `index.ts` puts them together.
  *
@@ -105,6 +109,18 @@ export const OPERATING_HELP: readonly HelpTopic[] = [
     answer: [
       "With instant booking, Yuvoy holds the seats and travellers book them straight away. The seats left on a departure are the ones we can still sell.",
       "When you answer each request, nothing is held: a traveller asks, you accept or decline, and they pay only after you accept. The number left is how many more people the departure can take.",
+    ],
+  },
+  {
+    id: "pausing-a-listing",
+    area: "Listings",
+    question: "What happens when I pause a listing?",
+    answer: [
+      "It stops being offered to travellers straight away. Departures still to come keep their rows and stop selling.",
+      "Nothing is cancelled and nothing is refunded. Every booking you already have still stands, and those travellers still expect their trip.",
+      "Resume puts it back on sale yourself, in one tap, with nothing to wait for. If something on your account stops sales, the listing says so, and resuming does not change that.",
+      "Pausing is refused while somebody holds unpaid seats on the listing, or a request on it is waiting for your answer. The refusal says when the hold ends and how many requests to answer first.",
+      "To cancel a departure and refund the people on it, open that departure and call it off instead: one at a time, each confirmed on its own.",
     ],
   },
   {

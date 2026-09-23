@@ -1,5 +1,19 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { HELP, HELP_AREAS, helpHref } from "./index";
+
+/** Every `.ts`/`.tsx` under `src/` that is not itself a test. */
+function sources(dir = "src", acc: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) sources(path, acc);
+    else if (/\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path)) {
+      acc.push(path);
+    }
+  }
+  return acc;
+}
 
 /*
   The help page is where the explanations cut from every screen went
@@ -26,5 +40,23 @@ describe("the help registry", () => {
 
   it("links to one answer by its anchor", () => {
     expect(helpHref("not-on-sale")).toBe("/account/help#not-on-sale");
+  });
+
+  /*
+    `helpHref` builds a URL out of whatever it is handed, so a screen can link
+    to an anchor nobody wrote and land the reader at the top of the help page
+    with no answer in sight. Nothing said so until a topic was deleted and
+    every test still passed, which is the defect this guards.
+  */
+  it("links only to answers that exist", () => {
+    const ids = new Set(HELP.map((t) => t.id));
+    const broken: string[] = [];
+    for (const file of sources()) {
+      const src = readFileSync(file, "utf8");
+      for (const [, id] of src.matchAll(/helpHref\(\s*"([^"]+)"\s*\)/g)) {
+        if (!ids.has(id)) broken.push(`${file} links to #${id}`);
+      }
+    }
+    expect(broken).toEqual([]);
   });
 });

@@ -1,37 +1,49 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import Link from "next/link";
-import {
-  moveDeparture,
-  stopSellingDeparture,
-  type DepartureState,
-} from "./actions";
+import { useActionState, useId, useState } from "react";
+import { moveDeparture, type DepartureState } from "./actions";
 import { CallOffPanel } from "@/app/today/[slotId]/call-off-panel";
 import { SeatsForm } from "@/app/calendar/departure-controls";
-import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
+import { CloseDeparture } from "@/app/calendar/close-departure";
 import type { OperatorSlot } from "@/lib/day/types";
+import { saleChip } from "@/lib/day/off-sale";
 import { marketTime } from "@/lib/format/market-time";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { ChevronRightIcon } from "@/components/ui/icons";
 import { Panel } from "@/components/ui/panel";
-import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
+import { inputClass } from "@/components/ui/input";
+
+type Act = "time" | "seats" | "stop" | "off";
 
 /**
- * One departure on the listing hub, and everything that can be done to it —
- * yuvoy-operator#56 item 9.
+ * One departure on the listing hub, and everything that can be done to it
+ * (yuvoy-operator#56 item 9, laid out by #85 s8).
  *
- * ## "Stop selling" and "Cancel departure" are always two buttons
+ * ## One visible tap, and the rest behind Manage
  *
- * With those exact labels, and "the money effect is said only in the confirm
- * step, never in text on the row." They are the two acts an operator confuses,
- * and the difference is everything: one stops new bookings and leaves the
- * people on it, the other cancels them and refunds in full.
+ * "Each departure row offers five choices of equal weight, of which one
+ * cancels a trip." The row now shows the time, what is sold and one tap, "Who
+ * is coming". Change time, Seats, Stop selling and Call off sit behind one
+ * Manage control, and the two that end things are quiet text in the warning
+ * colour (#81), each opening a confirm that names what happens.
+ *
+ * "Stop selling" and "Call off" stay two separate controls with those words:
+ * they are the two acts an operator confuses, and the difference is
+ * everything. One stops new bookings and leaves the people on it; the other
+ * cancels them and refunds everything paid online. "Call off" is the product's
+ * word for the second everywhere else (#88 s3), so it is the word here too.
+ * The money is said only in the confirm, never on the row.
+ *
+ * Both confirms are the ones the Calendar and the departure's own screen use,
+ * opened straight on their question: one confirm per act, so the sentence
+ * that stopping cancels nobody cannot drift between two screens.
  *
  * ## What a suspended business keeps
  *
- * Cancel departure and Who is coming (#50). A suspended business can always
- * stop a trip it has already sold and can never take a new one on, so the
- * controls that only sell are withheld and the two that end things stay.
+ * Call off and Who is coming (#50). A suspended business can always stop a
+ * trip it has already sold and can never take a new one on, so the controls
+ * that only sell are withheld and the one that ends things stays.
  */
 export function DepartureRow({
   slot,
@@ -45,86 +57,136 @@ export function DepartureRow({
   canManage: boolean;
   suspended: boolean;
 }) {
-  const [open, setOpen] = useState<"time" | "seats" | "stop" | "off" | null>(
-    null,
-  );
+  const [managing, setManaging] = useState(false);
+  const [open, setOpen] = useState<Act | null>(null);
+  const panelId = useId();
   const time = marketTime(slot.startsAt, slot.timezone);
   const calledOff = slot.status === "cancelled";
+  const chip = saleChip(slot);
+
+  /*
+    Which acts this departure and this login may have. The selling ones go
+    while the business is suspended; a called-off departure has none left.
+  */
+  const acts: Record<Act, boolean> = {
+    time: !suspended && (slot.status === "open" || slot.status === "closed"),
+    seats: !suspended,
+    stop: !suspended && slot.status === "open",
+    off: true,
+  };
+  const manageable = canManage && !calledOff;
+  const choose = (act: Act) => setOpen(open === act ? null : act);
 
   return (
     <li className="border-paper-line border-t pt-3 first:border-t-0 first:pt-0">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="flex items-baseline gap-3">
-          <span className="font-mono text-sm tabular-nums">{time}</span>
-          <span className="text-base font-bold">
-            {slot.sold}/{slot.seats}
-          </span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-base font-bold tabular-nums">{time}</span>
+        <span className="text-forest/70 text-sm tabular-nums">
+          {slot.sold}/{slot.seats} sold
         </span>
-        {calledOff ? (
-          <span className="label text-terra-deep">Called off</span>
-        ) : slot.status === "closed" ? (
-          <span className="label text-forest/75">Closed to new bookings</span>
+        {chip ? (
+          <Chip tone={chip.loud ? "accent" : "neutral"}>{chip.label}</Chip>
         ) : null}
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-2">
         {/*
-          Every role, always. A staff login reading the manifest is the point of
-          this link, and it is the only control they get here.
+          Every role, always, and the one visible tap: a staff login reading
+          the manifest is the point of this link, and it is the only control
+          they get here.
         */}
-        <Link
+        <ButtonLink
           href={`/today/${slot.id}`}
-          className="text-forest tap-target text-sm underline underline-offset-2"
+          variant="secondary"
+          size="md"
+          block={false}
         >
           Who is coming
-        </Link>
+        </ButtonLink>
 
-        {canManage && !calledOff ? (
-          <>
-            {/* Selling controls go while the business is suspended (#50). */}
-            {!suspended &&
-            (slot.status === "open" || slot.status === "closed") ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                block={false}
-                onClick={() => setOpen(open === "time" ? null : "time")}
-              >
-                Change time
-              </Button>
-            ) : null}
-            {!suspended ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                block={false}
-                onClick={() => setOpen(open === "seats" ? null : "seats")}
-              >
-                Seats
-              </Button>
-            ) : null}
-            {!suspended && slot.status === "open" ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                block={false}
-                onClick={() => setOpen(open === "stop" ? null : "stop")}
-              >
-                Stop selling
-              </Button>
-            ) : null}
-            <Button
-              variant="danger"
-              size="sm"
-              block={false}
-              onClick={() => setOpen(open === "off" ? null : "off")}
-            >
-              Cancel departure
-            </Button>
-          </>
+        {manageable ? (
+          <button
+            type="button"
+            aria-expanded={managing}
+            aria-controls={panelId}
+            onClick={() => {
+              setManaging(!managing);
+              setOpen(null);
+            }}
+            className="text-forest inline-flex h-11 items-center gap-1 px-3 text-sm font-bold"
+          >
+            Manage <span className="sr-only">{time}</span>
+            <ChevronRightIcon
+              className={
+                managing
+                  ? "ease-interaction size-4 rotate-90 transition-transform duration-200"
+                  : "ease-interaction size-4 transition-transform duration-200"
+              }
+            />
+          </button>
         ) : null}
       </div>
 
+      {/*
+        Always in the page, hidden until Manage, so the control that names it
+        always names something.
+      */}
+      {manageable ? (
+        <div
+          id={panelId}
+          hidden={!managing}
+          className="mt-2 flex flex-wrap items-center gap-2"
+        >
+          {acts.time ? (
+            <Button
+              variant="secondary"
+              size="md"
+              block={false}
+              aria-expanded={open === "time"}
+              onClick={() => choose("time")}
+            >
+              Change time
+            </Button>
+          ) : null}
+          {acts.seats ? (
+            <Button
+              variant="secondary"
+              size="md"
+              block={false}
+              aria-expanded={open === "seats"}
+              onClick={() => choose("seats")}
+            >
+              Seats
+            </Button>
+          ) : null}
+          {acts.stop ? (
+            <Button
+              variant="danger-quiet"
+              size="md"
+              block={false}
+              aria-expanded={open === "stop"}
+              onClick={() => choose("stop")}
+            >
+              Stop selling
+            </Button>
+          ) : null}
+          <Button
+            variant="danger-quiet"
+            size="md"
+            block={false}
+            aria-expanded={open === "off"}
+            onClick={() => choose("off")}
+          >
+            Call off
+          </Button>
+        </div>
+      ) : null}
+
+      {/*
+        What each act draws stays mounted by `open` alone, not by whether the
+        act is still offered: the re-read after it turns the row Closed or
+        Called off, and the receipt must outlive that.
+      */}
       {open === "time" ? (
         <MoveTime
           slot={slot}
@@ -146,22 +208,28 @@ export function DepartureRow({
       ) : null}
 
       {open === "stop" ? (
-        <StopSelling slot={slot} onClose={() => setOpen(null)} />
+        <div className="mt-3">
+          <CloseDeparture
+            slotId={slot.id}
+            title={slot.title}
+            time={time}
+            available={slot.status === "open"}
+            startOpen
+            onKeep={() => setOpen(null)}
+          />
+        </div>
       ) : null}
 
       {open === "off" ? (
-        /*
-          The existing panel, with its typed departure id and its own result
-          figures. "Cancel departure" is what the button above says; the panel's
-          own copy is what the confirm step says.
-        */
-        <div className="mt-3">
-          <CallOffPanel
-            slotId={slot.id}
-            alreadyCalledOff={calledOff}
-            canManage={canManage}
-          />
-        </div>
+        <CallOffPanel
+          slotId={slot.id}
+          alreadyCalledOff={calledOff}
+          canManage={canManage}
+          time={time}
+          startOpen
+          onKeep={() => setOpen(null)}
+          className="mt-3"
+        />
       ) : null}
     </li>
   );
@@ -263,107 +331,7 @@ function MoveTime({
           disabled={pending}
           onClick={onClose}
         >
-          Cancel
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function StopSelling({
-  slot,
-  onClose,
-}: {
-  slot: OperatorSlot;
-  onClose: () => void;
-}) {
-  const [state, act, pending] = useActionState<DepartureState, FormData>(
-    stopSellingDeparture,
-    {},
-  );
-
-  if (state.done) {
-    return (
-      <Panel tone="done" role="status" className="mt-3 p-4">
-        <p className="text-sm font-bold">Closed to new bookings</p>
-        {state.note ? (
-          <p className="text-forest/80 mt-1.5 text-sm">{state.note}</p>
-        ) : null}
-      </Panel>
-    );
-  }
-
-  return (
-    <form action={act} className="border-paper-line mt-3 border-t pt-3">
-      <input type="hidden" name="slotId" value={slot.id} />
-
-      <fieldset>
-        <legend className="label text-forest/75">Why</legend>
-        <div className="mt-2 space-y-2">
-          {BLACKOUT_REASONS.map((reason) => (
-            <label key={reason.code} className={choiceClass(false)}>
-              <input
-                type="radio"
-                name="reasonCode"
-                value={reason.code}
-                required
-                className="accent-terra-deep size-5 shrink-0"
-              />
-              <span>{reason.label}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <div className="mt-3">
-        <label
-          htmlFor={`stop-note-${slot.id}`}
-          className="label text-forest/75"
-        >
-          A note <span className="text-forest/70">(optional)</span>
-        </label>
-        <textarea
-          id={`stop-note-${slot.id}`}
-          name="note"
-          rows={2}
-          maxLength={500}
-          className={textareaClass("mt-1")}
-        />
-      </div>
-
-      {/*
-        The money effect, said here and nowhere else: "the guests already booked
-        keep their seats." A row that carried it would put the sentence beside
-        Cancel departure too, where it is the opposite of true.
-      */}
-      <p className="text-forest/80 mt-3 text-sm">
-        Stops new bookings on this departure. The {slot.sold}{" "}
-        {slot.sold === 1 ? "guest" : "guests"} already booked keep their seats.
-      </p>
-
-      {state.message ? (
-        <p role="alert" className="text-terra-deep mt-2 text-sm font-bold">
-          {state.message}
-        </p>
-      ) : null}
-
-      <div className="mt-3 flex gap-2">
-        <Button
-          type="submit"
-          block={false}
-          className="flex-1"
-          disabled={pending}
-        >
-          {pending ? "Closing…" : "Stop selling"}
-        </Button>
-        <Button
-          variant="secondary"
-          block={false}
-          className="flex-1"
-          disabled={pending}
-          onClick={onClose}
-        >
-          Cancel
+          Keep the time
         </Button>
       </div>
     </form>
