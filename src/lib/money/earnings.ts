@@ -1,4 +1,4 @@
-import type { components } from "@/lib/api/schema.gen";
+import { BANK_CHANGE, type ChangeRequest } from "@/lib/account/change-kind";
 
 /**
  * Earnings, and the one thing an operator needs from them: whether the number
@@ -11,7 +11,7 @@ import type { components } from "@/lib/api/schema.gen";
  * just that something does.
  */
 
-export type ChangeRequest = components["schemas"]["ChangeRequest"];
+export type { ChangeRequest };
 
 /**
  * A bank change that stops money moving.
@@ -24,7 +24,8 @@ export type ChangeRequest = components["schemas"]["ChangeRequest"];
 export function payoutHold(requests: ChangeRequest[]): ChangeRequest | null {
   const holding = new Set(["objection_window", "pending", "cooling"]);
   return (
-    requests.find((r) => r.kind === "bank" && holding.has(r.state ?? "")) ??
-    null
+    requests.find(
+      (r) => r.kind === BANK_CHANGE && holding.has(r.state ?? ""),
+    ) ?? null
   );
 }

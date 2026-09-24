@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { components } from "@/lib/api/schema.gen";
+import type { ChangeRequest } from "./change-kind";
 import { reviewNote, reviewOf } from "./review";
-
-type ChangeRequest = components["schemas"]["ChangeRequest"];
 
 const row = (over: Partial<ChangeRequest> = {}): ChangeRequest => ({
   id: "chg_1",
@@ -24,7 +22,7 @@ describe("a logo or details change waiting on Yuvoy: yuvoy-operator#89", () => {
   });
 
   it("ignores other kinds, so a bank change never reads as a logo", () => {
-    expect(reviewOf([row({ kind: "bank" })], "logo")).toBeNull();
+    expect(reviewOf([row({ kind: "bank_account" })], "logo")).toBeNull();
     expect(reviewOf([row({ kind: "profile" })], "logo")).toBeNull();
     expect(reviewOf([row({ kind: "profile" })], "profile")?.state).toBe(
       "waiting",
