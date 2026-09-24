@@ -5,7 +5,7 @@ import {
   wholeDayClosures,
   type Closure,
 } from "@/lib/day/closures";
-import { soldOn, startTimeCount } from "@/lib/day/calendar";
+import { daySummary } from "@/lib/day/calendar";
 import { lostSalesLabel, lostSalesOn, saleChip } from "@/lib/day/off-sale";
 import { marketTime } from "@/lib/format/market-time";
 import { cn } from "@/lib/cn";
@@ -77,7 +77,6 @@ export function DayRow({
     day,
     departures.map((s) => s.id),
   );
-  const times = startTimeCount(departures);
   const lost = lostSalesOn(departures);
   const headingId = `day-${day}`;
 
@@ -93,11 +92,7 @@ export function DayRow({
         {label}
       </h3>
       <span className="col-start-1 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        <span className="text-forest/70 text-sm">
-          {departures.length === 0
-            ? "No departures scheduled"
-            : `${times} ${times === 1 ? "start time" : "start times"} · ${soldOn(departures)} sold`}
-        </span>
+        <span className="text-forest/70 text-sm">{daySummary(departures)}</span>
         {/*
           Lost money, marked on the day rather than buried in a departure's
           card (#84 s7): seats nobody confirmed, a lapsed document, a business

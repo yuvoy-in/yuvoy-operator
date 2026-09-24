@@ -196,26 +196,6 @@ export function PartyRow({
         </details>
       ) : null}
 
-      {/*
-        Cancelling this one party — yuvoy-operator#56 item 10, and the same
-        component the booking's own screen uses (#43 item 4), because the act is
-        the same and a second confirmation written for the manifest would be a
-        second chance to get the reference check wrong.
-
-        Withheld on a departure that has left and on a booking that has already
-        ended: the API answers `409 departure_started` and `409 booking_ended`,
-        and both are knowable from what is on this row.
-      */}
-      {party.bookingId && (cancellable || cancelledHere) ? (
-        <CancelBooking
-          bookingId={party.bookingId}
-          reference={party.reference ?? ""}
-          isCash={Boolean(cash)}
-          context="manifest"
-          onDone={() => setCancelledHere(true)}
-        />
-      ) : null}
-
       {cancelledHere ? null : holding ? (
         <p className="text-terra-deep mt-3 text-sm font-bold">
           Still paying. Not a confirmed seat yet. They may still turn up.
@@ -363,6 +343,30 @@ export function PartyRow({
           who={party.name ?? "them"}
         />
       )}
+
+      {/*
+        Cancelling this one party — yuvoy-operator#56 item 10, and the same
+        component the booking's own screen uses (#43 item 4), because the act is
+        the same and a second confirmation written for the manifest would be a
+        second chance to get the reference check wrong.
+
+        Withheld on a departure that has left and on a booking that has already
+        ended: the API answers `409 departure_started` and `409 booking_ended`,
+        and both are knowable from what is on this row.
+
+        Last on the row, below Check in, the cash and the message: the act that
+        ends something sits under the ones a jetty reaches for (#81). It sat
+        above Check in, a thumb's slip from it (the audit, O11).
+      */}
+      {party.bookingId && (cancellable || cancelledHere) ? (
+        <CancelBooking
+          bookingId={party.bookingId}
+          reference={party.reference ?? ""}
+          isCash={Boolean(cash)}
+          context="manifest"
+          onDone={() => setCancelledHere(true)}
+        />
+      ) : null}
     </li>
   );
 }

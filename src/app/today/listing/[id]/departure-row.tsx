@@ -24,7 +24,7 @@ type Act = "time" | "seats" | "stop" | "off";
  *
  * "Each departure row offers five choices of equal weight, of which one
  * cancels a trip." The row now shows the time, what is sold and one tap, "Who
- * is coming". Change time, Seats, Stop selling and Call off sit behind one
+ * is booked", the words Calendar uses for the same link (#96 item 6). Change time, Seats, Stop selling and Call off sit behind one
  * Manage control, and the two that end things are quiet text in the warning
  * colour (#81), each opening a confirm that names what happens.
  *
@@ -41,7 +41,7 @@ type Act = "time" | "seats" | "stop" | "off";
  *
  * ## What a suspended business keeps
  *
- * Call off and Who is coming (#50). A suspended business can always stop a
+ * Call off and Who is booked (#50). A suspended business can always stop a
  * trip it has already sold and can never take a new one on, so the controls
  * that only sell are withheld and the one that ends things stays.
  */
@@ -107,7 +107,7 @@ export function DepartureRow({
           size="md"
           block={false}
         >
-          Who is coming
+          Who is booked
         </ButtonLink>
 
         {manageable ? (

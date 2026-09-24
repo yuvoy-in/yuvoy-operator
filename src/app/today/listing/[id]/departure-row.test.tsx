@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { OperatorSlot } from "@/lib/day/types";
 
@@ -78,7 +78,7 @@ describe("a departure on the listing hub", () => {
       screen.getByText("09:00", { ignore: "script, style, .sr-only" }),
     ).toBeInTheDocument();
     expect(screen.getByText("2/8 sold")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Who is coming" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Who is booked" })).toHaveAttribute(
       "href",
       "/today/slot_1",
     );
@@ -219,7 +219,7 @@ describe("what a row offers in each state", () => {
     row({}, { canManage: false });
 
     expect(
-      screen.getByRole("link", { name: "Who is coming" }),
+      screen.getByRole("link", { name: "Who is booked" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
   });
@@ -245,7 +245,7 @@ describe("what a row offers in each state", () => {
     expect(screen.getByText("Called off")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Manage/ })).toBeNull();
     expect(
-      screen.getByRole("link", { name: "Who is coming" }),
+      screen.getByRole("link", { name: "Who is booked" }),
     ).toBeInTheDocument();
   });
 
@@ -342,7 +342,10 @@ describe("an act opened from Manage", () => {
       },
     });
     expect(await screen.findByText("What that did")).toBeInTheDocument();
-    // And the row is usable again once it has.
-    expect(screen.getByRole("button", { name: "Seats" })).toBeEnabled();
+    // And the row is usable again once it has: the hold lifts in the commit
+    // after the receipt's, so this waits for it rather than racing it.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Seats" })).toBeEnabled(),
+    );
   });
 });

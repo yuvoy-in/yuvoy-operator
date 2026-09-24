@@ -466,7 +466,7 @@ test("a departure shows one tap, and keeps the rest behind Manage", async ({
 
   const departures = page.getByRole("region", { name: "Next departures" });
   await expect(
-    departures.getByRole("link", { name: "Who is coming" }).first(),
+    departures.getByRole("link", { name: "Who is booked" }).first(),
   ).toBeVisible();
   for (const act of ["Change time", "Seats", "Stop selling", "Call off"]) {
     await expect(
@@ -562,7 +562,7 @@ test("a staff login gets the manifest and nothing to change", async ({
 
   // What they do get: the way into each departure.
   await expect(
-    page.getByRole("link", { name: "Who is coming" }).first(),
+    page.getByRole("link", { name: "Who is booked" }).first(),
   ).toBeVisible();
   // And no sentence about why.
   const main = await page.locator("main").innerText();

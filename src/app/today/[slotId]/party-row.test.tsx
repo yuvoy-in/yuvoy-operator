@@ -18,6 +18,13 @@ vi.mock("./actions", () => ({
 vi.mock("@/app/bookings/cash-actions", () => ({
   recordCashCollected: vi.fn(async () => ({})),
 }));
+vi.mock("@/app/bookings/cancel-actions", () => ({
+  cancelBooking: vi.fn(async () => ({})),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/today/slot_dawn",
+}));
 
 const party = {
   bookingId: "bk_1",
@@ -341,5 +348,34 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
     );
     await user.click(screen.getByRole("button", { name: "Completed" }));
     expect(screen.queryByText(/Record the cash first/)).toBeNull();
+  });
+});
+
+/*
+  The audit before release, O11 and #81: the act that ends something sits under
+  the ones a jetty reaches for. The quiet cancel sat above Check in, a thumb's
+  slip from it.
+*/
+describe("PartyRow: where the cancel sits", () => {
+  it("is below Check in, not above it", () => {
+    render(
+      <ul>
+        <PartyRow
+          party={party}
+          slotId="slot_dawn"
+          departed={false}
+          screening={null}
+          cash={null}
+          timezone={TZ}
+          canManage
+        />
+      </ul>,
+    );
+    const checkIn = screen.getByRole("button", { name: "Check in" });
+    const cancel = screen.getByRole("button", { name: "Cancel this booking" });
+    expect(
+      checkIn.compareDocumentPosition(cancel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
