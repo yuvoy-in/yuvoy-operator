@@ -137,7 +137,13 @@ describe("the account on file", () => {
     id: string,
     requestedAt: string,
     summary = "HDFC Bank ····4412 (HDFC0001234)",
-  ) => ({ id, kind: "bank", state: "applied", summary, requestedAt });
+  ) => ({
+    id,
+    kind: "bank_account" as const,
+    state: "applied",
+    summary,
+    requestedAt,
+  });
 
   it("reads the API's own summary as the IFSC and the last four", () => {
     expect(accountOnFile([applied("chg_a", "2026-08-01T09:00:00Z")])).toEqual({

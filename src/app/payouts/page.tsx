@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOperator } from "@/lib/auth/session";
 import { readChangeRequests } from "@/lib/money/fetch";
+import { BANK_CHANGE } from "@/lib/account/change-kind";
 import {
   accountOnFile,
   historyLabel,
@@ -72,7 +73,12 @@ export default async function PayoutsPage() {
     );
   }
 
-  const bank = requests.filter((r) => r.kind === "bank");
+  /*
+    `bank_account`, the kind the API writes. It said `bank` from O4 until
+    23 Sep 2026, which matched nothing in production: no change in flight was
+    ever shown here, so its Stop could not be pressed. See `change-kind.ts`.
+  */
+  const bank = requests.filter((r) => r.kind === BANK_CHANGE);
   const inFlight = bank.filter((r) => isOpen((r.state ?? "") as ChangeState));
   const onFile = accountOnFile(bank);
   // Decided changes, less the one that is on file: it is shown above.

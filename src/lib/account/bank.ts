@@ -1,3 +1,5 @@
+import { BANK_CHANGE, type ChangeRequest } from "./change-kind";
+
 /**
  * The bank change, and the reason it is slow on purpose.
  *
@@ -121,7 +123,8 @@ export interface OnFile {
 
 interface BankRow {
   id?: string;
-  kind?: string;
+  /** Narrowed where it enters, so a hand-typed kind is a type error here too. */
+  kind?: ChangeRequest["kind"];
   state?: string;
   summary?: string;
   requestedAt?: string;
@@ -129,7 +132,7 @@ interface BankRow {
 
 export function accountOnFile(requests: readonly BankRow[]): OnFile | null {
   const newest = requests
-    .filter((r) => r.kind === "bank" && r.state === "applied")
+    .filter((r) => r.kind === BANK_CHANGE && r.state === "applied")
     .sort((a, b) => instant(b.requestedAt) - instant(a.requestedAt))[0];
   const summary = newest?.summary?.trim() ?? "";
   if (!newest || !summary) return null;

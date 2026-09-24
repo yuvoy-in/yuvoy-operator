@@ -1245,7 +1245,9 @@ export const COMMISSION_OWED = {
 export const CHANGE_REQUESTS = [
   {
     id: "chg_bank_1",
-    kind: "bank",
+    // The API's word, `bank_account`. This said `bank`, and every screen that
+    // looked for `bank` passed against it while matching nothing in production.
+    kind: "bank_account",
     // `cooling` is approved and STILL STOPPABLE — the state most worth
     // rendering, because an operator can still act on it.
     state: "cooling",
@@ -1256,7 +1258,7 @@ export const CHANGE_REQUESTS = [
   },
   {
     id: "chg_bank_0",
-    kind: "bank",
+    kind: "bank_account",
     /*
       What is ON FILE: the newest bank change that went live, which Payout
       details shows as text with one Change button (yuvoy-operator#87 s14).
