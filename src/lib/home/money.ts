@@ -41,6 +41,8 @@ export interface MoneyLine {
   text: string;
   /** The week pays less than nothing: a correction larger than it earned. */
   owedBack: boolean;
+  /** One of the two reads did not answer, and the line says which. */
+  missing: boolean;
 }
 
 /** Which week a payout week is, from the market's today. */
@@ -64,6 +66,14 @@ export function moneyLine(input: {
   /** The market's today, `YYYY-MM-DD`. */
   today: string;
 }): MoneyLine | null {
+  // Both failed: the glance says so in its own words.
+  if (input.week === null && input.owedPaise === null) return null;
+
+  /*
+    One failed: it is named, never left out. Leaving it out read as nothing
+    to say: "Nothing owed on cash" with the payout gone looked like the whole
+    of the money, and a week with no cash figure looked like nothing owed.
+  */
   const parts: string[] = [];
   let owedBack = false;
 
@@ -77,18 +87,23 @@ export function moneyLine(input: {
         week.settlesFrom <= input.today ? "payout due" : `payout from ${from}`,
       );
     }
-  }
-  if (input.owedPaise !== null && input.owedPaise > 0) {
-    parts.push(`cash owed to Yuvoy ${formatPaise(input.owedPaise)}`);
+  } else {
+    parts.push("payout did not load");
   }
 
-  if (parts.length === 0) {
-    // Both reads failed, or the only answer was nothing owed: say the week
-    // is quiet only when a read actually said so.
-    return input.week === null && input.owedPaise === null
-      ? null
-      : { text: "Nothing owed on cash", owedBack: false };
+  if (input.owedPaise === null) {
+    parts.push("cash owed did not load");
+  } else if (input.owedPaise > 0) {
+    parts.push(`cash owed to Yuvoy ${formatPaise(input.owedPaise)}`);
+  } else if (!input.week) {
+    // Zero is not news beside a week, and is the only news without one.
+    parts.push("nothing owed on cash");
   }
+
   const text = parts.join(" · ");
-  return { text: text.charAt(0).toUpperCase() + text.slice(1), owedBack };
+  return {
+    text: text.charAt(0).toUpperCase() + text.slice(1),
+    owedBack,
+    missing: input.week === null || input.owedPaise === null,
+  };
 }

@@ -210,6 +210,22 @@ describe("what needs the operator", () => {
     });
   });
 
+  it("says the messages did not load, rather than drawing nothing", () => {
+    /*
+      Nothing is what an empty inbox draws, and with nothing else waiting
+      "Needs you" went away.
+    */
+    expect(needsYou({ ...base, inbox: null })).toEqual([
+      expect.objectContaining({
+        key: "messages-failed",
+        text: "Messages did not load",
+        href: "/messages",
+      }),
+    ]);
+    // An inbox that answered with nothing unread still draws nothing.
+    expect(needsYou(base)).toEqual([]);
+  });
+
   it("says the requests did not load, rather than that there are none", () => {
     expect(needsYou({ ...base, requests: null })).toEqual([
       expect.objectContaining({

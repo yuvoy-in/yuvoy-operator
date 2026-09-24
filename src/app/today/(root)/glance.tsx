@@ -58,7 +58,7 @@ export function MoneyGlance({ line }: { line: MoneyLine | null }) {
       heading="Money"
       href="/earnings"
       text={line ? line.text : "Money did not load. Open Money"}
-      tone={!line || line.owedBack ? "alert" : "plain"}
+      tone={!line || line.owedBack || line.missing ? "alert" : "plain"}
     />
   );
 }

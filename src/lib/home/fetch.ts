@@ -40,7 +40,7 @@ export async function readHomeListings(
  *
  * A departure with nobody sold has nobody to check in and no cash to take,
  * so it is not read; a called-off one has nobody on it at all. One that did
- * not load maps to `null`, and its row simply says less.
+ * not load maps to `null`, and its row says so.
  */
 export async function readManifests(
   token: string,

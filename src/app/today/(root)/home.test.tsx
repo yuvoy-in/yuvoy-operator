@@ -390,7 +390,11 @@ describe("money today", () => {
     */
     const { rerender } = render(
       <MoneyGlance
-        line={{ text: "This week -₹2,400 · payout due", owedBack: true }}
+        line={{
+          text: "This week -₹2,400 · payout due",
+          owedBack: true,
+          missing: false,
+        }}
       />,
     );
     expect(screen.getByText("This week -₹2,400 · payout due")).toHaveClass(
@@ -399,7 +403,11 @@ describe("money today", () => {
 
     rerender(
       <MoneyGlance
-        line={{ text: "This week ₹40,150 · payout due", owedBack: false }}
+        line={{
+          text: "This week ₹40,150 · payout due",
+          owedBack: false,
+          missing: false,
+        }}
       />,
     );
     expect(screen.getByText("This week ₹40,150 · payout due")).not.toHaveClass(

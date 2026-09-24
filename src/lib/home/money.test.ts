@@ -21,6 +21,7 @@ describe("money today, in one line", () => {
     ).toEqual({
       text: "This week ₹40,150 · payout from Mon 28 Sep · cash owed to Yuvoy ₹2,250",
       owedBack: false,
+      missing: false,
     });
   });
 
@@ -70,13 +71,30 @@ describe("money today, in one line", () => {
     expect(line?.owedBack).toBe(true);
   });
 
-  it("leaves out nothing owed, and says the cash half alone when the week did not load", () => {
-    expect(
-      moneyLine({ week: null, owedPaise: 225_000, today: TODAY })?.text,
-    ).toBe("Cash owed to Yuvoy ₹2,250");
-    expect(moneyLine({ week: null, owedPaise: 0, today: TODAY })?.text).toBe(
-      "Nothing owed on cash",
+  it("leaves out nothing owed beside a week", () => {
+    const line = moneyLine({ week: thisWeek, owedPaise: 0, today: TODAY });
+    expect(line?.text).not.toMatch(/owed/);
+    expect(line?.missing).toBe(false);
+  });
+
+  it("names the half that did not load, never leaving it out", () => {
+    /*
+      "Nothing owed on cash" with the payout gone read as the whole of the
+      money, and a week with no cash figure read as nothing owed.
+    */
+    expect(moneyLine({ week: null, owedPaise: 225_000, today: TODAY })).toEqual(
+      {
+        text: "Payout did not load · cash owed to Yuvoy ₹2,250",
+        owedBack: false,
+        missing: true,
+      },
     );
+    expect(moneyLine({ week: null, owedPaise: 0, today: TODAY })?.text).toBe(
+      "Payout did not load · nothing owed on cash",
+    );
+    const noCash = moneyLine({ week: thisWeek, owedPaise: null, today: TODAY });
+    expect(noCash?.text).toMatch(/ · cash owed did not load$/);
+    expect(noCash?.missing).toBe(true);
   });
 
   it("is nothing at all when neither read answered", () => {

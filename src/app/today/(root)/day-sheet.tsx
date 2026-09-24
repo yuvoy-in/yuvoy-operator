@@ -193,6 +193,11 @@ function DepartureRow({ row }: { row: RunRow }) {
             {row.collect}
           </span>
         ) : null}
+        {row.unchecked ? (
+          <span className="text-terra-deep mt-0.5 block text-sm">
+            {row.unchecked}
+          </span>
+        ) : null}
       </span>
       <span className="shrink-0 text-right">
         <span

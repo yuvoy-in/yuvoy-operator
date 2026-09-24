@@ -25,10 +25,10 @@ const MAX_PAGES = 10;
  *
  * ## It never throws, and it never guesses
  *
- * `null` is "we could not read it": the layout draws no count and Home draws
- * no row, which is what an empty inbox draws too, and only one of those is
- * true. A zero would be a number nobody measured. The same rule the tab bar's
- * badges keep.
+ * `null` is "we could not read it": the layout draws no count, and Home says
+ * "Messages did not load" rather than drawing nothing, which is what an empty
+ * inbox draws. A zero would be a number nobody measured. The same rule the tab
+ * bar's badges keep.
  *
  * Paged at 200, the API's maximum, because this is a sum and nothing is drawn
  * per row. The ceiling stops a broken cursor spinning; stopping at it

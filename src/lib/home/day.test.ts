@@ -444,8 +444,25 @@ describe("the day's sheet", () => {
         tone: "ok",
         sold: 6,
         seats: 6,
+        // Its manifest failed: said, never read as nothing to collect.
+        unchecked: "Cash and check-ins did not load",
       },
     ]);
+  });
+
+  it("says a manifest that did not load, rather than nothing to collect", () => {
+    const rows = runDay({
+      caption: "Today",
+      slots: [slot({ id: "failed" }), slot({ id: "unread", sold: 0 })],
+      listings: [LIVE],
+      manifests: new Map([["failed", null]]),
+      now: NOW,
+    }).rows;
+    const failed = rows.find((r) => r.id === "failed");
+    expect(failed?.unchecked).toBe("Cash and check-ins did not load");
+    expect(failed?.collect).toBeUndefined();
+    // Not read at all (nobody sold) is not a failure.
+    expect(rows.find((r) => r.id === "unread")?.unchecked).toBeUndefined();
   });
 
   it("says nobody has checked in only once that is news", () => {

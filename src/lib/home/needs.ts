@@ -315,7 +315,21 @@ export function needsYou(input: {
 
   /* 4. guests who wrote ---------------------------------------------------- */
   const messages: Need[] = [];
-  if (input.inbox && input.inbox.conversations > 0) {
+  if (input.inbox === null) {
+    /*
+      Said, because drawing nothing is what an empty inbox draws too, and
+      with nothing else waiting "Needs you" went away: "nothing waiting",
+      measured by nobody.
+    */
+    messages.push({
+      kind: "link",
+      key: "messages-failed",
+      text: "Messages did not load",
+      action: "Open Messages",
+      href: "/messages",
+      tone: "plain",
+    });
+  } else if (input.inbox.conversations > 0) {
     messages.push({
       kind: "link",
       key: "messages",

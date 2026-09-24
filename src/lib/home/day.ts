@@ -47,6 +47,11 @@ export interface RunRow {
   checkedIn?: string;
   /** "₹9,000 to collect", today only. */
   collect?: string;
+  /**
+   * Said when today's manifest for it did not load: its cash and check-ins
+   * are unknown, which is not the same as none.
+   */
+  unchecked?: string;
 }
 
 export interface RunDay {
@@ -236,7 +241,8 @@ export function checkedIn(
  * in words, and the heading that counts them.
  *
  * `manifests` is today's only (the one read per departure Home may make, and
- * only for today's): a departure whose manifest did not load simply says less.
+ * only for today's): a departure whose manifest did not load says so, since
+ * saying less would read as nothing to collect and nobody to check in.
  */
 export function runDay(input: {
   /** "Today" or "Tomorrow". */
@@ -275,7 +281,10 @@ export function runDay(input: {
     };
 
     const manifest = input.manifests?.get(slot.id);
-    if (manifest) {
+    if (manifest === null) {
+      // Read and failed (`undefined` is a departure nobody read).
+      row.unchecked = "Cash and check-ins did not load";
+    } else if (manifest) {
       const departed = Date.parse(slot.startsAt) <= input.now;
       const here = checkedIn(manifest, departed);
       if (here) row.checkedIn = here;
