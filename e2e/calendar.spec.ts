@@ -317,11 +317,15 @@ test("a counter sale is named on its departure, and a mistake is taken back", as
     fixture departures already carry seat tests that read exact numbers. One
     day and time per project, and a retry finds the departure it already made
     ("Nothing to add" is the same departure, not a failure).
+
+    +2 and +4: the days nothing else reads. +3 must stay empty for "fourteen
+    days", +5 and +6 for the closed-day test, and the rest carry fixtures or
+    other tests' departures.
   */
   test.setTimeout(60_000);
   await signIn(page);
   const mobile = testInfo.project.name === "mobile";
-  const offset = mobile ? 5 : 6;
+  const offset = mobile ? 2 : 4;
   const time = mobile ? "07:05" : "07:35";
   const title = mobile
     ? "Try-dive at Nemo Reef"
@@ -860,9 +864,10 @@ test("a closed day with nothing on it still says Closed, and why", async ({
   */
   /*
     Days nothing else touches. The fortnight is crowded: the departure-creation
-    test builds on +9 and +11, the closing fixtures are +12 and +13, and the
-    stop-selling ones are +7 and +8. +5 and +6 are empty and stay empty, which
-    is the whole premise of this test.
+    test builds on +9 and +11, the closing fixtures are +12 and +13, the
+    stop-selling ones are +7 and +8, and the counter-sale test's are +2 and +4.
+    +5 and +6 are empty and stay empty, which is the whole premise of this
+    test.
   */
   const offset = testInfo.project.name === "mobile" ? 5 : 6;
   await signIn(page);

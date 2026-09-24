@@ -682,7 +682,9 @@ test("accepting an invitation signs you in, and lands you in the portal", async 
     Same reasoning O1's signup already followed.
   */
   await page.waitForURL("**/today");
-  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Today" }),
+  ).toBeVisible();
   await expect(page.getByText("Accepting does not sign you in.")).toHaveCount(
     0,
   );

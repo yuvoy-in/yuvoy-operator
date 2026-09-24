@@ -305,18 +305,21 @@ export function MemberRow({
               size="md"
               block={false}
               aria-expanded={false}
-              className="mt-3"
-            >
-              {/*
+              /*
                 Whose, for a screen reader: every row says "Remove", and a list
                 of identical names is a list nobody can pick from (the audit,
-                O15). The space belongs to the visible word, so no name
-                computation can join the two.
-              */}
-              {member.pending ? "Revoke invitation" : "Remove"}{" "}
-              <span className="sr-only">
-                {member.pending ? `to ${member.name}` : member.name}
-              </span>
+                O15). A label rather than hidden text, so the name is not a
+                second copy of the person's name in the row's text; it starts
+                with the visible word, so a voice command still finds it.
+              */
+              aria-label={
+                member.pending
+                  ? `Revoke invitation to ${member.name}`
+                  : `Remove ${member.name}`
+              }
+              className="mt-3"
+            >
+              {member.pending ? "Revoke invitation" : "Remove"}
             </Button>
           )
         ) : (

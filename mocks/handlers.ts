@@ -205,9 +205,15 @@ function fileForReview(
   ];
 }
 
-/** OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it. */
+/**
+ * OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it (yuvoy-api
+ * `Identity.CanManage`). It left ADMIN out, so an admin read as staff here and
+ * nowhere else: the mock refused them what the API allows.
+ */
 const canManage = (member: MockTeamMember) =>
-  member.roles.includes("OWNER") || member.roles.includes("MANAGER");
+  member.roles.includes("OWNER") ||
+  member.roles.includes("ADMIN") ||
+  member.roles.includes("MANAGER");
 
 let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
 /** Wrong sign-in codes per number. The sixth answers 429. */
@@ -1376,6 +1382,12 @@ function slotDay(slot: MockSlot): string {
 }
 
 /** Every departure this operator has, fixtures and ones a test added. */
+/**
+ * Every departure there is, fixture or made this session. Every route that
+ * acts on one departure reads this, as the API reads one table: six read the
+ * fixtures alone, so a departure a test had just made answered 404 to its
+ * seats, its manifest, a message, a call-off and a counter sale.
+ */
 function allSlots(): MockSlot[] {
   return [...SLOTS, ...createdSlots];
 }
@@ -5611,7 +5623,7 @@ export const handlers = [
     const failed = requireSession(request);
     if (failed) return failed;
 
-    const slot = SLOTS.find((s) => s.id === String(params.id));
+    const slot = allSlots().find((s) => s.id === String(params.id));
     // Missing and "belongs to somebody else" are one answer, by design.
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
@@ -6985,7 +6997,7 @@ export const handlers = [
     if (shut) return shut;
 
     const id = String(params.id);
-    const slot = SLOTS.find((s) => s.id === id);
+    const slot = allSlots().find((s) => s.id === id);
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
     const { seats } = (await request.json()) as { seats?: number };
@@ -7317,7 +7329,7 @@ export const handlers = [
     if (shut) return shut;
 
     const id = String(params.id);
-    const slot = SLOTS.find((s) => s.id === id);
+    const slot = allSlots().find((s) => s.id === id);
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
     const { seats } = (await request.json()) as { seats?: number };
@@ -7383,7 +7395,7 @@ export const handlers = [
       if (shut) return shut;
 
       const id = String(params.id);
-      const slot = SLOTS.find((s) => s.id === id);
+      const slot = allSlots().find((s) => s.id === id);
       const entry = offlineEntries.find(
         (e) => e.id === String(params.saleId) && e.slotId === id,
       );
@@ -7424,7 +7436,7 @@ export const handlers = [
 
   http.post(url("/slots/:id/relay"), async ({ request, params }) =>
     relay(request, () => {
-      const slot = SLOTS.find((s) => s.id === String(params.id));
+      const slot = allSlots().find((s) => s.id === String(params.id));
       // A live hold has no booking to message; `relay` keeps only bookings.
       return slot ? slot.parties : null;
     }),
@@ -7440,7 +7452,7 @@ export const handlers = [
     if (failed) return failed;
 
     const id = String(params.id);
-    const slot = SLOTS.find((s) => s.id === id);
+    const slot = allSlots().find((s) => s.id === id);
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
     if (calledOff[id] || slot.status === "cancelled") {

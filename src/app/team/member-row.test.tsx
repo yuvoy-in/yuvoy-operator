@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Removability, TeamPerson } from "@/lib/team/members";
 
@@ -122,8 +122,9 @@ describe("removing somebody", () => {
     row(ARUN);
     // Visually the one word; the name rides along for a screen reader.
     const trigger = screen.getByRole("button", { name: "Remove Arun Biswas" });
-    expect(trigger).toHaveTextContent(/^Remove Arun Biswas$/);
-    expect(within(trigger).getByText("Arun Biswas")).toHaveClass("sr-only");
+    expect(trigger).toHaveTextContent(/^Remove$/);
+    // And the person's name is written once in the row, not twice.
+    expect(screen.getAllByText("Arun Biswas")).toHaveLength(1);
   });
 
   it("asks first, and sends nothing on the first tap", () => {

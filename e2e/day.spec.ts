@@ -88,7 +88,9 @@ test("a dead session lands on the sign-in form, not an error page", async ({
   await page.getByLabel("Your code").fill(DEV_CODE);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/today");
-  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Today" }),
+  ).toBeVisible();
 });
 
 test("being bounced off a page comes back to that page, not to Today", async ({
@@ -144,7 +146,9 @@ test("a return path cannot be pointed off the site", async ({ page }) => {
 
   await page.waitForURL("**/today");
   await expect(page).toHaveURL(/operators?\b|127\.0\.0\.1|localhost/);
-  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Today" }),
+  ).toBeVisible();
 });
 
 test("the root sends a signed-in operator to the portal, not to sign in", async ({
@@ -154,7 +158,9 @@ test("the root sends a signed-in operator to the portal, not to sign in", async 
   await signIn(page);
   await page.goto("/");
   await page.waitForURL("**/today");
-  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Today" }),
+  ).toBeVisible();
 });
 
 test("a wrong code says one thing, whatever was wrong with it", async ({

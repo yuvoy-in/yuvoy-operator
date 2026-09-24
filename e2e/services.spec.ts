@@ -204,9 +204,10 @@ test("a listing with no price says so while it is being written", async ({
   const costs = page.getByRole("region", { name: "What it costs" });
   const priceRow = costs.getByRole("listitem").filter({ hasText: /^Price/ });
   await expect(priceRow).toContainText("Still needed");
+  // On the step, and on the field (#85 s10: "let Edit open on that field").
   await expect(priceRow.getByRole("link")).toHaveAttribute(
     "href",
-    /\/edit\?step=selling$/,
+    /\/edit\?step=selling&field=unitPricePaise$/,
   );
 
   // What it DOES say is on the screen too, which the old sentence never was.

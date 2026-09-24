@@ -149,8 +149,9 @@ test("the emergency brake works, and needs no code", async ({ page }) => {
     Still no code and no waiting to stop one.
   */
   await expect(page.getByText("Stop this change?")).toBeVisible();
+  // "On file", never "the account you have": the fixture has one on file.
   await expect(
-    page.getByText(/Payouts keep going to the account you have/),
+    page.getByText(/Payouts keep going to the account on file/),
   ).toBeVisible();
   await expect(page.getByLabel("The code")).toHaveCount(0);
   await page.getByRole("button", { name: "Stop the change" }).click();
