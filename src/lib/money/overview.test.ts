@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Commission } from "./commission";
 import {
   cashHasMoney,
+  cashLead,
   cashOnTheTab,
   latestStatement,
   moneyBlocks,
@@ -59,6 +60,23 @@ const COMMISSION: Commission = {
   unrecorded: { bookings: 1, farePaise: 450_000, lines: [] },
 };
 
+/** A business with no cash at all, whose owed read ANSWERED. */
+const ZERO_COMMISSION: Commission = {
+  bookings: 0,
+  farePaise: 0,
+  collectedPaise: 0,
+  commissionPaise: 0,
+  lines: [],
+  held: {
+    bookings: 0,
+    farePaise: 0,
+    collectedPaise: 0,
+    commissionPaise: 0,
+    lines: [],
+  },
+  unrecorded: { bookings: 0, farePaise: 0, lines: [] },
+};
+
 describe("whether the next payout has anything in it", () => {
   it("does when it pays bookings", () => {
     expect(payoutHasMoney({ bookings: 6, netPaise: 4_015_000 })).toBe(true);
@@ -88,7 +106,13 @@ describe("the cash the Money tab summarises", () => {
     expect(cash.inHand).toBe(4_200_000);
     expect(cash.owedNow).toBe(450_000);
     expect(cash.heldShare).toBe(225_000);
-    expect(cash.toRun).toEqual({ bookings: 3, farePaise: 2_700_000 });
+    expect(cash.toRun).toEqual({
+      bookings: 3,
+      farePaise: 2_700_000,
+      // From the overview, so it survives the owed read failing.
+      takenPaise: 1_500_000,
+    });
+    expect(cash.owedKnown).toBe(true);
     expect(cash.unrecorded).toEqual({ bookings: 1, farePaise: 450_000 });
     expect(cashHasMoney(cash)).toBe(true);
   });
@@ -103,8 +127,10 @@ describe("the cash the Money tab summarises", () => {
     expect(cash.inHand).toBeNull();
     expect(cash.owedNow).toBeNull();
     expect(cash.heldShare).toBeNull();
-    // What the overview itself carries still stands.
-    expect(cash.toRun.bookings).toBe(3);
+    // What the overview itself carries still stands, held cash included.
+    expect(cash.toRun?.bookings).toBe(3);
+    expect(cash.toRun?.takenPaise).toBe(1_500_000);
+    expect(cash.owedKnown).toBe(false);
     expect(cash.unrecorded).toEqual({ bookings: 1, farePaise: 450_000 });
     expect(cashHasMoney(cash)).toBe(true);
   });
@@ -124,25 +150,71 @@ describe("the cash the Money tab summarises", () => {
   });
 
   it("has nothing to say about a business with no cash at all", () => {
-    const none: Commission = {
-      bookings: 0,
-      farePaise: 0,
-      collectedPaise: 0,
-      commissionPaise: 0,
-      lines: [],
-      held: {
-        bookings: 0,
-        farePaise: 0,
-        collectedPaise: 0,
-        commissionPaise: 0,
-        lines: [],
-      },
-      unrecorded: { bookings: 0, farePaise: 0, lines: [] },
-    };
-    const cash = cashOnTheTab(NO_CASH, none);
+    const cash = cashOnTheTab(NO_CASH, ZERO_COMMISSION);
     expect(cash.unrecorded).toBeNull();
     expect(cashHasMoney(cash)).toBe(false);
-    expect(cashHasMoney(cashOnTheTab(NO_CASH, null))).toBe(false);
+  });
+
+  it("has something to say when the owed read failed: that it could not check", () => {
+    /*
+      The audit, M3: with an empty week and `/commission-owed` answering 500,
+      the screen said "Nothing owed either way yet" to an operator who owed
+      ₹4,500 on completed cash trips, which only that read can say.
+    */
+    expect(cashHasMoney(cashOnTheTab(NO_CASH, null))).toBe(true);
+  });
+
+  it("does not call past trips still to run against an API older than #221", () => {
+    // Its `bookings` still carried past trips with nothing recorded.
+    const older = {
+      ...COUNTER,
+      unrecordedBookings: undefined,
+      unrecordedFarePaise: undefined,
+    } as unknown as PaidAtCounter;
+    expect(cashOnTheTab(older, COMMISSION).toRun).toBeNull();
+  });
+});
+
+describe("the figure the cash block leads with", () => {
+  it("is the cash in hand when there is any", () => {
+    expect(cashLead(cashOnTheTab(COUNTER, COMMISSION))).toEqual({
+      kind: "in-hand",
+      paise: 4_200_000,
+    });
+  });
+
+  it("is the cash still to take when nothing has been taken: #87 s15's own case", () => {
+    /*
+      "The screen leads with ₹0, and the only real number, ₹55,250 of cash
+      still to collect, is third and smallest." Five trips to run, nothing
+      taken, nothing owed.
+    */
+    const counter: PaidAtCounter = {
+      ...NO_CASH,
+      bookings: 5,
+      farePaise: 5_525_000,
+    };
+    expect(cashLead(cashOnTheTab(counter, ZERO_COMMISSION))).toEqual({
+      kind: "to-take",
+      paise: 5_525_000,
+    });
+  });
+
+  it("is what is owed when that is the only real figure", () => {
+    expect(
+      cashLead(
+        cashOnTheTab(NO_CASH, {
+          ...ZERO_COMMISSION,
+          collectedPaise: undefined,
+          commissionPaise: 450_000,
+        }),
+      ),
+    ).toEqual({ kind: "owed", paise: 450_000 });
+  });
+
+  it("is nothing when every figure is zero or unknown, never a ₹0", () => {
+    expect(cashLead(cashOnTheTab(NO_CASH, ZERO_COMMISSION))).toBeNull();
+    expect(cashLead(cashOnTheTab(NO_CASH, null))).toBeNull();
   });
 });
 
@@ -152,7 +224,8 @@ describe("what the Money tab leads with", () => {
   const BOOKED = { bookings: 4, netPaise: 3_060_000 };
   const NOT_BOOKED = { bookings: 0, netPaise: 0 };
   const CASH = cashOnTheTab(COUNTER, COMMISSION);
-  const NONE = cashOnTheTab(NO_CASH, null);
+  const NONE = cashOnTheTab(NO_CASH, ZERO_COMMISSION);
+  const FAILED = cashOnTheTab(NO_CASH, null);
 
   it("leads with the payout when it has money in it", () => {
     expect(moneyBlocks(PAYOUT, BOOKED, CASH)).toEqual([
@@ -179,6 +252,13 @@ describe("what the Money tab leads with", () => {
 
   it("says an empty week once, rather than three times as ₹0", () => {
     expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, NONE)).toEqual(["nothing-yet"]);
+  });
+
+  it("never says nothing is owed when the owed read failed", () => {
+    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, FAILED)).toEqual([
+      "cash",
+      "payout-quiet",
+    ]);
   });
 
   it("never draws an empty block", () => {

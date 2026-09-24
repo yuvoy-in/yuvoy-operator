@@ -54,14 +54,33 @@ export function pipelineHasMoney(
  * that they owe nothing.
  */
 export interface CashOnTheTab {
+  /**
+   * Whether `GET /commission-owed` answered. When it did not, what is owed is
+   * UNKNOWN and the screen says so: it used to fall through to "Nothing owed
+   * either way yet" for an operator who owed ₹4,500 (the audit, M3).
+   */
+  owedKnown: boolean;
   /** All the cash recorded taken, owed and held together, as Cash leads with it. */
   inHand: number | null;
   /** Yuvoy's share on completed cash trips, owed now. */
   owedNow: number | null;
   /** Yuvoy's share on cash taken for trips still to run: owed once they run. */
   heldShare: number | null;
-  /** Cash bookings still to run, paid or not. */
-  toRun: { bookings: number; farePaise: number };
+  /**
+   * Cash bookings still to run, paid or not, and the cash already taken for
+   * them. From the overview, so it survives `/commission-owed` failing.
+   *
+   * `null` against an API older than yuvoy-api#221, whose `bookings` still
+   * carried past trips with nothing recorded as though they were to come (7
+   * trips, ₹60,000, on a morning with nothing upcoming). The sign it is newer
+   * is `unrecordedBookings`, which #221 added in the same change.
+   */
+  toRun: {
+    bookings: number;
+    farePaise: number;
+    /** Cash already recorded taken for them, or `null` when not said. */
+    takenPaise: number | null;
+  } | null;
   /** Trips that ran with no cash recorded, or `null` when there are none. */
   unrecorded: { bookings: number; farePaise: number | null } | null;
 }
@@ -93,25 +112,60 @@ export function cashOnTheTab(
         }
       : null);
 
+  const apiCountsToRunApart = Number.isInteger(counter.unrecordedBookings);
   return {
+    owedKnown: commission !== null,
     inHand: commission ? cashInHand(commission) : null,
     owedNow: commission ? commission.commissionPaise : null,
     heldShare: commission?.held ? commission.held.commissionPaise : null,
-    toRun: {
-      bookings: whole(counter.bookings),
-      farePaise: whole(counter.farePaise),
-    },
+    toRun: apiCountsToRunApart
+      ? {
+          bookings: whole(counter.bookings),
+          farePaise: whole(counter.farePaise),
+          takenPaise: Number.isInteger(counter.heldCollectedPaise)
+            ? counter.heldCollectedPaise
+            : null,
+        }
+      : null,
     unrecorded: unrecorded && unrecorded.bookings > 0 ? unrecorded : null,
   };
 }
 
-/** Whether there is any cash to speak of: taken, owed, to take, or unrecorded. */
+/**
+ * The one figure the cash block leads with: the largest REAL one (#87 s15,
+ * "lead with the number that is real this week").
+ *
+ * It led with "₹0 recorded as taken from travellers" when the only real
+ * figure was ₹55,250 still to take on trips to run, which was the smallest row
+ * (the audit, M4). Nothing leads when every figure is zero or unknown.
+ */
+export type CashLead =
+  | { kind: "in-hand"; paise: number }
+  | { kind: "to-take"; paise: number }
+  | { kind: "owed"; paise: number };
+
+export function cashLead(cash: CashOnTheTab): CashLead | null {
+  if ((cash.inHand ?? 0) > 0) return { kind: "in-hand", paise: cash.inHand! };
+  const toTake = cash.toRun
+    ? cash.toRun.farePaise - (cash.toRun.takenPaise ?? 0)
+    : 0;
+  if (toTake > 0) return { kind: "to-take", paise: toTake };
+  if ((cash.owedNow ?? 0) > 0) return { kind: "owed", paise: cash.owedNow! };
+  return null;
+}
+
+/**
+ * Whether the cash block has anything to say: a figure above zero, trips to
+ * run or unrecorded, OR an owed read that failed, which it must say rather
+ * than let the screen conclude nothing is owed.
+ */
 export function cashHasMoney(cash: CashOnTheTab): boolean {
   return (
+    !cash.owedKnown ||
     (cash.inHand ?? 0) > 0 ||
     (cash.owedNow ?? 0) > 0 ||
     (cash.heldShare ?? 0) > 0 ||
-    cash.toRun.bookings > 0 ||
+    (cash.toRun?.bookings ?? 0) > 0 ||
     cash.unrecorded !== null
   );
 }

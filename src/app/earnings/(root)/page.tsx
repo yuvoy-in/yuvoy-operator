@@ -22,6 +22,7 @@ import {
   type SettlementWeek,
 } from "@/lib/money/settlements";
 import {
+  cashLead,
   cashOnTheTab,
   latestStatement,
   moneyBlocks,
@@ -430,7 +431,9 @@ function BookedNotRun({ pipeline }: { pipeline: SettlementPipeline }) {
  * drawn as ₹0.
  */
 function CashSection({ cash }: { cash: CashOnTheTab }) {
-  const { unrecorded } = cash;
+  const { unrecorded, toRun } = cash;
+  const lead = cashLead(cash);
+  const takenForToRun = toRun?.takenPaise ?? 0;
   return (
     <section className="mt-4" aria-labelledby="cash-summary">
       <div className={panelClass("outline")}>
@@ -438,22 +441,41 @@ function CashSection({ cash }: { cash: CashOnTheTab }) {
           Cash
         </h2>
         {/*
-          What they took, first. Yuvoy's share then reads as a share of money
-          already in their hand rather than a bill: the order the Cash screen
-          argues for.
+          The largest REAL figure leads (#87 s15). It led with "₹0 recorded as
+          taken from travellers" while the only real number, cash still to
+          take on trips to run, was the smallest row. What they took comes
+          first when there is any: Yuvoy's share then reads as a share of money
+          already in their hand rather than a bill.
         */}
-        {cash.inHand !== null ? (
+        {lead ? (
           <>
             <p className="font-display tracking-display mt-3 text-2xl leading-none">
-              {formatPaise(cash.inHand)}
+              {formatPaise(lead.paise)}
             </p>
             <p className="text-forest/70 mt-2 text-sm">
-              recorded as taken from travellers
+              {lead.kind === "in-hand"
+                ? "recorded as taken from travellers"
+                : lead.kind === "to-take"
+                  ? "to take on cash trips still to run"
+                  : "Yuvoy's share, owed now"}
             </p>
           </>
         ) : null}
+        {/*
+          A failed read of what is owed is said, never drawn as ₹0 and never
+          left to become "Nothing owed either way yet" (the audit, M3).
+        */}
+        {!cash.owedKnown ? (
+          <p className="text-forest/80 mt-3 text-sm">
+            We could not check what you owe on cash just now. Open Cash to try
+            again.
+          </p>
+        ) : null}
         <dl className="mt-4 space-y-2 text-sm">
-          {cash.owedNow !== null ? (
+          {/* Zero is not news, so no row is drawn for it. */}
+          {cash.owedNow !== null &&
+          cash.owedNow > 0 &&
+          lead?.kind !== "owed" ? (
             <Row
               label="Yuvoy's share, owed now"
               value={formatPaise(cash.owedNow)}
@@ -465,12 +487,20 @@ function CashSection({ cash }: { cash: CashOnTheTab }) {
               value={formatPaise(cash.heldShare)}
             />
           ) : null}
-          {cash.toRun.bookings > 0 ? (
+          {toRun && toRun.bookings > 0 ? (
             <Row
               label="Cash trips still to run"
-              value={`${cash.toRun.bookings} · ${formatPaise(
-                cash.toRun.farePaise,
-              )}`}
+              value={`${toRun.bookings} · ${formatPaise(toRun.farePaise)}`}
+            />
+          ) : null}
+          {/*
+            Taken already for those trips, from the overview, so it is still
+            said when `/commission-owed` failed and "in hand" cannot be.
+          */}
+          {toRun && takenForToRun > 0 ? (
+            <Row
+              label="Already taken for them"
+              value={formatPaise(takenForToRun)}
             />
           ) : null}
         </dl>
