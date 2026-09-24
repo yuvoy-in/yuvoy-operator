@@ -3,7 +3,7 @@ import { operatorApi } from "@/lib/api/server-client";
 import { toChangeRequest, type ChangeRequest } from "@/lib/account/change-kind";
 import { toCommission, type Commission } from "./commission";
 import type { Settlement } from "./settlements";
-import { NO_COUNTS, type Counts } from "@/lib/bookings/list";
+import { toCounts, type Counts } from "@/lib/bookings/list";
 import { byDeparture, toBookingLine, type BookingLine } from "./bookings";
 
 /**
@@ -118,7 +118,8 @@ export interface BookingPage {
   items: BookingLine[];
   complete: boolean;
   nextCursor?: string;
-  counts: Counts;
+  /** `null` when the answer carried none: unknown, never zeroes. */
+  counts: Counts | null;
 }
 
 /**
@@ -173,9 +174,10 @@ export async function searchBookings(
         Zeroes are a real answer and are kept. An absent `counts` is not: the
         contract marks it required, so a response without one is not the API
         this was built against, and drawing four zeroes would say a busy
-        operator has nothing.
+        operator has nothing. So it is `null`, unknown (`toCounts`); it was
+        four zeroes, which is exactly that claim (the audit, O6).
       */
-      counts: data.counts ?? NO_COUNTS,
+      counts: toCounts(data.counts),
     };
   } catch {
     /*

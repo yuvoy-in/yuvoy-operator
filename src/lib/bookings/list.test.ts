@@ -16,6 +16,7 @@ import {
   readSearch,
   readView,
   rowName,
+  toCounts,
   type Filters,
 } from "./list";
 import type { BookingLine } from "@/lib/money/bookings";
@@ -170,6 +171,33 @@ describe("which pill opens by default", () => {
       defaultView({ requests: 0, upcoming: 0, past: 0, cancelled: 0 }),
     ).toBe("upcoming");
   });
+
+  it("falls back to the old rule, which needs no counts, when there are none", () => {
+    // The audit before release, O6: absent counts read as zeroes.
+    expect(defaultView(null, 3)).toBe("requests");
+    expect(defaultView(null, 0)).toBe("upcoming");
+    expect(defaultView(null, null)).toBe("upcoming");
+  });
+});
+
+describe("the counts behind the pills", () => {
+  it("keeps zeroes, which are an answer", () => {
+    expect(
+      toCounts({ requests: 0, upcoming: 0, past: 0, cancelled: 0 }),
+    ).toEqual({ requests: 0, upcoming: 0, past: 0, cancelled: 0 });
+  });
+
+  it("is unknown, never zeroes, when the answer carried none or nonsense", () => {
+    expect(toCounts(undefined)).toBeNull();
+    expect(toCounts(null)).toBeNull();
+    expect(toCounts({ requests: 0, upcoming: 2, past: 1 })).toBeNull();
+    expect(
+      toCounts({ requests: 0, upcoming: 2.5, past: 1, cancelled: 0 }),
+    ).toBeNull();
+    expect(
+      toCounts({ requests: -1, upcoming: 2, past: 1, cancelled: 0 }),
+    ).toBeNull();
+  });
 });
 
 describe("a business with nothing booked at all", () => {
@@ -303,5 +331,11 @@ describe("the link on a pill", () => {
 
   it("carries nothing it does not have", () => {
     expect(pillHref("upcoming", filters())).toBe("/bookings?view=upcoming");
+  });
+
+  it("names no pill when nobody chose one, so the screen chooses again", () => {
+    // The audit before release, O5: Try again pinned Upcoming.
+    expect(pillHref(null, filters())).toBe("/bookings");
+    expect(pillHref(null, filters({ q: "asha" }))).toBe("/bookings?q=asha");
   });
 });

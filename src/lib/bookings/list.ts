@@ -162,12 +162,33 @@ export interface Counts {
   cancelled: number;
 }
 
-export const NO_COUNTS: Counts = {
-  requests: 0,
-  upcoming: 0,
-  past: 0,
-  cancelled: 0,
-};
+/**
+ * The counts behind the pills, or `null` when the answer carried none.
+ *
+ * `counts` is required in the contract, and PINNED reads it as optional with
+ * a fall back to the old behaviour, because required-in-a-contract is a promise
+ * about master and not about the deployed API. It was read as four zeroes,
+ * which drew "0" on every pill and "Nothing booked yet" over a Past full of
+ * bookings (the audit before release, O6). Anything that is not four whole
+ * numbers is not an answer.
+ */
+export function toCounts(raw: unknown): Counts | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const c = raw as Record<string, unknown>;
+  const whole = (v: unknown): v is number =>
+    typeof v === "number" && Number.isInteger(v) && v >= 0;
+  return whole(c.requests) &&
+    whole(c.upcoming) &&
+    whole(c.past) &&
+    whole(c.cancelled)
+    ? {
+        requests: c.requests,
+        upcoming: c.upcoming,
+        past: c.past,
+        cancelled: c.cancelled,
+      }
+    : null;
+}
 
 /**
  * Which pill to open on when the URL names none: the first, in pill order,
@@ -181,8 +202,15 @@ export const NO_COUNTS: Counts = {
  *
  * Upcoming when every pill is empty, because that is where the next booking
  * will land and the empty state there says how to get one.
+ *
+ * With no counts, the old rule, which needs none: Requests when any are
+ * waiting (`GET /requests`, read beside it), Upcoming otherwise.
  */
-export function defaultView(counts: Counts): View {
+export function defaultView(
+  counts: Counts | null,
+  waiting: number | null = null,
+): View {
+  if (!counts) return (waiting ?? 0) > 0 ? "requests" : "upcoming";
   return VIEWS.find((view) => counts[view] > 0) ?? "upcoming";
 }
 
@@ -299,12 +327,20 @@ export function matchesRequest(
   return true;
 }
 
-/** The query string for a pill, keeping whatever is narrowing the list. */
-export function pillHref(view: View, filters: Filters): string {
-  const params = new URLSearchParams({ view });
+/**
+ * The query string for a pill, keeping whatever is narrowing the list.
+ *
+ * `null` names no pill, so the screen chooses one again. That is what "Try
+ * again" sends when nobody chose one: it carried the pill the failed read had
+ * fallen back to, which pinned Upcoming and never let the screen open on the
+ * first pill with anything in it (the audit before release, O5).
+ */
+export function pillHref(view: View | null, filters: Filters): string {
+  const params = new URLSearchParams(view ? { view } : {});
   if (filters.q) params.set("q", filters.q);
   if (filters.experienceId) params.set("experienceId", filters.experienceId);
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
-  return `/bookings?${params.toString()}`;
+  const query = params.toString();
+  return query ? `/bookings?${query}` : "/bookings";
 }

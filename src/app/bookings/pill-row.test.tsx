@@ -129,10 +129,38 @@ describe("a business with nothing booked", () => {
       "No upcoming bookings" and half a screen of white was a dead end. The
       second sentence is the link, and the whole sentence is the target.
     */
-    render(<NothingBooked />);
+    render(<NothingBooked canManage suspended={false} />);
     expect(screen.getByText("Nothing booked yet.")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open Calendar to put seats on sale." }),
     ).toHaveAttribute("href", "/calendar");
+  });
+
+  /*
+    The audit before release, O7: the way on was a dead end for the two logins
+    Calendar offers nothing to put on sale.
+  */
+  it("tells a staff login who puts seats on sale, instead of sending them", () => {
+    render(<NothingBooked canManage={false} suspended={false} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(
+      screen.getByText(
+        "An owner, an admin or a manager puts seats on sale in Calendar.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("tells a business on hold why, and the one way forward", () => {
+    render(<NothingBooked canManage suspended />);
+    expect(
+      screen.getByText(
+        "Your account is on hold, so nothing new can go on sale.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Call Yuvoy" })).toHaveAttribute(
+      "href",
+      "tel:+918121657657",
+    );
+    expect(screen.queryByRole("link", { name: /Calendar/ })).toBeNull();
   });
 });

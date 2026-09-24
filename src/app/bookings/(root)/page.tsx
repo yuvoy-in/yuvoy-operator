@@ -22,7 +22,6 @@ import { listOpenRequests } from "@/lib/day/requests";
 import { listListings } from "@/lib/day/manifest";
 import { searchBookings } from "@/lib/money/fetch";
 import {
-  NO_COUNTS,
   PILL_LABEL,
   VIEWS,
   anyFilter,
@@ -133,8 +132,9 @@ export default async function BookingsPage({
     listListings(token).catch(() => []),
   ]);
 
-  const counts = first?.counts ?? NO_COUNTS;
-  const view: View = asked ?? defaultView(counts);
+  // `null` when the read failed or carried none: unknown, never zeroes (O6).
+  const counts = first?.counts ?? null;
+  const view: View = asked ?? defaultView(counts, requests?.length ?? null);
   const filtered = anyFilter(filters);
 
   /*
@@ -161,6 +161,7 @@ export default async function BookingsPage({
     page !== null &&
     !filtered &&
     view !== "requests" &&
+    counts !== null &&
     nothingBooked(counts) &&
     page.items.length === 0;
 
@@ -211,7 +212,7 @@ export default async function BookingsPage({
               className={cn(selected && "pointer-events-none")}
             >
               {PILL_LABEL[pill]}
-              {first ? (
+              {counts ? (
                 <span className="tabular-nums">{countFor(counts, pill)}</span>
               ) : null}
             </ButtonLink>
@@ -231,8 +232,13 @@ export default async function BookingsPage({
             body="Nothing has changed. This is us, not you."
           />
           <div className="mt-4">
+            {/*
+              The pill somebody chose, or none: a failed read falls back to
+              Upcoming, and carrying that here pinned it, so trying again
+              never opened on the first pill with anything in it (O5).
+            */}
             <ButtonLink
-              href={pillHref(view, filters)}
+              href={pillHref(asked, filters)}
               variant="secondary"
               block={false}
             >
@@ -304,7 +310,10 @@ export default async function BookingsPage({
           ) : null}
         </div>
       ) : nothingYet ? (
-        <NothingBooked />
+        <NothingBooked
+          canManage={me.canManage}
+          suspended={Boolean(me.suspension)}
+        />
       ) : (
         <>
           <BookingList
