@@ -127,31 +127,71 @@ test("the team is two lists: people, and invitations nobody has used", async ({
   await page.goto("/team");
   await page.waitForLoadState("networkidle");
 
-  // The three fixture people, each described by what they may actually do.
+  // The three fixture people, each with the chip that names their role.
   await expect(page.getByText("Priya Raut")).toBeVisible();
   await expect(page.getByText("Dev Kapoor")).toBeVisible();
   await expect(page.getByText("Arun Biswas")).toBeVisible();
 
   /*
-    The claims are load-bearing. An owner hands a phone to a skipper on the
-    strength of this sentence, so it is asserted on the row that makes it — the
-    same words also appear beside the radio buttons, and an assertion a form
-    could satisfy would not be testing the list at all.
+    The role is the chip, and only the chip (yuvoy-operator#88 s16). "Three
+    people means three paragraphs of nearly identical text to read past": each
+    row carried the description of its own role, so the same claims were on
+    screen as many times as the business has people.
   */
+  const arun = page.locator("li").filter({ hasText: "Arun Biswas" });
   await expect(
-    page
-      .locator("li")
-      .filter({ hasText: "Arun Biswas" })
-      .getByText("Today's manifest: marks people off as they arrive."),
-  ).toBeVisible();
+    arun.locator("span.label").filter({ hasText: /^Staff$/ }),
+  ).toHaveCount(1);
   await expect(
-    page
-      .locator("li")
-      .filter({ hasText: "Dev Kapoor" })
-      .getByText(
-        "Cannot change payout details, and cannot add, remove or pause people.",
-      ),
-  ).toBeVisible();
+    arun.getByText(
+      "Who is booked on today's departures, and checking them in as they arrive.",
+    ),
+  ).toHaveCount(0);
+  const dev = page.locator("li").filter({ hasText: "Dev Kapoor" });
+  await expect(
+    dev.locator("span.label").filter({ hasText: /^Manager$/ }),
+  ).toHaveCount(1);
+  await expect(
+    dev.getByText(
+      "Cannot change payout details, and cannot add, remove or pause people.",
+    ),
+  ).toHaveCount(0);
+
+  /*
+    Said ONCE, for the whole list, and out of the way until somebody asks.
+
+    The claims are still load-bearing: an owner hands a crew phone to a skipper
+    on the strength of this sentence, and it is the contract's. So each is
+    asserted inside the disclosure that now holds it, closed first and open
+    after the tap, and asserted absent from every row, which is where the
+    repetition was. Not counted on the PAGE: the invite form says what a Staff
+    or an Owner invitation grants, beside the choice being made, which is the
+    one place saying it twice was never the finding.
+  */
+  const guide = page.locator("details").filter({
+    hasText: "What each role can do",
+  });
+  await expect(guide).not.toHaveAttribute("open", "");
+  await guide.locator("summary").click();
+  await expect(guide).toHaveAttribute("open", "");
+
+  for (const claim of [
+    "Everything, including where the money goes and who is on this list.",
+    "Everything a manager can, plus this list: the stand-in for an owner who is off the island.",
+    "Seats, closed dates, seat requests, calling off a departure, earnings and listing edits.",
+    "Who is booked on today's departures, and checking them in as they arrive.",
+  ]) {
+    await expect(guide.getByText(claim)).toBeVisible();
+    await expect(page.locator("li").getByText(claim)).toHaveCount(0);
+  }
+
+  // And the reasons that closed this screen are an answer in Help now (#80 t4).
+  await expect(
+    guide.getByRole("link", { name: "Why the roles are different" }),
+  ).toHaveAttribute("href", "/account/help?from=%2Fteam#why-roles-differ");
+  await expect(
+    page.getByRole("heading", { name: "Why the roles are different" }),
+  ).toHaveCount(0);
 
   /*
     An invitation is a way in nobody has used, not a person with less access.
@@ -469,6 +509,23 @@ test("an invitation with no email says nothing was sent, and what makes it go", 
   await expect(receipt.getByText(/the code yourself/)).toHaveCount(0);
   await expect(receipt.getByText(/We also sent them/)).toHaveCount(0);
   await expect(page.getByText(/We message them/)).toHaveCount(0);
+
+  /*
+    And the invitee is told the same thing (yuvoy-api#227). Their join code
+    has nowhere to go either, and `POST /join/{token}/code` used to answer
+    `sent: true` regardless, so the join page asked for a code that nothing
+    was carrying. It now says so, in the API's words, before anything else.
+  */
+  await page.context().clearCookies();
+  await page.goto(`/join/${JOIN_TOKEN}`);
+  await page.getByLabel("Your phone number").fill(who.phone.slice(3));
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "We could not send your code." })
+      .getByText(/Ask whoever invited you to add you again with an email/),
+  ).toBeVisible();
 });
 
 test("an invitation with an email says it was sent, and still leads with the link", async ({
@@ -625,7 +682,9 @@ test("accepting an invitation signs you in, and lands you in the portal", async 
     Same reasoning O1's signup already followed.
   */
   await page.waitForURL("**/today");
-  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Today" }),
+  ).toBeVisible();
   await expect(page.getByText("Accepting does not sign you in.")).toHaveCount(
     0,
   );
@@ -675,7 +734,10 @@ test("removing somebody ends their access now, and says so", async ({
   const row = page.locator("li").filter({ hasText: who.name });
   await expect(row.getByText("No sign-in recorded")).toBeVisible();
 
-  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  // The trigger says whose it is to a screen reader; the confirm says Remove.
+  await row
+    .getByRole("button", { name: `Remove ${who.name}`, exact: true })
+    .click();
   await expect(
     row.getByText("Their sessions end immediately. Not at their next sign-in."),
   ).toBeVisible();
@@ -1064,7 +1126,10 @@ test("joining from another business asks first, and names what is lost", async (
   await expect(
     page.getByText(/This will take you off Havelock Water Sports/),
   ).toBeVisible();
-  await expect(page.getByText(/including on any device already/)).toBeVisible();
+  // The API's own sentence, carried in `note` (yuvoy-api#227 kept its words).
+  await expect(
+    page.getByText(/Accepting removes you from Havelock Water Sports/),
+  ).toBeVisible();
 
   // Nothing may be sent while the question is unanswered.
   const submit = page.getByRole("button", {

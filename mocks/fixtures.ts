@@ -842,6 +842,64 @@ export const SLOTS: MockSlot[] = [
     parties: [],
     seatsUnconfirmed: true,
   },
+  /*
+    CASH TO TAKE TODAY (yuvoy-operator#96, Home's "Needs you").
+
+    Every other cash party is on tomorrow's `slot_cash` or on a call-off
+    fixture whose cash is already taken, so nothing put a "collect" row on
+    Home. One party, never recorded by any test, so the row reads the same
+    on both projects: "Collect ₹4,500 from 1 party on the 20:30". Late in the
+    day and on the dive listing, so no count another suite reads moves.
+  */
+  {
+    id: "slot_cash_today",
+    experienceId: "exp_dive",
+    title: "Reef dive (cash today fixture)",
+    startsAt: todayAt("20:30"),
+    timezone: TZ,
+    seats: 8,
+    sold: 1,
+    remaining: 7,
+    bookingMode: "allotment",
+    status: "open",
+    meetingPoint: "Beach 3 dive hut",
+    seatsSoldOffline: 0,
+    parties: [
+      {
+        bookingId: "bkg_cash_today",
+        reference: "YV-T0DAY4K5",
+        name: "Hana Ito",
+        guests: 1,
+        state: "paid_pending_ops",
+        arrived: false,
+        cash: { collectPaise: 450_000, collected: false },
+      },
+    ],
+  },
+  /*
+    OFF SALE FOR UNCONFIRMED SEATS, for Home's "Confirm all"
+    (yuvoy-operator#96). Home confirms every listing at once, so it cannot
+    share `slot_unconfirmed` with the listing hub's own walkthrough: the two
+    run in order in one serial block, the hub's first, and this is what is
+    still off sale when Home's turn comes. On "Sunset cruise", whose hub no
+    suite reads, on the same day as the other, which is nobody else's.
+  */
+  {
+    id: "slot_unconfirmed_home",
+    experienceId: "exp_sunset",
+    title: "Sunset cruise (seats fixture)",
+    startsAt: todayAt("11:00", 10),
+    timezone: TZ,
+    seats: 6,
+    sold: 0,
+    remaining: 6,
+    bookingMode: "allotment",
+    status: "open",
+    meetingPoint: "Havelock jetty, gate 1",
+    seatsSoldOffline: 0,
+    parties: [],
+    seatsUnconfirmed: true,
+  },
 ];
 
 export const DEV_CODE = "424242";
@@ -976,6 +1034,41 @@ export const REQUESTS: MockRequest[] = [
     contactName: "Yuki Tanabe",
     seatsGrantable: 6,
     minutesToAnswer: 1_805,
+  },
+  /*
+    Answered from HOME, one per Playwright project (yuvoy-operator#96).
+
+    Home draws the three soonest requests, so these sit inside that three
+    whatever else has been answered: after the one that is never answered,
+    before every other. Nothing else answers them.
+  */
+  {
+    id: "req_home_mobile",
+    slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
+    experience: "Snorkel trip to Elephant Beach",
+    guests: 2,
+    startsAt: todayAt("23:30"),
+    timezone: TZ,
+    requestedAt: todayAt("04:30"),
+    expiresAt: todayAt("09:00"),
+    contactName: "Meenakshi Rao",
+    seatsGrantable: 6,
+    minutesToAnswer: 90,
+  },
+  {
+    id: "req_home_desktop",
+    slotId: "slot_late_morning",
+    experienceId: "exp_snorkel",
+    experience: "Snorkel trip to Elephant Beach",
+    guests: 2,
+    startsAt: todayAt("23:30"),
+    timezone: TZ,
+    requestedAt: todayAt("04:35"),
+    expiresAt: todayAt("09:05"),
+    contactName: "Tobias Klein",
+    seatsGrantable: 6,
+    minutesToAnswer: 95,
   },
 ];
 
@@ -1158,10 +1251,45 @@ export const CHANGE_REQUESTS = [
     // `cooling` is approved and STILL STOPPABLE — the state most worth
     // rendering, because an operator can still act on it.
     state: "cooling",
-    summary: "HDFC Bank ••••4417 · HDFC0001234",
+    summary: "HDFC Bank ····4417 (HDFC0001234)",
     requestedAt: todayAt("09:00", -1),
     objectionUntil: null,
     coolingUntil: todayAt("09:00", 1),
+  },
+  {
+    /*
+      A bank change we refused, with the sentence the API writes for the
+      business (yuvoy-api#223, `ChangeRejectionMessage`). It names the
+      published support line: the API's own constant is a number that is not
+      Yuvoy's (yuvoy-api#235), and the portal holds back any sentence naming
+      another number, which the unit tests cover; this is the API once fixed.
+    */
+    id: "chg_bank_rejected",
+    kind: "bank_account",
+    state: "rejected",
+    summary: "SBI ····1111 (SBIN0000123)",
+    requestedAt: todayAt("09:00", -60),
+    objectionUntil: null,
+    coolingUntil: null,
+    rejectionReason:
+      "We could not accept the new bank details. Your payouts still go to the account already on file. Call us on +91 81216 57657 and we will tell you what we need.",
+  },
+  {
+    id: "chg_bank_0",
+    kind: "bank_account",
+    /*
+      What is ON FILE: the newest bank change that went live, which Payout
+      details shows as text with one Change button (yuvoy-operator#87 s14).
+      Written in the API's own summary shape, `Bank ····last4 (IFSC)`
+      (yuvoy-api `BankChange.Summary`), so the screen's reading of it is
+      exercised against what production sends rather than against this
+      mock's own shape above.
+    */
+    state: "applied",
+    summary: "HDFC Bank ····4412 (HDFC0001234)",
+    requestedAt: todayAt("09:00", -40),
+    objectionUntil: null,
+    coolingUntil: todayAt("09:00", -38),
   },
 ];
 
@@ -1184,6 +1312,15 @@ export interface MockTeamMember {
    * field the same way, so the two cannot disagree.
    */
   phone: string;
+  /**
+   * Mock-internal too: the email address an invitation was made with.
+   *
+   * Only an INVITATION carries one, and only so the join page can be told the
+   * truth. With no WhatsApp sender an email address is the one thing that can
+   * carry a join code, so `POST /join/{token}/code` answers `sent: false` for
+   * an invitation made without one (yuvoy-api#227). Never in a response.
+   */
+  inviteEmail?: string;
 }
 
 /**
@@ -1328,6 +1465,7 @@ export const TEAM: MockTeamMember[] = [
     state: "invited",
     pending: true,
     phone: "+919000000104",
+    inviteEmail: "ramesh@example.com",
   },
   {
     /*
@@ -1350,6 +1488,7 @@ export const TEAM: MockTeamMember[] = [
       needs a fixture nobody else reads.
     */
     phone: "+919000000113",
+    inviteEmail: "sunil@example.com",
   },
   {
     id: "inv_lakshmi",
@@ -1358,6 +1497,7 @@ export const TEAM: MockTeamMember[] = [
     state: "invited",
     pending: true,
     phone: LEAVING_PHONE,
+    inviteEmail: "lakshmi@example.com",
   },
   {
     /*
@@ -1378,6 +1518,7 @@ export const TEAM: MockTeamMember[] = [
     state: "invited",
     pending: true,
     phone: "+919000000117",
+    inviteEmail: "seema@example.com",
   },
 ];
 
@@ -1502,6 +1643,20 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
     roles: ["OWNER"],
     state: "active",
     phone: "+919000000108",
+  },
+  {
+    /*
+      A business with nothing yet: no listing, no departure, no booking, no
+      reel, and two documents to send (yuvoy-operator#96, "New operator,
+      nothing live"). Every other identity reads the fixture dive shop's
+      listings and departures, so without this one Home's start-selling
+      checklist could never be rendered.
+    */
+    id: "usr_new_business",
+    name: "Kiran Das",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000118",
   },
 ];
 
@@ -1820,6 +1975,8 @@ export const CONTENDED_ID = "usr_upload_contended";
 /** `GET /slots` refuses their wide range, and answers the fortnight. */
 export const WIDE_READ_FAILS_ID = "usr_wide_read_fails";
 export const FAILING_ID = "usr_api_failing";
+/** A business with nothing on it yet: Home's start-selling checklist. */
+export const NEW_BUSINESS_ID = "usr_new_business";
 
 /* --------------------------------------------------- conversations ------- */
 

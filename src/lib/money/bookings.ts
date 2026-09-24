@@ -96,6 +96,20 @@ export interface BookingLine {
 const isPaise = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
 
+/**
+ * Whether a booking in this state can still be paid in cash at the counter.
+ *
+ * The API takes cash only on a booking that is `paid_pending_ops` or
+ * `confirmed`, and answers 409 for anything else. One definition, used by the
+ * manifest's Take control and by Home's "to collect", so Home never asks for
+ * money the manifest will not take: a no-show owes nothing on the day, and a
+ * trip completed with nothing recorded is "no payment recorded", not "collect".
+ */
+export function takesCash(state: string | null | undefined): boolean {
+  const key = (state ?? "").trim().toLowerCase();
+  return key === "paid_pending_ops" || key === "confirmed";
+}
+
 /** The `cash` object, narrowed — or `undefined` when this is not a cash booking. */
 export function toBookingCash(
   raw: OperatorBooking["cash"] | null | undefined,

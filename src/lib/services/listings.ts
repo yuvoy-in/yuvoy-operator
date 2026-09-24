@@ -195,6 +195,31 @@ const STATUS: Record<ListingStatus, StatusCopy> = {
 };
 
 /**
+ * Whether a listing is a draft: edited step by step and sent with
+ * `POST /experiences/{id}/submit`, rather than changed by a proposed revision.
+ *
+ * `publicationState` says what the listing IS; `status` folds in the latest
+ * revision, so a first listing a reviewer sent back reads `changes_rejected`
+ * there while being a draft again ("change it with `PATCH /experiences/{id}`
+ * and send it with `POST /experiences/{id}/submit`"). The listing's screen
+ * read the one and the edit screen the other, so its rows opened the revision
+ * form, which has no category, place or landmark to fix (the audit before
+ * release, O3). One rule now, for both. With no `publicationState` (an older
+ * API), `status` says it, a sent-back one included.
+ */
+export function isDraft(listing: {
+  publicationState?: string;
+  status?: string;
+  sentBack?: unknown;
+}): boolean {
+  if (listing.publicationState) return listing.publicationState === "draft";
+  return (
+    listing.status === "draft" ||
+    (listing.status === "changes_rejected" && Boolean(listing.sentBack))
+  );
+}
+
+/**
  * The copy for a status, or an honest shrug for one this build has not met.
  *
  * An unknown status is shown as itself with no claim attached — the same rule

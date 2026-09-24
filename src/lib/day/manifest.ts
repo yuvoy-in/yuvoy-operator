@@ -89,6 +89,7 @@ export async function listSlots(
       seats?: number;
       sold?: number;
       remaining?: number;
+      soldOffline?: number;
       bookingMode?: string;
       experienceId?: string;
       status?: string;
@@ -107,6 +108,14 @@ export async function listSlots(
       seats: s.seats ?? 0,
       sold: s.sold ?? 0,
       remaining: s.remaining ?? 0,
+      /*
+        Carried only as a whole number of at least one. Absent (an older API)
+        and zero both say nothing on the card, and a count that is not a
+        count must not become a sentence about people at the counter.
+      */
+      ...(Number.isInteger(s.soldOffline) && (s.soldOffline as number) > 0
+        ? { soldOffline: s.soldOffline }
+        : {}),
       /*
         Left undefined when absent rather than defaulted. `allotment` is the
         commoner mode and would be the tempting default, and it is the one that

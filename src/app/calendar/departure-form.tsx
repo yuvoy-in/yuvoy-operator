@@ -210,8 +210,6 @@ function DepartureRound({
         <p className="text-base font-bold">Adding a departure</p>
         <p className="text-forest/80 mt-2 text-sm">
           A departure belongs to a listing, and you have not written one yet.
-          Start there and the dates come next. A draft is fine, and you can fill
-          in its calendar before we approve it.
         </p>
         {/*
           "Message us and we will add the first one for you" stopped being true
@@ -248,11 +246,11 @@ function DepartureRound({
 
   return (
     <form action={act} className={panelClass()}>
+      {/*
+        No line explaining the form (yuvoy-operator#80 t4). The count before
+        the button says what it will make, which is the sentence that matters.
+      */}
       <p className="text-base font-bold">Add departures</p>
-      <p className="text-forest/80 mt-2 text-sm">
-        One day, or a pattern across a stretch of days. Yuvoy starts selling
-        each one as soon as it exists.
-      </p>
 
       {/* ------------------------------------------------- which listing -- */}
       <div className="mt-4">

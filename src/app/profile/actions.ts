@@ -137,10 +137,10 @@ export async function saveDetails(
     /*
       `202` is "recorded for review, not applied" (yuvoy-operator#89 f10). A
       LIVE account's change waits for somebody at Yuvoy, and the details on
-      file stay in place until then. Read by STATUS: the contract declares
-      this answer under `GET /profile` rather than here (yuvoy-api#222), and
-      `openapi-fetch` hands any 2xx back as `data`, which is how it was read
-      as saved.
+      file stay in place until then. Read by STATUS, as the contract says to
+      ("branch on the status code rather than on the body"); it declares the
+      answer under this `PUT` since yuvoy-api#222. Any 2xx used to be read as
+      saved, which is how a queued change said "Saved".
 
       Only this screen is revalidated, and only for the note that now says a
       change is waiting (read from `GET /change-requests`), which the operator
@@ -156,18 +156,13 @@ export async function saveDetails(
       return { message: "No signal. Nothing was saved. Try again." };
     }
     if (err instanceof OperatorApiError) {
-      if (err.code === "details_locked" || err.status === 409) {
-        /*
-          Still declared on `PUT /profile`, and no longer returned: since
-          D-032.3 a LIVE account's change is queued for review (the 202 above)
-          rather than refused. Kept for an API that still sends it, because
-          the sentence is true of any API that does (yuvoy-api#222).
-        */
-        return {
-          message:
-            "Your account is live now, so these are locked. The documents we verified were checked against them. Message us to change anything here.",
-        };
-      }
+      /*
+        No `409 details_locked` branch. Since D-032.3 a LIVE account's change
+        is queued for review (the 202 above) rather than refused, no path in
+        the API returns it, and yuvoy-api#222 took it out of the contract.
+        Anything that still answered 409 would be a refusal this screen does
+        not know, and the generic sentence below is the honest one for it.
+      */
       if (err.status === 400 && err.message) return { message: err.message };
       // A suspended business is refused with 403 too, and the role
       // sentence would be the wrong one. See `suspendedMessage`.

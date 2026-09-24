@@ -12,6 +12,7 @@ import {
 } from "@/lib/services/listings";
 import { dedashText } from "@/lib/format/dedash";
 import { suspendedMessage } from "@/lib/account/suspended";
+import { saleInProgressMessage } from "./sale-in-progress";
 
 /**
  * O7 — an operator writes their own listing, and proposes changes to it.
@@ -468,13 +469,14 @@ export async function pauseListing(
         return again("This one is not on sale, so there is nothing to pause.");
       }
       /*
-        Somebody is mid-checkout on it. "Withdrawing now would strand them at
-        the payment step … holds are ten minutes, and withdrawing is never
-        urgent." Said as a wait, because that is the whole answer.
+        Somebody is mid-checkout on it, or a request on it is waiting. "Withdrawing
+        is never urgent", so it is said as a wait, and with the wait's end:
+        an accepted request holds for up to twelve hours, so "try again in a few
+        minutes" was false. `details.heldUntil` names it; see the helper.
       */
       if (err.code === "sale_in_progress") {
         return again(
-          "Somebody is paying for this listing right now. Try again in a few minutes. Nothing changed.",
+          saleInProgressMessage(err.details, err.message, Date.now()),
         );
       }
       // A suspended business is refused with 403 too, and the role

@@ -6,10 +6,12 @@ import { loadMoreThreads } from "./actions";
 import {
   lastActivityLabel,
   tripLine,
+  unreadLabel,
   type ThreadPage,
+  type ThreadRow,
 } from "@/lib/messages/thread";
+import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
-import { Chip } from "@/components/ui/chip";
 import { panelClass } from "@/components/ui/panel";
 import { ChevronRightIcon } from "@/components/ui/icons";
 
@@ -62,46 +64,7 @@ export function ThreadList({
       <ul className="space-y-3">
         {page.rows.map((row) => (
           <li key={row.bookingId}>
-            {/*
-              Straight to the conversation on that booking, not to the top of
-              the booking screen: somebody arriving from here has already decided
-              which conversation they are answering.
-            */}
-            <Link
-              href={`/bookings/${row.bookingId}#conversation`}
-              className={panelClass(
-                "raised",
-                "ease-interaction hover:bg-paper flex items-center justify-between gap-4 transition-colors duration-200",
-              )}
-            >
-              <span className="min-w-0">
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-sm tracking-wider">
-                    {row.reference}
-                  </span>
-                  {row.unreadCount > 0 ? (
-                    <Chip tone="accent">{row.unreadCount}</Chip>
-                  ) : null}
-                </span>
-                <span className="mt-1 block truncate text-base font-bold">
-                  {row.experience}
-                </span>
-                <span className="text-forest/70 mt-1 block text-sm">
-                  {tripLine(row.startsAt, row.timezone)}
-                </span>
-                <span className="text-forest/70 mt-1 block text-xs">
-                  {/*
-                    Who wrote last, because it decides whether this row needs
-                    anybody. A conversation the business answered is waiting on
-                    the traveller, and an unread chip is not the only way that
-                    can be true: a read message nobody replied to still is.
-                  */}
-                  {row.lastFrom === "operator" ? "You wrote" : "They wrote"}{" "}
-                  {lastActivityLabel(row.lastMessageAt, now, row.timezone)}
-                </span>
-              </span>
-              <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
-            </Link>
+            <ThreadRowLink row={row} now={now} />
           </li>
         ))}
       </ul>
@@ -129,5 +92,90 @@ export function ThreadList({
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * One conversation, read the way a person recognises it (yuvoy-operator#83
+ * s6): who, then the trip and its time, then the last message, then whether
+ * anything is unread. The reference comes last and small, because it is what
+ * somebody reads out to support, not how anybody finds a conversation.
+ *
+ * ## Who, when the list does not say
+ *
+ * `MessageThreadSummary` carries no traveller's name and no message text, by
+ * the contract ("never its text, never the traveller's name"). So the row
+ * leads with the trip, which is what it led with before, and says the last
+ * message as who wrote it and when. A name slots in above the trip the day the
+ * list carries one; nothing here guesses at a field the contract does not
+ * declare.
+ *
+ * ## Unread is a dot, and the count is spoken
+ *
+ * A filled dot scans at a glance down a list, and a number in it was one more
+ * thing to read. The count is in the row's accessible name, so a screen reader
+ * hears "2 unread messages" rather than a dot it cannot see.
+ */
+function ThreadRowLink({ row, now }: { row: ThreadRow; now: number }) {
+  const unread = row.unreadCount > 0;
+  const trip = tripLine(row.startsAt, row.timezone);
+  const last = lastActivityLabel(row.lastMessageAt, now, row.timezone);
+  // A row with no trip name leads with its reference, and says it once.
+  const lead = row.experience || row.reference;
+  const reference = row.experience ? row.reference : "";
+
+  return (
+    /*
+      Straight to the conversation on that booking, not to the top of the
+      booking screen: somebody arriving from here has already decided which
+      conversation they are answering.
+    */
+    <Link
+      href={`/bookings/${row.bookingId}#conversation`}
+      className={panelClass(
+        "raised",
+        "ease-interaction hover:bg-paper flex items-center gap-3 px-4 py-4 transition-colors duration-200",
+      )}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="flex items-start justify-between gap-3">
+          <span className="min-w-0 truncate text-base font-bold">{lead}</span>
+          {unread ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="bg-terra-deep mt-1.5 size-2.5 shrink-0 rounded-full"
+              />
+              <span className="sr-only">{unreadLabel(row.unreadCount)}</span>
+            </>
+          ) : null}
+        </span>
+        {trip ? (
+          <span className="text-forest/80 mt-0.5 block text-sm tabular-nums">
+            {trip}
+          </span>
+        ) : null}
+        {/*
+          Who wrote last, because it decides whether this row needs anybody. A
+          conversation the business answered is waiting on the traveller, and a
+          read message nobody replied to is still waiting on the business.
+        */}
+        <span
+          className={cn(
+            "mt-1 block text-sm",
+            unread ? "text-forest font-bold" : "text-forest/70",
+          )}
+        >
+          {row.lastFrom === "operator" ? "You wrote" : "They wrote"}
+          {last ? ` ${last}` : ""}
+        </span>
+        {reference ? (
+          <span className="text-forest/70 mt-1 block font-mono text-xs tracking-wider">
+            {reference}
+          </span>
+        ) : null}
+      </span>
+      <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+    </Link>
   );
 }

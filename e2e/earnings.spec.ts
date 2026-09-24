@@ -35,13 +35,23 @@ async function signIn(page: Page, phone = MANAGER) {
   await page.waitForURL("**/today");
 }
 
-test("the business door links to earnings", async ({ page }) => {
+test("Money opens on the money, with nobody's name above it", async ({
+  page,
+}) => {
+  /*
+    Money is a tab of its own (yuvoy-operator#96), and its one title is the
+    heading. The signed-in person's name used to sit above the figures, which
+    on a shared phone reads as one staff member's earnings (op#87 t3), and an
+    eyebrow over the heading said the same thing twice (op#80 t2).
+  */
   await signIn(page);
-  // The doors moved behind the gear on the profile, #58 item 9.
-  await page.goto("/account/settings");
-  await page.getByRole("link", { name: /^Earnings/ }).click();
-  await page.waitForURL("**/earnings");
-  await expect(page.getByRole("heading", { name: "Earnings" })).toBeVisible();
+  await page.goto("/earnings");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Money" }),
+  ).toBeVisible();
+  const main = await page.locator("main").innerText();
+  expect(main).not.toContain("Priya Raut");
+  expect(main).not.toMatch(/the money/i);
 });
 
 test("the next settlement shows the week and the arithmetic", async ({
@@ -61,10 +71,17 @@ test("the next settlement shows the week and the arithmetic", async ({
     nets, and an unscoped match would break the moment a past week happened to
     pay the same amount, which is exactly what the first fixture did.
   */
-  const nextWeek = page.getByRole("region", { name: "Next settlement" });
+  const nextWeek = page.getByRole("region", { name: "Next payout" });
   await expect(nextWeek.getByText("₹40,150")).toBeVisible();
   await expect(nextWeek.getByText("₹54,000")).toBeVisible();
   await expect(nextWeek.getByText("₹8,100")).toBeVisible();
+
+  /*
+    "Yuvoy's share", the words the Cash screen already uses (op#87 s15). "Our"
+    is ambiguous on a screen where "you" is the operator.
+  */
+  await expect(nextWeek.getByText("Yuvoy's share")).toBeVisible();
+  await expect(page.getByText(/our commission/i)).toHaveCount(0);
 
   /*
     The correction is drawn because the fixture HAS one. A settlement whose
@@ -102,7 +119,7 @@ test("what is booked and not run is never inside a total", async ({ page }) => {
     `aria-labelledby` now, which makes the structural claim checkable and is the
     reason a screen reader can tell the four blocks apart at all.
   */
-  const next = page.getByRole("region", { name: "Next settlement" });
+  const next = page.getByRole("region", { name: "Next payout" });
   const booked = page.getByRole("region", { name: "Booked, not run yet" });
 
   // ₹30,600 is the pipeline's net. It belongs in its own region and nowhere
@@ -111,50 +128,50 @@ test("what is booked and not run is never inside a total", async ({ page }) => {
   await expect(next.getByText("₹30,600")).toHaveCount(0);
 });
 
-test("cash still to run is separate, and points at what is owed", async ({
+test("cash is summarised apart, with the way to every trip behind it", async ({
   page,
 }) => {
-  // The traveller pays the operator, so none of it passes through a settlement.
+  /*
+    Cash held and owed, as a summary with a door to Cash (op#96). The traveller
+    pays the operator, so none of it passes through a payout, and it is in no
+    figure above it.
+  */
   await signIn(page);
   await page.goto("/earnings");
 
-  await expect(page.getByText("Cash bookings still to run")).toBeVisible();
-  await expect(
-    page.getByText(/none of this passes through a settlement/),
-  ).toBeVisible();
+  const cash = page.getByRole("region", { name: "Cash", exact: true });
+  /*
+    What they took, first, as the Cash screen leads: ₹27,000 recorded on
+    completed trips plus ₹15,000 taken for trips still to run.
+  */
+  await expect(cash).toContainText("₹42,000");
+  await expect(cash).toContainText("recorded as taken from travellers");
+  await expect(cash).toContainText("Yuvoy's share, owed now");
+  await expect(cash).toContainText("₹4,500");
+  await expect(cash).toContainText("Cash trips still to run");
+  await expect(cash).toContainText("3 · ₹27,000");
 
   /*
-    Of those, the cash already in hand, the same figure the Cash screen shows
-    as held, so the two screens agree (op#94 item 4).
+    Trips that ran with no cash recorded are the one thing here that needs
+    doing, and in none of the figures: they used to be counted as still to run
+    (op#96, yuvoy-api#221).
   */
-  const toRun = page.getByRole("region", {
-    name: "Cash bookings still to run",
+  const unrecorded = cash.getByRole("link", {
+    name: /1 past cash trip has no payment recorded/,
   });
-  await expect(toRun).toContainText("Cash already taken");
-  await expect(toRun).toContainText("₹15,000");
+  await expect(unrecorded).toContainText("₹4,500 in fares");
+  await expect(unrecorded).toHaveAttribute("href", "/cash#unrecorded");
 
-  /*
-    Trips that ran with no cash recorded, in none of its figures: they used to
-    be counted as still to run (op#96, yuvoy-api#221).
-  */
-  const unrecorded = page.getByRole("region", {
-    name: "Past cash trips with no payment recorded",
-  });
-  await expect(unrecorded).toContainText("₹4,500");
-  await expect(
-    unrecorded.getByRole("link", { name: "See the trips" }),
-  ).toHaveAttribute("href", "/cash#unrecorded");
-
-  await page
-    .getByRole("link", { name: /What you owe us on cash already taken/ })
-    .click();
+  await cash.getByRole("link", { name: "Cash you've collected" }).click();
   await page.waitForURL("**/cash");
 });
 
 test("the season names its start, not a month", async ({ page }) => {
   await signIn(page);
   await page.goto("/earnings");
+  // One line, under past payouts, where the season's panel of sums was.
   await expect(page.getByText("Since 1 April 2026")).toBeVisible();
+  await expect(page.getByText(/sent in 18 payouts/)).toBeVisible();
   // And the month picker is gone.
   await expect(page.getByRole("link", { name: "Last month" })).toHaveCount(0);
 });
@@ -199,10 +216,23 @@ test("a sent payout has a statement; one that is not has none", async ({
   await expect(page.getByText("UTR2026090812345")).toBeVisible();
 
   /*
+    One title, the week; its state is the line under it rather than an
+    eyebrow above it (op#80 t2), saying when it was paid. The commission is
+    Yuvoy's share here too, and the way back is to Money.
+  */
+  await expect(page.getByText("Paid on 8 September 2026")).toBeVisible();
+  await expect(page.getByText("Yuvoy's share").first()).toBeVisible();
+  await expect(page.getByText(/our commission/i)).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Back to Money" }),
+  ).toHaveAttribute("href", "/earnings");
+
+  /*
     Approved but not sent: no button. The endpoint answers `409 not_settled`, so
     offering it would be a download that always fails.
   */
   await page.goto("/earnings/stl_approved");
+  await expect(page.getByText("Approved, waiting to be sent")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Download statement" }),
   ).toHaveCount(0);
@@ -257,6 +287,61 @@ test("a settlement that is not this business's is not found", async ({
   expect(res?.status()).toBe(404);
 });
 
+test("the latest statement downloads from the tab itself", async ({ page }) => {
+  /*
+    Statements are one of the things Money holds (op#96). The newest payout
+    that was sent offers its statement here; one locked or approved above it
+    has none, and would only ever answer 409.
+  */
+  await signIn(page);
+  await page.goto("/earnings");
+
+  const latest = page.getByRole("region", { name: "Latest statement" });
+  await expect(latest).toContainText("Mon 31 Aug to Sun 6 Sep");
+
+  const download = page.waitForEvent("download");
+  await latest.getByRole("button", { name: "Download statement" }).click();
+  expect((await download).suggestedFilename()).toBe(
+    "yuvoy-statement-2026-08-31-to-2026-09-06.csv",
+  );
+});
+
+test("the bank details are the last door on the tab", async ({ page }) => {
+  /*
+    Bank details are one of the things Money holds (op#96): the account on
+    file is said on its door, as the Payout details screen says it.
+  */
+  await signIn(page);
+  await page.goto("/earnings");
+  const door = page.getByRole("link", { name: /^Payout details/ }).last();
+  await expect(door).toContainText("HDFC0001234 · account ending 4412");
+  await door.click();
+  await page.waitForURL("**/payouts");
+});
+
+test("the one idea that is not obvious is a tap from its answer", async ({
+  page,
+}) => {
+  /*
+    The explanation came off the screen and into Help (op#80 t4); the link
+    lands on its answer, open, because the fragment names it.
+  */
+  await signIn(page);
+  await page.goto("/earnings");
+  await page.getByRole("link", { name: "How a payout is worked out" }).click();
+  await page.waitForURL(/\/account\/help\?from=%2Fearnings#how-payouts-work$/);
+
+  const answer = page.locator("#how-payouts-work");
+  await expect(answer).toHaveAttribute("open", "");
+  // And back goes where the link was, not to Settings (the audit, M12).
+  await expect(
+    page.getByRole("link", { name: "Back to money" }),
+  ).toHaveAttribute("href", "/earnings");
+  await expect(
+    answer.getByText(/A payout week runs Monday to Sunday/),
+  ).toBeVisible();
+});
+
 test("a staff login is told who can see it, rather than meeting a failure", async ({
   page,
 }) => {
@@ -280,7 +365,7 @@ test("a staff login is told who can see it, rather than meeting a failure", asyn
 test("no figure is described by a column value", async ({ page }) => {
   await signIn(page);
   await page.goto("/earnings");
-  await expect(page.getByRole("heading", { name: "Earnings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
 
   const body = (await page.locator("body").innerText()).toLowerCase();
   for (const token of ["netpaise", "adjustmentspaise", "paid_pending_ops"]) {
@@ -291,7 +376,7 @@ test("no figure is described by a column value", async ({ page }) => {
 test("/earnings has no accessibility violations", async ({ page }) => {
   await signIn(page);
   await page.goto("/earnings");
-  await expect(page.getByRole("heading", { name: "Earnings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
 
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])

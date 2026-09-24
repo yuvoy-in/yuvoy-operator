@@ -126,3 +126,34 @@ test("a staff login is told who can change the logo, before choosing a file", as
   ).toBeVisible();
   await expect(page.getByLabel(/your logo/i)).toHaveCount(0);
 });
+
+test("the logo screen leads with its title, and the rest is an answer in Help", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#80 t2 and t4. It opened with an eyebrow ("Your account"),
+    repeated its own title as a caption in the bar, and then said where
+    travellers see a logo, which is what the screen IS rather than anything to
+    do here.
+
+    What stays is the sentence that changes what somebody does: without it, an
+    operator whose new mark has not appeared yet uploads it again.
+  */
+  await signIn(page, OWNER);
+  await page.goto("/logo");
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Your logo" }),
+  ).toBeVisible();
+  await expect(page.locator(".eyebrow")).toHaveCount(0);
+  // The stage caption is the one `<p>` the screen's header can carry.
+  await expect(page.locator("header p")).toHaveCount(0);
+  await expect(page.getByText(/on a card with no clip/)).toHaveCount(0);
+
+  await expect(
+    page.getByText(/we look at a new logo before it replaces/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Where travellers see your logo" }),
+  ).toHaveAttribute("href", "/account/help?from=%2Flogo#where-logo-appears");
+});

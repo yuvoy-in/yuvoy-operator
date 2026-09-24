@@ -142,6 +142,61 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
   ).toHaveCount(0);
 });
 
+test("the profile's three numbers are numbers, and say what they count", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#86 s9: "The header says 3 listings; the grid below shows
+    six. 'No reviews yet' sits where a number belongs." The first number counts
+    what a traveller can buy now, and the grid shows every listing, so it is
+    labelled for what it counts. Reviews is a number over its word, like the
+    other two.
+  */
+  await signIn(page, OWNER);
+  await page.waitForURL("**/today");
+  await page.goto("/account");
+
+  const stat = (term: string) =>
+    page.locator(`dl > div:has(> dt:text-is("${term}")) > dd`);
+  await expect(stat("Live")).toHaveText(/^\d+$/);
+  await expect(stat("Trips run")).toHaveText("128");
+  await expect(stat("Reviews")).toHaveText("0");
+  await expect(page.locator("dt", { hasText: /^Listings$/ })).toHaveCount(0);
+  await expect(page.getByText("No reviews yet")).toHaveCount(0);
+});
+
+test("the profile names what is waiting, and each opens where it is fixed", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#86 s9: "'2 things waiting on you' does not say what they
+    are ... Name the two things in the strip." The count still opens the list
+    that explains them; each thing opens the screen that fixes it.
+  */
+  await signIn(page, LIVE_OUTSTANDING);
+  await page.waitForURL("**/today");
+  await page.goto("/account");
+
+  await expect(
+    page.getByRole("link", { name: /3 things waiting on you/ }),
+  ).toHaveAttribute("href", "/account/verification");
+  await expect(
+    page.getByRole("link", { name: "Complete your details" }),
+  ).toHaveAttribute("href", "/profile");
+  await expect(
+    page.getByRole("link", { name: "Add your logo" }),
+  ).toHaveAttribute("href", "/logo");
+  // A sentence this build cannot read a document out of is the API's own.
+  await expect(
+    page.getByRole("link", {
+      name: "We have no equipment inspection on file.",
+    }),
+  ).toHaveAttribute("href", "/profile#documents");
+
+  await page.getByRole("link", { name: "Add your logo" }).click();
+  await page.waitForURL("**/logo");
+});
+
 test("a signed-up account that cannot sell is never told it is live", async ({
   page,
 }) => {
@@ -293,6 +348,22 @@ test("a live account is still asked for what is outstanding", async ({
     page.getByRole("link", { name: "Complete your details" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Add your logo" })).toBeVisible();
+
+  /*
+    yuvoy-operator#88 s13: "The biggest, darkest button on a screen about
+    outstanding paperwork is 'Go to today' ... Make the first outstanding item
+    the primary action." The first thing waiting has the forest fill; Go to
+    today is a plain link.
+  */
+  await expect(
+    page.getByRole("link", { name: "Complete your details" }),
+  ).toHaveClass(/bg-forest/);
+  await expect(
+    page.getByRole("link", { name: "Add your logo" }),
+  ).not.toHaveClass(/bg-forest/);
+  await expect(page.getByRole("link", { name: "Go to today" })).not.toHaveClass(
+    /bg-forest/,
+  );
 });
 
 test("an account block the API did not send is unknown, not approval", async ({
@@ -343,15 +414,18 @@ test("Home explains an empty day the account is the reason for", async ({
   await page.waitForURL("**/today");
 
   /*
-    ONE line and a chevron since #56 item 3. It carried a second line saying
-    "See what is outstanding", which is what a chevron already says: Home is
-    four blocks an operator scans at six in the morning, and every extra line is
-    one between them and the boat.
+    The selling line since yuvoy-operator#96: the first thing on Home, one
+    line, and red for an account that cannot sell ("Not selling: 2 documents
+    needed"). Tapping it opens the reasons, each with its way forward, and
+    the way to the whole list on Verification.
   */
-  const banner = page.getByRole("link", { name: /You cannot be booked yet/ });
-  await expect(banner).toBeVisible();
+  const status = page.getByText("Not selling: 2 documents needed");
+  await expect(status).toBeVisible();
 
-  await banner.click();
+  await status.click();
+  await page
+    .getByRole("link", { name: "See everything on Verification" })
+    .click();
   await page.waitForURL("**/account/verification");
   await expect(
     page.getByRole("heading", { name: "Waiting on you" }),
@@ -359,13 +433,17 @@ test("Home explains an empty day the account is the reason for", async ({
 });
 
 test("a live account gets no banner on the day screen", async ({ page }) => {
-  // The banner is an exception, not decoration. An operator who can sell must
-  // never see a warning about selling.
+  // The warning is an exception, not decoration. An operator who can sell must
+  // never be told they cannot: the selling line says selling.
   await signIn(page, OWNER);
   await page.waitForURL("**/today");
+  await expect(page.getByText(/^Not selling/)).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: /You cannot be booked yet/ }),
-  ).toHaveCount(0);
+    page
+      .locator("main")
+      .getByText(/^Selling(, but | · )/)
+      .first(),
+  ).toBeVisible();
 });
 
 test("a suspended business signs in, and every screen says why", async ({

@@ -28,10 +28,7 @@ export default async function NewListingPage() {
 
   if (!me.canManage || me.suspension) {
     return (
-      <Screen
-        nav={{ back: { href: "/account", label: "your business" } }}
-        stageLabel="Add a listing"
-      >
+      <Screen nav={{ back: { href: "/account", label: "your business" } }}>
         <h1 className="font-display tracking-display text-3xl leading-tight">
           Add a listing
         </h1>
@@ -53,12 +50,8 @@ export default async function NewListingPage() {
   const categories = categoryChoices(vocabulary);
 
   return (
-    <Screen
-      nav={{ back: { href: "/account", label: "your business" } }}
-      stageLabel="Add a listing"
-    >
-      <p className="eyebrow text-terra-deep">Step Basics</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    <Screen nav={{ back: { href: "/account", label: "your business" } }}>
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Add a listing
       </h1>
 

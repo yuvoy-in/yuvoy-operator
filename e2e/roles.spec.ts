@@ -34,11 +34,9 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
 
   /*
     "The crew phone goes out on the boat and gets left on a bench. It should be
-    able to tick people off a manifest and nothing else." Three of these are
-    OWNER-or-MANAGER on the server, so offering them would be offering a 403.
-    The doors moved behind the gear on the business profile (#58 item 9), and a
-    group with no visible rows is not drawn at all — so a staff login sees no
-    Money and no Team heading, not headings over empty space.
+    able to tick people off a manifest and nothing else." Money is a tab of its
+    own now (yuvoy-operator#96) and not in Settings for anybody, and Team access
+    is offered to an owner, an admin or a manager only.
   */
   await page.goto("/account/settings");
   await expect(page.getByRole("link", { name: /Earnings/ })).toHaveCount(0);
@@ -70,27 +68,55 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
     stop for anybody. Asserted on the day rather than here: everything under
     `/account/` is a focused screen since #58, so the bar is deliberately not
     drawn on settings at all.
+
+    And no Money stop (yuvoy-operator#96). Every money read refuses STAFF, so
+    the stop would open onto a refusal: a staff phone sees four stops, in the
+    same order everybody else's are in.
   */
   await page.goto("/today");
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-  await expect(nav.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Today" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Calendar" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Listings" })).toHaveCount(0);
+  await expect(nav.getByRole("link", { name: "Money" })).toHaveCount(0);
+  await expect(nav.getByRole("link")).toHaveText([
+    /Today/,
+    /Bookings/,
+    /Calendar/,
+    /Business/,
+  ]);
 });
 
-test("a manager is offered all three, because the server allows them", async ({
+test("a manager is offered Money and the team, because the server allows them", async ({
   page,
 }) => {
   await signIn(page, MANAGER);
-  await page.goto("/account/settings");
 
-  // The positive control. A test that only ever asserts an absence passes just
-  // as well when the links have been deleted for everybody.
-  await expect(page.getByRole("link", { name: /Earnings/ })).toBeVisible();
+  /*
+    The positive control. A test that only ever asserts an absence passes just
+    as well when the links have been deleted for everybody. Money is a tab of
+    its own (yuvoy-operator#96), so its screens are reached from the tab's
+    page, and Payout details is its last door.
+  */
+  await page.goto("/earnings");
   await expect(
-    page.getByRole("link", { name: /Payout details/ }),
+    page.getByRole("heading", { level: 1, name: "Money" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /^Payout details/ }).last(),
+  ).toBeVisible();
+
+  await page.goto("/account/settings");
   await expect(page.getByRole("link", { name: /Team access/ })).toBeVisible();
+
+  // And the Money stop, which a manager may open (yuvoy-operator#96).
+  await page.goto("/today");
+  await expect(
+    page
+      .getByRole("navigation", { name: /Primary/i })
+      .first()
+      .getByRole("link", { name: "Money" }),
+  ).toBeVisible();
 });
 
 test("a staff login sees the queue and cannot answer it — including the buttons", async ({
@@ -182,20 +208,42 @@ test("a staff login sees capacity and is told it cannot change it", async ({
   await signIn(page, STAFF);
   await page.goto("/calendar");
 
-  await expect(
-    page.getByText("You can see these, but not change them"),
-  ).toBeVisible();
   /*
     Reworded on 15 September (yuvoy-operator#45 item 7). Three sentences on this
     screen opened "Your role cannot ...", which addresses the reader by their
     role rather than saying who to ask; they are one `canManage` gate, so they
-    are one sentence now and the banner uses it too.
+    are one sentence now. Since the Calendar rework (#84, #80 t2) it is the
+    whole of it: the panel's title, "You can see these, but not change them",
+    went with the other headings that only said what the screen already
+    showed.
   */
   await expect(
+    page.getByText("You can see these, but not change them"),
+  ).toHaveCount(0);
+  await expect(
     page.getByText(
-      "Only owners, admins and managers can change seats, close dates or record counter sales.",
+      "Only owners, admins and managers can change seats or close dates.",
     ),
   ).toBeVisible();
+});
+
+test("payout details refuses a staff login, as the other money screens do", async ({
+  page,
+}) => {
+  /*
+    The audit before the #96 release: a staff login typing /payouts saw the
+    account on file, any bank change in flight and the history. Money is the
+    owners', admins' and managers' tab, and the refusal is said up front.
+  */
+  await signIn(page, STAFF);
+  await page.goto("/payouts");
+  await expect(
+    page.getByText(
+      "Only owners, admins and managers can see where the business is paid",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/····4417/)).toHaveCount(0);
+  await expect(page.getByText(/HDFC0001234/)).toHaveCount(0);
 });
 
 test("earnings refuses a staff login before the request, not after", async ({

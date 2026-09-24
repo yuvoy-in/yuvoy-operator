@@ -3,8 +3,9 @@
 import { useActionState } from "react";
 import { saveLocation, type StepState } from "../builder-actions";
 import { screenerChoices, type Vocabulary } from "@/lib/services/vocabulary";
-import { inputClass } from "@/components/ui/input";
+import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
+import { fieldMarks } from "./field-marks";
 
 /**
  * Step 4 — where the day starts, and what it needs of the people on it.
@@ -19,6 +20,7 @@ export function LocationStep({
   listing,
   vocabulary,
   back,
+  flagged,
 }: {
   id: string;
   listing: {
@@ -31,18 +33,19 @@ export function LocationStep({
   };
   vocabulary: Vocabulary | null;
   back: string;
+  /** The field Edit was opened for, still needed: marked in place (O12). */
+  flagged?: string;
 }) {
   const [state, act, pending] = useActionState<StepState, FormData>(
     saveLocation,
     {},
   );
   const screeners = screenerChoices(vocabulary);
-  const marked = (field: string) => state.fields?.includes(field) || undefined;
+  const { marked, describedBy, needed } = fieldMarks(state.fields, flagged);
 
   return (
     <StepShell
       title="Location and safety"
-      blurb="Where to meet, what is included, and anything a traveller has to bring or be able to do."
       action={act}
       pending={pending}
       message={state.message}
@@ -51,9 +54,10 @@ export function LocationStep({
       <input type="hidden" name="id" value={id} />
 
       <div>
-        <label htmlFor="l-meeting" className="label text-forest/75">
+        <label htmlFor="l-meeting" className={fieldLabelClass()}>
           Where to meet
         </label>
+        {needed("meetingPoint", "l-meeting")}
         <input
           id="l-meeting"
           name="meetingPoint"
@@ -61,24 +65,34 @@ export function LocationStep({
           defaultValue={listing.meetingPoint ?? ""}
           className={inputClass("mt-2")}
           aria-invalid={marked("meetingPoint")}
+          aria-describedby={describedBy("meetingPoint", "l-meeting")}
         />
       </div>
 
       <div>
-        <label htmlFor="l-landmark" className="label text-forest/75">
-          A landmark to find it by
+        <label htmlFor="l-landmark" className={fieldLabelClass()}>
+          What to look for
         </label>
+        {needed("meetingLandmark", "l-landmark")}
         <input
           id="l-landmark"
           name="meetingLandmark"
           defaultValue={listing.meetingLandmark ?? ""}
           className={inputClass("mt-2")}
+          aria-describedby={describedBy(
+            "meetingLandmark",
+            "l-landmark",
+            "l-landmark-help",
+          )}
           aria-invalid={marked("meetingLandmark")}
         />
+        <p id="l-landmark-help" className="text-forest/70 mt-1.5 text-xs">
+          A landmark nearby: the blue boat shed, the temple gate.
+        </p>
       </div>
 
       <div>
-        <label htmlFor="l-inclusions" className="label text-forest/75">
+        <label htmlFor="l-inclusions" className={fieldLabelClass()}>
           What is included
         </label>
         <textarea
@@ -95,8 +109,8 @@ export function LocationStep({
       </div>
 
       <div>
-        <label htmlFor="l-requirements" className="label text-forest/75">
-          What a traveller needs to bring or be able to do
+        <label htmlFor="l-requirements" className={fieldLabelClass()}>
+          What a traveller needs
         </label>
         <textarea
           id="l-requirements"
@@ -107,12 +121,12 @@ export function LocationStep({
           aria-describedby="l-requirements-help"
         />
         <p id="l-requirements-help" className="text-forest/70 mt-1.5 text-xs">
-          One per line.
+          What to bring, and what they need to be able to do. One per line.
         </p>
       </div>
 
       <div>
-        <label htmlFor="l-safety" className="label text-forest/75">
+        <label htmlFor="l-safety" className={fieldLabelClass()}>
           Safety notes
         </label>
         <textarea
@@ -126,7 +140,7 @@ export function LocationStep({
 
       {screeners.length > 0 ? (
         <div>
-          <label htmlFor="l-screener" className="label text-forest/75">
+          <label htmlFor="l-screener" className={fieldLabelClass()}>
             Health check before booking
           </label>
           <select

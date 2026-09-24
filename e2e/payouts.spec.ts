@@ -39,9 +39,23 @@ async function clearOpenChange(page: Page) {
   const brake = page.getByRole("button", { name: "This wasn't me. Stop it" });
   if (await brake.count()) {
     await brake.first().click();
+    // Two taps since yuvoy-operator#81: the confirm says what stopping does.
+    await page.getByRole("button", { name: "Stop the change" }).click();
     await expect(page.getByText("Stopped. Nothing was changed.")).toBeVisible();
     await page.goto("/payouts");
   }
+}
+
+/**
+ * The form, for an owner with an account on file.
+ *
+ * What is on file is text with one Change button, and the form exists only
+ * after Change (yuvoy-operator#87 s14), so every test that fills it in asks
+ * for it the way an operator does.
+ */
+async function openChangeForm(page: Page) {
+  await clearOpenChange(page);
+  await page.getByRole("button", { name: "Change", exact: true }).click();
 }
 
 test.beforeEach(({}, testInfo) => {
@@ -87,7 +101,19 @@ test("the in-flight change shows both clocks and the brake", async ({
   await expect(page.getByText("It takes no code and no waiting")).toBeVisible();
 
   // Masked, never a full account number.
-  await expect(page.getByText(/••••4417/)).toBeVisible();
+  await expect(page.getByText(/····4417/)).toBeVisible();
+
+  /*
+    What is on file is text, read from the newest change that went live, in
+    the words the review asked for (op#87 s14). No Change while a change is
+    open: the screen says why instead.
+  */
+  await expect(
+    page.getByText("HDFC0001234 · account ending 4412"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Change", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("only one bank change at a time, and it says why", async ({ page }) => {
@@ -117,17 +143,65 @@ test("the emergency brake works, and needs no code", async ({ page }) => {
     away than the accelerator."
   */
   await page.getByRole("button", { name: "This wasn't me. Stop it" }).click();
+  /*
+    A confirm that names what happens, since yuvoy-operator#81: stopping cannot
+    be undone, so an owner who did ask for it would start again with a code.
+    Still no code and no waiting to stop one.
+  */
+  await expect(page.getByText("Stop this change?")).toBeVisible();
+  // "On file", never "the account you have": the fixture has one on file.
+  await expect(
+    page.getByText(/Payouts keep going to the account on file/),
+  ).toBeVisible();
+  await expect(page.getByLabel("The code")).toHaveCount(0);
+  await page.getByRole("button", { name: "Stop the change" }).click();
   await expect(page.getByText("Stopped. Nothing was changed.")).toBeVisible();
+});
+
+test("what is on file is text, and the form comes only after Change", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#87 s14: "The form arrives half filled: IFSC shows
+    HDFC0001234, the account number is empty ... A half-filled form leaves an
+    operator unsure whether their details are saved." The change above was
+    stopped (serial mode), so Change is offered here.
+  */
+  await signIn(page);
+  await clearOpenChange(page);
+
+  await expect(
+    page.getByText("HDFC0001234 · account ending 4412"),
+  ).toBeVisible();
+  await expect(page.getByText("HDFC Bank", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Account number")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Change", exact: true }).click();
+  // Empty, and nothing in it that could be read as saved.
+  for (const field of ["Name on the account", "Account number", "IFSC"]) {
+    await expect(page.getByLabel(field)).toHaveValue("");
+  }
+  await expect(page.getByLabel("IFSC")).not.toHaveAttribute("placeholder");
+  await expect(
+    page.getByText(/We will call you to confirm the account number/),
+  ).toBeVisible();
+  await expect(page.getByText(/out of band/)).toHaveCount(0);
+
+  // And put away again, leaving the account as it was.
+  await page.getByRole("button", { name: "Keep this account" }).click();
+  await expect(page.getByLabel("Account number")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Change", exact: true }),
+  ).toBeVisible();
 });
 
 test("raising a change needs a code, and the code goes to the owner", async ({
   page,
 }) => {
   await signIn(page);
-  await page.goto("/payouts");
+  // The fixture change was stopped above (serial mode), so Change is offered.
+  await openChangeForm(page);
 
-  // The fixture change was stopped by the test above (serial mode), so the
-  // form is available here.
   // The submit is unreachable until a code has been asked for.
   await expect(
     page.getByRole("button", { name: "Raise the change" }),
@@ -138,9 +212,8 @@ test("raising a change needs a code, and the code goes to the owner", async ({
     code has ever reached a phone: there is no WhatsApp sender, and since
     yuvoy-api 67e3213 the code goes to the owner's email (yuvoy-operator#91).
   */
-  await expect(page.getByText("A code is emailed to the owner")).toBeVisible();
   await expect(
-    page.getByText(/A manager who requested this will not receive it/),
+    page.getByText("A code is emailed to the owner, whoever asks"),
   ).toBeVisible();
   await expect(page.getByText(/owner.s phone/)).toHaveCount(0);
   // The brake is on this screen; the phone-only warning reaches nobody today.
@@ -157,7 +230,7 @@ test("a wrong code says the code did not work, and changes nothing", async ({
     that pin the others.
   */
   await signIn(page);
-  await clearOpenChange(page);
+  await openChangeForm(page);
 
   await page.getByLabel("Name on the account").fill("Nemo Reef Divers");
   await page.getByLabel("Account number").fill("50100123456789");
@@ -176,7 +249,7 @@ test("a wrong code says the code did not work, and changes nothing", async ({
 
 test("a malformed IFSC is refused before a code is spent", async ({ page }) => {
   await signIn(page);
-  await clearOpenChange(page);
+  await openChangeForm(page);
 
   await page.getByLabel("Name on the account").fill("Nemo Reef Divers");
   await page.getByLabel("Account number").fill("50100123456789");
@@ -193,7 +266,7 @@ test("a malformed IFSC is refused before a code is spent", async ({ page }) => {
 
 test("a valid change is raised, and nothing is live yet", async ({ page }) => {
   await signIn(page);
-  await clearOpenChange(page);
+  await openChangeForm(page);
 
   await page.getByLabel("Name on the account").fill("Nemo Reef Divers");
   await page.getByLabel("Account number").fill("50100123456789");
@@ -214,7 +287,8 @@ test("a valid change is raised, and nothing is live yet", async ({ page }) => {
     snapshot.
   */
   await expect(page.getByText("Raised: you can still stop this")).toBeVisible();
-  await expect(page.getByText(/Bank ••••6789/)).toBeVisible();
+  // In the API's own summary shape (`BankChange.Summary`).
+  await expect(page.getByText("····6789 (HDFC0001234)")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "This wasn't me. Stop it" }),
   ).toBeVisible();
@@ -233,7 +307,7 @@ test("a bank change in flight holds the payout, and earnings says so", async ({
     whoever runs one.
   */
   await signIn(page);
-  await clearOpenChange(page);
+  await openChangeForm(page);
 
   await page.getByLabel("Name on the account").fill("Nemo Reef Divers");
   await page.getByLabel("Account number").fill("50100123456789");
@@ -253,6 +327,24 @@ test("a bank change in flight holds the payout, and earnings says so", async ({
     page.getByText(/objection window: you can still stop it/),
   ).toBeVisible();
   await expect(page.getByText(/If you did not request this/)).toBeVisible();
+});
+
+test("a refused bank change says why, in the API's sentence", async ({
+  page,
+}) => {
+  /*
+    yuvoy-api#223: a refused bank change said "Rejected" and nothing else, and
+    the next thing that happened was a phone call. The row now carries the
+    sentence the API writes for the business, never what our staff typed.
+  */
+  await signIn(page);
+  await page.goto("/payouts");
+  const row = page.locator("li").filter({ hasText: "SBI ····1111" });
+  await expect(row.getByText("Rejected")).toBeVisible();
+  await expect(
+    row.getByText(/We could not accept the new bank details/),
+  ).toBeVisible();
+  await expect(row.getByText(/\+91 81216 57657/)).toBeVisible();
 });
 
 test("/payouts has no accessibility violations", async ({ page }) => {

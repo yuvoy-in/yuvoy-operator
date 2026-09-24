@@ -5,6 +5,7 @@ import { withdrawMedia, type WithdrawState } from "./actions";
 import { WITHDRAW_REASONS } from "@/lib/media/rights";
 import { Button } from "@/components/ui/button";
 import { choiceClass } from "@/components/ui/input";
+import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 
 /**
  * Taking a clip down, from the library rather than only from the receipt.
@@ -28,6 +29,13 @@ import { choiceClass } from "@/components/ui/input";
  * comes off Yuvoy immediately, and the original is deleted at the video
  * provider shortly afterwards by a job." So the copy claims the half that has
  * happened and not the half that has not.
+ *
+ * ## Quiet until it is asked for (yuvoy-operator#81 t5)
+ *
+ * Taking a clip down empties the card a traveller is looking at, so the way
+ * in is quiet text in the warning colour, like every other act that ends
+ * something, and the loud button is the one inside the confirm. It was a
+ * secondary pill, the same shape as the actions beside it (the audit, O14).
  */
 export function WithdrawForm({
   mediaAssetId,
@@ -42,6 +50,7 @@ export function WithdrawForm({
     {},
   );
   const [open, setOpen] = useState(false);
+  const { trigger, question } = useConfirmFocus(open);
 
   if (state.withdrawn) {
     return (
@@ -57,13 +66,18 @@ export function WithdrawForm({
 
   if (!open) {
     return (
-      <Button
-        onClick={() => setOpen(true)}
-        variant="secondary"
-        className="mt-4"
-      >
-        Take it down
-      </Button>
+      <div className="mt-4">
+        <Button
+          ref={trigger}
+          onClick={() => setOpen(true)}
+          variant="danger-quiet"
+          size="md"
+          block={false}
+          aria-expanded={false}
+        >
+          Take it down
+        </Button>
+      </div>
     );
   }
 
@@ -72,7 +86,13 @@ export function WithdrawForm({
       <input type="hidden" name="mediaAssetId" value={mediaAssetId} />
 
       <fieldset>
-        <legend className="text-sm font-bold">Why is it coming down?</legend>
+        <legend
+          ref={question}
+          tabIndex={-1}
+          className="text-sm font-bold outline-none"
+        >
+          Why is it coming down?
+        </legend>
         {/*
           Named before the reasons, because it is the consequence rather than
           the question: a clip on a listing is the thing travellers are

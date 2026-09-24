@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   STEPS,
   STEP_LABEL,
+  fieldTarget,
   openingStep,
   nextStep,
   previousStep,
@@ -82,5 +83,44 @@ describe("openingStep", () => {
 
   it("opens Review when the only blockers belong to no step", () => {
     expect(openingStep(["somethingNew"])).toBe("review");
+  });
+});
+
+describe("the control Edit opens on (#85 s10, O12)", () => {
+  it("names the control on the step that holds the field", () => {
+    expect(fieldTarget("meetingPoint", "location")).toEqual({
+      inputId: "l-meeting",
+      mark: "meetingPoint",
+    });
+    // The API's name is not always the form's.
+    expect(fieldTarget("unitPricePaise", "selling")?.mark).toBe("unitPrice");
+  });
+
+  it("names nothing on another step, for a field with no one control, or none", () => {
+    expect(fieldTarget("meetingPoint", "basics")).toBeNull();
+    expect(fieldTarget("media", "media")).toBeNull();
+    expect(fieldTarget(undefined, "basics")).toBeNull();
+    expect(fieldTarget("whatTheBoatIsCalled", "basics")).toBeNull();
+  });
+
+  it("has a control for every field a step marks, and that control is on the step", () => {
+    for (const field of [
+      "title",
+      "category",
+      "activityType",
+      "destination",
+      "summary",
+      "description",
+      "unitPricePaise",
+      "pricingUnit",
+      "durationMinutes",
+      "maxPartySize",
+      "meetingPoint",
+      "meetingLandmark",
+    ]) {
+      const step = stepOwning(field);
+      expect(step, field).not.toBeNull();
+      expect(fieldTarget(field, step!), field).not.toBeNull();
+    }
   });
 });

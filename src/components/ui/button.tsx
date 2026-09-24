@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from "react";
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, Ref } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 
@@ -9,17 +9,27 @@ import { cn } from "@/lib/cn";
  * 44px. The user of this screen has wet hands, direct sun and eleven people
  * waiting, and a mis-tap here marks the wrong person off a manifest.
  *
- *   primary   — the forest fill, for the one action a screen is for
- *   secondary — a raised paper-deep pill, for the other choice
- *   outline   — a hairline pill, for a quieter action
- *   danger    — the accent hairline. Not red-as-decoration: the destructive
+ *   primary:   the forest fill, for the one action a screen is for
+ *   secondary: a raised paper-deep pill, for the other choice
+ *   outline:   a hairline pill, for a quieter action
+ *   danger:    the accent hairline. Not red-as-decoration: the destructive
  *               actions here (calling off a departure, stopping a bank
  *               change) should not look like a save button.
+ *   danger-quiet:
+ *               the same accent as text, with no pill: a destructive action
+ *               DEMOTED below the screen's one primary action
+ *               (yuvoy-operator#81). Removing somebody from the team or
+ *               cancelling a booking must not carry the weight of the safe
+ *               action beside it; it always opens a confirm that names what
+ *               happens, and that confirm carries the `danger` pill. Pair it
+ *               with `size="md"` and `block={false}`, which keep a 44px
+ *               target around the words.
  *
  * CTAs stay monochrome, as everywhere in the system: terracotta is never a
  * fill.
  */
-export type ButtonVariant = "primary" | "secondary" | "outline" | "danger";
+export type ButtonVariant =
+  "primary" | "secondary" | "outline" | "danger" | "danger-quiet";
 export type ButtonSize = "dock" | "md" | "sm";
 
 const VARIANT: Record<ButtonVariant, string> = {
@@ -28,6 +38,8 @@ const VARIANT: Record<ButtonVariant, string> = {
     "border border-paper-line bg-paper-deep text-forest hover:border-forest/40",
   outline: "border border-forest/25 text-forest hover:border-forest",
   danger: "border-2 border-terra-deep text-terra-deep hover:bg-terra-deep/5",
+  "danger-quiet":
+    "text-terra-deep underline decoration-terra-deep/40 underline-offset-4 hover:bg-terra-deep/5",
 };
 
 const SIZE: Record<ButtonSize, string> = {
@@ -70,6 +82,8 @@ export function Button({
   size?: ButtonSize;
   /** Full width, which on a phone is the default. */
   block?: boolean;
+  /** A prop since React 19, passed to the `<button>` with the rest. */
+  ref?: Ref<HTMLButtonElement>;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button

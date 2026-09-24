@@ -100,9 +100,14 @@ function StoryRound({
         <label htmlFor="about" className="label text-forest/75">
           About your business
         </label>
+        {/*
+          The one helper line #88 s17 keeps, and the reason it keeps it: "the
+          example for About genuinely shapes what people write". What a
+          traveller does with it afterwards is in Help.
+        */}
         <p id="about-hint" className="text-forest/70 mt-1.5 text-xs">
           Who you are, how long you have been at it, and what a first-timer
-          should know. Travellers read this before they book.
+          should know.
         </p>
         <textarea
           id="about"
@@ -114,22 +119,22 @@ function StoryRound({
           aria-describedby="about-hint about-count"
           aria-invalid={state.field === "about" || undefined}
         />
+        {/*
+          The count, at every length including none.
+
+          It used to give way to "Empty is fine. Nothing shows on your page
+          until you write something" at zero, which is a third helper line for
+          a field that is allowed to be empty and says so by letting Save
+          through. "0 of 600" is the same fact without the sentence, and what
+          saving an empty one does is on the receipt that follows it.
+        */}
         <div id="about-count" className="mt-1.5 space-y-1 text-xs">
-          {size === 0 ? (
-            <p className="text-forest/70">
-              Empty is fine. Nothing shows on your page until you write
-              something.
-            </p>
-          ) : (
-            <>
-              <p className="text-forest/70 tabular-nums">
-                {`${size} of ${ABOUT_MAX}`}
-              </p>
-              {aboutProblem ? (
-                <p className="text-forest/80 font-bold">{aboutProblem}</p>
-              ) : null}
-            </>
-          )}
+          <p className="text-forest/70 tabular-nums">
+            {`${size} of ${ABOUT_MAX}`}
+          </p>
+          {aboutProblem ? (
+            <p className="text-forest/80 font-bold">{aboutProblem}</p>
+          ) : null}
         </div>
       </div>
 
@@ -137,29 +142,35 @@ function StoryRound({
         <label htmlFor="languages" className="label text-forest/75">
           Languages your crew speaks
         </label>
+        {/*
+          The example is the placeholder now, not a line of helper text under
+          the field (#88 s17). It says the one thing somebody needs before
+          typing, which is that these are separated by commas, and it leaves
+          when they start. The ceiling and why the languages matter at all are
+          answers in Help; the ceiling is also said here the moment it is
+          broken, which is the only moment it changes anything.
+        */}
         <input
           id="languages"
           name="languages"
           value={langs}
           onChange={(e) => setLangs(e.target.value)}
           autoComplete="off"
+          placeholder="English, Hindi, Bengali"
           className={inputClass("mt-2")}
-          aria-describedby="languages-hint"
+          aria-describedby={langsProblem ? "languages-problem" : undefined}
           aria-invalid={
             state.field === "languages" || Boolean(langsProblem) || undefined
           }
         />
-        <p
-          id="languages-hint"
-          className={
-            langsProblem
-              ? "text-forest/80 mt-1.5 text-xs font-bold"
-              : "text-forest/70 mt-1.5 text-xs"
-          }
-        >
-          {langsProblem ??
-            "Separate them with commas: English, Hindi, Bengali. Up to eight. For a traveller who is nervous in the water, this is often what decides it."}
-        </p>
+        {langsProblem ? (
+          <p
+            id="languages-problem"
+            className="text-forest/80 mt-1.5 text-xs font-bold"
+          >
+            {langsProblem}
+          </p>
+        ) : null}
       </div>
 
       {state.message ? (

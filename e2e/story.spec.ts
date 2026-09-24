@@ -42,6 +42,34 @@ test("Business opens the story, and the checked facts are facts rather than inpu
     page.getByRole("heading", { level: 1, name: "Your story" }),
   ).toBeVisible();
 
+  /*
+    One heading, and three fields rather than an essay with three fields
+    hidden in it (yuvoy-operator#88 s17). "In your words" was the title again,
+    in smaller type, over the field the title was about. Photographs and
+    Checked by us stay: they name a different thing further down.
+
+    The example that shapes what somebody writes stays too, and the lines that
+    only explained the screen are answers in Help now (#80 t4).
+  */
+  await expect(
+    page.getByRole("heading", { name: "In your words" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(/What a traveller reads about your business/),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(/Who you are, how long you have been at it/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Travellers read this before they book/),
+  ).toHaveCount(0);
+  // The languages example is in the field now, where it leaves when typed.
+  await expect(page.getByLabel("Languages your crew speaks")).toHaveAttribute(
+    "placeholder",
+    "English, Hindi, Bengali",
+  );
+  await expect(page.getByText(/Separate them with commas/)).toHaveCount(0);
+
   const checked = page.getByRole("region", { name: "Checked by us" });
   await expect(checked.getByText("2014", { exact: true })).toBeVisible();
   await expect(
@@ -155,6 +183,15 @@ test("Preview your operator page opens the business's public page", async ({
   // A different product in a different tab, so a half-written story survives.
   await expect(preview).toHaveAttribute("target", "_blank");
   await expect(preview).toHaveAttribute("rel", /noreferrer/);
+
+  /*
+    "At the top as a button, not as an underlined link mid-page" (#88 s17).
+    Asserted where it sits rather than by its classes: the finding was that it
+    was found halfway down the screen, under the first field.
+  */
+  const top = (await preview.boundingBox())!.y;
+  const about = (await page.getByLabel("About your business").boundingBox())!.y;
+  expect(top).toBeLessThan(about);
 });
 
 test("the About count is the letters typed, not the bytes", async ({

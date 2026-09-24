@@ -102,6 +102,17 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+/** A question in a circle: the help behind the gear (yuvoy-operator#80 t4). */
+export function HelpIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
+    </Icon>
+  );
+}
+
 /** A plus, for adding a listing or a reel. */
 export function PlusIcon(props: IconProps) {
   return (
@@ -126,6 +137,15 @@ export function BellIcon(props: IconProps) {
     <Icon {...props}>
       <path d="M18 9a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6" />
       <path d="M10.5 19a2 2 0 0 0 3 0" />
+    </Icon>
+  );
+}
+
+/** A handset, for the rows that ring Yuvoy. */
+export function PhoneIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />
     </Icon>
   );
 }
@@ -168,6 +188,20 @@ export function CoinsIcon(props: IconProps) {
     <Icon {...props}>
       <circle cx="9" cy="9" r="6" />
       <path d="M17.5 8.3A6 6 0 1 1 8.3 17.5" />
+    </Icon>
+  );
+}
+
+/**
+ * A banknote: cash taken at the counter. Its own drawing rather than the coins
+ * earnings use, so the two rows never read as one thing (yuvoy-operator#88 s12).
+ */
+export function BanknoteIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 12h.01M18 12h.01" />
     </Icon>
   );
 }
@@ -249,6 +283,39 @@ export function StoryIcon(props: IconProps) {
     <Icon {...props}>
       <path d="M4 5h16v11h-9l-4 3.5V16H4z" />
       <path d="M8 9h8M8 12h5" />
+    </Icon>
+  );
+}
+
+/**
+ * An inbox tray: the messages control at the right edge of every signed-in
+ * screen's stage (yuvoy-operator#96). A tray rather than a speech bubble,
+ * because the bubble is already the business's own story in Settings.
+ */
+export function InboxIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 13h5l1.5 2.5h5L16 13h5" />
+      <path d="M6.2 5h11.6a2 2 0 0 1 1.8 1.1L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5l1.4-6.9A2 2 0 0 1 6.2 5z" />
+    </Icon>
+  );
+}
+
+/**
+ * The rupee sign, for the Money stop on the bar (yuvoy-operator#96).
+ *
+ * The currency every figure behind the stop is in, and a silhouette none of
+ * the other four stops has: the clock, the calendar and the briefcase are all
+ * a closed shape, and two coins read as two circles at 20px.
+ */
+export function RupeeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 4h12" />
+      <path d="M6 9h12" />
+      <path d="M9 14c6.7 0 6.7-10 0-10" />
+      <path d="M6 14h3" />
+      <path d="m6 14 8.5 7" />
     </Icon>
   );
 }

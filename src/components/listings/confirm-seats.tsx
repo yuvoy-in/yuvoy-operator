@@ -46,7 +46,7 @@ export function ConfirmSeats({
         </p>
         <p className="text-forest/80 mt-1.5 text-sm">
           {n === 0
-            ? "Every departure in the next 30 days was already confirmed."
+            ? "Every departure in the next 12 months was already confirmed."
             : "Anything that was off sale only for this is back on sale. The seat counts are as they were."}
         </p>
       </Panel>
@@ -84,7 +84,7 @@ export function ConfirmSeats({
         </p>
       ) : null}
       <Button type="submit" disabled={pending} className="mt-3">
-        {pending ? "Confirming…" : "Confirm seats for the next 30 days"}
+        {pending ? "Confirming…" : "Confirm seats for the next 12 months"}
       </Button>
     </form>
   );

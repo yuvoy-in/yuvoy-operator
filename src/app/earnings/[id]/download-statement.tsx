@@ -18,7 +18,14 @@ import { downloadStatement } from "./actions";
  * stays fetchable from the page, which on a shared back-office laptop is the
  * kind of thing that outlives the person who downloaded it.
  */
-export function DownloadStatement({ id }: { id: string }) {
+export function DownloadStatement({
+  id,
+  className = "mt-6",
+}: {
+  id: string;
+  /** Spacing above it: the week's page gives it room, the Money tab less. */
+  className?: string;
+}) {
   const [pending, start] = useTransition();
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -51,7 +58,7 @@ export function DownloadStatement({ id }: { id: string }) {
   }
 
   return (
-    <div className="mt-6">
+    <div className={className}>
       <Button variant="outline" disabled={pending} onClick={save}>
         {pending ? "Preparing…" : "Download statement"}
       </Button>

@@ -12,8 +12,7 @@ import { ButtonLink } from "@/components/ui/button";
 export default function NotFound() {
   return (
     <Screen nav="none" width="sm">
-      <p className="eyebrow text-terra-deep">Yuvoy for operators</p>
-      <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         There is nothing at that address
       </h1>
       <p className="text-forest/70 mt-3 text-base">

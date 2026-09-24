@@ -38,10 +38,11 @@ export function MediaStep({
 
   return (
     <Panel className="mt-6">
-      <h2 className="font-display text-2xl">Media</h2>
-      <p className="text-forest/70 mt-2 text-sm">
-        A reel or a photograph. Not required, but a listing with neither shows
-        travellers a blank card.
+      {/* One title: the stepper names the step (#80 t2, #85 s11). */}
+      <h2 className="sr-only">Media</h2>
+      <p className="text-forest/70 text-sm">
+        Not required, but a listing with no reel or photograph shows travellers
+        a blank card.
       </p>
 
       <div className="mt-5">

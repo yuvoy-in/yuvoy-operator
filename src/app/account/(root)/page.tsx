@@ -22,11 +22,8 @@ import { redirect } from "next/navigation";
 import { operatorApi } from "@/lib/api/server-client";
 import { classifyMeFailure } from "@/lib/account/status";
 import { readShape } from "@/lib/account/read-shape";
-import {
-  splitByWaitingOn,
-  standingOf,
-  type Standing,
-} from "@/lib/account/standing";
+import { standingOf, type Standing } from "@/lib/account/standing";
+import { waitingItems } from "@/lib/account/waiting";
 import {
   TAB_LABEL,
   TAB_VALUES,
@@ -49,10 +46,11 @@ import { Screen } from "@/components/chrome/screen";
 import { SignOutButton } from "@/components/chrome/sign-out-button";
 import { ButtonLink } from "@/components/ui/button";
 import { Panel, panelClass } from "@/components/ui/panel";
-import { ChevronRightIcon, SettingsIcon } from "@/components/ui/icons";
+import { SettingsIcon } from "@/components/ui/icons";
 import { ProfileActions } from "@/app/account/profile-actions";
 import { AddSheet } from "@/app/account/add-sheet";
 import { About } from "@/app/account/about";
+import { WaitingStrip } from "@/app/account/waiting-strip";
 import { ReviewsTab } from "@/app/account/reviews-tab";
 import { ReelsTab } from "@/app/account/reels-tab";
 
@@ -148,10 +146,15 @@ export default async function AccountPage({
           .GET("/story", {})
           .then((r) => (r.error ? null : r.data))
           .catch(() => null),
-        listListings(token).catch(() => []),
+        /*
+          `null` when the read failed, never `[]`: an empty grid says "No
+          listings yet" and offers to add one, which is false for a business
+          with six whose list simply did not arrive.
+        */
+        listListings(token).catch(() => null),
         listMedia(token).catch(() => null),
       ])
-    : [null, null, null, [], null];
+    : [null, null, null, null, null];
 
   /*
     Every listing, for the reel sheet's "put it on another listing" and for the
@@ -163,9 +166,11 @@ export default async function AccountPage({
     .map((l) => ({ id: l.id!, title: l.title!, status: l.status }));
 
   const name = businessName(profile);
-  const waiting = standing
-    ? splitByWaitingOn(standing.blocking).operator.length
-    : 0;
+  /*
+    Each thing waiting on the operator, named and linked where it is fixed
+    (op#86 s9). The same list the Business tab's badge counts.
+  */
+  const waiting = standing ? waitingItems(standing.blocking, canManage) : [];
   const rating = ratingLine(story?.stats?.rating);
   const since = sinceLine(story?.reviewed?.operatingSince, story?.languages);
   // `null` when there is no slug, which the actions treat as "no share".
@@ -226,18 +231,23 @@ export default async function AccountPage({
               The three numbers, from `stats`. Not drawn at all when the story
               read failed: three blanks under three labels is worse than the
               space, and a zero nobody measured is worse than both.
+
+              "The header says 3 listings; the grid below shows six" (op#86
+              s9). `stats.listings` counts what a traveller can buy now, and
+              the grid shows every listing, drafts included, so the number is
+              labelled for what it counts: Live. And every one of the three is
+              a number over a word, reviews included.
             */}
             {story?.stats ? (
               <dl className="flex flex-1 justify-between gap-2 text-center">
-                <Stat
-                  value={String(story.stats.listings ?? 0)}
-                  label="Listings"
-                />
+                <Stat value={String(story.stats.listings ?? 0)} label="Live" />
                 <Stat
                   value={String(story.stats.tripsRun ?? 0)}
                   label="Trips run"
                 />
-                <Stat value={rating.value} label={rating.label} />
+                {rating ? (
+                  <Stat value={rating.value} label={rating.label} />
+                ) : null}
               </dl>
             ) : null}
           </div>
@@ -251,27 +261,10 @@ export default async function AccountPage({
           <ProfileActions url={publicUrl} />
 
           {/*
-            What is waiting on THEM, as one line. It equals the Business tab's
-            badge, because both count `splitByWaitingOn(blocking).operator` —
-            a badge saying 2 over a screen listing 3 is the fastest way to teach
-            somebody to ignore it.
+            What is waiting on them, each thing named (op#86 s9). The same
+            list the Business tab's badge counts; see `WaitingStrip`.
           */}
-          {waiting > 0 ? (
-            <Link
-              href="/account/verification"
-              className={panelClass(
-                "alert",
-                "ease-interaction hover:bg-paper mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
-              )}
-            >
-              <span className="text-base font-bold">
-                {waiting === 1
-                  ? "1 thing waiting on you"
-                  : `${waiting} things waiting on you`}
-              </span>
-              <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
-            </Link>
-          ) : null}
+          <WaitingStrip items={waiting} />
 
           <nav aria-label="What to show" className="mt-8 flex flex-wrap gap-2">
             {TAB_VALUES.map((value) => (
@@ -290,7 +283,7 @@ export default async function AccountPage({
 
           {tab === "listings" ? (
             <ListingsGrid
-              listings={listings ?? []}
+              listings={listings}
               media={media?.items ?? []}
               canManage={canManage}
               suspended={suspended}
@@ -351,11 +344,16 @@ export default async function AccountPage({
   );
 }
 
+/**
+ * One number over its word. The term comes first in the document, as a
+ * description list wants it and a screen reader reads it ("Live, 3"), and the
+ * number is drawn above it.
+ */
 function Stat({ value, label }: { value: string; label: string }) {
   return (
-    <div>
+    <div className="flex flex-col-reverse">
+      <dt className="text-forest/70 mt-1 text-xs">{label}</dt>
       <dd className="font-display text-2xl leading-none">{value}</dd>
-      {label ? <dt className="text-forest/70 mt-1 text-xs">{label}</dt> : null}
     </div>
   );
 }
@@ -373,13 +371,16 @@ function ListingsGrid({
   canManage,
   suspended,
 }: {
-  listings: {
-    id?: string;
-    title?: string;
-    status?: string;
-    sentBack?: unknown;
-    bookableDatesNext30Days?: number;
-  }[];
+  /** `null` when the read failed, which is not the same as having none. */
+  listings:
+    | {
+        id?: string;
+        title?: string;
+        status?: string;
+        sentBack?: unknown;
+        bookableDatesNext30Days?: number;
+      }[]
+    | null;
   media: {
     listing?: { experienceId?: string };
     posterUrl?: string;
@@ -388,6 +389,14 @@ function ListingsGrid({
   canManage: boolean;
   suspended: boolean;
 }) {
+  if (listings === null) {
+    return (
+      <p className="text-terra-deep mt-6 text-base font-bold">
+        Your listings did not load. Try again.
+      </p>
+    );
+  }
+
   if (listings.length === 0) {
     return (
       <div className="mt-6">

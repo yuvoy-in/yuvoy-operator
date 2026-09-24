@@ -52,7 +52,7 @@ describe("confirming seats from a listing", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Confirm seats for the next 30 days",
+        name: "Confirm seats for the next 12 months",
       }),
     );
     expect(

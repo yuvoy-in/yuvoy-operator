@@ -39,10 +39,7 @@ export default async function TeamNotificationsPage({
 
   if (!canManageAccess(me.roles)) {
     return (
-      <Screen
-        nav={{ back: { href: "/team", label: "team access" } }}
-        stageLabel="Their notifications"
-      >
+      <Screen nav={{ back: { href: "/team", label: "team access" } }}>
         <h1 className="font-display tracking-display text-3xl leading-tight">
           Notifications
         </h1>
@@ -76,17 +73,22 @@ export default async function TeamNotificationsPage({
   const settings = toSettings(data);
 
   return (
-    <Screen
-      nav={{ back: { href: "/team", label: "team access" } }}
-      stageLabel="Their notifications"
-    >
-      <p className="eyebrow text-terra-deep">Team access</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    <Screen nav={{ back: { href: "/team", label: "team access" } }}>
+      {/*
+        One title, and it is the person (yuvoy-operator#80 t2): the eyebrow
+        repeated the screen behind this one, which the back control already
+        names, and the stage caption repeated the title.
+
+        The half of the line under it that said what the screen is went with
+        them. The half that stays is the one that changes a decision, and it
+        is worth saying precisely because this route lives under /team: "no
+        switch exists that could silence a security warning".
+      */}
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         {settings.name || "Notifications"}
       </h1>
       <p className="text-forest/70 mt-3 text-base">
-        Which messages about the business reach them. Changing a switch here
-        does not change what they can do.
+        Changing a switch here does not change what they can do.
       </p>
 
       <div className="mt-8">

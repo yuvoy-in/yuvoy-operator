@@ -47,8 +47,25 @@ export function ReviewPanel({
   }
 
   /*
-    Refused. The row carries no reason, so this says what happened and where
-    to go, never why: a reason we made up is worse than none.
+    Refused, with the API's own sentence when it sent one (yuvoy-api#223): it
+    says what happened, what is still true and who to call, so it is the
+    whole of it, said once, with the day it was sent under it. Written for the
+    business and never the words our staff typed.
+  */
+  if (note.reason) {
+    return (
+      <Panel tone="alert" role="status" className="p-4">
+        <p className="text-sm font-bold">{note.reason}</p>
+        {note.sentOn ? (
+          <p className="text-forest/80 mt-1 text-sm">Sent on {note.sentOn}.</p>
+        ) : null}
+      </Panel>
+    );
+  }
+
+  /*
+    Refused, and nobody recorded why. So this says what happened and where to
+    go, never why: a reason we made up is worse than none.
   */
   return (
     <Panel tone="alert" role="status" className="p-4">

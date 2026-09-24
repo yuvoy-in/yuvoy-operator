@@ -8,20 +8,19 @@ import type {
 } from "./thread";
 
 /**
- * Reading conversations — yuvoy-operator#52.
+ * Reading conversations: yuvoy-operator#52.
  *
- * Three calls, three different failure policies, and the difference is the
- * point of the file:
+ * Both calls HARD-fail, and that is the point of the file:
  *
- *   - `getBookingThread` HARD-fails. It is the conversation itself, and a
- *     booking screen that quietly drew no messages would say "nothing was ever
- *     said here", which is a claim rather than an absence.
- *   - `listThreads` hard-fails too, on the same reasoning: `/messages` IS the
- *     list, and the issue asks for "Conversations did not load." with a way to
- *     try again rather than an empty state that lies.
- *   - `totalUnread` SOFT-fails to zero. It draws a strip on Home, and a Home
- *     screen that will not load because a count is missing is a much worse
- *     trade than a strip that is briefly absent.
+ *   - `getBookingThread` is the conversation itself, and a booking screen that
+ *     quietly drew no messages would say "nothing was ever said here", which is
+ *     a claim rather than an absence.
+ *   - `listThreads` is the list `/messages` draws, and the issue asks for
+ *     "Conversations did not load." with a way to try again rather than an
+ *     empty state that lies.
+ *
+ * The unread count the inbox control and Home draw is `readInbox`
+ * (`lib/site/inbox.ts`), which catches and says it could not read.
  */
 
 /**
@@ -113,40 +112,4 @@ export async function listThreads(
     complete: data.complete ?? true,
     nextCursor: data.nextCursor,
   };
-}
-
-/**
- * Every conversation's unread count, added up — the number the Home strip
- * draws.
- *
- * Pages at 200, the API's maximum, because this is a sum rather than a list:
- * nothing is rendered per row, so the only cost of a bigger page is one fewer
- * round trip. It walks until `complete`, with a ceiling, because an operator
- * with thousands of conversations must not turn Home into a fan of requests.
- * Stopping early undercounts a strip that is already only a prompt to look.
- */
-export async function totalUnread(token: string): Promise<number> {
-  const MAX_PAGES = 10;
-  try {
-    let total = 0;
-    let cursor: string | undefined;
-    for (let page = 0; page < MAX_PAGES; page += 1) {
-      const { rows, complete, nextCursor } = await listThreads(
-        token,
-        cursor,
-        200,
-      );
-      total += rows.reduce((sum, row) => sum + row.unreadCount, 0);
-      if (complete || !nextCursor) return total;
-      cursor = nextCursor;
-    }
-    return total;
-  } catch {
-    /*
-      Zero, and the strip is simply not drawn. The alternative is Home failing
-      on a count, and Home is the screen somebody opens at six in the morning to
-      find out what is departing.
-    */
-    return 0;
-  }
 }

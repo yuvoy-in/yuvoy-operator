@@ -4,6 +4,7 @@ import { requireOperator } from "@/lib/auth/session";
 import { PHOTOS_MAX, toStory } from "@/lib/story/story";
 import { operatorPageUrl } from "@/lib/site/traveller-app";
 import { Screen } from "@/components/chrome/screen";
+import { buttonClass } from "@/components/ui/button";
 import { panelClass } from "@/components/ui/panel";
 import { Problem } from "@/components/ui/states";
 import { ExternalIcon } from "@/components/ui/icons";
@@ -15,21 +16,29 @@ export const metadata: Metadata = { title: "Your story" };
 export const dynamic = "force-dynamic";
 
 /**
- * What a traveller reads about the business — yuvoy-operator#41.
+ * What a traveller reads about the business: yuvoy-operator#41.
  *
  * The product demo's Account → Profile, which is NOT this portal's `/profile`:
  * that screen is the legal identity, and nobody deciding whether to get on a
  * boat ever sees a GSTIN. Three parts, split along the line the API draws:
  *
- *   - **In your words** — `about` and `languages`, the operator's outright.
+ *   - **What you write**: `about` and `languages`, the operator's outright.
  *     Saved in place; nothing reviews them.
- *   - **Photographs** — the boat, the shop, the crew. Five at most, and the
+ *   - **Photographs**: the boat, the shop, the crew. Five at most, and the
  *     API chooses each one's position.
- *   - **Checked by us** — the year and the place, "read as things we checked,
+ *   - **Checked by us**: the year and the place, "read as things we checked,
  *     so they change through us rather than in place". Stated as facts with
  *     the way to change them, never as disabled inputs: "a disabled text field
  *     reads as a bug; a stated fact with a way to request a change reads as
  *     deliberate."
+ *
+ * ## One heading, and the fields (yuvoy-operator#88 s17)
+ *
+ * "Every field carries two lines of helper text, and the page has two
+ * headings: 'Your story' and 'In your words'. The screen is three fields. It
+ * reads as an essay with three fields hidden in it." So the second title over
+ * the first field is gone, the example that shapes what somebody writes about
+ * their business stays, and the rest of the explaining is in Help.
  *
  * ## Preview your operator page
  *
@@ -61,32 +70,38 @@ export default async function StoryPage() {
     .catch(() => null);
 
   return (
-    <Screen
-      nav={{ back: { href: "/account/settings", label: "settings" } }}
-      stageLabel="Your story"
-    >
-      <p className="eyebrow text-terra-deep">Your account</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>
+      {/*
+        One heading (yuvoy-operator#88 s17). The eyebrow, the stage caption and
+        the line describing the screen are gone, and so is the second title
+        ("In your words") that sat over the first field: what a traveller reads,
+        and what they never see, is an answer in Help (#80 t4).
+      */}
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Your story
       </h1>
-      <p className="text-forest/70 mt-3 text-base">
-        What a traveller reads about your business before deciding to get on
-        your boat. Your registered name and address are separate, under Business
-        details, and travellers never see those.
-      </p>
 
       {/*
-        The page itself, as travellers see it. Opened in a new tab rather than
-        navigated to: it is a different origin and a different product, and an
-        operator halfway through writing their story should come back to a form
-        they have not lost. `rel="noreferrer"` with it, as everywhere.
+        The page itself, as travellers see it: "belongs at the top as a button,
+        not as an underlined link mid-page" (s17). Secondary, never the
+        screen's primary: Save is the one action here, and this leaves it.
+
+        Opened in a new tab rather than navigated to: it is a different origin
+        and a different product, and an operator halfway through writing their
+        story should come back to a form they have not lost.
+        `rel="noreferrer"` with it, as everywhere.
       */}
       {publicPage ? (
         <a
           href={publicPage}
           target="_blank"
           rel="noreferrer"
-          className="text-terra-deep hover:text-forest ease-interaction mt-4 inline-flex min-h-11 items-center gap-2 text-sm underline underline-offset-4 transition-colors duration-200"
+          className={buttonClass({
+            variant: "secondary",
+            size: "md",
+            block: false,
+            className: "mt-5",
+          })}
         >
           Preview your operator page
           <ExternalIcon className="size-4" />
@@ -102,27 +117,27 @@ export default async function StoryPage() {
         </div>
       ) : (
         <>
-          <section className="mt-10" aria-labelledby="in-your-words">
-            <h2 id="in-your-words" className="font-display text-2xl">
-              In your words
-            </h2>
-            <StoryForm about={story.about} languages={story.languages} />
-          </section>
+          {/*
+            No heading over the first field: the screen's title is the heading
+            for what the operator writes. "Photographs" and "Checked by us"
+            stay, because they name a different thing further down rather than
+            repeating the title.
+          */}
+          <StoryForm about={story.about} languages={story.languages} />
 
           <section className="mt-12" aria-labelledby="photographs">
             <h2 id="photographs" className="font-display text-2xl">
               Photographs
             </h2>
             {/*
-              The helper text the issue asks for, because "the natural instinct
-              is to upload the prettiest underwater shot, and a gallery standing
-              in for footage is exactly what a video-first feed exists to
-              prevent."
+              The one line that shapes what gets uploaded, kept for the reason
+              #41 asked for it: "the natural instinct is to upload the
+              prettiest underwater shot, and a gallery standing in for footage
+              is exactly what a video-first feed exists to prevent." Where the
+              footage does belong is in Help (#88 s17, #80 t4).
             */}
             <p className="text-forest/70 mt-2 text-sm">
-              {
-                "The boat, the shop, the crew. Not the trip itself. Footage of the experience belongs on a listing's reel, which is where travellers look for it."
-              }
+              The boat, the shop, the crew. Not the trip itself.
             </p>
 
             {story.photos.length > 0 ? (
@@ -211,9 +226,13 @@ export default async function StoryPage() {
                 value={story.reviewed.findThemAt}
               />
             </dl>
+            {/*
+              The way to change a fact that is stated rather than offered as an
+              input: that is what keeps it reading as deliberate rather than as
+              a disabled field. Who checks it, and when, is in Help.
+            */}
             <p className="text-forest/70 mt-4 text-sm">
-              To change either, message us. A person checks the new one before
-              travellers see it.
+              To change either, message us.
             </p>
           </section>
         </>

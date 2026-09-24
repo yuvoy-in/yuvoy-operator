@@ -32,9 +32,9 @@ function unique(prefix: string) {
 /** Step 1, filled in and saved. Returns the draft's id, from the URL. */
 async function startDraft(page: Page, title: string) {
   await page.goto("/account/listings/new");
-  await page.getByLabel("What is it called").fill(title);
-  await page.getByLabel("What kind of thing it is").selectOption("adventure");
-  await page.getByLabel("What kind of activity").selectOption("scuba");
+  await page.getByLabel("Name", { exact: true }).fill(title);
+  await page.getByLabel("Category", { exact: true }).selectOption("adventure");
+  await page.getByLabel("Activity", { exact: true }).selectOption("scuba");
   await page.getByLabel("Where it runs").selectOption("andaman/havelock");
   await page.getByLabel("One line about it").fill("A first dive off the boat.");
   await page.getByRole("button", { name: "Next" }).click();
@@ -75,8 +75,10 @@ test("a listing is started, left half-way, and reopened where it was left", asyn
 
   // And Basics kept what was typed.
   await page.goto(`/account/listings/${id}/edit?step=basics`);
-  await expect(page.getByLabel("What is it called")).toHaveValue(title);
-  await expect(page.getByLabel("What kind of activity")).toHaveValue("scuba");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(title);
+  await expect(page.getByLabel("Activity", { exact: true })).toHaveValue(
+    "scuba",
+  );
 });
 
 test("each step saves on Next, and Review sends it", async ({ page }) => {
@@ -89,7 +91,7 @@ test("each step saves on Next, and Review sends it", async ({ page }) => {
   await expect(page.getByText(/You receive/)).toContainText("₹3,825");
   await page.getByRole("radio", { name: "Per person" }).check();
   await page.getByLabel("Most people per booking").fill("6");
-  await page.getByLabel("How long, in minutes").fill("180");
+  await page.getByLabel("How long", { exact: true }).fill("180");
   await page.getByRole("button", { name: "Next" }).click();
   await page.waitForURL(/step=schedule/);
 
@@ -142,8 +144,11 @@ test("each step saves on Next, and Review sends it", async ({ page }) => {
   await page.getByRole("button", { name: "Send for review" }).click();
   await page.waitForURL(/\/account\/listings\/[^/]+$/);
   await expect(page.getByText("In review")).toBeVisible();
-  // And with no reel on it, which submit never required.
-  await expect(page.getByText("Nothing on it yet")).toBeVisible();
+  // And with no reel on it, which submit never required. Exact, because the
+  // read-back of what it will look like says the same words in a sentence.
+  await expect(
+    page.getByText("Nothing on it yet", { exact: true }),
+  ).toBeVisible();
   expect(page.url()).toContain(id);
 });
 
@@ -159,8 +164,8 @@ test("Send waits for the two fields approval demands and submit does not", async
   await signIn(page);
 
   await page.goto("/account/listings/new");
-  await page.getByLabel("What is it called").fill(title);
-  await page.getByLabel("What kind of thing it is").selectOption("adventure");
+  await page.getByLabel("Name", { exact: true }).fill(title);
+  await page.getByLabel("Category", { exact: true }).selectOption("adventure");
   await page.getByLabel("Where it runs").selectOption("andaman/havelock");
   await page.getByLabel("One line about it").fill("After dark, off the wall.");
   // Deliberately no activity type.
@@ -176,8 +181,14 @@ test("Send waits for the two fields approval demands and submit does not", async
     page.getByRole("button", { name: "Send for review" }),
   ).toHaveCount(0);
 
-  // The step list says which step is still holding something.
-  await expect(page.getByRole("link", { name: /1\. Basics/ })).toBeVisible();
+  /*
+    The bar says which step is still holding something, in words as well as
+    colour: each segment is a link named for its step, and an unfinished one
+    says so in its name.
+  */
+  await expect(
+    page.getByRole("link", { name: "Step 1, Basics, still missing something" }),
+  ).toBeVisible();
 });
 
 test("a step that is refused stays where it is and says why", async ({

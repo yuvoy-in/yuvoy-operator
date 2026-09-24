@@ -7,8 +7,9 @@ import {
   type Choice,
   type Vocabulary,
 } from "@/lib/services/vocabulary";
-import { inputClass } from "@/components/ui/input";
+import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
+import { fieldMarks } from "./field-marks";
 
 /**
  * Step 1 — what the listing IS.
@@ -23,6 +24,7 @@ export function BasicsStep({
   categories,
   destinations,
   listing,
+  flagged,
 }: {
   id: string;
   vocabulary: Vocabulary | null;
@@ -36,6 +38,8 @@ export function BasicsStep({
     summary?: string;
     description?: string;
   };
+  /** The field Edit was opened for, still needed: marked in place (O12). */
+  flagged?: string;
 }) {
   const [state, act, pending] = useActionState<StepState, FormData>(
     saveBasics,
@@ -43,12 +47,11 @@ export function BasicsStep({
   );
   const [category, setCategory] = useState(listing.category ?? "");
   const activities = activityChoices(vocabulary, category || null);
-  const marked = (field: string) => state.fields?.includes(field) || undefined;
+  const { marked, describedBy, needed } = fieldMarks(state.fields, flagged);
 
   return (
     <StepShell
       title="Basics"
-      blurb="What it is, where it runs, and the line a traveller reads first."
       action={act}
       pending={pending}
       message={state.message}
@@ -56,9 +59,10 @@ export function BasicsStep({
       <input type="hidden" name="id" value={id} />
 
       <div>
-        <label htmlFor="b-title" className="label text-forest/75">
-          What is it called
+        <label htmlFor="b-title" className={fieldLabelClass()}>
+          Name
         </label>
+        {needed("title", "b-title")}
         <input
           id="b-title"
           name="title"
@@ -67,7 +71,7 @@ export function BasicsStep({
           defaultValue={listing.title ?? ""}
           className={inputClass("mt-2")}
           aria-invalid={marked("title")}
-          aria-describedby="b-title-help"
+          aria-describedby={describedBy("title", "b-title", "b-title-help")}
         />
         <p id="b-title-help" className="text-forest/70 mt-1.5 text-xs">
           The first thing a traveller reads. &ldquo;Try-dive at Nemo
@@ -76,9 +80,10 @@ export function BasicsStep({
       </div>
 
       <div>
-        <label htmlFor="b-category" className="label text-forest/75">
-          What kind of thing it is
+        <label htmlFor="b-category" className={fieldLabelClass()}>
+          Category
         </label>
+        {needed("category", "b-category")}
         <select
           id="b-category"
           name="category"
@@ -87,6 +92,7 @@ export function BasicsStep({
           onChange={(e) => setCategory(e.target.value)}
           className={inputClass("mt-2")}
           aria-invalid={marked("category")}
+          aria-describedby={describedBy("category", "b-category")}
         >
           <option value="">Choose one</option>
           {categories.map((c) => (
@@ -105,16 +111,21 @@ export function BasicsStep({
       */}
       {activities.length > 0 ? (
         <div>
-          <label htmlFor="b-activity" className="label text-forest/75">
-            What kind of activity
+          <label htmlFor="b-activity" className={fieldLabelClass()}>
+            Activity
           </label>
+          {needed("activityType", "b-activity")}
           <select
             id="b-activity"
             name="activityType"
             defaultValue={listing.activityType ?? ""}
             className={inputClass("mt-2")}
             aria-invalid={marked("activityType")}
-            aria-describedby="b-activity-help"
+            aria-describedby={describedBy(
+              "activityType",
+              "b-activity",
+              "b-activity-help",
+            )}
           >
             <option value="">Choose one</option>
             {activities.map((a) => (
@@ -131,9 +142,10 @@ export function BasicsStep({
       ) : null}
 
       <div>
-        <label htmlFor="b-destination" className="label text-forest/75">
+        <label htmlFor="b-destination" className={fieldLabelClass()}>
           Where it runs
         </label>
+        {needed("destination", "b-destination")}
         <select
           id="b-destination"
           name="destination"
@@ -141,6 +153,7 @@ export function BasicsStep({
           defaultValue={listing.destination ?? ""}
           className={inputClass("mt-2")}
           aria-invalid={marked("destination")}
+          aria-describedby={describedBy("destination", "b-destination")}
         >
           <option value="">Choose one</option>
           {destinations.map((d) => (
@@ -152,22 +165,25 @@ export function BasicsStep({
       </div>
 
       <div>
-        <label htmlFor="b-summary" className="label text-forest/75">
+        <label htmlFor="b-summary" className={fieldLabelClass()}>
           One line about it
         </label>
+        {needed("summary", "b-summary")}
         <input
           id="b-summary"
           name="summary"
           defaultValue={listing.summary ?? ""}
           className={inputClass("mt-2")}
           aria-invalid={marked("summary")}
+          aria-describedby={describedBy("summary", "b-summary")}
         />
       </div>
 
       <div>
-        <label htmlFor="b-description" className="label text-forest/75">
+        <label htmlFor="b-description" className={fieldLabelClass()}>
           What happens on the day
         </label>
+        {needed("description", "b-description")}
         <textarea
           id="b-description"
           name="description"
@@ -175,7 +191,11 @@ export function BasicsStep({
           defaultValue={listing.description ?? ""}
           className={inputClass("mt-2 h-auto py-3")}
           aria-invalid={marked("description")}
-          aria-describedby="b-description-help"
+          aria-describedby={describedBy(
+            "description",
+            "b-description",
+            "b-description-help",
+          )}
         />
         {/*
           A hint, never a refusal. The API takes a short description and so does

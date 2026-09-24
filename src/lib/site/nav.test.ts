@@ -7,6 +7,7 @@ import {
   badgeText,
   isBareRoute,
   isFocusedRoute,
+  navFor,
 } from "./nav";
 
 /**
@@ -21,12 +22,19 @@ describe("focused and bare routes", () => {
     ["/today/slot_1", "focused"],
     ["/profile", "focused"],
     ["/logo", "focused"],
-    ["/earnings", "focused"],
-    ["/earnings?month=last", "focused"],
+    /*
+      `/earnings` is the Money TAB ROOT since yuvoy-operator#96, so it carries
+      the bar; one settlement under it is a screen gone into, with a way back.
+      The slash is the whole difference, and a prefix one character short
+      would take the bar off a tab root.
+    */
+    ["/earnings", "root"],
+    ["/earnings?month=last", "root"],
+    ["/earnings/stl_sent", "focused"],
     /*
       `/cash` shipped with a back control (yuvoy-operator#40 §2) and without
       an entry in the focused list, so a phone drew the floating bar AND the
-      back disc — the exact defect `/logo` had before it. And `return-to`
+      back disc, the exact defect `/logo` had before it. And `return-to`
       derives its allowlist from this list, so a session that ran out on
       `/cash` landed the operator on Today instead of back where they were.
     */
@@ -51,21 +59,13 @@ describe("focused and bare routes", () => {
     */
     ["/bookings/bk_1", "focused"],
     /*
-      The two old URLs still resolve — they are redirects, not deletions,
+      The two old URLs still resolve: they are redirects, not deletions,
       because they are in operators' history and in messages we have sent.
       They stay roots so the redirect does not flash an unlit bar on its way
       through.
     */
     ["/requests", "root"],
     ["/capacity", "root"],
-    /*
-      Both halves of Listings are ROOTS, not focused screens
-      (yuvoy-operator#22). Reels was focused while it lived behind the Business
-      door; it is now one of a pair an operator moves between constantly —
-      "this listing has no video" and "this clip is attached to nothing" are
-      the same question from both ends — and a back control that left the
-      section would be in the way every time.
-    */
     // Redirects since #58, and still classified: the chrome renders for the
     // instant before the redirect resolves, and an unlit bar flashing on the
     // way through is the thing the classifier exists to prevent.
@@ -100,18 +100,37 @@ describe("focused and bare routes", () => {
     expect(bookings.match("/capacity")).toBe(false);
   });
 
+  it("lights Money for the three money screens, and only those", () => {
+    /*
+      yuvoy-operator#96. Money was three taps away behind Business, beside the
+      logo; the money screens light their own stop now and no longer light
+      Business.
+    */
+    const money = NAV.find((n) => n.icon === "money")!;
+    for (const path of [
+      "/earnings",
+      "/earnings/stl_sent",
+      "/cash",
+      "/payouts",
+    ]) {
+      expect(money.match(path), path).toBe(true);
+    }
+    // A path that only starts with the same letters is somewhere else.
+    for (const path of ["/earningsx", "/cashier", "/today", "/account"]) {
+      expect(money.match(path), path).toBe(false);
+    }
+  });
+
   it("highlights Business for every screen behind its door", () => {
     /*
-      `/cash` and `/logo` both open from Business and lit nothing: an operator
-      looking at what they owe us saw a bar with no stop current, which reads
-      as the portal having lost its place.
+      `/logo` opened from Business and lit nothing: an operator looking at it
+      saw a bar with no stop current, which reads as the portal having lost
+      its place.
     */
     const business = NAV.find((n) => n.icon === "business")!;
     for (const path of [
       "/account",
-      "/earnings",
-      "/cash",
-      "/payouts",
+      "/account/settings",
       "/profile",
       "/logo",
       "/story",
@@ -120,14 +139,17 @@ describe("focused and bare routes", () => {
       expect(business.match(path), path).toBe(true);
     }
     expect(business.match("/today")).toBe(false);
+    // The money screens moved to their own stop (yuvoy-operator#96).
+    for (const path of ["/earnings", "/cash", "/payouts"]) {
+      expect(business.match(path), path).toBe(false);
+    }
   });
 
   it("has no Listings stop, and Business answers for what it held", () => {
     /*
       D-036, yuvoy-operator#56. Listings had two pages under it and the tab
-      pointed at the first, so the footage was a stop nobody found. Every
-      listing is on Home now, and creating and editing them moved to the
-      Business profile.
+      pointed at the first, so the footage was a stop nobody found. Creating
+      and editing listings lives on the Business profile.
 
       The old URLs still light Business rather than nothing, for the instant
       their redirect is on screen: an old bookmark must not flash an unlit bar
@@ -146,32 +168,31 @@ describe("focused and bare routes", () => {
     }
   });
 
-  it("names exactly four stops, in the order D-036 sets", () => {
+  it("names exactly five stops, in the order yuvoy-operator#96 sets", () => {
     /*
-      Four since yuvoy-operator#56: Today became **Home** and took the
-      listings with it. Earnings is still a door inside Business.
-
       The ORDER is asserted, not just the set. The tab bar is muscle memory on
       a phone at six in the morning, and a stop that moves is a mis-tap.
     */
     expect(NAV.map((n) => n.label)).toEqual([
-      "Home",
+      "Today",
       "Bookings",
       "Calendar",
+      "Money",
       "Business",
     ]);
   });
 
   it("has exactly one stop matching any given screen", () => {
     /*
-      Five stops, and every one of them is a prefix test. Two matching the
-      same path lights two pills at once and makes `aria-current="page"` a lie
-      — asserted across every screen the portal has rather than only the ones
-      that changed.
+      Every stop is a prefix test. Two matching the same path lights two pills
+      at once and makes `aria-current="page"` a lie, so this is asserted
+      across every screen the portal has rather than only the ones that
+      changed.
     */
     for (const path of [
       "/today",
       "/today/slot_1",
+      "/today/listing/exp_1",
       "/bookings",
       "/bookings/bk_1",
       "/requests",
@@ -179,7 +200,9 @@ describe("focused and bare routes", () => {
       "/services/activities",
       "/services/reels",
       "/account",
+      "/account/settings",
       "/earnings",
+      "/earnings/stl_sent",
       "/cash",
       "/payouts",
       "/profile",
@@ -203,13 +226,45 @@ describe("focused and bare routes", () => {
   it("lists prefixes a tab root cannot match by accident", () => {
     for (const prefix of [...FOCUSED_ROUTE_PREFIXES, ...BARE_ROUTE_PREFIXES]) {
       for (const item of NAV) {
-        expect(item.href.startsWith(prefix)).toBe(false);
+        expect(item.href.startsWith(prefix), `${item.href} vs ${prefix}`).toBe(
+          false,
+        );
       }
     }
   });
 });
 
-describe("the two badges — yuvoy-operator#42", () => {
+describe("who is shown which stop, yuvoy-operator#96", () => {
+  it("shows a login that can manage all five", () => {
+    expect(navFor({ canManage: true }).map((n) => n.label)).toEqual([
+      "Today",
+      "Bookings",
+      "Calendar",
+      "Money",
+      "Business",
+    ]);
+  });
+
+  it("shows a staff login four, with Money gone and nothing moved", () => {
+    /*
+      Every money read refuses STAFF, so the stop would open onto a refusal.
+      The four that stay keep their order: a stop that moves is a mis-tap.
+    */
+    expect(navFor({ canManage: false }).map((n) => n.label)).toEqual([
+      "Today",
+      "Bookings",
+      "Calendar",
+      "Business",
+    ]);
+  });
+
+  it("gates only the money stop on the role", () => {
+    const gated = NAV.filter((n) => n.audience === "manage").map((n) => n.icon);
+    expect(gated).toEqual(["money"]);
+  });
+});
+
+describe("the two badges, yuvoy-operator#42", () => {
   it("counts on Bookings and Business, and nowhere else", () => {
     expect(Object.keys(BADGES).sort()).toEqual(["bookings", "business"]);
     for (const icon of Object.keys(BADGES)) {
@@ -222,7 +277,8 @@ describe("the two badges — yuvoy-operator#42", () => {
 
   it("says what the number is of, for somebody who cannot see the bubble", () => {
     expect(BADGES.bookings?.spoken).toMatch(/waiting/);
-    expect(BADGES.business?.spoken).toMatch(/waiting/);
+    // What stops the business selling (yuvoy-operator#96 item 6).
+    expect(BADGES.business?.spoken).toBe("stopping sales");
   });
 
   it("stops being exact once exact stops mattering", () => {

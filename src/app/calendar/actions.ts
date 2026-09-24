@@ -21,6 +21,7 @@ import {
 import { marketDays } from "@/lib/format/market-time";
 import { shiftDay } from "@/lib/day/calendar";
 import { dedash, dedashText } from "@/lib/format/dedash";
+import { sentence } from "@/lib/format/sentence";
 import { suspendedMessage } from "@/lib/account/suspended";
 
 /**
@@ -49,12 +50,19 @@ export interface CapacityState {
 
   Three others were written inline beside it, each opening "Your role cannot
   …": a shape that tells the reader what they are rather than who to ask.
-  Capacity, closed dates, counter sales, reopening and closing a departure are
-  one `canManage` gate as far as the API is concerned, so they are one sentence,
+  Capacity, closed dates, reopening and closing a departure are one
+  `canManage` gate as far as the API is concerned, so they are one sentence,
   and every one of them now uses this.
+
+  Counter sales are NOT on that list, and this sentence used to say they were.
+  The API has never role-gated recording one (`POST /slots/{id}/offline-sales`
+  is plain `auth`, and its only 403 is a suspension), and taking one back is
+  the same roles on purpose: "the person who mistypes the count is the person
+  at the counter" (yuvoy-api#226). The owner confirmed it on 23 Sep 2026:
+  everybody signed in may record a counter sale and take one back.
 */
 const ROLE_REFUSAL =
-  "Only owners, admins and managers can change seats, close dates or record counter sales.";
+  "Only owners, admins and managers can change seats or close dates.";
 
 const seatsSchema = z.object({
   slotId: z.string().min(1),
@@ -232,6 +240,12 @@ export interface Oversold {
 export interface OfflineSaleState {
   message?: string;
   result?: {
+    /**
+     * This entry, which is what `takeBackOfflineSale` sends back. Absent from
+     * an API older than 2afd7b4, and then no undo is offered, because there is
+     * nothing it could name.
+     */
+    id?: string;
     seatsRecorded: number;
     seatsRemaining: number;
     totalSoldOffline: number;
@@ -271,8 +285,12 @@ export async function recordOfflineSale(
   }
 
   const { slotId, seats, note } = parsed.data;
-  const { token, me } = await requireOperator();
-  if (!me.canManage) return { message: ROLE_REFUSAL };
+  /*
+    No role check: recording a counter sale is open to everybody signed in,
+    staff included, as it is in the API (see `ROLE_REFUSAL`). A suspension is
+    the API's one refusal here, and it is read below.
+  */
+  const { token } = await requireOperator();
 
   try {
     const { data, error } = await operatorApi(token).POST(
@@ -290,6 +308,7 @@ export async function recordOfflineSale(
     const oversold = data.oversold;
     return {
       result: {
+        ...(data.id ? { id: data.id } : {}),
         seatsRecorded: data.seatsRecorded ?? seats,
         seatsRemaining: data.seatsRemaining ?? 0,
         totalSoldOffline: data.totalSoldOffline ?? 0,
@@ -319,12 +338,112 @@ export async function recordOfflineSale(
       */
       const refusal = suspendedMessage(err);
       if (refusal) return { message: refusal };
-      if (err.status === 403) return { message: ROLE_REFUSAL };
+      /*
+        No role sentence for a 403: the API gates no role here, so a refusal
+        that is not a suspension is one this screen does not know, and the
+        API's own words are the only honest thing to show.
+      */
+      if (err.status === 403) return { message: sentence(err.message) };
       if (err.isNotFound)
         return { message: "That departure is no longer here." };
       if (err.status === 400) return { message: err.message };
     }
     return { message: "Not recorded. Try again." };
+  }
+}
+
+export interface TakeBackState {
+  message?: string;
+  /** The departure after the entry came back off it. */
+  result?:
+    | {
+        seatsTakenBack: number;
+        seatsRemaining: number;
+        totalSoldOffline: number;
+      }
+    /*
+      `409 already_taken_back`: "its seats are already back on the departure",
+      so a tap whose first answer was lost has nothing left to do, and it is
+      said as done rather than as a failure.
+    */
+    | { already: true };
+}
+
+const takeBackSchema = z.object({
+  slotId: z.string().min(1),
+  saleId: z.string().min(1),
+});
+
+/**
+ * "That was a mistake": take one counter sale back (yuvoy-api#226, op#89 f12).
+ *
+ * A mistyped 20 instead of 2 takes the whole boat and refuses every accept on
+ * the departure. The contract sent operators to "the counter sales screen" to
+ * correct it, and there was no such screen because there was no route.
+ *
+ * The entry is NOT deleted. The API writes a second row cancelling it, both
+ * stay on the record, and the seats come back. An honour incident the sale
+ * raised is not withdrawn: somebody at Yuvoy closes it with what they found.
+ * Open to everybody signed in, the same people who may record one.
+ */
+export async function takeBackOfflineSale(
+  _prev: TakeBackState,
+  form: FormData,
+): Promise<TakeBackState> {
+  const parsed = takeBackSchema.safeParse({
+    slotId: form.get("slotId"),
+    saleId: form.get("saleId"),
+  });
+  if (!parsed.success) return { message: "There is nothing to take back." };
+
+  const { slotId, saleId } = parsed.data;
+  const { token } = await requireOperator();
+
+  try {
+    const { data, error } = await operatorApi(token).DELETE(
+      "/slots/{id}/offline-sales/{saleId}",
+      { params: { path: { id: slotId, saleId } } },
+    );
+    if (error) throw error;
+
+    revalidatePath("/calendar");
+    revalidatePath(`/today/${slotId}`);
+
+    return {
+      result: {
+        seatsTakenBack: data.seatsTakenBack,
+        seatsRemaining: data.seatsRemaining,
+        totalSoldOffline: data.totalSoldOffline,
+      },
+    };
+  } catch (err) {
+    if (err instanceof OperatorNetworkError) {
+      // As emphatic as the record: the count on the departure is still wrong.
+      return { message: "No signal. Nothing was taken back. Try again." };
+    }
+    if (err instanceof OperatorApiError) {
+      const refusal = suspendedMessage(err);
+      if (refusal) return { message: refusal };
+      if (err.status === 409 && err.code === "already_taken_back") {
+        revalidatePath("/calendar");
+        revalidatePath(`/today/${slotId}`);
+        return { result: { already: true } };
+      }
+      /*
+        `counter_sales_below_zero` and anything else the API refuses with: its
+        own sentence says what to do instead ("record what you actually sold
+        instead, or call us").
+      */
+      if (err.status === 409 || err.status === 403) {
+        return { message: sentence(err.message) };
+      }
+      if (err.isNotFound) {
+        return {
+          message: "That counter sale is not on this departure any more.",
+        };
+      }
+    }
+    return { message: "Nothing was taken back. Try again." };
   }
 }
 
@@ -567,7 +686,7 @@ export async function reopenClosure(
       The same trap `cancelBooking` hit: revalidate only when the re-render
       shows more than the returned value, and here it shows less.
     */
-    return { done: true, note: data.note };
+    return { done: true, note: dedashText(data.note) };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was reopened. Try again." };
@@ -660,7 +779,7 @@ export async function closeDeparture(
       out of the list it was in and unmounts the panel holding it. The receipt
       stays; the day catches up on the operator's tap.
     */
-    return { done: true, ...(data.note ? { note: data.note } : {}) };
+    return { done: true, ...(data.note ? { note: dedash(data.note) } : {}) };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. It is still selling. Try again." };
@@ -675,7 +794,7 @@ export async function closeDeparture(
           so there is nothing to close, or it has already left. The API writes
           both, and one sentence of ours would lose whichever it was.
         */
-        return { message: err.message };
+        return { message: dedash(err.message) };
       }
       const refusal = suspendedMessage(err);
       if (refusal) return { message: refusal };
@@ -697,6 +816,11 @@ export interface ConfirmSeatsState {
   confirmed?: number;
 }
 
+/** Days one confirm covers: "both included, at most 31 days". */
+const CONFIRM_WINDOW_DAYS = 31;
+/** Windows swept per tap: twelve of 31 days, a year of departures. */
+const CONFIRM_WINDOWS = 12;
+
 /**
  * Confirm the seats on many departures at once (yuvoy-operator#94 item 2).
  *
@@ -705,15 +829,27 @@ export interface ConfirmSeatsState {
  * used to find out one departure at a time, by noticing it was off sale, and
  * confirm each by saving its seat count again.
  *
- * The window is the market's today and the thirty days after it: "a market
- * day from `from` to `to` (both included, at most 31 days)". Decided here on
- * the server, never taken from the form, so a stale page cannot send a window
- * the API refuses. One listing when `experienceId` is sent, every listing
- * when not: the listing hub sends its own, Home sends none.
+ * ## A year, in windows of 31 days
  *
- * Safe to send twice ("confirming twice leaves the departures as confirming
- * once did"), so a double tap on one bar of signal costs nothing. Seat counts
- * are not changed.
+ * One call covers "a market day from `from` to `to` (both included, at most
+ * 31 days)", but the count Home and the hub show (`departuresNotOnSale`) is
+ * every upcoming departure, with no end date (yuvoy-api `seats_to_confirm.go`),
+ * and a departure can be added for any date. Confirming only the next 31 days
+ * left a departure 45 days out off sale, and the row that counted it came
+ * back on every load after "Confirm all". So a year is swept, in windows laid
+ * end to end from the market's today, and their answers added up. The windows
+ * are decided here on the server, never taken from the form, so a stale page
+ * cannot send one the API refuses.
+ *
+ * The windows go at once, not one after another: they touch different dates,
+ * the route has no rate limit, and a tap on a phone waits for one round trip
+ * instead of twelve.
+ *
+ * One listing when `experienceId` is sent, every listing when not: the listing
+ * hub sends its own, Home sends none. Safe to send twice ("confirming twice
+ * leaves the departures as confirming once did"), so a double tap on one bar
+ * of signal costs nothing, and a sweep cut short is finished by trying again.
+ * Seat counts are not changed.
  */
 export async function confirmSeats(
   _prev: ConfirmSeatsState,
@@ -725,45 +861,78 @@ export async function confirmSeats(
   if (!me.canManage) return { message: ROLE_REFUSAL };
 
   const { today } = await marketDays();
-  const to = shiftDay(today, 30);
+  const api = operatorApi(token);
 
-  try {
-    const { data, error } = await operatorApi(token).POST(
-      "/slots/confirm-seats",
-      {
+  const answers = await Promise.allSettled(
+    Array.from({ length: CONFIRM_WINDOWS }, async (_, i) => {
+      const from = shiftDay(today, i * CONFIRM_WINDOW_DAYS);
+      const { data, error } = await api.POST("/slots/confirm-seats", {
         body: {
-          from: today,
-          to,
+          from,
+          to: shiftDay(from, CONFIRM_WINDOW_DAYS - 1),
           ...(experienceId ? { experienceId } : {}),
         },
-      },
-    );
-    if (error) throw error;
+      });
+      if (error) throw error;
+      return Number.isInteger(data.confirmed) ? data.confirmed : 0;
+    }),
+  );
 
-    /*
-      Every screen that counts what is off sale re-reads: Home adds them up,
-      the calendar marks each departure, and the listing's own hub says how
-      many. The receipt lives in the control, which stays mounted on each.
-    */
-    revalidatePath("/today");
-    revalidatePath("/calendar");
-    if (experienceId) revalidatePath(`/today/listing/${experienceId}`);
-    return {
-      confirmed: Number.isInteger(data.confirmed) ? data.confirmed : 0,
-    };
-  } catch (err) {
-    if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was confirmed. Try again." };
+  let confirmed = 0;
+  let failure: unknown = null;
+  let answered = 0;
+  for (const answer of answers) {
+    if (answer.status === "fulfilled") {
+      confirmed += answer.value;
+      answered += 1;
+    } else {
+      failure ??= answer.reason;
     }
-    if (err instanceof OperatorApiError) {
-      const refusal = suspendedMessage(err);
-      if (refusal) return { message: refusal };
-      if (err.status === 403) return { message: ROLE_REFUSAL };
-      if (err.isNotFound) {
-        return { message: "That listing is not on this account any more." };
-      }
-      if (err.status === 400) return { message: dedash(err.message) };
-    }
-    return { message: "Nothing was confirmed. Try again." };
   }
+
+  // Nothing answered: the tap failed, and says why.
+  if (answered === 0) return confirmFailure(failure);
+
+  revalidateConfirmed(experienceId);
+  if (failure === null) return { confirmed };
+
+  /*
+    Some dates answered and some did not. What was confirmed is said, with the
+    way to finish: trying again re-sweeps, and repeats nothing.
+  */
+  return {
+    message:
+      confirmed === 0
+        ? "Some dates did not answer. Try again."
+        : confirmed === 1
+          ? "Seats confirmed on 1 departure. Some dates did not answer. Try again."
+          : `Seats confirmed on ${confirmed} departures. Some dates did not answer. Try again.`,
+  };
+}
+
+/**
+ * Every screen that counts what is off sale re-reads: Home adds them up, the
+ * calendar marks each departure, and the listing's own hub says how many. The
+ * receipt lives in the control, which stays mounted on each.
+ */
+function revalidateConfirmed(experienceId: string) {
+  revalidatePath("/today");
+  revalidatePath("/calendar");
+  if (experienceId) revalidatePath(`/today/listing/${experienceId}`);
+}
+
+function confirmFailure(err: unknown): ConfirmSeatsState {
+  if (err instanceof OperatorNetworkError) {
+    return { message: "No signal. Nothing was confirmed. Try again." };
+  }
+  if (err instanceof OperatorApiError) {
+    const refusal = suspendedMessage(err);
+    if (refusal) return { message: refusal };
+    if (err.status === 403) return { message: ROLE_REFUSAL };
+    if (err.isNotFound) {
+      return { message: "That listing is not on this account any more." };
+    }
+    if (err.status === 400) return { message: dedash(err.message) };
+  }
+  return { message: "Nothing was confirmed. Try again." };
 }

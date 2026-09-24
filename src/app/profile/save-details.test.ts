@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
   On a LIVE account `PUT /profile` answers `202 { state: "in_review", next }`:
   the change is recorded for review and the details on file stay in place,
   because the verified documents were checked against them (D-032.3). The
-  contract declares that answer under `GET /profile` (yuvoy-api#222), and the
-  screen used to say "Saved" (yuvoy-operator#89 f10).
+  contract declared that answer under `GET /profile` until yuvoy-api#222 moved
+  it to the `PUT`, and the screen used to say "Saved" (yuvoy-operator#89 f10).
 
   Its own file rather than `actions.test.ts`, so the document half of these
   actions can grow tests without the two colliding.

@@ -1,4 +1,3 @@
-import { credentialTypeLabel } from "@/lib/profile/credentials";
 import { verifiedWithoutFile } from "./standing";
 
 /**
@@ -35,11 +34,6 @@ export interface RequiredDocument {
   satisfied: boolean;
 }
 
-export interface Blocker {
-  code: string;
-  label: string;
-}
-
 /** "5 of 6 required documents are verified", or nothing to say. */
 export function documentCount(
   required: readonly RequiredDocument[],
@@ -49,34 +43,6 @@ export function documentCount(
   if (required.length === 0) return null;
   const met = required.filter((d) => d.satisfied).length;
   return `${met} of ${required.length} required documents are verified`;
-}
-
-/**
- * The blocker that explains an unsatisfied document.
- *
- * "A document that is not satisfied always has a `CREDENTIAL_*` entry in
- * `blocking` saying why." Matched on the type appearing in the blocker's code,
- * because the codes are `CREDENTIAL_MISSING` / `CREDENTIAL_EXPIRED` and carry
- * the type in their `label` rather than in a field of their own — so the label
- * is what is matched against, lower-cased, with the type's underscores loosened
- * to spaces so `instructor_cert` finds "Instructor certificate".
- *
- * `null` when nothing matches, and the row then says nothing extra: inventing a
- * reason for a document is worse than leaving the count to speak.
- */
-export function blockerFor(
-  type: string,
-  blocking: readonly Blocker[],
-): Blocker | null {
-  const label = credentialTypeLabel(type).toLowerCase();
-  const loose = type.replace(/_/g, " ").toLowerCase();
-  return (
-    blocking.find((b) => {
-      if (!b.code.startsWith("CREDENTIAL")) return false;
-      const text = (b.label ?? "").toLowerCase();
-      return text.includes(label) || text.includes(loose);
-    }) ?? null
-  );
 }
 
 /** What a document row says about its file. Never a blank. */

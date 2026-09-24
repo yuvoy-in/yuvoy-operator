@@ -145,9 +145,12 @@ export function Conversation({
       >
         Conversation
       </h2>
+      {/*
+        The one sentence kept (#80 t4): it changes what somebody types. "With
+        this traveller, about this trip" described the section and went.
+      */}
       <p className="text-forest/70 mt-2 text-sm">
-        With this traveller, about this trip. Phone numbers, email addresses and
-        links are not allowed on either side.
+        Phone numbers, email addresses and links are not allowed on either side.
       </p>
 
       {!thread.complete && thread.nextCursor ? (

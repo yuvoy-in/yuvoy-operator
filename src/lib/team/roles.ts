@@ -162,7 +162,7 @@ export function describeRole(role: string): RoleDescription | null {
     case "STAFF":
       return {
         label: "Staff",
-        can: "Today's manifest: marks people off as they arrive.",
+        can: "Who is booked on today's departures, and checking them in as they arrive.",
         cannot:
           "Sees seat requests but cannot answer them, and cannot see earnings.",
       };

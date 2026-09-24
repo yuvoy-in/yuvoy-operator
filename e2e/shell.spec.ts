@@ -25,23 +25,161 @@ test("the sign-in door draws no navigation", async ({ page }) => {
   );
 });
 
-test("a tab root names exactly four destinations, and says where you are", async ({
+test("a tab root names exactly five destinations, and says where you are", async ({
   page,
 }) => {
   /*
-    FOUR since D-036 (yuvoy-operator#56). Listings had two pages under it and
-    the tab pointed at the first, so the footage was a stop nobody found. Every
-    listing is on Home now, where an operator already looks, and creating or
-    editing one moved to the Business profile.
+    FIVE since yuvoy-operator#96: Money became a stop of its own, because it
+    was three taps away behind Business and it is the second reason an
+    operator opens the portal. The owner can manage, so the owner sees it.
 
-    The count is asserted rather than left loose: a fifth stop is a width
-    decision, not a routing one, and the bar was already about 330px at its
-    longest with five.
+    The count and the order are asserted rather than left loose: a stop is a
+    width decision on a 360px phone, and a stop that moves is a mis-tap.
   */
   await signIn(page);
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-  await expect(nav.getByRole("link")).toHaveCount(4);
-  await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Home/i);
+  await expect(nav.getByRole("link")).toHaveCount(5);
+  await expect(nav.getByRole("link")).toHaveText([
+    /Today/,
+    /Bookings/,
+    /Calendar/,
+    /Money/,
+    /Business/,
+  ]);
+  await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Today/i);
+});
+
+test("every stop on the bar carries its word, not only the current one", async ({
+  page,
+  isMobile,
+}) => {
+  /*
+    yuvoy-operator#80 t6. The bar labelled only the stop you were on, so a
+    ticket and a briefcase had to be guessed as Bookings and Business. Every
+    label is visible text now, on the phone's bar as on the rail.
+  */
+  test.skip(
+    !isMobile,
+    "the floating bar is the phone's; the rail was always labelled",
+  );
+  await signIn(page);
+  const nav = page.getByRole("navigation", { name: /Primary/i }).first();
+  for (const word of ["Today", "Bookings", "Calendar", "Money", "Business"]) {
+    await expect(nav.getByText(word, { exact: true })).toBeVisible();
+  }
+});
+
+test("all five stops fit a 360px phone, with no sideways scroll", async ({
+  page,
+  isMobile,
+}) => {
+  /*
+    The bar used to scroll sideways below about 330px of room. Five labelled
+    stops share the width now, so on the narrowest common phone every stop is
+    on screen at once and still a comfortable target.
+  */
+  test.skip(!isMobile, "the floating bar is the phone's");
+  await page.setViewportSize({ width: 360, height: 740 });
+  await signIn(page);
+  const nav = page.getByRole("navigation", { name: /Primary/i }).first();
+  const links = nav.getByRole("link");
+  await expect(links).toHaveCount(5);
+  for (const link of await links.all()) {
+    const box = await link.boundingBox();
+    if (!box) throw new Error("a stop has no box");
+    expect(box.x, "starts on screen").toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, "ends on screen").toBeLessThanOrEqual(360);
+    expect(box.height, "a thumb-sized target").toBeGreaterThanOrEqual(44);
+    expect(box.width, "a thumb-sized target").toBeGreaterThanOrEqual(44);
+  }
+  // Nothing on the page scrolls sideways either.
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("the stage names the business beside the mark, with no tagline", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#80 t1: "Use the compact mark with no tagline, at half the
+    height, and put the business name beside it." The name is the business's
+    (`displayName`), never the signed-in person's.
+  */
+  await signIn(page);
+  await expect(
+    page.getByText("Reef Divers Havelock", { exact: true }).filter({
+      visible: true,
+    }),
+  ).toBeVisible();
+  const mark = page
+    .getByRole("img", { name: "Yuvoy" })
+    .filter({ visible: true })
+    .first();
+  await expect(mark).toHaveAttribute("src", /yuvoy-mark-compact/);
+  // The marketing caption went with the marketing lockup. Visible only: the
+  // sign-in door keeps its caption, and the router keeps the page it left in
+  // the document, hidden. Exact: the router's announcer reads the page title,
+  // "Today · Yuvoy for operators", from a visually hidden live region.
+  await expect(
+    page.getByText("For operators", { exact: true }).filter({ visible: true }),
+  ).toHaveCount(0);
+  // And the person holding the phone is not the business.
+  await expect(
+    page.getByText("Priya Raut", { exact: true }).filter({ visible: true }),
+  ).toHaveCount(0);
+});
+
+test("every signed-in screen carries the inbox, and it opens the conversations", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#96: a guest writes whatever screen the operator is on, so
+    the way to the conversations is on every stage rather than behind a tab.
+    Its count is conversations waiting on a reply, said in the link's name,
+    and absent at zero. Asserted as a shape: `messages.spec.ts` reads the one
+    unread conversation on the mobile project.
+  */
+  await signIn(page);
+  const inbox = /^Messages(, \d+ unread conversations?)?$/;
+  for (const path of ["/today", "/calendar", "/today/slot_dawn"]) {
+    await page.goto(path);
+    await expect(
+      page.getByRole("link", { name: inbox }),
+      `the inbox on ${path}`,
+    ).toBeVisible();
+  }
+  await page.getByRole("link", { name: inbox }).click();
+  await page.waitForURL("**/messages");
+  // Not a link to the page already open.
+  await expect(page.getByRole("link", { name: inbox })).toHaveCount(0);
+});
+
+test("a signed-out door carries no inbox", async ({ page }) => {
+  /*
+    Every door, not only sign-in: /signup drew the signed-in chrome by default
+    and so offered "Messages" to somebody with no account, which bounced them
+    to sign-in (the audit before the #96 release).
+  */
+  for (const path of [
+    "/sign-in",
+    "/signup",
+    "/join",
+    "/join/jn_reefdivers",
+    "/no-such-page",
+  ]) {
+    await page.goto(path);
+    await expect(
+      page.getByRole("heading", { level: 1 }),
+      `the heading on ${path}`,
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /^Messages/ }),
+      `no inbox on ${path}`,
+    ).toHaveCount(0);
+  }
 });
 
 test("the bar reaches every destination", async ({ page }) => {
@@ -64,6 +202,24 @@ test("the bar reaches every destination", async ({ page }) => {
       page.getByRole("heading", { name: heading, exact: true }),
     ).toBeVisible();
   }
+
+  /*
+    Money, the stop yuvoy-operator#96 added. Asserted by where it lands and by
+    the stop it lights rather than by the screen's heading, which the Money
+    screen's own rework owns.
+  */
+  await page
+    .getByRole("navigation", { name: /Primary/i })
+    .first()
+    .getByRole("link", { name: "Money" })
+    .click();
+  await page.waitForURL("**/earnings");
+  await expect(
+    page
+      .getByRole("navigation", { name: /Primary/i })
+      .first()
+      .getByRole("link", { name: "Money" }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("a focused screen hides the bar and offers a way back", async ({
@@ -72,9 +228,10 @@ test("a focused screen hides the bar and offers a way back", async ({
 }) => {
   await signIn(page);
   /*
-    The DEPARTURE row, not the listing tile. Home carries both since #56, and
-    they share a title: the row goes to that day's manifest and the tile goes to
-    the listing hub. Scoped by the region rather than by the words.
+    A departure on the day's sheet, found by its region rather than by its
+    words: every row on it opens that departure's manifest, and the titles are
+    a fixture other suites edit. The listings left Home for Business in
+    yuvoy-operator#96, so nothing else here shares a row's name.
   */
   await page
     .getByRole("region", { name: /departures?/ })
@@ -91,7 +248,7 @@ test("a focused screen hides the bar and offers a way back", async ({
   if (isMobile) {
     await expect(primary).toHaveCount(0);
   } else {
-    await expect(primary.getByRole("link")).toHaveCount(4);
+    await expect(primary.getByRole("link")).toHaveCount(5);
   }
 });
 
@@ -173,16 +330,17 @@ test("the rail stays put while the page scrolls", async ({
   // And it is still a usable navigation once you are down the page.
   await expect(
     page.getByRole("navigation", { name: /Primary/i }).getByRole("link"),
-  ).toHaveCount(4);
+  ).toHaveCount(5);
 });
 
 /*
   The two counts on the bar — yuvoy-operator#42.
 
-  "These badges turn unfinished obligations into visible work queues." Each is
-  the number of rows under "Waiting on you" on the screen its stop opens, and
-  each is SAID, not just drawn: the bubble is decorative and the link carries
-  the number in words, so a screen reader hears what it counts.
+  "These badges turn unfinished obligations into visible work queues." Bookings
+  counts the requests its queue shows; Business counts what stops the business
+  selling (#96 item 6). Each is SAID, not just drawn: the bubble is decorative
+  and the link carries the number in words, so a screen reader hears what it
+  counts.
 
   Asserted as a shape rather than a figure on Bookings: other specs answer
   requests against the same server while this runs.
@@ -212,23 +370,22 @@ test("Business carries no count when nothing is waiting on the operator", async 
   await expect(business).toHaveAccessibleName("Business");
 });
 
-test("Business counts exactly the list it opens", async ({ page }) => {
-  // A new account with two documents to send.
+test("Business counts what stops the business selling", async ({ page }) => {
+  // A new account that cannot sell until it sends two documents.
   await signIn(page, "+919000000105");
   const business = page
     .getByRole("navigation", { name: /Primary/i })
     .first()
     .getByRole("link", { name: /^Business/ });
-  await expect(business).toHaveAccessibleName("Business, 2 waiting on you");
+  await expect(business).toHaveAccessibleName("Business, 2 stopping sales");
 
   await business.click();
   await page.waitForURL("**/account");
 
   /*
     The profile carries the COUNT and the list lives one tap further in, on
-    Verification (#58 items 2 and 10). The badge and the strip agree because
-    both count `splitByWaitingOn(blocking).operator`; the list is what the strip
-    opens, and it is the list the badge is a count of.
+    Verification (#58 items 2 and 10). Both documents stop sales, so here the
+    badge and the list are the same two things.
   */
   const strip = page.getByRole("link", { name: /things? waiting on you/ });
   await expect(strip).toContainText("2 things waiting on you");
@@ -238,6 +395,29 @@ test("Business counts exactly the list it opens", async ({ page }) => {
   await expect(
     page.getByRole("region", { name: "Waiting on you" }).getByRole("listitem"),
   ).toHaveCount(2);
+});
+
+test("Business carries no count for items that stop nothing", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#96 item 6: "The Business badge reads '2' (two non-blocking
+    verification items)", a label that does not scan. This business is
+    selling with three things outstanding: they are named on Business, and
+    the bar carries no number for them.
+  */
+  await signIn(page, "+919000000115");
+  const business = page
+    .getByRole("navigation", { name: /Primary/i })
+    .first()
+    .getByRole("link", { name: /^Business/ });
+  await expect(business).toHaveAccessibleName("Business");
+
+  await business.click();
+  await page.waitForURL("**/account");
+  await expect(
+    page.getByRole("link", { name: /things? waiting on you/ }),
+  ).toBeVisible();
 });
 
 /*
