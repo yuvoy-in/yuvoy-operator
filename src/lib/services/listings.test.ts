@@ -8,6 +8,7 @@ import {
   listingsWithoutFootage,
   orderListings,
   type OperatorExperience,
+  isDraft,
 } from "./listings";
 
 /*
@@ -387,5 +388,38 @@ describe("what is still missing before publication", () => {
   it("is empty when nothing is outstanding", () => {
     expect(describeBlockers([])).toEqual([]);
     expect(describeBlockers(undefined)).toEqual([]);
+  });
+});
+
+/*
+  The audit before release, O3: the listing's screen read `publicationState`
+  and the edit screen read `status`, so a first listing sent back (a draft
+  again, `changes_rejected` in `status`) opened the revision form.
+*/
+describe("which listing is a draft", () => {
+  it("reads what the listing IS, a sent-back one included", () => {
+    expect(isDraft({ publicationState: "draft", status: "draft" })).toBe(true);
+    expect(
+      isDraft({ publicationState: "draft", status: "changes_rejected" }),
+    ).toBe(true);
+    expect(
+      isDraft({ publicationState: "in_review", status: "in_review" }),
+    ).toBe(false);
+    // A published listing whose EDIT was declined is not a draft.
+    expect(
+      isDraft({ publicationState: "published", status: "changes_rejected" }),
+    ).toBe(false);
+    expect(
+      isDraft({ publicationState: "withdrawn", status: "withdrawn" }),
+    ).toBe(false);
+  });
+
+  it("falls back to the status, sent-back included, on an API that sends no publication state", () => {
+    expect(isDraft({ status: "draft" })).toBe(true);
+    expect(isDraft({ status: "changes_rejected", sentBack: { at: "x" } })).toBe(
+      true,
+    );
+    expect(isDraft({ status: "changes_rejected" })).toBe(false);
+    expect(isDraft({ status: "live" })).toBe(false);
   });
 });

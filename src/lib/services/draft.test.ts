@@ -184,3 +184,22 @@ describe("what the send button says", () => {
     expect(sendLabel("Send again", 2)).toBe("Send again (2 things missing)");
   });
 });
+
+/*
+  The audit before release, O4: "What to look for" and "Photographs and clips"
+  opened the bare edit screen, because the map from a field to its step had no
+  entry for either. Asked of every row the read-back draws, so the next field
+  added to it cannot be forgotten.
+*/
+describe("where each row of the read-back opens", () => {
+  it("opens a step for every row it draws", () => {
+    for (const [key, field] of fields(FULL)) {
+      expect(field.step, `${key} opens no step`).not.toBeNull();
+    }
+  });
+
+  it("opens Location for the landmark and Media for the pictures", () => {
+    expect(fields(FULL).get("meetingLandmark")?.step).toBe("location");
+    expect(fields(FULL).get("media")?.step).toBe("media");
+  });
+});

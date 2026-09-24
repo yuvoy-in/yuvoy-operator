@@ -14,6 +14,8 @@ import { categoryChoices, destinationChoices } from "@/lib/services/vocabulary";
 import { Screen } from "@/components/chrome/screen";
 import { Problem } from "@/components/ui/states";
 import { ListingRow } from "@/components/listings/listing-row";
+import { SentBack } from "@/components/listings/sent-back";
+import { isDraft } from "@/lib/services/listings";
 import { Stepper } from "../../steps/stepper";
 import { BasicsStep } from "../../steps/basics";
 import { SellingStep } from "../../steps/selling";
@@ -109,7 +111,7 @@ export default async function EditListingPage({
 
   /* ------------------------------------------ a published listing (item 6) */
 
-  if (status !== "draft") {
+  if (!isDraft(listing)) {
     return (
       <Screen nav={{ back }}>
         <h1 className="font-display tracking-display text-4xl leading-[1.05]">
@@ -179,6 +181,12 @@ export default async function EditListingPage({
       <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         {listing.title || "Your listing"}
       </h1>
+
+      {/*
+        A first listing sent back is a draft again, edited here: the reason is
+        said above the steps that fix it, as the listing's screen says it.
+      */}
+      {listing.sentBack ? <SentBack sentBack={listing.sentBack} /> : null}
 
       <Stepper id={id} current={step} unfinished={unfinished} />
 

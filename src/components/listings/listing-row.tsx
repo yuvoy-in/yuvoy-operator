@@ -13,6 +13,7 @@ import { activityChoices, type Vocabulary } from "@/lib/services/vocabulary";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { PauseResume } from "./pause-resume";
+import { SentBack } from "./sent-back";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 
@@ -179,31 +180,7 @@ export function ListingRow({
         build has never met falls back to the reviewer's own note rather than
         to a guess.
       */}
-      {listing.sentBack ? (
-        <div className="border-terra-deep/30 mt-3 border-t pt-3">
-          <p className="text-terra-deep text-sm font-bold">
-            We sent this back to you.{" "}
-            {describeRejection(listing.sentBack.rejectionCode) ??
-              listing.sentBack.rejectionNote ??
-              "Message us and we will say why."}
-          </p>
-          {/*
-            The reviewer's own words, when there are any. Empty when they wrote
-            nothing, which the contract states, so this is not a missing-field
-            branch.
-          */}
-          {describeRejection(listing.sentBack.rejectionCode) &&
-          listing.sentBack.rejectionNote?.trim() ? (
-            <p className="text-forest/80 mt-1.5 text-sm">
-              {listing.sentBack.rejectionNote}
-            </p>
-          ) : null}
-          <p className="text-forest/70 mt-1.5 text-sm">
-            It is a draft again. Change it below and send it to us when you are
-            ready.
-          </p>
-        </div>
-      ) : null}
+      {listing.sentBack ? <SentBack sentBack={listing.sentBack} /> : null}
 
       {/*
         Why we came back on an EDIT. A closed set in the contract "precisely so

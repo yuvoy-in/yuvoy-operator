@@ -4,7 +4,10 @@ import { notFound } from "next/navigation";
 import { requireOperator } from "@/lib/auth/session";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError } from "@/lib/api/errors";
-import { describeRejection } from "@/lib/services/listings";
+import {
+  describeRejection,
+  isDraft as draftListing,
+} from "@/lib/services/listings";
 import { listingLabel, posterFor } from "@/lib/services/home";
 import { missingCount } from "@/lib/services/draft";
 import { categoryChoices, destinationChoices } from "@/lib/services/vocabulary";
@@ -98,7 +101,7 @@ export default async function ListingPage({
     `publicationState` says what the listing IS, where `status` folds in the
     latest revision. Both read back the same way, and both can be sent.
   */
-  const isDraft = listing.publicationState === "draft";
+  const isDraft = draftListing(listing);
   const missing = missingCount(listing);
 
   /*

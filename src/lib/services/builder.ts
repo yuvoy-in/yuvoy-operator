@@ -58,10 +58,12 @@ export function previousStep(step: Step): Step | null {
 /**
  * Which step owns a publish blocker.
  *
- * The map is the issue's, field for field. A blocker this build has not heard
- * of belongs to no step: marking a step unfinished over a field it does not
- * contain sends an operator round a form looking for a control that is not
- * there.
+ * The map is the issue's, field for field, and every row the draft read-back
+ * draws besides: "What to look for" and "Photographs and clips" linked to the
+ * bare edit screen, not to the steps that hold them (the audit before release,
+ * O4). A blocker this build has not heard of belongs to no step: marking a
+ * step unfinished over a field it does not contain sends an operator round a
+ * form looking for a control that is not there.
  */
 const OWNER: Record<string, Step> = {
   title: "basics",
@@ -75,6 +77,8 @@ const OWNER: Record<string, Step> = {
   durationMinutes: "selling",
   maxPartySize: "selling",
   meetingPoint: "location",
+  meetingLandmark: "location",
+  media: "media",
 };
 
 export function stepOwning(blocker: string): Step | null {

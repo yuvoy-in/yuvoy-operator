@@ -582,9 +582,21 @@ test("a first listing sent back says so, and says it is a draft again", async ({
   // and two panels about one rejection read as two rejections.
   await expect(page.getByText(/Which jetty gate/)).toHaveCount(1);
 
-  // And the edit form says the same thing, in the row's own words.
-  await openEdit(page, "Night fishing");
-  await expect(row(page).getByText(/It is a draft again/)).toBeVisible();
+  /*
+    And Edit opens the draft's own steps, which is how a draft is changed ("change
+    it with PATCH /experiences/{id} and send it with POST .../submit"), saying
+    the same thing above them. It opened the revision form, which has no
+    category, place or landmark to fix (the audit before release, O3).
+  */
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
+  await page.waitForURL(/\/edit/);
+  await expect(page.getByText(/It is a draft again/)).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: /steps/i }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Propose a change" }),
+  ).toHaveCount(0);
 });
 
 test("the edit screen has no accessibility violations", async ({ page }) => {
