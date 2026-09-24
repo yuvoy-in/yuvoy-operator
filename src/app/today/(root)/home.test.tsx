@@ -304,7 +304,13 @@ const EMPTY_TOMORROW: RunDay = {
 
 describe("the day's sheet", () => {
   it("names each day's section by its whole heading, and draws the counts", () => {
-    render(<DaySheet today={TODAY} tomorrow={EMPTY_TOMORROW} next={null} />);
+    render(
+      <DaySheet
+        today={TODAY}
+        tomorrow={EMPTY_TOMORROW}
+        emptyToday="Nothing running today."
+      />,
+    );
     const today = screen.getByRole("region", {
       name: "Today · 1 departure · 5 guests",
     });
@@ -327,16 +333,22 @@ describe("the day's sheet", () => {
           heading: "Today · 0 departures · 0 guests",
         }}
         tomorrow={EMPTY_TOMORROW}
-        next="tomorrow 09:00"
+        emptyToday="Nothing running today. Next: Thu 09:00."
       />,
     );
     expect(
-      screen.getByText("Nothing running today. Next: tomorrow 09:00."),
+      screen.getByText("Nothing running today. Next: Thu 09:00."),
     ).toBeInTheDocument();
   });
 
   it("says the departures did not load, with a way to try again", () => {
-    render(<DaySheet today={null} tomorrow={null} next={null} />);
+    render(
+      <DaySheet
+        today={null}
+        tomorrow={null}
+        emptyToday="Nothing running today."
+      />,
+    );
     expect(screen.getAllByText("Departures did not load.")).toHaveLength(2);
     expect(
       screen.getAllByRole("link", { name: "Try again" })[0],

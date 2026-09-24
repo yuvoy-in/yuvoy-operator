@@ -21,11 +21,18 @@ import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
 import { listOpenRequests } from "@/lib/day/requests";
 import { listSlots } from "@/lib/day/manifest";
-import { departuresOn } from "@/lib/day/calendar";
+import type { OperatorSlot } from "@/lib/day/types";
+import { departuresOn, shiftDay } from "@/lib/day/calendar";
 import { marketDays, now } from "@/lib/format/market-time";
 import { readInbox } from "@/lib/site/inbox";
 import { isNewOperator, startSelling } from "@/lib/home/checklist";
-import { cashToCollect, runDay } from "@/lib/home/day";
+import {
+  cashToCollect,
+  emptyToday,
+  NEXT_WITHIN_DAYS,
+  nextRunning,
+  runDay,
+} from "@/lib/home/day";
 import {
   readHomeListings,
   readManifests,
@@ -192,12 +199,25 @@ export default async function HomePage() {
         })
       : null;
 
-  // "Next: tomorrow 09:00", for an empty today, only when the read says so.
-  const firstTomorrow = tomorrowSheet?.rows[0];
-  const next =
-    todaySheet && todaySheet.rows.length === 0 && firstTomorrow
-      ? `tomorrow ${firstTomorrow.time}`
-      : null;
+  /*
+    "Nothing running today. Next: Thu 09:00" (#96 block 3). Tomorrow's rows
+    answer it most days. Only when tomorrow has nothing either is the rest of
+    the next 30 days read, once, and a read that fails claims nothing.
+  */
+  let next: OperatorSlot | null | undefined;
+  if (todaySheet && todaySheet.rows.length === 0 && !steps) {
+    next = nextRunning(tomorrowSlots, listings, at);
+    if (next === null) {
+      next = await listSlots(
+        token,
+        shiftDay(today, 2),
+        shiftDay(today, NEXT_WITHIN_DAYS - 1),
+      ).then(
+        (later) => nextRunning(later, listings, at),
+        () => undefined,
+      );
+    }
+  }
 
   return (
     <Screen>
@@ -224,7 +244,11 @@ export default async function HomePage() {
         <StartSelling steps={steps} />
       ) : (
         <>
-          <DaySheet today={todaySheet} tomorrow={tomorrowSheet} next={next} />
+          <DaySheet
+            today={todaySheet}
+            tomorrow={tomorrowSheet}
+            emptyToday={emptyToday(next, today)}
+          />
 
           {me.canManage ? (
             <MoneyGlance

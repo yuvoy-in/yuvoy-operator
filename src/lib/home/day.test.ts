@@ -5,7 +5,9 @@ import {
   cashToCollect,
   checkedIn,
   departureState,
+  emptyToday,
   holdsPeople,
+  nextRunning,
   runDay,
 } from "./day";
 
@@ -501,5 +503,65 @@ describe("the day's sheet", () => {
     expect(
       runDay({ caption: "Today", now: NOW, listings: [], slots: [] }).heading,
     ).toBe("Today · 0 departures · 0 guests");
+  });
+});
+
+/*
+  #96 block 3: "Empty: 'Nothing running today. Next: Thu 09:00'". It could
+  only ever name tomorrow.
+*/
+describe("the next departure, for an empty today", () => {
+  const at = (startsAt: string, over: Partial<OperatorSlot> = {}) =>
+    slot({ id: startsAt, startsAt, sold: 0, ...over });
+
+  it("names the first one somebody could be on, whatever order they arrive in", () => {
+    const next = nextRunning(
+      [
+        at("2026-09-26T03:30:00Z"), // Sat 09:00
+        at("2026-09-24T03:30:00Z"), // Thu 09:00
+        at("2026-09-25T03:30:00Z"), // Fri 09:00
+      ],
+      [LIVE],
+      NOW,
+    );
+    expect(next?.startsAt).toBe("2026-09-24T03:30:00Z");
+    expect(emptyToday(next, "2026-09-22")).toBe(
+      "Nothing running today. Next: Thu 09:00.",
+    );
+  });
+
+  it("skips what nobody could be on: a draft's, a called-off one, one closed and empty, one gone", () => {
+    const next = nextRunning(
+      [
+        at("2026-09-23T03:30:00Z", {
+          experienceId: "exp_draft",
+          onSale: false,
+          notOnSaleReason: "listing_draft",
+        }),
+        at("2026-09-23T04:30:00Z", { status: "cancelled", sold: 4 }),
+        at("2026-09-23T05:30:00Z", { status: "closed" }),
+        at("2026-09-22T02:00:00Z"), // this morning, already gone
+        at("2026-09-23T06:30:00Z", { status: "closed", sold: 2 }), // still coming
+      ],
+      [LIVE, DRAFT],
+      NOW,
+    );
+    expect(next?.startsAt).toBe("2026-09-23T06:30:00Z");
+    expect(emptyToday(next, "2026-09-22")).toBe(
+      "Nothing running today. Next: tomorrow 12:00.",
+    );
+  });
+
+  it("dates one a week or more away", () => {
+    expect(emptyToday(at("2026-10-08T03:30:00Z"), "2026-09-22")).toBe(
+      "Nothing running today. Next: Thu 8 Oct 09:00.",
+    );
+  });
+
+  it("says nothing is coming only when a read said so, and claims nothing otherwise", () => {
+    expect(emptyToday(null, "2026-09-22")).toBe(
+      "Nothing running today, and nothing in the next 30 days.",
+    );
+    expect(emptyToday(undefined, "2026-09-22")).toBe("Nothing running today.");
   });
 });

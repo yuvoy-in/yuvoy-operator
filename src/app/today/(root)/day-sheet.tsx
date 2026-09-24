@@ -26,13 +26,13 @@ import { panelClass } from "@/components/ui/panel";
 export function DaySheet({
   today,
   tomorrow,
-  next,
+  emptyToday,
 }: {
   /** `null` when the departures did not load. */
   today: RunDay | null;
   tomorrow: RunDay | null;
-  /** "tomorrow 09:00", for an empty today, when the read says so. */
-  next: string | null;
+  /** What an empty today says: "Nothing running today. Next: Thu 09:00." */
+  emptyToday: string;
 }) {
   return (
     <div className="group/day mt-8">
@@ -46,12 +46,7 @@ export function DaySheet({
         aria-labelledby="day-today"
         className="mt-4 group-has-[#home-day-tomorrow:checked]/day:hidden"
       >
-        <Day
-          id="day-today"
-          caption="Today"
-          day={today}
-          empty={`Nothing running today.${next ? ` Next: ${next}.` : ""}`}
-        />
+        <Day id="day-today" caption="Today" day={today} empty={emptyToday} />
       </section>
       <section
         aria-labelledby="day-tomorrow"

@@ -1,9 +1,10 @@
+import { marketDayOf } from "@/lib/day/calendar";
 import type { Manifest, OperatorSlot } from "@/lib/day/types";
 import { marketTime } from "@/lib/format/market-time";
 import { formatPaise } from "@/lib/format/money";
 import { takesCash, toBookingCash } from "@/lib/money/bookings";
 import { neverPublished, type HomeListing } from "./listings";
-import { count } from "./words";
+import { count, dayWords } from "./words";
 
 /**
  * The day's run sheet on Home (yuvoy-operator#96 block 3, #82 s1).
@@ -303,4 +304,52 @@ export function runDay(input: {
 
   const summary = `${count(rows.length, "departure", "departures")} · ${count(guests, "guest", "guests")}`;
   return { heading: `${input.caption} · ${summary}`, summary, rows };
+}
+
+/** How far ahead "Next:" looks when today and tomorrow are both empty. */
+export const NEXT_WITHIN_DAYS = 30;
+
+/**
+ * The next departure somebody could be on, after `now`: what "Nothing running
+ * today. Next: Thu 09:00" names (yuvoy-operator#96 block 3).
+ *
+ * The sheet's own rule (`holdsPeople`), so it never names a draft's departure,
+ * a called-off one, or one closed with nobody on it. First off first, whatever
+ * order the rows arrive in.
+ */
+export function nextRunning(
+  slots: readonly OperatorSlot[],
+  listings: readonly HomeListing[] | null,
+  now: number,
+): OperatorSlot | null {
+  const byId = new Map((listings ?? []).map((l) => [l.id, l]));
+  let next: OperatorSlot | null = null;
+  for (const slot of slots) {
+    const at = Date.parse(slot.startsAt);
+    if (Number.isNaN(at) || at <= now) continue;
+    const listing = slot.experienceId ? byId.get(slot.experienceId) : undefined;
+    if (!holdsPeople(slot, listing)) continue;
+    if (!next || at < Date.parse(next.startsAt)) next = slot;
+  }
+  return next;
+}
+
+/**
+ * What an empty today says.
+ *
+ * `next` is the next departure found, `null` when the read found none in the
+ * next `NEXT_WITHIN_DAYS` days, and `undefined` when nothing could say (a read
+ * that failed): then the line claims nothing about the days ahead.
+ */
+export function emptyToday(
+  next: OperatorSlot | null | undefined,
+  today: string,
+): string {
+  if (next === undefined) return "Nothing running today.";
+  if (next === null) {
+    return `Nothing running today, and nothing in the next ${NEXT_WITHIN_DAYS} days.`;
+  }
+  const day = marketDayOf(next.startsAt, next.timezone);
+  if (!day) return "Nothing running today.";
+  return `Nothing running today. Next: ${dayWords(day, today)} ${marketTime(next.startsAt, next.timezone)}.`;
 }
