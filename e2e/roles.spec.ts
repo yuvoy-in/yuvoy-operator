@@ -75,12 +75,12 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
   */
   await page.goto("/today");
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-  await expect(nav.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Today" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Calendar" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Listings" })).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "Money" })).toHaveCount(0);
   await expect(nav.getByRole("link")).toHaveText([
-    /Home/,
+    /Today/,
     /Bookings/,
     /Calendar/,
     /Business/,

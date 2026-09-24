@@ -14,9 +14,9 @@ describe("the help page's sections", () => {
     const sections = helpSections([
       topic("team-one", "Team"),
       topic("money-one", "Money"),
-      topic("home-one", "Home"),
+      topic("home-one", "Today"),
     ]);
-    expect(sections.map((s) => s.area)).toEqual(["Home", "Money", "Team"]);
+    expect(sections.map((s) => s.area)).toEqual(["Today", "Money", "Team"]);
   });
 
   it("leaves out an area with nothing in it", () => {

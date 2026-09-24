@@ -6,8 +6,10 @@
  * FIVE destinations since yuvoy-operator#96, each named for the one job an
  * operator opens it for:
  *
- *   Home      run today and miss nothing: whether the business is selling,
- *             what needs an answer, what is running, the money in a line
+ *   Today     run today and miss nothing: whether the business is selling,
+ *             what needs an answer, what is running, the money in a line.
+ *             The owner's #96 table names the stop "Today"; the screen is
+ *             still Home in code (`lib/home`, `app/today/(root)`).
  *   Bookings  the customers: requests first, then who is coming
  *   Calendar  what can sell and when: departures, seats, closures
  *   Money     earned and owed: the next payout, cash held and owed, statements
@@ -83,12 +85,16 @@ function under(pathname: string, root: string): boolean {
 export const NAV: readonly NavItem[] = [
   {
     href: "/today",
-    label: "Home",
+    /*
+      "Today", the owner's name for it in yuvoy-operator#96's table: it is the
+      day that is run from here. The screen is still called Home in code.
+    */
+    label: "Today",
     icon: "home",
     /*
       The path stays `/today`. It is in operators' histories and a path is not
       something anybody reads. `/today/listing/{id}` is under it, so the
-      listing hub lights Home and draws as a focused screen.
+      listing hub lights Today and draws as a focused screen.
     */
     match: (p) => p === "/today" || p.startsWith("/today/"),
   },

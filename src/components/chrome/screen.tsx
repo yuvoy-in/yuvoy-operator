@@ -12,10 +12,13 @@ import { StageIdentity } from "./stage-identity";
  * phone the stage is the strip above the sheet; on a desktop it is the whole
  * canvas and the sheet is a panel floating on it.
  *
- *   nav="tabs"   a tab root: the compact mark and the business's name on the
- *                strip, the floating bar at the foot, and room left for it
- *   nav={{back}} a focused screen: a back disc, no bar
- *   nav="none"   a signed-out door: the mark and nothing else
+ *   nav="tabs"    a tab root: the compact mark and the business's name on the
+ *                 strip, the floating bar at the foot, and room left for it
+ *   nav={{back}}  a focused screen: a back disc, no bar
+ *   nav="focused" a focused screen's loading fallback: the back disc's place
+ *                 held by an inert disc, since a fallback cannot know where
+ *                 back leads, so the real one lands on it and nothing swaps
+ *   nav="none"    a signed-out door: the mark and nothing else
  *
  * The registry's `isFocusedRoute` / `isBareRoute` are the other half of that
  * decision, pinned by `nav.test.ts`.
@@ -30,7 +33,7 @@ import { StageIdentity } from "./stage-identity";
  * carries the mark and the name, so a tab root's strip keeps only the inbox.
  */
 export type ScreenNav =
-  "tabs" | "none" | { back: { href: string; label: string } };
+  "tabs" | "none" | "focused" | { back: { href: string; label: string } };
 
 export function Screen({
   children,
@@ -74,6 +77,11 @@ export function Screen({
         <header className="relative flex h-14 items-center gap-3 px-4">
           {back ? (
             <BackButton {...back} />
+          ) : nav === "focused" ? (
+            <span
+              aria-hidden="true"
+              className="bg-paper/10 ring-paper/12 inline-flex size-11 shrink-0 rounded-full ring-1"
+            />
           ) : nav === "tabs" ? (
             // The rail carries the mark and the name on a desktop.
             <StageIdentity className="lg:hidden" />

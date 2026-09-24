@@ -87,7 +87,7 @@ async function startDraft(page: Page, title: string, category = "adventure") {
  * The one row the edit screen draws.
  *
  * Scoped to `main`, because on the desktop project the primary nav is a rail of
- * list items and `getByRole("listitem").first()` matches "Home" in it. That is
+ * list items and `getByRole("listitem").first()` matches "Today" in it. That is
  * the shape of bug that passes on one project and fails on the other, which is
  * the worst way for a check to be wrong.
  */
@@ -123,7 +123,7 @@ test("the two old section URLs land where their content went", async ({
 });
 
 test("the old /reels URL still works", async ({ page }) => {
-  // Two redirects deep: `/reels` to `/services/reels` to the Reels tab.
+  // One redirect, straight to the Reels tab of the business profile.
   await signIn(page);
   await page.goto("/reels");
   await page.waitForURL(/\/account\?tab=reels/);

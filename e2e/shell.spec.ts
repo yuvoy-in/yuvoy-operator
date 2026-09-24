@@ -40,13 +40,13 @@ test("a tab root names exactly five destinations, and says where you are", async
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
   await expect(nav.getByRole("link")).toHaveCount(5);
   await expect(nav.getByRole("link")).toHaveText([
-    /Home/,
+    /Today/,
     /Bookings/,
     /Calendar/,
     /Money/,
     /Business/,
   ]);
-  await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Home/i);
+  await expect(nav.locator('a[aria-current="page"]')).toHaveText(/Today/i);
 });
 
 test("every stop on the bar carries its word, not only the current one", async ({
@@ -64,7 +64,7 @@ test("every stop on the bar carries its word, not only the current one", async (
   );
   await signIn(page);
   const nav = page.getByRole("navigation", { name: /Primary/i }).first();
-  for (const word of ["Home", "Bookings", "Calendar", "Money", "Business"]) {
+  for (const word of ["Today", "Bookings", "Calendar", "Money", "Business"]) {
     await expect(nav.getByText(word, { exact: true })).toBeVisible();
   }
 });

@@ -27,7 +27,7 @@ describe("the bar and the rail", () => {
     render(<NavList orientation="bar" canManage />);
     const links = screen.getAllByRole("link");
     expect(links.map((a) => a.textContent)).toEqual([
-      "Home",
+      "Today",
       "Bookings",
       "Calendar",
       "Money",
@@ -44,7 +44,7 @@ describe("the bar and the rail", () => {
   it("draws no Money stop for a login that cannot manage, and moves nothing", () => {
     render(<NavList orientation="bar" canManage={false} />);
     expect(screen.getAllByRole("link").map((a) => a.textContent)).toEqual([
-      "Home",
+      "Today",
       "Bookings",
       "Calendar",
       "Business",
@@ -189,6 +189,30 @@ describe("the stage strip", () => {
     expect(
       screen.getByRole("link", { name: "Back to home" }),
     ).toBeInTheDocument();
+  });
+
+  it("draws a focused screen's loading fallback in the focused header, not a door's", async () => {
+    /*
+      It wore the door's chassis: the wordmark where the back disc goes and no
+      inbox, so every focused screen swapped its header when it arrived.
+    */
+    const { FocusedSkeleton } =
+      await import("@/components/states/route-skeletons");
+    const { container } = render(
+      <ChromeProvider identity={{ businessName: "Reef", canManage: true }}>
+        <FocusedSkeleton />
+      </ChromeProvider>,
+    );
+    expect(screen.queryByAltText("Yuvoy")).toBeNull();
+    expect(screen.getByRole("link", { name: "Messages" })).toBeInTheDocument();
+    // The back disc's place is held, inert: no link to a place it cannot know.
+    const header = container.querySelector("header")!;
+    expect(
+      header.querySelector('span[aria-hidden="true"].size-11'),
+    ).not.toBeNull();
+    expect(within(header).getAllByRole("link")).toHaveLength(1);
+    // No tab bar clearance: a focused screen has no bar.
+    expect(container.querySelector(".tabbar-clearance")).toBeNull();
   });
 
   it("carries no inbox on a signed-out door", () => {

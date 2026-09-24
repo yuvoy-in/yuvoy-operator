@@ -174,7 +174,7 @@ describe("focused and bare routes", () => {
       a phone at six in the morning, and a stop that moves is a mis-tap.
     */
     expect(NAV.map((n) => n.label)).toEqual([
-      "Home",
+      "Today",
       "Bookings",
       "Calendar",
       "Money",
@@ -237,7 +237,7 @@ describe("focused and bare routes", () => {
 describe("who is shown which stop, yuvoy-operator#96", () => {
   it("shows a login that can manage all five", () => {
     expect(navFor({ canManage: true }).map((n) => n.label)).toEqual([
-      "Home",
+      "Today",
       "Bookings",
       "Calendar",
       "Money",
@@ -251,7 +251,7 @@ describe("who is shown which stop, yuvoy-operator#96", () => {
       The four that stay keep their order: a stop that moves is a mis-tap.
     */
     expect(navFor({ canManage: false }).map((n) => n.label)).toEqual([
-      "Home",
+      "Today",
       "Bookings",
       "Calendar",
       "Business",

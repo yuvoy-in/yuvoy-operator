@@ -12,7 +12,7 @@
 
 /** Where the question comes up. The help page groups by it, in this order. */
 export const HELP_AREAS = [
-  "Home",
+  "Today",
   "Bookings",
   "Calendar",
   "Listings",

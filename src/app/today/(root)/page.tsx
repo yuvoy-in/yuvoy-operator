@@ -44,7 +44,7 @@ import { DaySheet } from "./day-sheet";
 import { Glance, MoneyGlance } from "./glance";
 import { StartSelling } from "./start-selling";
 
-export const metadata: Metadata = { title: "Home" };
+export const metadata: Metadata = { title: "Today" };
 
 /*
   Never prerendered, never cached: every number here is a live seat count or a
@@ -209,7 +209,7 @@ export default async function HomePage() {
         business is selling. It stays in the document, because a page without
         one is a page a screen reader cannot orient in.
       */}
-      <h1 className="sr-only">Home</h1>
+      <h1 className="sr-only">Today</h1>
 
       <StatusLine status={status} />
 

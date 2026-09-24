@@ -26,7 +26,7 @@ async function signIn(page: Page) {
 test("an operator signs in and lands on Home", async ({ page }) => {
   await signIn(page);
   /*
-    The day's own line is the heading now (#56). The screen's `h1` says "Home"
+    The day's own line is the heading now (#56). The screen's `h1` says "Today"
     and is visually hidden: a heading naming the screen is the screen naming
     itself, and the useful heading is what is running today.
   */

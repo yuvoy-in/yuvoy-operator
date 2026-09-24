@@ -1,16 +1,10 @@
-import type { OperatorSlot } from "@/lib/day/types";
 import { marketDayOf } from "@/lib/day/calendar";
 import { describeStatus } from "./listings";
 
 /**
- * Home, at a glance — yuvoy-operator#56 items 3 to 5.
- *
- * ## One read for every listing, never one per listing
- *
- * "Never one call per listing", and the issue says it twice. A shop with nine
- * listings would otherwise make nine slot requests on the screen an operator
- * opens at six in the morning on one bar of signal. The fortnight is read once
- * and the next departure is found in it.
+ * A listing at a glance: where it sits in the list, what its badge says, the
+ * picture on its tile, and the fortnight of departures its hub draws
+ * (yuvoy-operator#56 items 3 to 5). Home's own blocks live in `lib/home`.
  */
 
 export interface ListingLike {
@@ -116,29 +110,6 @@ export function listingLabel(listing: ListingLike): string {
   return describeStatus(listing.status).label;
 }
 
-/**
- * The next departure of one listing, out of the fortnight already read.
- *
- * `open` only: a closed departure is not selling and a called-off one is not
- * running, so neither is the thing an operator means by "next". Later than
- * NOW rather than later than today, because a 06:00 boat is not the next
- * departure at 09:00.
- */
-export function nextDeparture(
-  slots: readonly OperatorSlot[],
-  listingId: string,
-  now: number,
-): OperatorSlot | null {
-  for (const slot of slots) {
-    if (slot.experienceId !== listingId) continue;
-    if (slot.status !== "open") continue;
-    const at = Date.parse(slot.startsAt);
-    if (Number.isNaN(at) || at <= now) continue;
-    return slot;
-  }
-  return null;
-}
-
 export interface MediaLike {
   /**
    * NESTED, because `OperatorMedia` nests it: "the listing this media belongs
@@ -171,40 +142,6 @@ export function posterFor(
   );
   const live = mine.find((m) => m.situation === "live");
   return (live ?? mine[0])?.posterUrl ?? null;
-}
-
-/** "Today · 3 departures · 11 guests". The header over the day's rows. */
-export function dayLine(
-  caption: string,
-  slots: readonly OperatorSlot[],
-): string {
-  const departures =
-    slots.length === 1 ? "1 departure" : `${slots.length} departures`;
-  /*
-    Guests on the departures that are still RUNNING. A called-off departure's
-    seats were cancelled and refunded, and counting them would tell an operator
-    to expect people who are not coming.
-  */
-  const guests = slots
-    .filter((s) => s.status !== "cancelled")
-    .reduce((n, s) => n + s.sold, 0);
-  const people = guests === 1 ? "1 guest" : `${guests} guests`;
-  return `${caption} · ${departures} · ${people}`;
-}
-
-/** What the right-hand side of a departure row says. */
-export function seatsLine(slot: OperatorSlot): string {
-  if (slot.status === "cancelled") return "Called off";
-  const seats = `${slot.sold}/${slot.seats}`;
-  return slot.status === "closed" ? `${seats} · Closed` : seats;
-}
-
-/** "5 requests waiting · 2 within the hour", or nothing at all at zero. */
-export function requestsLine(total: number, urgent: number): string | null {
-  if (total <= 0) return null;
-  const waiting =
-    total === 1 ? "1 request waiting" : `${total} requests waiting`;
-  return urgent > 0 ? `${waiting} · ${urgent} within the hour` : waiting;
 }
 
 /** Only the departures on market days up to today + 13, soonest first. */
