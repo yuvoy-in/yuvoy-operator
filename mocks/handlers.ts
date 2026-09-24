@@ -6857,8 +6857,13 @@ export const handlers = [
 
     const id = `chg_${Math.random().toString(36).slice(2, 10)}`;
     const objectionUntil = new Date(Date.now() + 24 * 3600_000).toISOString();
-    // Masked. Only the last four digits are ever stored.
-    const summary = `${body.bankName || "Bank"} ••••${account.slice(-4)} · ${(body.ifsc ?? "").toUpperCase()}`;
+    /*
+      Masked, in the API's own shape (`BankChange.Summary`): "HDFC Bank ····4412
+      (HDFC0001234)", or "····4412 (HDFC0001234)" with no bank name. It wrote
+      "Bank ••••4412 · HDFC0001234" before, a shape no API sends.
+    */
+    const ifsc = (body.ifsc ?? "").toUpperCase();
+    const summary = `${body.bankName ? `${body.bankName} ` : ""}····${account.slice(-4)} (${ifsc})`;
 
     bankChanges.unshift({
       // Whose it is. See `changesFor`.

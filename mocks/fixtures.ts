@@ -1251,10 +1251,28 @@ export const CHANGE_REQUESTS = [
     // `cooling` is approved and STILL STOPPABLE — the state most worth
     // rendering, because an operator can still act on it.
     state: "cooling",
-    summary: "HDFC Bank ••••4417 · HDFC0001234",
+    summary: "HDFC Bank ····4417 (HDFC0001234)",
     requestedAt: todayAt("09:00", -1),
     objectionUntil: null,
     coolingUntil: todayAt("09:00", 1),
+  },
+  {
+    /*
+      A bank change we refused, with the sentence the API writes for the
+      business (yuvoy-api#223, `ChangeRejectionMessage`). It names the
+      published support line: the API's own constant is a number that is not
+      Yuvoy's (yuvoy-api#235), and the portal holds back any sentence naming
+      another number, which the unit tests cover; this is the API once fixed.
+    */
+    id: "chg_bank_rejected",
+    kind: "bank_account",
+    state: "rejected",
+    summary: "SBI ····1111 (SBIN0000123)",
+    requestedAt: todayAt("09:00", -60),
+    objectionUntil: null,
+    coolingUntil: null,
+    rejectionReason:
+      "We could not accept the new bank details. Your payouts still go to the account already on file. Call us on +91 81216 57657 and we will tell you what we need.",
   },
   {
     id: "chg_bank_0",

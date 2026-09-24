@@ -10,6 +10,7 @@ import {
 } from "@/lib/money/fetch";
 import { payoutHold, type ChangeRequest } from "@/lib/money/earnings";
 import { accountOnFile } from "@/lib/account/bank";
+import { canManageAccess } from "@/lib/team/access";
 import {
   SETTLEMENT_STATE_LABEL,
   isOwedBack,
@@ -151,7 +152,9 @@ export default async function MoneyPage({
         A payout held by a bank change in flight. Above everything, because it
         changes what every figure below means: owed, and not moving.
       */}
-      {hold ? <HoldWarning hold={hold} /> : null}
+      {hold ? (
+        <HoldWarning hold={hold} canStop={canManageAccess(me.roles)} />
+      ) : null}
 
       {blocks.map((block) => {
         switch (block) {
@@ -289,12 +292,24 @@ export default async function MoneyPage({
  * two things an operator can act on: which stage the change is at, and that
  * they can stop it if they did not ask for it.
  */
-function HoldWarning({ hold }: { hold: ChangeRequest }) {
+function HoldWarning({
+  hold,
+  canStop,
+}: {
+  hold: ChangeRequest;
+  /**
+   * OWNER or ADMIN. A manager reads this screen too, and was told to "stop it
+   * now" on a Payout details that then refused them.
+   */
+  canStop: boolean;
+}) {
   const stage =
     hold.state === "cooling"
       ? "approved and waiting out its cooling period"
       : hold.state === "objection_window"
-        ? "in its objection window: you can still stop it"
+        ? canStop
+          ? "in its objection window: you can still stop it"
+          : "in its objection window"
         : "awaiting review";
   return (
     <Panel tone="alert" className="mt-6 p-6">
@@ -303,7 +318,10 @@ function HoldWarning({ hold }: { hold: ChangeRequest }) {
       </p>
       <p className="text-forest/80 mt-2 text-sm">
         {hold.summary ?? "A bank change"} is {stage}. Nothing is paid out until
-        it settles. If you did not request this, stop it now from{" "}
+        it settles.{" "}
+        {canStop
+          ? "If you did not request this, stop it now from "
+          : "If nobody at your business asked for it, an owner or an admin can stop it from "}
         <Link
           href="/payouts"
           className="text-terra-deep font-bold underline underline-offset-4"

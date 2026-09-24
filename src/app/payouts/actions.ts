@@ -274,7 +274,10 @@ export async function cancelChange(
       const refusal = suspendedMessage(err);
       if (refusal) return { message: refusal };
       if (err.status === 403) {
-        return { message: "Only the owner can stop a bank change." };
+        // OWNER or ADMIN may stop one (D33); raising is the OWNER-only half.
+        return {
+          message: "Only an owner or an admin can stop a bank change.",
+        };
       }
       if (err.isNotFound) {
         return {

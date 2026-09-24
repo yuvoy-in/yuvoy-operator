@@ -18,14 +18,16 @@ import { Panel } from "@/components/ui/panel";
  * plus one convincing phone call is otherwise enough to redirect a season's
  * takings, and the brake must be closer to hand than the accelerator.
  *
- * ## Two taps, and why that is still closer to hand
+ * ## Two taps, and the first one is a button
  *
  * Stopping cannot be undone: an owner who did ask for the change has to raise
- * it again, with a new code and both clocks from the start. So it follows the
- * rule every destructive action in the portal now follows (yuvoy-operator#81):
- * the words in the warning colour, and a confirm that says what happens, whose
- * button carries the danger pill. It is still no code and no waiting, which
- * raising a change never is.
+ * it again, with a new code and both clocks from the start. So it asks once,
+ * saying what happens. But it is the SAFETY action, not a destructive one
+ * (the contract keeps it off step-up so "the emergency brake" is never
+ * "further away than the accelerator"), so the control that opens the question
+ * is a visible danger pill, never the quiet text #81 gives an action it is
+ * demoting. It is still no code and no waiting, which raising a change never
+ * is.
  */
 export function ChangePanel({
   id,
@@ -35,6 +37,8 @@ export function ChangePanel({
   coolingUntil,
   requestedAt,
   canStop,
+  isOwner,
+  hasAccountOnFile,
 }: {
   id: string;
   state: ChangeState;
@@ -42,6 +46,14 @@ export function ChangePanel({
   objectionUntil?: string | null;
   coolingUntil?: string | null;
   requestedAt?: string;
+  /** Raising a change is OWNER only, so only an owner could raise it again. */
+  isOwner: boolean;
+  /**
+   * Whether an account is on file, so "payouts keep going to it" is true. A
+   * first account stopped leaves nothing on file, and saying otherwise would
+   * promise payouts to an account that does not exist.
+   */
+  hasAccountOnFile: boolean;
   /**
    * Whether this person may stop the change — **OWNER or ADMIN**, which is a
    * WIDER set than the one that may raise it.
@@ -70,8 +82,12 @@ export function ChangePanel({
       <Panel tone="done">
         <p className="text-base font-bold">Stopped. Nothing was changed.</p>
         <p className="text-forest/80 mt-2 text-sm">
-          Payouts still go to the account you had. If you did not raise this in
-          the first place, change your sign-in and tell us.
+          {/*
+            "Change your sign-in" was here, and there is nothing to change: a
+            sign-in is a code sent each time. Calling us is what helps.
+          */}
+          {hasAccountOnFile ? "Payouts still go to the account on file. " : ""}
+          If nobody at your business asked for this, call us.
         </p>
       </Panel>
     );
@@ -128,8 +144,12 @@ export function ChangePanel({
             <p className="text-sm font-bold">Stop this change?</p>
             {/* What happens, named before the tap that does it. */}
             <p className="text-forest/80 mt-1.5 text-sm">
-              Payouts keep going to the account you have. If you did ask for it,
-              you will need to raise it again.
+              {hasAccountOnFile
+                ? "Payouts keep going to the account on file. "
+                : "Nothing about where the money goes is changed. "}
+              {isOwner
+                ? "If you did ask for it, you will need to raise it again."
+                : "If an owner did ask for it, they will need to raise it again."}
             </p>
             <div className="mt-4 flex gap-2">
               <Button
@@ -162,10 +182,10 @@ export function ChangePanel({
             </p>
             <Button
               onClick={() => setConfirming(true)}
-              variant="danger-quiet"
+              variant="danger"
               size="md"
               block={false}
-              className="mt-2"
+              className="mt-3"
             >
               {"This wasn't me. Stop it"}
             </Button>

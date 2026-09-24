@@ -1,4 +1,6 @@
 import type { ChangeRequest } from "@/lib/account/change-kind";
+import { dedash } from "@/lib/format/dedash";
+import { SUPPORT_PHONE_HREF } from "@/lib/site/contact";
 import { marketDate, marketDateLabel } from "@/lib/format/market-time";
 
 /**
@@ -27,8 +29,10 @@ import { marketDate, marketDateLabel } from "@/lib/format/market-time";
  * - `waiting`: in any state before a decision. Only `pending` is used for
  *   these kinds today; the objection window and the cooling period are the
  *   bank change's, and are read the same way because the enum is shared.
- * - `refused`: the newest one was rejected. The row carries no reason, so the
- *   screen says what happened and not why.
+ * - `refused`: the newest one was rejected. Since yuvoy-api#223 the row may
+ *   carry `rejectionReason`, a sentence written for the business ("never the
+ *   words our staff typed"); absent, the screen says what happened and not
+ *   why, and never invents a reason.
  * - `null` for everything else, INCLUDING a row older than the value on file:
  *   a logo set directly (a business that is not LIVE, or no longer is) after
  *   an earlier review is newer news than that review, whatever state it is
@@ -39,7 +43,7 @@ export type ReviewKind = "logo" | "profile";
 
 export type Review =
   | { state: "waiting"; requestedAt: string | null }
-  | { state: "refused"; requestedAt: string | null };
+  | { state: "refused"; requestedAt: string | null; reason: string | null };
 
 const WAITING = new Set(["pending", "objection_window", "cooling"]);
 
@@ -66,8 +70,50 @@ export function reviewOf(
 
   const state = newest.state ?? "";
   if (WAITING.has(state)) return { state: "waiting", requestedAt };
-  if (state === "rejected") return { state: "refused", requestedAt };
+  if (state === "rejected") {
+    return {
+      state: "refused",
+      requestedAt,
+      reason: rejectionReason(newest),
+    };
+  }
   return null;
+}
+
+/**
+ * The API's sentence for a refusal (yuvoy-api#223), long dashes out, or null.
+ * Present only on a rejected row somebody recorded a reason for.
+ */
+export function rejectionReason(
+  row: Pick<ChangeRequest, "state" | "rejectionReason">,
+): string | null {
+  if (row.state !== "rejected") return null;
+  const text = row.rejectionReason?.trim();
+  if (!text) return null;
+  /*
+    Never a phone number that is not ours. The API's sentences say "Call us
+    on +91 9531 000 000", which is not a Yuvoy number (owner, 24 Sep 2026; the
+    published line is SUPPORT_PHONE), and an operator told why their bank
+    change was refused would ring nobody. So a sentence naming any other
+    number is held back and today's words are said instead; once the API's
+    number is right, the sentence shows with no change here.
+  */
+  if (!onlyOurNumber(text)) return null;
+  return dedash(text);
+}
+
+/** A run of digits long enough to be a phone number, spaces and hyphens allowed. */
+const PHONE_NUMBER = /\+?\d[\d\s-]{8,}\d/g;
+
+/** Whether every phone number in `text` is Yuvoy's published support line. */
+export function onlyOurNumber(text: string): boolean {
+  const ours = SUPPORT_PHONE_HREF.replace(/\D/g, "");
+  for (const match of text.matchAll(PHONE_NUMBER)) {
+    const digits = match[0].replace(/\D/g, "");
+    // With or without the country code: "+91 81216 57657", "81216 57657".
+    if (digits !== ours && !ours.endsWith(digits)) return false;
+  }
+  return true;
 }
 
 /** Milliseconds, or 0 for a missing or unreadable time (sorts it last). */
@@ -88,6 +134,8 @@ export interface ReviewNote {
   state: Review["state"];
   /** "21 September 2026", or null when the row did not say. */
   sentOn: string | null;
+  /** The API's sentence for a refusal, when it sent one (yuvoy-api#223). */
+  reason: string | null;
 }
 
 export function reviewNote(review: Review | null): ReviewNote | null {
@@ -96,5 +144,6 @@ export function reviewNote(review: Review | null): ReviewNote | null {
   return {
     state: review.state,
     sentOn: Number.isNaN(ms) ? null : marketDateLabel(marketDate(new Date(ms))),
+    reason: review.state === "refused" ? review.reason : null,
   };
 }

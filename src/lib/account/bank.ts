@@ -157,11 +157,12 @@ export function accountOnFile(requests: readonly BankRow[]): OnFile | null {
  * The parts of a masked bank summary.
  *
  * The API writes `HDFC Bank ····4412 (HDFC0001234)`, or `····4412
- * (HDFC0001234)` with no bank name (yuvoy-api `BankChange.Summary`); the mock
- * has written `HDFC Bank ••••4417 · HDFC0001234`. Both are read: the IFSC by
- * its own shape (four letters, a zero, six more), the last four as the digits
- * after the mask, and the bank as whatever comes before the mask. A bare
- * "Bank" is the mock's stand-in for no name, and says nothing.
+ * (HDFC0001234)` with no bank name (yuvoy-api `BankChange.Summary`), and the
+ * mock now writes the same. An older mock wrote `HDFC Bank ••••4417 ·
+ * HDFC0001234`, and both are still read: the IFSC by its own shape (four
+ * letters, a zero, six more), the last four as the digits after the mask, and
+ * the bank as whatever comes before the mask. A bare "Bank" was that mock's
+ * stand-in for no name, and says nothing.
  */
 export function parseBankSummary(summary: string): {
   ifsc: string | null;

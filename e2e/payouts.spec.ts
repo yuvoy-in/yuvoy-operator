@@ -101,7 +101,7 @@ test("the in-flight change shows both clocks and the brake", async ({
   await expect(page.getByText("It takes no code and no waiting")).toBeVisible();
 
   // Masked, never a full account number.
-  await expect(page.getByText(/••••4417/)).toBeVisible();
+  await expect(page.getByText(/····4417/)).toBeVisible();
 
   /*
     What is on file is text, read from the newest change that went live, in
@@ -286,7 +286,8 @@ test("a valid change is raised, and nothing is live yet", async ({ page }) => {
     snapshot.
   */
   await expect(page.getByText("Raised: you can still stop this")).toBeVisible();
-  await expect(page.getByText(/Bank ••••6789/)).toBeVisible();
+  // In the API's own summary shape (`BankChange.Summary`).
+  await expect(page.getByText("····6789 (HDFC0001234)")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "This wasn't me. Stop it" }),
   ).toBeVisible();
@@ -325,6 +326,24 @@ test("a bank change in flight holds the payout, and earnings says so", async ({
     page.getByText(/objection window: you can still stop it/),
   ).toBeVisible();
   await expect(page.getByText(/If you did not request this/)).toBeVisible();
+});
+
+test("a refused bank change says why, in the API's sentence", async ({
+  page,
+}) => {
+  /*
+    yuvoy-api#223: a refused bank change said "Rejected" and nothing else, and
+    the next thing that happened was a phone call. The row now carries the
+    sentence the API writes for the business, never what our staff typed.
+  */
+  await signIn(page);
+  await page.goto("/payouts");
+  const row = page.locator("li").filter({ hasText: "SBI ····1111" });
+  await expect(row.getByText("Rejected")).toBeVisible();
+  await expect(
+    row.getByText(/We could not accept the new bank details/),
+  ).toBeVisible();
+  await expect(row.getByText(/\+91 81216 57657/)).toBeVisible();
 });
 
 test("/payouts has no accessibility violations", async ({ page }) => {

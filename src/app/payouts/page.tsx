@@ -9,6 +9,7 @@ import {
   isOpen,
   type ChangeState,
 } from "@/lib/account/bank";
+import { rejectionReason } from "@/lib/account/review";
 import { canManageAccess } from "@/lib/team/access";
 import { helpHref } from "@/lib/help";
 import { ChangePanel } from "./change-panel";
@@ -136,6 +137,8 @@ export default async function PayoutsPage() {
               coolingUntil={r.coolingUntil}
               requestedAt={r.requestedAt}
               canStop={canStop}
+              isOwner={isOwner}
+              hasAccountOnFile={onFile !== null}
             />
           ))}
         </div>
@@ -150,19 +153,30 @@ export default async function PayoutsPage() {
           </h2>
           <Panel className="mt-3 p-0">
             <ul className="divide-paper-line divide-y">
-              {history.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex items-baseline justify-between gap-4 px-5 py-3 text-sm"
-                >
-                  <span className="min-w-0 font-mono wrap-break-word">
-                    {r.summary}
-                  </span>
-                  <span className="text-forest/70 shrink-0">
-                    {historyLabel((r.state ?? "") as ChangeState)}
-                  </span>
-                </li>
-              ))}
+              {history.map((r) => {
+                /*
+                  Why a bank change was refused, in the API's sentence, when
+                  somebody recorded a reason (yuvoy-api#223). "The next thing
+                  that happens is a phone call" was the problem; the sentence
+                  says which call to make.
+                */
+                const reason = rejectionReason(r);
+                return (
+                  <li key={r.id} className="px-5 py-3 text-sm">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="min-w-0 font-mono wrap-break-word">
+                        {r.summary}
+                      </span>
+                      <span className="text-forest/70 shrink-0">
+                        {historyLabel((r.state ?? "") as ChangeState)}
+                      </span>
+                    </div>
+                    {reason ? (
+                      <p className="text-forest/80 mt-1.5">{reason}</p>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           </Panel>
         </section>
