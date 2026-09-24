@@ -60,7 +60,6 @@ const GATED: Array<[string, string, unknown?]> = [
     "/blackouts",
     { from: "2030-01-01", to: "2030-01-02", reasonCode: "WEATHER" },
   ],
-  ["POST", "/slots/slot_any/offline-sales", { seats: 1 }],
   [
     "POST",
     "/slots/slot_any/call-off",
@@ -116,6 +115,42 @@ describe("manage-only endpoints refuse STAFF with the contract's 403", () => {
     const body = (await res.json()) as { imageId: string; uploadUrl: string };
     expect(body.imageId).toBeTruthy();
     expect(body.uploadUrl).toBeTruthy();
+  });
+
+  it("does NOT refuse a counter sale, or taking one back", async () => {
+    /*
+      yuvoy-api#226, and the owner's ruling of 23 Sep 2026. Recording a
+      counter sale is plain `auth` in the API, and taking one back is the same
+      people on purpose: "the person who mistypes the count is the person at
+      the counter". This list used to hold the record as manager-only, which
+      is how the portal came to hide counter sales from staff.
+    */
+    const staff = await signIn(STAFF);
+    const recorded = await call(
+      staff,
+      "POST",
+      "/slots/slot_dawn/offline-sales",
+      { seats: 1 },
+    );
+    expect(recorded.status).toBe(200);
+    const { id } = (await recorded.json()) as { id: string };
+    expect(id).toBeTruthy();
+
+    const takenBack = await call(
+      staff,
+      "DELETE",
+      `/slots/slot_dawn/offline-sales/${id}`,
+    );
+    expect(takenBack.status).toBe(200);
+    // A second one moves nothing, and says it was already done.
+    const again = await call(
+      staff,
+      "DELETE",
+      `/slots/slot_dawn/offline-sales/${id}`,
+    );
+    expect(again.status).toBe(409);
+    const json = (await again.json()) as { error: { code: string } };
+    expect(json.error.code).toBe("already_taken_back");
   });
 
   it("is a role refusal, not a broken endpoint: the OWNER gets past it", async () => {

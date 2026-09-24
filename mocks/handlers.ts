@@ -229,6 +229,17 @@ let calledOff: Record<string, string> = {};
 let capacity: Record<string, number> = {};
 /** Seats reported sold at the operator's own counter. */
 let offlineSold: Record<string, number> = {};
+/**
+ * Each counter sale recorded this session, so one can be taken back by its id
+ * (`DELETE /slots/{id}/offline-sales/{saleId}`, yuvoy-api#226). A take-back
+ * leaves the entry on the record, as the API's append-only adjustments do.
+ */
+let offlineEntries: {
+  id: string;
+  slotId: string;
+  seats: number;
+  takenBack: boolean;
+}[] = [];
 /** Sessions elevated by a step-up code, and bank changes raised. */
 let steppedUp = false;
 let bankChanges: Record<string, unknown>[] = [];
@@ -1455,6 +1466,32 @@ function slotStatusOf(slot: MockSlot): string {
  * that was closed and then called off is called off, and the heavier fact is
  * the one somebody needs.
  */
+/**
+ * A departure's seat numbers the way `GET /slots` computes them (yuvoy-api
+ * `ListSlots` at 2afd7b4): counter sales come OFF `seats`, floored at zero,
+ * `sold` is what Yuvoy sold, and `soldOffline` is every counter sale, the
+ * fixture's own and this session's, the same number the manifest reports.
+ *
+ * It added counter sales to `sold` before, which no API sends: a six-seat boat
+ * with two walk-ups read "2 of 6 sold" here and "0 of 4 sold" in production.
+ * A fixture's `seats` is already net of its own `seatsSoldOffline`.
+ */
+function departureSeats(slot: MockSlot): {
+  seats: number;
+  sold: number;
+  remaining: number;
+  soldOffline: number;
+} {
+  const session = offlineSold[slot.id] ?? 0;
+  const seats = Math.max(0, (capacity[slot.id] ?? slot.seats) - session);
+  return {
+    seats,
+    sold: slot.sold,
+    remaining: Math.max(0, seats - slot.sold),
+    soldOffline: (slot.seatsSoldOffline ?? 0) + session,
+  };
+}
+
 function saleVerdictOf(
   slot: MockSlot,
   seats: number,
@@ -1801,6 +1838,7 @@ export function __resetOperatorMocks() {
   calledOff = {};
   capacity = {};
   offlineSold = {};
+  offlineEntries = [];
   steppedUp = false;
   bankChanges = [];
   accountChanges = [];
@@ -2007,6 +2045,7 @@ function requireSession(request: Request) {
 function publicMember(member: MockTeamMember) {
   // `inviteEmail` is dropped with the number: neither is in `TeamMember`.
   const { phone, inviteEmail: _inviteEmail, ...rest } = member;
+  void _inviteEmail;
   return { ...rest, phoneMasked: `••••${phone.slice(-4)}` };
 }
 
@@ -4202,8 +4241,7 @@ export const handlers = [
       .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
       .slice(0, 200)
       .map((slot) => {
-        const seats = capacity[slot.id] ?? slot.seats;
-        const sold = slot.sold + (offlineSold[slot.id] ?? 0);
+        const { seats, sold, remaining, soldOffline } = departureSeats(slot);
         return {
           id: slot.id,
           experienceId: slot.experienceId,
@@ -4212,7 +4250,8 @@ export const handlers = [
           timezone: slot.timezone,
           seats,
           sold,
-          remaining: Math.max(0, seats - sold),
+          remaining,
+          soldOffline,
           ...(slot.bookingMode ? { bookingMode: slot.bookingMode } : {}),
           status: slotStatusOf(slot),
           ...saleVerdictOf(slot, seats, sold),
@@ -5505,8 +5544,7 @@ export const handlers = [
     */
     return HttpResponse.json({
       items: inRange.map((s) => {
-        const seats = capacity[s.id] ?? s.seats;
-        const sold = s.sold + (offlineSold[s.id] ?? 0);
+        const { seats, sold, remaining, soldOffline } = departureSeats(s);
         return {
           id: s.id,
           experienceId: s.experienceId,
@@ -5515,7 +5553,9 @@ export const handlers = [
           timezone: s.timezone,
           seats,
           sold,
-          remaining: Math.max(0, seats - sold),
+          remaining,
+          // Always sent since 2afd7b4, 0 when none (yuvoy-api#226).
+          soldOffline,
           // Omitted when the fixture omits it. One departure has no mode on
           // purpose: the screen must say nothing rather than assume held seats.
           ...(s.bookingMode ? { bookingMode: s.bookingMode } : {}),
@@ -5595,7 +5635,10 @@ export const handlers = [
       totals: {
         parties: parties.length,
         guests,
-        arrived: parties.filter((p) => p.arrived).length,
+        // Guests, not parties: the API adds up each arrived party's guests.
+        arrived: parties
+          .filter((p) => p.arrived)
+          .reduce((n, p) => n + (p.guests ?? 0), 0),
         seatsSold: slot.sold,
         // Counter sales recorded this session count, as they would.
         seatsSoldOffline:
@@ -7210,7 +7253,13 @@ export const handlers = [
   }),
 
   http.post(url("/slots/:id/offline-sales"), async ({ request, params }) => {
-    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    /*
+      Everybody signed in, as in the API: `POST /slots/{id}/offline-sales` is
+      plain `auth`, and its only 403 is a suspension (yuvoy-api
+      `internal/server/routes.go`). The mock refused STAFF here, which is how
+      the portal came to hide counter sales from the person at the counter.
+    */
+    const failed = requireSession(request);
     if (failed) return failed;
     const shut = requireWritable(request);
     if (shut) return shut;
@@ -7237,15 +7286,19 @@ export const handlers = [
     const offered = capacity[id] ?? slot.seats;
     const previouslyOffline = offlineSold[id] ?? 0;
     offlineSold[id] = previouslyOffline + seats;
+    const entryId = `adj_${Math.random().toString(36).slice(2, 10)}`;
+    offlineEntries.push({ id: entryId, slotId: id, seats, takenBack: false });
 
     const taken = slot.sold + offlineSold[id];
     const over = taken - offered;
 
     const result: Record<string, unknown> = {
+      // The entry, which is what "That was a mistake" sends back (#226).
+      id: entryId,
       seatsRecorded: seats,
       // Never negative: an oversell is an incident, not a number on a screen.
       seatsRemaining: Math.max(0, offered - taken),
-      totalSoldOffline: offlineSold[id],
+      totalSoldOffline: (slot.seatsSoldOffline ?? 0) + offlineSold[id],
     };
 
     if (over > 0) {
@@ -7261,6 +7314,52 @@ export const handlers = [
 
     return HttpResponse.json(result);
   }),
+
+  /*
+    "That was a mistake" (yuvoy-api#226): one counter sale taken back by the
+    id its record answer carried. The same people as recording one, which is
+    everybody signed in. One 404 for an entry on another departure or no entry
+    at all; a second take-back is `409 already_taken_back`, and nothing moves
+    twice.
+  */
+  http.delete(
+    url("/slots/:id/offline-sales/:saleId"),
+    async ({ request, params }) => {
+      const failed = requireSession(request);
+      if (failed) return failed;
+      const shut = requireWritable(request);
+      if (shut) return shut;
+
+      const id = String(params.id);
+      const slot = SLOTS.find((s) => s.id === id);
+      const entry = offlineEntries.find(
+        (e) => e.id === String(params.saleId) && e.slotId === id,
+      );
+      if (!slot || !entry) {
+        return envelope(
+          "not_found",
+          "we could not find that counter sale on this departure",
+          404,
+        );
+      }
+      if (entry.takenBack) {
+        return envelope(
+          "already_taken_back",
+          "that counter sale has already been taken back, and its seats are back on the departure",
+          409,
+        );
+      }
+
+      entry.takenBack = true;
+      offlineSold[id] = Math.max(0, (offlineSold[id] ?? 0) - entry.seats);
+      const { remaining, soldOffline } = departureSeats(slot);
+      return HttpResponse.json({
+        seatsTakenBack: entry.seats,
+        seatsRemaining: remaining,
+        totalSoldOffline: soldOffline,
+      });
+    },
+  ),
 
   /* --------------------------------------------------------------- relay - */
 

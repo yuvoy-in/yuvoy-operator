@@ -222,7 +222,7 @@ test("a staff login sees capacity and is told it cannot change it", async ({
   ).toHaveCount(0);
   await expect(
     page.getByText(
-      "Only owners, admins and managers can change seats, close dates or record counter sales.",
+      "Only owners, admins and managers can change seats or close dates.",
     ),
   ).toBeVisible();
 });

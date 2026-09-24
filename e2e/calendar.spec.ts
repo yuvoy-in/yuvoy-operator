@@ -283,10 +283,94 @@ test("an oversell is never rendered as a success", async ({
   // And emphatically NOT the success wording.
   await expect(row.getByText(/recorded at your counter$/)).toHaveCount(0);
 
+  /*
+    A mistyped 50 can be taken back (yuvoy-api#226), and the question says the
+    incident is not withdrawn by it. Taking it back also leaves the shared mock
+    as this test found it, so no other test on this departure meets 50 seats
+    that were never sold.
+  */
+  await row.getByRole("button", { name: "That was a mistake" }).click();
+  await expect(
+    row.getByText(/The incident stays open until we close it/),
+  ).toBeVisible();
+  await row.getByRole("button", { name: "Take them back" }).click();
+  await expect(
+    row.getByText("50 seats taken back and on sale again"),
+  ).toBeVisible();
+  await expect(row.getByText(/stays open until we close it\./)).toBeVisible();
+
   // The second walk-up sale of the morning does not need a navigation: the
   // receipt offers a fresh form.
   await row.getByRole("button", { name: "Record another sale" }).click();
   await expect(row.getByLabel("Seats you sold at your counter")).toBeVisible();
+});
+
+test("a counter sale is named on its departure, and a mistake is taken back", async ({
+  page,
+}, testInfo) => {
+  /*
+    yuvoy-api#226 and op#89 f12. A counter sale comes off the departure's
+    seats, so the departure has to say who took them, on every read and not
+    only in the receipt; and a wrong count has to be correctable.
+
+    Its OWN departure, made here: counter sales are shared mock state, and the
+    fixture departures already carry seat tests that read exact numbers. One
+    day and time per project, and a retry finds the departure it already made
+    ("Nothing to add" is the same departure, not a failure).
+  */
+  test.setTimeout(60_000);
+  await signIn(page);
+  const mobile = testInfo.project.name === "mobile";
+  const offset = mobile ? 5 : 6;
+  const time = mobile ? "07:05" : "07:35";
+  const title = mobile
+    ? "Try-dive at Nemo Reef"
+    : "Snorkel trip to Elephant Beach";
+
+  const today = await openAddDepartures(page);
+  const day = dayAfter(today, offset);
+  await page.getByLabel("Which listing").selectOption({ label: title });
+  await page.getByLabel("First day").fill(day);
+  await page.getByLabel("Last day").fill(day);
+  await page.getByRole("textbox", { name: "Departure time 1" }).fill(time);
+  await page.getByLabel("Seats on each departure").fill("6");
+  await page.getByRole("button", { name: "Add 1 departure" }).click();
+  await expect(
+    page.getByText(/1 departure added|Nothing to add/).first(),
+  ).toBeVisible();
+
+  await page.goto("/calendar");
+  const dayRegion = await openDay(page, dayLabel(offset));
+  const row = dayRegion
+    .locator("li")
+    .filter({ hasText: title })
+    .filter({ hasText: time })
+    .first();
+  await row.locator(":scope > details > summary").click();
+  await expect(row.locator(":scope > details")).toHaveJSProperty("open", true);
+  const line = row.getByText(/ sold · \d+ left/).first();
+  await expect(line).not.toContainText("sold at your counter");
+
+  await row.getByRole("button", { name: "I sold seats at my counter" }).click();
+  await row.getByLabel("Seats you sold at your counter").fill("2");
+  await row.getByRole("button", { name: "Record it" }).click();
+  await expect(row.getByText("2 recorded at your counter")).toBeVisible();
+  // The departure's own line, re-read from the server, says it too: the six
+  // seats read as four with the two walk-ups named.
+  await expect(line).toContainText(
+    "0 of 4 sold · 4 left · 2 sold at your counter",
+  );
+
+  await row.getByRole("button", { name: "That was a mistake" }).click();
+  await expect(
+    row.getByText("Take back the 2 seats you just recorded?"),
+  ).toBeVisible();
+  await row.getByRole("button", { name: "Take them back" }).click();
+  await expect(
+    row.getByText("2 seats taken back and on sale again"),
+  ).toBeVisible();
+  await expect(line).toContainText("0 of 6 sold · 6 left");
+  await expect(line).not.toContainText("sold at your counter");
 });
 
 /**
@@ -961,7 +1045,7 @@ test("a staff login is told who can change this, in one sentence, and offered no
 
   await expect(
     page.getByText(
-      "Only owners, admins and managers can change seats, close dates or record counter sales.",
+      "Only owners, admins and managers can change seats or close dates.",
     ),
   ).toBeVisible();
   /*
@@ -980,7 +1064,15 @@ test("a staff login is told who can change this, in one sentence, and offered no
   );
   await expect(row.getByRole("link", { name: "Who is booked" })).toBeVisible();
   await expect(row.getByLabel("Seats offered")).toHaveCount(0);
-  await expect(row.getByRole("button")).toHaveCount(0);
+  /*
+    A counter sale is the one control staff are given: the API has never
+    role-gated it, and the person at the counter is often staff (owner ruling,
+    23 Sep 2026). Seats and stopping a sale stay with managers.
+  */
+  await expect(row.getByRole("button")).toHaveCount(1);
+  await expect(
+    row.getByRole("button", { name: "I sold seats at my counter" }),
+  ).toBeVisible();
 });
 
 test("/calendar has no accessibility violations", async ({ page }) => {
