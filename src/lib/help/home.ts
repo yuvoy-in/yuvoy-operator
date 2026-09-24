@@ -27,7 +27,7 @@ export const HOME_HELP: readonly HelpTopic[] = [
     question: "Why are some departures off sale when I did not close them?",
     answer: [
       "Seats you set by hand stop being offered to travellers once nobody has confirmed them for two days, so a count you set weeks ago cannot sell seats you no longer have.",
-      "Confirm all on Home confirms every departure in the next 30 days, on every listing, and changes no seat counts. A listing's own page confirms just that listing's. You also get an email once a day listing any departures that are off sale or about to go off sale, unless you turn it off in your notifications.",
+      "Confirm all on Home confirms every departure in the next 12 months, on every listing, and changes no seat counts. A listing's own page confirms just that listing's. You also get an email once a day listing any departures that are off sale or about to go off sale, unless you turn it off in your notifications.",
     ],
   },
   {

@@ -698,7 +698,7 @@ test.describe.serial("confirming seats", () => {
     ).toBeVisible();
 
     await page
-      .getByRole("button", { name: "Confirm seats for the next 30 days" })
+      .getByRole("button", { name: "Confirm seats for the next 12 months" })
       .click();
 
     await expect(

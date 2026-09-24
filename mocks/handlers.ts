@@ -4421,6 +4421,12 @@ export const handlers = [
       return envelope("not_found", "we could not find that listing", 404);
     }
 
+    /*
+      The API counts every departure it re-stamps: each open, future one in
+      the window whose seats were set by hand, waiting or not. The mock knows
+      only which were waiting, so it counts those, a smaller number on the
+      same screen.
+    */
     let confirmed = 0;
     for (const slot of allSlots()) {
       if (experienceId && slot.experienceId !== experienceId) continue;

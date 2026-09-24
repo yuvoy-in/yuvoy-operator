@@ -79,7 +79,7 @@ export const OPERATING_HELP: readonly HelpTopic[] = [
     question: "Why do seats need confirming?",
     answer: [
       "Seats you set by hand stop being offered to travellers once nobody has confirmed them for two days, so that a boat nobody is watching does not keep selling.",
-      "Confirming keeps the seat count exactly as it is and puts the departure back on sale, unless something else keeps it off. Setting the seats again does the same. Confirm seats for the next 30 days does it for every departure at once.",
+      "Confirming keeps the seat count exactly as it is and puts the departure back on sale, unless something else keeps it off. Setting the seats again does the same. Confirm seats for the next 12 months does it for every departure in that time at once.",
       "Departures made from a weekly schedule, and departures where you answer each request, are never taken off sale for this.",
     ],
   },

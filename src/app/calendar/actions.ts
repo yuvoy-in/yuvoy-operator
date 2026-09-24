@@ -816,6 +816,11 @@ export interface ConfirmSeatsState {
   confirmed?: number;
 }
 
+/** Days one confirm covers: "both included, at most 31 days". */
+const CONFIRM_WINDOW_DAYS = 31;
+/** Windows swept per tap: twelve of 31 days, a year of departures. */
+const CONFIRM_WINDOWS = 12;
+
 /**
  * Confirm the seats on many departures at once (yuvoy-operator#94 item 2).
  *
@@ -824,15 +829,27 @@ export interface ConfirmSeatsState {
  * used to find out one departure at a time, by noticing it was off sale, and
  * confirm each by saving its seat count again.
  *
- * The window is the market's today and the thirty days after it: "a market
- * day from `from` to `to` (both included, at most 31 days)". Decided here on
- * the server, never taken from the form, so a stale page cannot send a window
- * the API refuses. One listing when `experienceId` is sent, every listing
- * when not: the listing hub sends its own, Home sends none.
+ * ## A year, in windows of 31 days
  *
- * Safe to send twice ("confirming twice leaves the departures as confirming
- * once did"), so a double tap on one bar of signal costs nothing. Seat counts
- * are not changed.
+ * One call covers "a market day from `from` to `to` (both included, at most
+ * 31 days)", but the count Home and the hub show (`departuresNotOnSale`) is
+ * every upcoming departure, with no end date (yuvoy-api `seats_to_confirm.go`),
+ * and a departure can be added for any date. Confirming only the next 31 days
+ * left a departure 45 days out off sale, and the row that counted it came
+ * back on every load after "Confirm all". So a year is swept, in windows laid
+ * end to end from the market's today, and their answers added up. The windows
+ * are decided here on the server, never taken from the form, so a stale page
+ * cannot send one the API refuses.
+ *
+ * The windows go at once, not one after another: they touch different dates,
+ * the route has no rate limit, and a tap on a phone waits for one round trip
+ * instead of twelve.
+ *
+ * One listing when `experienceId` is sent, every listing when not: the listing
+ * hub sends its own, Home sends none. Safe to send twice ("confirming twice
+ * leaves the departures as confirming once did"), so a double tap on one bar
+ * of signal costs nothing, and a sweep cut short is finished by trying again.
+ * Seat counts are not changed.
  */
 export async function confirmSeats(
   _prev: ConfirmSeatsState,
@@ -844,45 +861,78 @@ export async function confirmSeats(
   if (!me.canManage) return { message: ROLE_REFUSAL };
 
   const { today } = await marketDays();
-  const to = shiftDay(today, 30);
+  const api = operatorApi(token);
 
-  try {
-    const { data, error } = await operatorApi(token).POST(
-      "/slots/confirm-seats",
-      {
+  const answers = await Promise.allSettled(
+    Array.from({ length: CONFIRM_WINDOWS }, async (_, i) => {
+      const from = shiftDay(today, i * CONFIRM_WINDOW_DAYS);
+      const { data, error } = await api.POST("/slots/confirm-seats", {
         body: {
-          from: today,
-          to,
+          from,
+          to: shiftDay(from, CONFIRM_WINDOW_DAYS - 1),
           ...(experienceId ? { experienceId } : {}),
         },
-      },
-    );
-    if (error) throw error;
+      });
+      if (error) throw error;
+      return Number.isInteger(data.confirmed) ? data.confirmed : 0;
+    }),
+  );
 
-    /*
-      Every screen that counts what is off sale re-reads: Home adds them up,
-      the calendar marks each departure, and the listing's own hub says how
-      many. The receipt lives in the control, which stays mounted on each.
-    */
-    revalidatePath("/today");
-    revalidatePath("/calendar");
-    if (experienceId) revalidatePath(`/today/listing/${experienceId}`);
-    return {
-      confirmed: Number.isInteger(data.confirmed) ? data.confirmed : 0,
-    };
-  } catch (err) {
-    if (err instanceof OperatorNetworkError) {
-      return { message: "No signal. Nothing was confirmed. Try again." };
+  let confirmed = 0;
+  let failure: unknown = null;
+  let answered = 0;
+  for (const answer of answers) {
+    if (answer.status === "fulfilled") {
+      confirmed += answer.value;
+      answered += 1;
+    } else {
+      failure ??= answer.reason;
     }
-    if (err instanceof OperatorApiError) {
-      const refusal = suspendedMessage(err);
-      if (refusal) return { message: refusal };
-      if (err.status === 403) return { message: ROLE_REFUSAL };
-      if (err.isNotFound) {
-        return { message: "That listing is not on this account any more." };
-      }
-      if (err.status === 400) return { message: dedash(err.message) };
-    }
-    return { message: "Nothing was confirmed. Try again." };
   }
+
+  // Nothing answered: the tap failed, and says why.
+  if (answered === 0) return confirmFailure(failure);
+
+  revalidateConfirmed(experienceId);
+  if (failure === null) return { confirmed };
+
+  /*
+    Some dates answered and some did not. What was confirmed is said, with the
+    way to finish: trying again re-sweeps, and repeats nothing.
+  */
+  return {
+    message:
+      confirmed === 0
+        ? "Some dates did not answer. Try again."
+        : confirmed === 1
+          ? "Seats confirmed on 1 departure. Some dates did not answer. Try again."
+          : `Seats confirmed on ${confirmed} departures. Some dates did not answer. Try again.`,
+  };
+}
+
+/**
+ * Every screen that counts what is off sale re-reads: Home adds them up, the
+ * calendar marks each departure, and the listing's own hub says how many. The
+ * receipt lives in the control, which stays mounted on each.
+ */
+function revalidateConfirmed(experienceId: string) {
+  revalidatePath("/today");
+  revalidatePath("/calendar");
+  if (experienceId) revalidatePath(`/today/listing/${experienceId}`);
+}
+
+function confirmFailure(err: unknown): ConfirmSeatsState {
+  if (err instanceof OperatorNetworkError) {
+    return { message: "No signal. Nothing was confirmed. Try again." };
+  }
+  if (err instanceof OperatorApiError) {
+    const refusal = suspendedMessage(err);
+    if (refusal) return { message: refusal };
+    if (err.status === 403) return { message: ROLE_REFUSAL };
+    if (err.isNotFound) {
+      return { message: "That listing is not on this account any more." };
+    }
+    if (err.status === 400) return { message: dedash(err.message) };
+  }
+  return { message: "Nothing was confirmed. Try again." };
 }
