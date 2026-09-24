@@ -74,7 +74,6 @@ export function SellingStep({
   return (
     <StepShell
       title="Selling"
-      blurb="The price, how it is charged, and how many people can book at once."
       action={act}
       pending={pending}
       message={state.message}

@@ -77,7 +77,7 @@ export function QuestionsStep({
   return (
     <StepShell
       title="Questions"
-      blurb="What you need to know before the day. An empty list is fine."
+      blurb="You can leave this empty."
       action={act}
       pending={pending}
       message={state.message}

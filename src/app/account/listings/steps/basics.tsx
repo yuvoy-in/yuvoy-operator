@@ -52,7 +52,6 @@ export function BasicsStep({
   return (
     <StepShell
       title="Basics"
-      blurb="What it is, where it runs, and the line a traveller reads first."
       action={act}
       pending={pending}
       message={state.message}

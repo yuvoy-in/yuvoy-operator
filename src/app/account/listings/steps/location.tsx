@@ -46,7 +46,6 @@ export function LocationStep({
   return (
     <StepShell
       title="Location and safety"
-      blurb="Where to meet, what is included, and anything a traveller has to bring or be able to do."
       action={act}
       pending={pending}
       message={state.message}

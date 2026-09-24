@@ -13,6 +13,15 @@ import { Panel } from "@/components/ui/panel";
  * unsure which one took. Back is a link rather than a button for the same
  * reason, because "Back saves nothing" and a button beside Next reads as
  * though it might.
+ *
+ * ## One title (yuvoy-operator#80 t2, #85 s11)
+ *
+ * Every step said its name twice: "Step 1 of 7 · Basics" over the bar, then
+ * "Basics" again as a large heading, and under that a line describing the
+ * step. The stepper names it; the heading is kept for a screen reader, which
+ * navigates by headings and is not shown the bar's sentence as one, and the
+ * line is kept only where it changes what somebody does ("You can leave this
+ * empty"). The examples under the fields stay: they change what gets typed.
  */
 export function StepShell({
   title,
@@ -25,7 +34,8 @@ export function StepShell({
   children,
 }: {
   title: string;
-  blurb: string;
+  /** Only a sentence that changes a decision; never one describing the step. */
+  blurb?: string;
   action: (formData: FormData) => void;
   pending: boolean;
   message?: string;
@@ -36,10 +46,10 @@ export function StepShell({
 }) {
   return (
     <Panel className="mt-6">
-      <h2 className="font-display text-2xl">{title}</h2>
-      <p className="text-forest/70 mt-2 text-sm">{blurb}</p>
+      <h2 className="sr-only">{title}</h2>
+      {blurb ? <p className="text-forest/70 text-sm">{blurb}</p> : null}
 
-      <form action={action} className="mt-5 space-y-5">
+      <form action={action} className={blurb ? "mt-5 space-y-5" : "space-y-5"}>
         {children}
 
         {message ? (
