@@ -5731,6 +5731,18 @@ export const handlers = [
         { status: 400 },
       );
     }
+    /*
+      A business with nothing on it has never been booked. It read the fixture
+      dive shop's bookings before, which Home now reads as "has sold" and
+      which would have ended its start-selling checklist on day one.
+    */
+    if (isNewBusiness(request)) {
+      return HttpResponse.json({
+        items: [],
+        complete: true,
+        counts: { requests: 0, upcoming: 0, past: 0, cancelled: 0 },
+      });
+    }
     if (q.length > 60) {
       return HttpResponse.json(
         {

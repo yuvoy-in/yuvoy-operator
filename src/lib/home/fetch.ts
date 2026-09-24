@@ -111,6 +111,35 @@ export async function readMoneyToday(token: string): Promise<MoneyToday> {
 }
 
 /**
+ * Every booking the business has ever had, or `null` when the read failed:
+ * whether it has made its first sale, which is when the start-selling
+ * checklist ends (yuvoy-operator#96).
+ *
+ * `GET /bookings` counts "every booking the search found" across upcoming,
+ * past and cancelled, and with no search, listing or dates that is every
+ * booking there is. One row asked for, because only the counts are read. A
+ * cancelled booking still counts: somebody bought, so the business has sold.
+ * Open requests do not: nobody has bought until one is accepted. Counts that
+ * are not whole numbers are not an answer.
+ */
+export async function readEverBooked(token: string): Promise<number | null> {
+  try {
+    const { data, error } = await operatorApi(token).GET("/bookings", {
+      params: { query: { limit: 1 } },
+    });
+    if (error) return null;
+    const counts = data.counts as Partial<Record<string, unknown>> | undefined;
+    const parts = [counts?.upcoming, counts?.past, counts?.cancelled];
+    if (!parts.every((n) => typeof n === "number" && Number.isInteger(n))) {
+      return null;
+    }
+    return (parts as number[]).reduce((sum, n) => sum + n, 0);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * How many reels the account holds, or `null`: the checklist's last step.
  *
  * Reels only, by `kind`, which is read and never inferred: a photograph is not

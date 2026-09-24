@@ -1,5 +1,5 @@
 import type { Standing } from "@/lib/account/standing";
-import { neverPublished, type HomeListing } from "./listings";
+import type { HomeListing } from "./listings";
 
 /**
  * Start selling: what a new operator has left before anybody can book them
@@ -9,17 +9,24 @@ import { neverPublished, type HomeListing } from "./listings";
  * first listing, first departure, first reel) replaces blocks 3 to 5 until
  * the first sale."
  *
- * ## Who is new
+ * ## Who is new: nobody has ever bought
  *
- * A business none of whose listings has ever been on sale, with nobody booked
- * on the days Home read. Nothing published means nothing could have sold, so
- * this is "until the first sale" read from facts Home already has, with no
- * read of its own. An operator whose listings are all paused for the season
- * is NOT new: every one of them was published, and a checklist telling them
- * how to start would be wrong about their business.
+ * "Until the first sale", read from the API rather than guessed: no booking
+ * ever, in any state (`GET /bookings` counts), and nobody booked or sold at the
+ * counter on the days Home read. It used to be "no listing ever published",
+ * which ended the checklist the day a listing went live with nothing sold, and
+ * never showed it to a business whose only listing was paused or not selling
+ * before anybody bought. An operator paused for the season HAS sold, so they
+ * are not new, and the booking count is what says so.
  *
- * When the listings could not be read, nobody is new: the ordinary blocks
- * draw instead, each saying what it could not load.
+ * When a read it needs failed (the listings, or the count), nobody is new:
+ * the ordinary blocks draw instead, each saying what it could not load.
+ *
+ * ## When every step is done
+ *
+ * The ordinary blocks come back, sale or no sale. A checklist ticked from end
+ * to end has nothing left to offer and would only hide the day; what happens
+ * next is on travellers, and the selling line and "Needs you" carry it.
  *
  * ## What a step links to
  *
@@ -37,14 +44,22 @@ export interface ChecklistStep {
   href?: string;
 }
 
-/** Whether Home shows the checklist in place of the day, the money and the listings. */
-export function isNewOperator(
-  listings: readonly HomeListing[] | null,
-  bookedOnDaysRead: boolean,
-): boolean {
-  if (listings === null) return false;
-  if (bookedOnDaysRead) return false;
-  return listings.every(neverPublished);
+/** Whether the business has not made its first sale. See the module comment. */
+export function isNewOperator(input: {
+  listings: readonly HomeListing[] | null;
+  /** Somebody booked, or sold at the counter, on a day Home read. */
+  peopleOnDaysRead: boolean;
+  /** Bookings ever made, in any state; `null` when that read failed. */
+  everBooked: number | null;
+}): boolean {
+  if (input.listings === null) return false;
+  if (input.peopleOnDaysRead) return false;
+  return input.everBooked === 0;
+}
+
+/** Whether the checklist still has a step to take. See the module comment. */
+export function stepsLeft(steps: readonly ChecklistStep[]): boolean {
+  return steps.some((step) => !step.done);
 }
 
 export function startSelling(input: {

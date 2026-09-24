@@ -30,8 +30,13 @@ vi.mock("@/lib/money/fetch", () => ({
   getSettlementOverview: (...args: unknown[]) => getSettlementOverview(...args),
 }));
 
-const { readHomeListings, readManifests, readMoneyToday, readReelCount } =
-  await import("./fetch");
+const {
+  readEverBooked,
+  readHomeListings,
+  readManifests,
+  readMoneyToday,
+  readReelCount,
+} = await import("./fetch");
 
 beforeEach(() => {
   get.mockReset();
@@ -234,5 +239,55 @@ describe("the reels the checklist counts", () => {
   it("is unknown when the read failed, so the step is not ticked from silence", async () => {
     listMedia.mockRejectedValue(new Error("500"));
     expect(await readReelCount("tok")).toBeNull();
+  });
+});
+
+describe("whether the business has ever been booked", () => {
+  it("adds up every booking, cancelled ones included, and leaves requests out", async () => {
+    get.mockResolvedValue({
+      data: {
+        items: [],
+        complete: true,
+        counts: { requests: 3, upcoming: 0, past: 2, cancelled: 1 },
+      },
+      error: undefined,
+    });
+    expect(await readEverBooked("tok")).toBe(3);
+    // Every booking there is: no search, listing, dates or view, one row.
+    expect(get.mock.calls[0][0]).toBe("/bookings");
+    expect(get.mock.calls[0][1]).toEqual({ params: { query: { limit: 1 } } });
+  });
+
+  it("says zero only when the API counted zero", async () => {
+    get.mockResolvedValue({
+      data: {
+        items: [],
+        complete: true,
+        counts: { requests: 0, upcoming: 0, past: 0, cancelled: 0 },
+      },
+      error: undefined,
+    });
+    expect(await readEverBooked("tok")).toBe(0);
+  });
+
+  it("is unknown, never zero, when the read failed or the counts are not counts", async () => {
+    get.mockResolvedValue({ data: undefined, error: { status: 500 } });
+    expect(await readEverBooked("tok")).toBeNull();
+    get.mockRejectedValue(new Error("offline"));
+    expect(await readEverBooked("tok")).toBeNull();
+    get.mockResolvedValue({
+      data: { items: [], complete: true },
+      error: undefined,
+    });
+    expect(await readEverBooked("tok")).toBeNull();
+    get.mockResolvedValue({
+      data: {
+        items: [],
+        complete: true,
+        counts: { requests: 0, upcoming: 1.5, past: 0, cancelled: 0 },
+      },
+      error: undefined,
+    });
+    expect(await readEverBooked("tok")).toBeNull();
   });
 });

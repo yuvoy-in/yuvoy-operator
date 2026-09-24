@@ -6,7 +6,7 @@ import { panelClass } from "@/components/ui/panel";
 
 /**
  * Start selling: the checklist a new business sees in place of the day, the
- * money and the listings, until anything of theirs has been on sale
+ * money and the listings, until its first sale or its last step
  * (yuvoy-operator#96, "States Home must handle").
  *
  * An ordered list, because the steps are an order: nothing sells without the

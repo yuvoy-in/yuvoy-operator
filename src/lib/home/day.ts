@@ -70,7 +70,7 @@ export interface RunDay {
  * a boat with two walk-ups and no Yuvoy booking read as empty here: dropped
  * from the sheet when closed or on a draft, "none sold", and no guests.
  */
-function peopleOn(slot: OperatorSlot): number {
+export function peopleOn(slot: OperatorSlot): number {
   return slot.sold + (slot.soldOffline ?? 0);
 }
 

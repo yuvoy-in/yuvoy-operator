@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Standing } from "@/lib/account/standing";
 import type { HomeListing } from "./listings";
-import { isNewOperator, startSelling } from "./checklist";
+import { isNewOperator, startSelling, stepsLeft } from "./checklist";
 
 const PROSPECT: Standing = {
   state: "PROSPECT",
@@ -39,30 +39,70 @@ const draft = (over: Partial<HomeListing> = {}): HomeListing => ({
   (details, documents, first listing, first departure, first reel) replaces
   blocks 3 to 5 until the first sale."
 */
-describe("who is new", () => {
-  it("is a business nothing of which has ever been on sale", () => {
-    expect(isNewOperator([], false)).toBe(true);
-    expect(isNewOperator([draft()], false)).toBe(true);
+describe("who is new: nobody has ever bought", () => {
+  const input = (
+    over: Partial<Parameters<typeof isNewOperator>[0]> = {},
+  ): Parameters<typeof isNewOperator>[0] => ({
+    listings: [draft()],
+    peopleOnDaysRead: false,
+    everBooked: 0,
+    ...over,
+  });
+
+  it("is a business that has never been booked, whatever its listings are", () => {
+    expect(isNewOperator(input({ listings: [] }))).toBe(true);
+    expect(isNewOperator(input())).toBe(true);
+    // Live with nothing sold: "until the first sale", not the first publication.
     expect(
-      isNewOperator([draft({ publicationState: "in_review" })], false),
+      isNewOperator(
+        input({
+          listings: [draft({ status: "live", publicationState: "published" })],
+        }),
+      ),
+    ).toBe(true);
+    // Paused or not selling before anybody bought: still starting.
+    expect(
+      isNewOperator(
+        input({
+          listings: [
+            draft({ status: "withdrawn", publicationState: "withdrawn" }),
+          ],
+        }),
+      ),
     ).toBe(true);
   });
 
-  it("is not a business whose listings are paused for the season", () => {
+  it("is not a business that has sold, paused for the season or not", () => {
     expect(
       isNewOperator(
-        [draft({ status: "withdrawn", publicationState: "withdrawn" })],
-        false,
+        input({
+          everBooked: 40,
+          listings: [
+            draft({ status: "withdrawn", publicationState: "withdrawn" }),
+          ],
+        }),
       ),
     ).toBe(false);
+    // A booking that was later cancelled was still a sale.
+    expect(isNewOperator(input({ everBooked: 1 }))).toBe(false);
   });
 
-  it("is not a business somebody is booked with", () => {
-    expect(isNewOperator([draft()], true)).toBe(false);
+  it("is not a business somebody is on a departure with, at the counter or not", () => {
+    expect(isNewOperator(input({ peopleOnDaysRead: true }))).toBe(false);
   });
 
-  it("is nobody when the listings could not be read", () => {
-    expect(isNewOperator(null, false)).toBe(false);
+  it("is nobody when a read it needs failed", () => {
+    expect(isNewOperator(input({ listings: null }))).toBe(false);
+    expect(isNewOperator(input({ everBooked: null }))).toBe(false);
+  });
+});
+
+describe("when the checklist gives way", () => {
+  it("stays while a step is left, and goes once every step is done", () => {
+    const steps = (done: boolean[]) =>
+      done.map((d, i) => ({ key: "details" as const, label: `${i}`, done: d }));
+    expect(stepsLeft(steps([true, true, false]))).toBe(true);
+    expect(stepsLeft(steps([true, true, true]))).toBe(false);
   });
 });
 

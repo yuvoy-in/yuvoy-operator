@@ -25,18 +25,20 @@ import type { OperatorSlot } from "@/lib/day/types";
 import { departuresOn, shiftDay } from "@/lib/day/calendar";
 import { marketDays, now } from "@/lib/format/market-time";
 import { readInbox } from "@/lib/site/inbox";
-import { isNewOperator, startSelling } from "@/lib/home/checklist";
+import { isNewOperator, startSelling, stepsLeft } from "@/lib/home/checklist";
 import {
   cashToCollect,
   emptyToday,
   NEXT_WITHIN_DAYS,
   nextRunning,
+  peopleOn,
   runDay,
 } from "@/lib/home/day";
 import {
   readHomeListings,
   readManifests,
   readMoneyToday,
+  readEverBooked,
   readReelCount,
 } from "@/lib/home/fetch";
 import { listingsGlance } from "@/lib/home/listings";
@@ -183,13 +185,23 @@ export default async function HomePage() {
   });
 
   /*
-    A business none of whose listings has ever been on sale, and nobody booked
-    on either day read, is new: nothing can have sold. It gets the checklist
-    in place of the day, the money and the listings, until something has.
+    A business that has never been booked gets the checklist in place of the
+    day, the money and the listings, until its first sale or its last step
+    (see `lib/home/checklist.ts`). The count is read only when nobody is on
+    either day read, and the reels only for a business that is new.
   */
-  const booked = [...todaySlots, ...tomorrowSlots].some((s) => s.sold > 0);
-  const fresh = isNewOperator(listings, booked);
-  const steps =
+  const peopleOnDaysRead = [...todaySlots, ...tomorrowSlots].some(
+    (s) => peopleOn(s) > 0,
+  );
+  const fresh =
+    listings !== null &&
+    !peopleOnDaysRead &&
+    isNewOperator({
+      listings,
+      peopleOnDaysRead,
+      everBooked: await readEverBooked(token),
+    });
+  const checklist =
     fresh && listings
       ? startSelling({
           standing: me.account,
@@ -198,6 +210,7 @@ export default async function HomePage() {
           canManage: me.canManage,
         })
       : null;
+  const steps = checklist && stepsLeft(checklist) ? checklist : null;
 
   /*
     "Nothing running today. Next: Thu 09:00" (#96 block 3). Tomorrow's rows
