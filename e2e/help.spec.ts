@@ -35,9 +35,13 @@ test("Settings groups only what has two or more rows, and Money is not in it", a
   await expect(
     page.getByRole("heading", { name: "Business", exact: true }),
   ).toBeVisible();
+  // Two rows, Help and the call, under a heading that does not repeat one.
+  await expect(
+    page.getByRole("heading", { name: "Support", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Help", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   // A heading over one row that repeats the row is gone; the row is not.
   for (const name of ["Verification", "Notifications", "Team", "Money"]) {
     await expect(page.getByRole("heading", { name, exact: true })).toHaveCount(

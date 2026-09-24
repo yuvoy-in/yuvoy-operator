@@ -79,7 +79,12 @@ export default async function SettingsPage() {
         ) : null}
       </div>
 
-      <Group title="Help">
+      {/*
+        "Support", not "Help": a heading that repeats its first row is the
+        pattern #88 s12 took out of this screen (VERIFICATION over
+        Verification). Two rows, so it is still a group.
+      */}
+      <Group title="Support">
         <Row href="/account/help" icon={HelpIcon} label="Help" />
         {/*
           A telephone number, because the person reading this is on a jetty and
@@ -97,10 +102,12 @@ export default async function SettingsPage() {
             </span>
           }
         />
-        <div className="mt-2">
-          <SignOutButton />
-        </div>
       </Group>
+
+      {/* Leaving is not support, so it stands on its own, last. */}
+      <div className="mt-8">
+        <SignOutButton />
+      </div>
     </Screen>
   );
 }

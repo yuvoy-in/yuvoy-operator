@@ -126,6 +126,8 @@ describe("the help page", () => {
 describe("reading the fragment", () => {
   it("names the answer without its hash", () => {
     expect(fragmentId("#held-cash")).toBe("held-cash");
+    // After a hard load the router appends the first fragment to the next.
+    expect(fragmentId("#cash-owed#settling-cash")).toBe("settling-cash");
     expect(fragmentId("held-cash")).toBe("held-cash");
     expect(fragmentId("")).toBe("");
   });

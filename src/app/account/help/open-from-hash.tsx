@@ -45,9 +45,17 @@ export function OpenFromHash() {
   return null;
 }
 
-/** `#held-cash` → `held-cash`; a fragment that will not decode names nothing. */
+/**
+ * `#held-cash` → `held-cash`; a fragment that will not decode names nothing.
+ *
+ * The LAST fragment only. After a hard load of `/account/help#cash-owed`, the
+ * Next router appends that first fragment to later client navigations, so the
+ * next link lands as `#cash-owed#settling-cash` (the same defect the app
+ * guards on `/booking#t=A#t=B`; not fixed upstream as of 16.3.5). Reading the
+ * whole of it found no answer and left it closed.
+ */
 export function fragmentId(hash: string): string {
-  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  const raw = hash.split("#").pop() ?? "";
   try {
     return decodeURIComponent(raw);
   } catch {

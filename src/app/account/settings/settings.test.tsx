@@ -32,7 +32,7 @@ describe("Settings", () => {
     const headings = screen
       .getAllByRole("heading", { level: 2 })
       .map((h) => h.textContent);
-    expect(headings).toEqual(["Business", "Help"]);
+    expect(headings).toEqual(["Business", "Support"]);
 
     const business = screen.getByRole("region", { name: "Business" });
     expect(
@@ -54,18 +54,24 @@ describe("Settings", () => {
     }
   });
 
-  it("opens Help from the help group, beside the call and signing out", async () => {
+  it("opens Help from Support, beside the call, with signing out apart", async () => {
     await renderSettings(true);
-    const help = screen.getByRole("region", { name: "Help" });
-    expect(within(help).getByRole("link", { name: "Help" })).toHaveAttribute(
+    // "Support", not "Help": a heading that repeats its row is what #88 s12 cut.
+    expect(screen.queryByRole("region", { name: "Help" })).toBeNull();
+    const support = screen.getByRole("region", { name: "Support" });
+    expect(within(support).getByRole("link", { name: "Help" })).toHaveAttribute(
       "href",
       "/account/help",
     );
     expect(
-      within(help).getByRole("link", { name: /Call Yuvoy/ }),
+      within(support).getByRole("link", { name: /Call Yuvoy/ }),
     ).toHaveAttribute("href", "tel:+918121657657");
+    // Leaving is not support.
     expect(
-      within(help).getByRole("button", { name: "Sign out" }),
+      within(support).queryByRole("button", { name: "Sign out" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Sign out" }),
     ).toBeInTheDocument();
   });
 

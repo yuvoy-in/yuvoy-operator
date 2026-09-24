@@ -96,11 +96,6 @@ export default async function TeamPage() {
         Said up front, not after a tap. Same call as the request queue, where
         staff are told they cannot answer it before they choose a reason:
         finding out at the end is worse than not being offered it.
-      */}
-      {/*
-        Said up front, not after a tap. Same call as the request queue, where
-        staff are told they cannot answer it before they choose a reason:
-        finding out at the end is worse than not being offered it.
 
         "Owner or admin" rather than "the owner" — every one of the four access
         endpoints is OWNER or ADMIN now, and an admin reading "only the owner"
