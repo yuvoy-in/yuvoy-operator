@@ -515,6 +515,9 @@ test("requests arrive soonest-to-expire, and that order is not ours to change", 
   // Asserted as RELATIVE position of two requests nothing answers, rather than
   // as the whole list — the list legitimately shrinks as the other tests run.
   const rows = page.locator("li").filter({ hasText: /min left|h left|d left/ });
+  // The queue has arrived before it is read: a bare read can land on the
+  // loading skeleton and find nothing.
+  await expect(rows.first()).toBeVisible();
   const names = await rows.locator("p.text-lg").allTextContents();
 
   const urgentAt = names.indexOf(NEVER_ANSWERED.urgent);

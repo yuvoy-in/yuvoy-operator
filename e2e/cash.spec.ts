@@ -109,9 +109,13 @@ test("every trip behind the number is listed and checkable", async ({
   await expect(owed.getByText("2 guests")).toBeVisible();
   await expect(owed.getByText("1 guest", { exact: true })).toBeVisible();
 
-  // Most recent first, so two loads do not disagree about the top row.
-  const refs = await owed.locator("li p.font-mono").allTextContents();
-  expect(refs).toEqual(["YV-8F3K2A", "YV-2M9QX1", "YV-7T4WPZ"]);
+  // Most recent first, so two loads do not disagree about the top row. A
+  // waiting assertion: a bare read can land on the loading skeleton.
+  await expect(owed.locator("li p.font-mono")).toHaveText([
+    "YV-8F3K2A",
+    "YV-2M9QX1",
+    "YV-7T4WPZ",
+  ]);
 });
 
 test("cash taken for trips still to run is shown apart from what is owed", async ({
@@ -126,8 +130,12 @@ test("cash taken for trips still to run is shown apart from what is owed", async
   await page.goto("/cash");
 
   const held = page.getByRole("region", { name: "Held, trip still to run" });
-  const refs = await held.locator("li p.font-mono").allTextContents();
-  expect(refs).toEqual(["YV-H3LD0A1", "YV-H3LD0B2"]);
+  // Waiting, not a bare read: a bare read landed on the loading skeleton and
+  // found nothing.
+  await expect(held.locator("li p.font-mono")).toHaveText([
+    "YV-H3LD0A1",
+    "YV-H3LD0B2",
+  ]);
   await expect(
     page.getByRole("region", { name: "Owed now" }),
   ).not.toContainText("YV-H3LD0A1");

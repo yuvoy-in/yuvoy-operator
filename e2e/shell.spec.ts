@@ -121,9 +121,10 @@ test("the stage names the business beside the mark, with no tagline", async ({
   await expect(mark).toHaveAttribute("src", /yuvoy-mark-compact/);
   // The marketing caption went with the marketing lockup. Visible only: the
   // sign-in door keeps its caption, and the router keeps the page it left in
-  // the document, hidden.
+  // the document, hidden. Exact: the router's announcer reads the page title,
+  // "Today · Yuvoy for operators", from a visually hidden live region.
   await expect(
-    page.getByText("For operators").filter({ visible: true }),
+    page.getByText("For operators", { exact: true }).filter({ visible: true }),
   ).toHaveCount(0);
   // And the person holding the phone is not the business.
   await expect(
