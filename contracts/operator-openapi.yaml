@@ -435,9 +435,12 @@ paths:
 
 
         Replacing a logo deletes the previous image, so changing it ten times
-        does not leave ten stored images behind. Editable after go-live, unlike
-        the rest of the business details: a logo is presentation, not identity,
-        and nothing was verified against it.
+        does not leave ten stored images behind. Once the account is LIVE a new
+        logo is reviewed before it replaces the current one, as a change to the
+        business details is, and the write answers `202`.
+
+
+        OWNER, ADMIN or MANAGER only.
       operationId: setOperatorLogo
       requestBody:
         required: true
@@ -514,6 +517,9 @@ paths:
         minutes: long enough to find a file on a phone over an island
         connection, short enough that a URL captured from a browser is not a
         standing write credential.
+
+
+        OWNER, ADMIN or MANAGER only.
       operationId: createLogoUpload
       responses:
         "201":
@@ -786,10 +792,13 @@ paths:
 
         **Self-serve only until the account is LIVE.** After that the verified
         documents were checked against the legal name on file, so changing it
-        without anybody looking would make the verification meaningless — the
-        response says so via `editable`, and a write on a LIVE account answers
-        `202` — recorded for review rather than applied, because the verified
-        documents were checked against the name on file.
+        without anybody looking would make the verification meaningless. The
+        form can still be sent, and `editable` is always true: a write on a
+        LIVE account answers `202`, recorded for review rather than applied, and
+        the details on file stay as they are until an admin approves.
+
+
+        OWNER, ADMIN or MANAGER only.
       operationId: saveBusinessDetails
       requestBody:
         required: true
@@ -1193,12 +1202,18 @@ paths:
         (`step-up`), and then two 24-hour clocks before anything is live.
 
 
-        The objection window runs **before** approval so the real owner — who is
-        messaged the moment it is raised — can stop it. The cooling window runs
-        **after**, so even an approved change is still catchable. An objection
-        window closing with nobody objecting does *not* approve anything; it
-        moves the request into a human review queue. Auto-approving on silence
-        would make the whole design a delay rather than a control.
+        The objection window runs **before** approval so the real owner can stop
+        it. The cooling window runs **after**, so even an approved change is
+        still catchable. An objection window closing with nobody objecting does
+        *not* approve anything; it moves the request into a human review queue.
+        Auto-approving on silence would make the whole design a delay rather
+        than a control.
+
+
+        **Every owner is messaged on their phone the moment it is raised, when
+        this deployment has a phone sender.** The warning is not emailed, so
+        with no phone sender nobody is messaged at all. `whatHappensNext` says
+        which of the two happened.
 
 
         Only the **last four digits** of the account number are stored. Nothing
@@ -1225,7 +1240,9 @@ paths:
                 bankName:      { type: string }
       responses:
         "202":
-          description: Raised, and the owner has been messaged. Not live.
+          description: >-
+            Raised. Not live. Whether any owner was messaged is in
+            `whatHappensNext`.
           content:
             application/json:
               schema:
@@ -1235,7 +1252,14 @@ paths:
                   state: { type: string }
                   summary: { type: string, description: Masked — last four digits only. }
                   objectionUntil: { type: string, format: date-time }
-                  whatHappensNext: { type: string }
+                  whatHappensNext:
+                    type: string
+                    description: >-
+                      A sentence to show as it is. It says "We have messaged the
+                      owner's phone." only when the warning went onto a channel
+                      this deployment can send on. Otherwise it says nobody could
+                      be messaged, and that the change can be stopped from Payout
+                      details until it goes live.
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403":
@@ -6718,8 +6742,13 @@ components:
         editable:
           type: boolean
           description: >-
-            False once the account is LIVE. Render the form read-only rather
-            than accepting edits that will be refused.
+            Always `true`, for every account (D-032.3). It no longer says
+            whether a change applies: on a LIVE account `PUT /profile` answers
+            `202` and the change is reviewed before it replaces what is on
+            file, and before LIVE the write applies straight away and answers
+            `200`. Render the form, and branch on the write's status code rather
+            than on this flag. Who may send the form is `PUT /profile`'s own
+            rule, not this one.
         submittedAt: { type: string, format: date-time }
 
     ListingEdit:

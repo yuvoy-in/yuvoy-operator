@@ -139,7 +139,9 @@ export interface paths {
          * Set the logo to an image you uploaded
          * @description Confirms the upload with the image host before saving it. A client that says it finished and a file that actually exists are different claims, and storing an unconfirmed id produces a card with a broken image — worse than the plain one it replaced.
          *
-         *     Replacing a logo deletes the previous image, so changing it ten times does not leave ten stored images behind. Editable after go-live, unlike the rest of the business details: a logo is presentation, not identity, and nothing was verified against it.
+         *     Replacing a logo deletes the previous image, so changing it ten times does not leave ten stored images behind. Once the account is LIVE a new logo is reviewed before it replaces the current one, as a change to the business details is, and the write answers `202`.
+         *
+         *     OWNER, ADMIN or MANAGER only.
          */
         put: operations["setOperatorLogo"];
         post?: never;
@@ -163,6 +165,8 @@ export interface paths {
          * @description The browser posts the file straight to the image host. Bytes never pass through our API, for the same reason video does not.
          *
          *     Post the file as multipart form-data with the field name `file` to `uploadUrl`, then `PUT /logo` with the `imageId`. The slot expires in 30 minutes: long enough to find a file on a phone over an island connection, short enough that a URL captured from a browser is not a standing write credential.
+         *
+         *     OWNER, ADMIN or MANAGER only.
          */
         post: operations["createLogoUpload"];
         delete?: never;
@@ -256,7 +260,9 @@ export interface paths {
          *
          *     A whole document, not a patch of single fields: this is one form filled in during onboarding, and partial writes would leave it half-saved in ways the completeness check then has to reason about.
          *
-         *     **Self-serve only until the account is LIVE.** After that the verified documents were checked against the legal name on file, so changing it without anybody looking would make the verification meaningless — the response says so via `editable`, and a write on a LIVE account answers `202` — recorded for review rather than applied, because the verified documents were checked against the name on file.
+         *     **Self-serve only until the account is LIVE.** After that the verified documents were checked against the legal name on file, so changing it without anybody looking would make the verification meaningless. The form can still be sent, and `editable` is always true: a write on a LIVE account answers `202`, recorded for review rather than applied, and the details on file stay as they are until an admin approves.
+         *
+         *     OWNER, ADMIN or MANAGER only.
          */
         put: operations["saveBusinessDetails"];
         post?: never;
@@ -402,7 +408,9 @@ export interface paths {
          * Change where the money goes
          * @description Three gates, not one: **OWNER only**, a code sent to an owner's phone (`step-up`), and then two 24-hour clocks before anything is live.
          *
-         *     The objection window runs **before** approval so the real owner — who is messaged the moment it is raised — can stop it. The cooling window runs **after**, so even an approved change is still catchable. An objection window closing with nobody objecting does *not* approve anything; it moves the request into a human review queue. Auto-approving on silence would make the whole design a delay rather than a control.
+         *     The objection window runs **before** approval so the real owner can stop it. The cooling window runs **after**, so even an approved change is still catchable. An objection window closing with nobody objecting does *not* approve anything; it moves the request into a human review queue. Auto-approving on silence would make the whole design a delay rather than a control.
+         *
+         *     **Every owner is messaged on their phone the moment it is raised, when this deployment has a phone sender.** The warning is not emailed, so with no phone sender nobody is messaged at all. `whatHappensNext` says which of the two happened.
          *
          *     Only the **last four digits** of the account number are stored. Nothing in this service pays anybody — the payout run does not read from here — so holding the full number would be a liability with no matching capability. It arrives out of band when a person sets the account up, confirming the last four against what the operator sees on their screen.
          *
@@ -2391,7 +2399,7 @@ export interface components {
             };
             /** @description Field names still outstanding. Empty means complete. Named rather than a bare boolean so a form can mark the specific rows. */
             missing?: string[];
-            /** @description False once the account is LIVE. Render the form read-only rather than accepting edits that will be refused. */
+            /** @description Always `true`, for every account (D-032.3). It no longer says whether a change applies: on a LIVE account `PUT /profile` answers `202` and the change is reviewed before it replaces what is on file, and before LIVE the write applies straight away and answers `200`. Render the form, and branch on the write's status code rather than on this flag. Who may send the form is `PUT /profile`'s own rule, not this one. */
             editable?: boolean;
             /** Format: date-time */
             submittedAt?: string;
@@ -4455,7 +4463,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Raised, and the owner has been messaged. Not live. */
+            /** @description Raised. Not live. Whether any owner was messaged is in `whatHappensNext`. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -4468,6 +4476,7 @@ export interface operations {
                         summary?: string;
                         /** Format: date-time */
                         objectionUntil?: string;
+                        /** @description A sentence to show as it is. It says "We have messaged the owner's phone." only when the warning went onto a channel this deployment can send on. Otherwise it says nobody could be messaged, and that the change can be stopped from Payout details until it goes live. */
                         whatHappensNext?: string;
                     };
                 };

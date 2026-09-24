@@ -264,6 +264,32 @@ path=contracts/operator-openapi.yaml
 # pinning, and the take-back route answered 401 (a made-up route 404) on
 # api.yuvoy.in, so this pin describes the API that is running.
 
-ref=2afd7b4f2d1b6b75626505eab6e38bed3e36a7e6
+# 24 Sep 2026. Forward from 2afd7b4f2d1b to c363196060b1, yuvoy-api #238 and
+# #239. Prose only: the generated types gain comments and nothing else.
+#
+# Consumed:
+#   - The roles on `PUT /logo`, `POST /logo/upload-intents` and `PUT /profile`,
+#     "OWNER, ADMIN or MANAGER only." (yuvoy-api#222). The three `PROSE_GAPS`
+#     entries in `scripts/qa.mjs` failed the run against this document, as
+#     built, and are removed; the parse now checks those screens' gates itself.
+#   - `BusinessDetails.editable` now says it is always `true` and to branch on
+#     the write's status (`202` reviewed on a LIVE account, `200` before). The
+#     portal already did, and never read the flag.
+#
+# Read and deliberately not consumed:
+#   - `whatHappensNext` on `POST /change-requests/bank` now says whether any
+#     owner was messaged (yuvoy-api#227), "a sentence to show as it is". The
+#     portal's receipt for a raised change is the live in-progress panel,
+#     which re-renders from `GET /change-requests` and cannot carry a sentence
+#     only the write returned. Neither it nor the form claims that anybody was
+#     messaged, which is true whichever way the API went.
+#
+# Still NOT in the contract, and carried as before (yuvoy-api#240):
+#   - `ChangeRequest.kind` has no enum; the portal narrows it where it enters.
+#   - `already_taken_back` is not in the error code enum (`UNDECLARED_CODES`).
+#
+# `git ls-remote` read master as c363196060b1 immediately before pinning.
+
+ref=c363196060b190ddd8ee24b3ec9a6beafcde7dd0
 branch=master
-pinned_on=2026-09-23
+pinned_on=2026-09-24

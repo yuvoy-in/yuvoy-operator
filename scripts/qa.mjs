@@ -764,20 +764,12 @@ for (const [segment, reason] of READ_GATED_ON_MANAGE) {
     run: the contract caught up, and the exemption is from then on only a
     cover for whatever is written at that path next.
   */
-  const PROSE_GAPS = new Map([
-    [
-      "PUT /logo",
-      "OperatorLogo.Save refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the logo' (yuvoy-api operator_logo.go at 2afd7b4); the contract names no role. yuvoy-api#222.",
-    ],
-    [
-      "POST /logo/upload-intents",
-      "OperatorLogo.CreateUpload refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the logo' (yuvoy-api operator_logo.go at 2afd7b4); the contract names no role. yuvoy-api#222.",
-    ],
-    [
-      "PUT /profile",
-      "OperatorAccount.SaveBusinessDetails refuses !CanManage() with 403 forbidden, 'only an owner, admin or manager can change the business details' (yuvoy-api operator_account.go at 2afd7b4); the contract names no role. yuvoy-api#222.",
-    ],
-  ]);
+  /*
+    Empty since 24 Sep 2026: yuvoy-api#222 (#238, ab8fd46) wrote the roles on
+    all three down, "OWNER, ADMIN or MANAGER only.", and this run failed on
+    each entry until it was removed, as built. Kept, empty, for the next gap.
+  */
+  const PROSE_GAPS = new Map(/** @type {[string, string][]} */ ([]));
   for (const [operation, reason] of PROSE_GAPS) {
     const [gapMethod, gapPath] = operation.split(" ");
     if (!reason || reason.length < 40) {
@@ -1871,7 +1863,7 @@ for (const f of files) {
     const UNDECLARED_CODES = new Map([
       [
         "already_taken_back",
-        "TakeBackOfflineSale writes 409 already_taken_back for postgres.ErrAlreadyTakenBack (yuvoy-api internal/handler/operator_day.go at 2afd7b4); declared in the operation's prose, not in the Error code enum. Asked on yuvoy-api#226.",
+        "TakeBackOfflineSale writes 409 already_taken_back for postgres.ErrAlreadyTakenBack (yuvoy-api internal/handler/operator_day.go at 2afd7b4); declared in the operation's prose, not in the Error code enum. Asked on yuvoy-api#226, and again on #240.",
       ],
     ]);
     for (const [gap, reason] of UNDECLARED_CODES) {
