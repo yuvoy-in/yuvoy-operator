@@ -7,6 +7,7 @@ import { commissionPreview, formatRate } from "@/lib/services/commission";
 import { formatPaise } from "@/lib/format/money";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
+import { fieldMarks } from "./field-marks";
 
 /**
  * Step 2 — what it costs, and what the business receives.
@@ -23,6 +24,7 @@ export function SellingStep({
   listing,
   commissionRateBps,
   back,
+  flagged,
 }: {
   id: string;
   listing: {
@@ -39,6 +41,8 @@ export function SellingStep({
   };
   commissionRateBps: number | null;
   back: string;
+  /** The field Edit was opened for, still needed: marked in place (O12). */
+  flagged?: string;
 }) {
   const [state, act, pending] = useActionState<StepState, FormData>(
     saveSelling,
@@ -54,7 +58,7 @@ export function SellingStep({
     Number.isFinite(rupees) && rupees > 0 ? Math.round(rupees * 100) : null,
     commissionRateBps,
   );
-  const marked = (field: string) => state.fields?.includes(field) || undefined;
+  const { marked, describedBy, needed } = fieldMarks(state.fields, flagged);
 
   /*
     WHETHER ANYBODY HAS SAID IT, which the value cannot answer.
@@ -82,6 +86,7 @@ export function SellingStep({
         <label htmlFor="s-price" className={fieldLabelClass()}>
           Price
         </label>
+        {needed("unitPrice", "s-price")}
         <input
           id="s-price"
           name="unitPrice"
@@ -91,6 +96,7 @@ export function SellingStep({
           onChange={(e) => setPrice(e.target.value)}
           className={inputClass("mt-2")}
           aria-invalid={marked("unitPrice")}
+          aria-describedby={describedBy("unitPrice", "s-price")}
         />
         {split ? (
           <p className="text-forest/70 mt-1.5 text-xs">
@@ -101,8 +107,12 @@ export function SellingStep({
         ) : null}
       </div>
 
-      <fieldset>
+      <fieldset
+        id="s-unit"
+        aria-describedby={describedBy("pricingUnit", "s-unit")}
+      >
         <legend className={fieldLabelClass()}>How it is charged</legend>
+        {needed("pricingUnit", "s-unit")}
         <div className="mt-2 flex flex-wrap gap-5 text-sm">
           {PRICING_UNITS.map((unit) => (
             <label key={unit.value} className="flex items-center gap-2">
@@ -130,6 +140,7 @@ export function SellingStep({
         <label htmlFor="s-party" className={fieldLabelClass()}>
           Most people per booking
         </label>
+        {needed("maxPartySize", "s-party")}
         <input
           id="s-party"
           name="maxPartySize"
@@ -139,6 +150,7 @@ export function SellingStep({
           defaultValue={listing.maxPartySize ?? 6}
           className={inputClass("mt-2")}
           aria-invalid={marked("maxPartySize")}
+          aria-describedby={describedBy("maxPartySize", "s-party")}
         />
       </div>
 
@@ -146,6 +158,7 @@ export function SellingStep({
         <label htmlFor="s-duration" className={fieldLabelClass()}>
           How long
         </label>
+        {needed("durationMinutes", "s-duration")}
         <input
           id="s-duration"
           name="durationMinutes"
@@ -154,7 +167,11 @@ export function SellingStep({
           required
           defaultValue={listing.durationMinutes ?? 120}
           className={inputClass("mt-2")}
-          aria-describedby="s-duration-help"
+          aria-describedby={describedBy(
+            "durationMinutes",
+            "s-duration",
+            "s-duration-help",
+          )}
           aria-invalid={marked("durationMinutes")}
         />
         <p id="s-duration-help" className="text-forest/70 mt-1.5 text-xs">

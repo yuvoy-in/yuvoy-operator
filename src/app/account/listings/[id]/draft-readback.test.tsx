@@ -87,20 +87,21 @@ describe("a draft as it stands", () => {
     expect(screen.queryByText("Still needed")).toBeNull();
   });
 
-  it("sends each row to the builder step that answers it", () => {
+  it("sends each row to the builder step that answers it, naming its field", () => {
     readback({ publishBlockers: ["unitPricePaise"] });
 
+    // The field rides along, so Edit opens ON it (#85 s10, the audit O12).
     expect(within(row("Name")).getByRole("link")).toHaveAttribute(
       "href",
-      "/account/listings/exp_1/edit?step=basics",
+      "/account/listings/exp_1/edit?step=basics&field=title",
     );
     expect(within(row("Price")).getByRole("link")).toHaveAttribute(
       "href",
-      "/account/listings/exp_1/edit?step=selling",
+      "/account/listings/exp_1/edit?step=selling&field=unitPricePaise",
     );
     expect(within(row("Where to meet")).getByRole("link")).toHaveAttribute(
       "href",
-      "/account/listings/exp_1/edit?step=location",
+      "/account/listings/exp_1/edit?step=location&field=meetingPoint",
     );
   });
 

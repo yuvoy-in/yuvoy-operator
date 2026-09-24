@@ -5,6 +5,7 @@ import { saveLocation, type StepState } from "../builder-actions";
 import { screenerChoices, type Vocabulary } from "@/lib/services/vocabulary";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
+import { fieldMarks } from "./field-marks";
 
 /**
  * Step 4 — where the day starts, and what it needs of the people on it.
@@ -19,6 +20,7 @@ export function LocationStep({
   listing,
   vocabulary,
   back,
+  flagged,
 }: {
   id: string;
   listing: {
@@ -31,13 +33,15 @@ export function LocationStep({
   };
   vocabulary: Vocabulary | null;
   back: string;
+  /** The field Edit was opened for, still needed: marked in place (O12). */
+  flagged?: string;
 }) {
   const [state, act, pending] = useActionState<StepState, FormData>(
     saveLocation,
     {},
   );
   const screeners = screenerChoices(vocabulary);
-  const marked = (field: string) => state.fields?.includes(field) || undefined;
+  const { marked, describedBy, needed } = fieldMarks(state.fields, flagged);
 
   return (
     <StepShell
@@ -54,6 +58,7 @@ export function LocationStep({
         <label htmlFor="l-meeting" className={fieldLabelClass()}>
           Where to meet
         </label>
+        {needed("meetingPoint", "l-meeting")}
         <input
           id="l-meeting"
           name="meetingPoint"
@@ -61,6 +66,7 @@ export function LocationStep({
           defaultValue={listing.meetingPoint ?? ""}
           className={inputClass("mt-2")}
           aria-invalid={marked("meetingPoint")}
+          aria-describedby={describedBy("meetingPoint", "l-meeting")}
         />
       </div>
 
@@ -68,12 +74,17 @@ export function LocationStep({
         <label htmlFor="l-landmark" className={fieldLabelClass()}>
           What to look for
         </label>
+        {needed("meetingLandmark", "l-landmark")}
         <input
           id="l-landmark"
           name="meetingLandmark"
           defaultValue={listing.meetingLandmark ?? ""}
           className={inputClass("mt-2")}
-          aria-describedby="l-landmark-help"
+          aria-describedby={describedBy(
+            "meetingLandmark",
+            "l-landmark",
+            "l-landmark-help",
+          )}
           aria-invalid={marked("meetingLandmark")}
         />
         <p id="l-landmark-help" className="text-forest/70 mt-1.5 text-xs">

@@ -4,6 +4,7 @@ import { requireOperator } from "@/lib/auth/session";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError } from "@/lib/api/errors";
 import {
+  fieldTarget,
   openingStep,
   previousStep,
   nextStep,
@@ -17,6 +18,7 @@ import { ListingRow } from "@/components/listings/listing-row";
 import { SentBack } from "@/components/listings/sent-back";
 import { isDraft } from "@/lib/services/listings";
 import { Stepper } from "../../steps/stepper";
+import { FocusOnArrival } from "../../steps/field-marks";
 import { BasicsStep } from "../../steps/basics";
 import { SellingStep } from "../../steps/selling";
 import { ScheduleStep } from "../../steps/schedule";
@@ -58,10 +60,10 @@ export default async function EditListingPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ step?: string }>;
+  searchParams: Promise<{ step?: string; field?: string }>;
 }) {
   const { id } = await params;
-  const { step: askedStep } = await searchParams;
+  const { step: askedStep, field: askedField } = await searchParams;
   const { token, me } = await requireOperator();
 
   if (!me.canManage || me.suspension) {
@@ -146,6 +148,15 @@ export default async function EditListingPage({
 
   const blockers = listing.publishBlockers ?? [];
   const step = askedStep ? readStep(askedStep) : openingStep(blockers);
+  /*
+    The field a read-back row opened this for (#85 s10, O12): focused, and
+    marked "Still needed" when it is one the listing cannot be sent without.
+  */
+  const target = fieldTarget(askedField, step);
+  const flagged =
+    target && askedField && blockers.includes(askedField)
+      ? target.mark
+      : undefined;
   const unfinished = unfinishedSteps(blockers);
   const href = (to: ReturnType<typeof nextStep>) =>
     to ? `/account/listings/${id}/edit?step=${to}` : `/account/listings/${id}`;
@@ -189,6 +200,7 @@ export default async function EditListingPage({
       {listing.sentBack ? <SentBack sentBack={listing.sentBack} /> : null}
 
       <Stepper id={id} current={step} unfinished={unfinished} />
+      {target ? <FocusOnArrival id={target.inputId} /> : null}
 
       {step === "basics" ? (
         <BasicsStep
@@ -197,6 +209,7 @@ export default async function EditListingPage({
           categories={categoryChoices(vocabulary)}
           destinations={destinationChoices(vocabulary)}
           listing={listing}
+          flagged={flagged}
         />
       ) : step === "selling" ? (
         <SellingStep
@@ -204,6 +217,7 @@ export default async function EditListingPage({
           listing={listing}
           commissionRateBps={me.commissionRateBps}
           back={backHref}
+          flagged={flagged}
         />
       ) : step === "schedule" ? (
         <ScheduleStep
@@ -223,6 +237,7 @@ export default async function EditListingPage({
           listing={listing}
           vocabulary={vocabulary}
           back={backHref}
+          flagged={flagged}
         />
       ) : step === "questions" ? (
         <QuestionsStep

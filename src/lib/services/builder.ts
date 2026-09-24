@@ -85,6 +85,35 @@ export function stepOwning(blocker: string): Step | null {
   return OWNER[blocker] ?? null;
 }
 
+/**
+ * Where a field lives on its step: the control Edit focuses, and the name the
+ * step marks it by (the audit before release, O12). Only fields with one
+ * control to point at; the pictures are a whole step, and it opens on them.
+ */
+const FIELD_TARGET: Record<string, { inputId: string; mark: string }> = {
+  title: { inputId: "b-title", mark: "title" },
+  category: { inputId: "b-category", mark: "category" },
+  activityType: { inputId: "b-activity", mark: "activityType" },
+  destination: { inputId: "b-destination", mark: "destination" },
+  summary: { inputId: "b-summary", mark: "summary" },
+  description: { inputId: "b-description", mark: "description" },
+  unitPricePaise: { inputId: "s-price", mark: "unitPrice" },
+  pricingUnit: { inputId: "s-unit", mark: "pricingUnit" },
+  durationMinutes: { inputId: "s-duration", mark: "durationMinutes" },
+  maxPartySize: { inputId: "s-party", mark: "maxPartySize" },
+  meetingPoint: { inputId: "l-meeting", mark: "meetingPoint" },
+  meetingLandmark: { inputId: "l-landmark", mark: "meetingLandmark" },
+};
+
+/** The control for `?field=` on the step that holds it, or `null`. */
+export function fieldTarget(
+  field: string | undefined,
+  step: Step,
+): { inputId: string; mark: string } | null {
+  if (!field || stepOwning(field) !== step) return null;
+  return FIELD_TARGET[field] ?? null;
+}
+
 /** Every step still holding something the listing cannot be published without. */
 export function unfinishedSteps(blockers: readonly string[]): Set<Step> {
   const out = new Set<Step>();

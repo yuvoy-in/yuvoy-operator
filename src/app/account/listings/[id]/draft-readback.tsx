@@ -91,7 +91,7 @@ export function DraftReadback({
                       <Link
                         href={
                           field.step
-                            ? `/account/listings/${id}/edit?step=${field.step}`
+                            ? `/account/listings/${id}/edit?step=${field.step}&field=${field.key}`
                             : `/account/listings/${id}/edit`
                         }
                         className="hover:bg-paper-deep flex min-h-14 items-center justify-between gap-3 py-3 transition-colors duration-200"
