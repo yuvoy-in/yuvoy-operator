@@ -1,7 +1,5 @@
-import type { components } from "@/lib/api/schema.gen";
+import type { ChangeRequest } from "@/lib/account/change-kind";
 import { marketDate, marketDateLabel } from "@/lib/format/market-time";
-
-type ChangeRequest = components["schemas"]["ChangeRequest"];
 
 /**
  * Whether a change to the logo or the business details is waiting on Yuvoy.
@@ -21,7 +19,7 @@ type ChangeRequest = components["schemas"]["ChangeRequest"];
  * already there, with no API change: the newest row of the kind.
  *
  * The two screens that already read this list (Earnings and Payout details)
- * both filter on `kind === "bank"`, so these rows cannot be mistaken there for
+ * both filter on the bank's kind (`BANK_CHANGE`, `bank_account`), so these rows cannot be mistaken there for
  * a bank change holding a payout.
  *
  * ## Two answers, and silence

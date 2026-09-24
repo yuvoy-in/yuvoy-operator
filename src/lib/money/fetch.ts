@@ -1,6 +1,6 @@
 import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
-import type { ChangeRequest } from "./earnings";
+import { toChangeRequest, type ChangeRequest } from "@/lib/account/change-kind";
 import { toCommission, type Commission } from "./commission";
 import type { Settlement } from "./settlements";
 import { NO_COUNTS, type Counts } from "@/lib/bookings/list";
@@ -23,7 +23,9 @@ export async function getChangeRequests(
       {},
     );
     if (error) throw error;
-    return data.requests ?? [];
+    // Narrowed here, once, so no screen can compare against a kind the API
+    // never writes. See `change-kind.ts`.
+    return (data.requests ?? []).map(toChangeRequest);
   } catch {
     return [];
   }

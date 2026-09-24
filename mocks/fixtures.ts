@@ -1152,7 +1152,9 @@ export const COMMISSION_OWED = {
 export const CHANGE_REQUESTS = [
   {
     id: "chg_bank_1",
-    kind: "bank",
+    // The API's word, `bank_account`. This said `bank`, and every screen that
+    // looked for `bank` passed against it while matching nothing in production.
+    kind: "bank_account",
     // `cooling` is approved and STILL STOPPABLE — the state most worth
     // rendering, because an operator can still act on it.
     state: "cooling",
