@@ -1502,6 +1502,31 @@ function saleVerdictOf(
     notOnSaleReason: reason,
     notOnSaleDetail: detail,
   });
+  /*
+    The listing's own state first, as the API ranks them (yuvoy-api
+    `catalog.OperatorSaleBlock`: a kill switch, then the listing, then the
+    departure), with the API's own sentences. Without it every draft's
+    departure read as on sale here, and a screen that keeps drafts off Home
+    was green against an answer production never gives.
+  */
+  const owner = mockExperiences.find((e) => e.id === slot.experienceId);
+  switch (owner?.publicationState) {
+    case "draft":
+      return notOnSale(
+        "listing_draft",
+        "This listing is still a draft. Send it to us and we will check it.",
+      );
+    case "in_review":
+      return notOnSale(
+        "listing_in_review",
+        "We are checking this listing. These departures go on sale when it is approved.",
+      );
+    case "withdrawn":
+      return notOnSale(
+        "listing_withdrawn",
+        "This listing is off sale. Send it to us again to put it back.",
+      );
+  }
   const status = slotStatusOf(slot);
   if (status === "cancelled") {
     return notOnSale(
@@ -1521,14 +1546,14 @@ function saleVerdictOf(
       "Bookings for this departure have closed.",
     );
   }
-  if (slot.bookingMode === "allotment" && seats - sold <= 0) {
-    return notOnSale("departure_full", "Every seat on this departure is sold.");
-  }
   if (seatsAwaitingConfirmation(slot)) {
     return notOnSale(
       "departure_seats_unconfirmed",
       "Nobody has confirmed the seats on this departure for two days, so it is not on sale. Confirm them to put it back.",
     );
+  }
+  if (slot.bookingMode === "allotment" && seats - sold <= 0) {
+    return notOnSale("departure_full", "Every seat on this departure is sold.");
   }
   return { onSale: true };
 }
@@ -4669,6 +4694,10 @@ export const handlers = [
     }
 
     found.status = "in_review";
+    // A first submission moves the listing itself into review (yuvoy-api
+    // `SubmitDraft`), which its departures then say.
+    if (found.publicationState === "draft")
+      found.publicationState = "in_review";
     found.review = { state: "submitted", since: new Date().toISOString() };
     found.sentBack = undefined;
     return HttpResponse.json({ id: found.id, status: "in_review" });

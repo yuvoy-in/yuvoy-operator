@@ -68,6 +68,24 @@ function peopleOn(slot: OperatorSlot): number {
   return slot.sold + (slot.soldOffline ?? 0);
 }
 
+/**
+ * A departure that says, itself, that its listing was never on sale.
+ *
+ * The API puts the listing's own state ahead of every departure reason but a
+ * kill switch (yuvoy-api `catalog.OperatorSaleBlock`), so a draft's departure
+ * reads `listing_draft` and a first submission's `listing_in_review` whatever
+ * else is true of it. That is what keeps drafts off the sheet when the
+ * listings read failed: without it every departure's listing was unknown, and
+ * a draft's empty departures came back beside the live ones.
+ */
+function onNeverPublishedListing(slot: OperatorSlot): boolean {
+  return (
+    slot.onSale === false &&
+    (slot.notOnSaleReason === "listing_draft" ||
+      slot.notOnSaleReason === "listing_in_review")
+  );
+}
+
 /** Whether a departure belongs on the day's sheet. See the module comment. */
 export function holdsPeople(
   slot: OperatorSlot,
@@ -77,6 +95,7 @@ export function holdsPeople(
   if (peopleOn(slot) > 0) return true;
   if (slot.status === "closed") return false;
   if (listing && neverPublished(listing)) return false;
+  if (onNeverPublishedListing(slot)) return false;
   return true;
 }
 

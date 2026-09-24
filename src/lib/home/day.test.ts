@@ -84,6 +84,57 @@ describe("which departures are part of the day", () => {
   it("keeps a departure whose listing it cannot find, rather than guessing", () => {
     expect(holdsPeople(slot({ sold: 0 }), undefined)).toBe(true);
   });
+
+  it("leaves out a draft's departures even when the listings did not load", () => {
+    /*
+      With the listings read failed every listing is unknown, and a draft's
+      empty departures came back beside the live ones. The departure says
+      itself that its listing was never on sale.
+    */
+    for (const reason of ["listing_draft", "listing_in_review"]) {
+      const draft = slot({ sold: 0, onSale: false, notOnSaleReason: reason });
+      expect(holdsPeople(draft, undefined)).toBe(false);
+      // Somebody sold at the counter is still somebody coming.
+      expect(holdsPeople({ ...draft, soldOffline: 2 }, undefined)).toBe(true);
+    }
+    // A live listing's departure that is off sale for its own reason stays.
+    expect(
+      holdsPeople(
+        slot({
+          sold: 0,
+          onSale: false,
+          notOnSaleReason: "departure_seats_unconfirmed",
+        }),
+        undefined,
+      ),
+    ).toBe(true);
+    // A paused listing was on sale once: its departures are not a draft's.
+    expect(
+      holdsPeople(
+        slot({ sold: 0, onSale: false, notOnSaleReason: "listing_withdrawn" }),
+        undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it("builds the same sheet whether or not the listings loaded", () => {
+    const slots = [
+      slot({ id: "live", sold: 0 }),
+      slot({
+        id: "draft",
+        experienceId: "exp_draft",
+        sold: 0,
+        onSale: false,
+        notOnSaleReason: "listing_draft",
+      }),
+    ];
+    const ids = (listings: HomeListing[] | null) =>
+      runDay({ caption: "Today", slots, listings, now: NOW }).rows.map(
+        (r) => r.id,
+      );
+    expect(ids([LIVE, DRAFT])).toEqual(["live"]);
+    expect(ids(null)).toEqual(["live"]);
+  });
 });
 
 describe("what a departure is doing, in words", () => {
