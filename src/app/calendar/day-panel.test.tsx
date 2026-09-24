@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Closure } from "@/lib/day/closures";
 
 /*
@@ -187,5 +188,24 @@ describe("closing the day", () => {
       screen.queryByRole("button", { name: /^Close this day/ }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Reopen" })).toBeInTheDocument();
+  });
+});
+
+/*
+  The audit before release, O1: focus lands on the question when the confirm
+  opens, and goes back to the control that opened it when it is kept.
+*/
+describe("focus in the close-a-day confirm", () => {
+  it("lands on the question, and Keep it open puts it back on Close this day", async () => {
+    const user = userEvent.setup();
+    render(panel([]));
+    await user.click(screen.getByRole("button", { name: /^Close this day/ }));
+    expect(
+      screen.getByText("Close Sunday 27 September to new bookings"),
+    ).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Keep it open" }));
+    expect(
+      screen.getByRole("button", { name: /^Close this day/ }),
+    ).toHaveFocus();
   });
 });

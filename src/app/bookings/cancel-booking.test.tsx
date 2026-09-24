@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 /*
   What happens on screen after a cancel (yuvoy-operator#89 f16).
@@ -141,5 +142,47 @@ describe("before a cancel", () => {
     expect(
       screen.getByRole("button", { name: "Cancel the booking" }),
     ).toHaveClass("border-2", "border-terra-deep");
+  });
+});
+
+/*
+  The audit before release, O1: the trigger took itself away when the confirm
+  opened, and Keep took itself away on the way out, so a keyboard or
+  screen-reader user's focus fell to the page each time.
+*/
+describe("focus in the cancel confirm", () => {
+  it("lands on the question, and Keep it puts it back on the trigger", async () => {
+    const user = userEvent.setup();
+    render(<CancelBooking bookingId="bkg_1" reference="YV-TEST0001" isCash />);
+    await user.click(
+      screen.getByRole("button", { name: "Cancel this booking" }),
+    );
+    expect(screen.getByText("Cancel YV-TEST0001?")).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(
+      screen.getByRole("button", { name: "Cancel this booking" }),
+    ).toHaveFocus();
+  });
+
+  it("gives two open on one manifest their own fields", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <CancelBooking bookingId="bkg_1" reference="YV-ONE" isCash />
+        <CancelBooking bookingId="bkg_2" reference="YV-TWO" isCash />
+      </>,
+    );
+    for (const trigger of screen.getAllByRole("button", {
+      name: "Cancel this booking",
+    })) {
+      await user.click(trigger);
+    }
+    // Each label names its own field: two `id="cancel-note"` gave two labels one.
+    const notes = screen.getAllByLabelText(/A note/);
+    expect(notes).toHaveLength(2);
+    expect(notes[0].id).not.toBe(notes[1].id);
+    expect(screen.getByLabelText("Type YV-ONE to confirm")).not.toBe(
+      screen.getByLabelText("Type YV-TWO to confirm"),
+    );
   });
 });

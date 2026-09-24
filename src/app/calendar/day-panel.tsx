@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CLOSING_SENTENCE, alreadyConfirmedSentence } from "@/lib/day/calendar";
 import { closureLine, type Closure } from "@/lib/day/closures";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { BlackoutForm } from "./blackout-form";
 import { ReopenClosure } from "./reopen-closure";
 
@@ -67,6 +68,8 @@ export function DayPanel({
   closures: readonly Closure[];
 }) {
   const [closing, setClosing] = useState(false);
+  // The day's question is the closing form's; this holds the way back to here.
+  const { trigger } = useConfirmFocus(closing);
   const [receipts, setReceipts] = useState<DayReceipt[]>([]);
   const onDone = useCallback((receipt: DayReceipt) => {
     setReceipts((prev) =>
@@ -160,9 +163,11 @@ export function DayPanel({
       ) : closed ? null : (
         <div>
           <Button
+            ref={trigger}
             variant="danger-quiet"
             size="md"
             block={false}
+            aria-expanded={false}
             onClick={() => setClosing(true)}
           >
             {/*

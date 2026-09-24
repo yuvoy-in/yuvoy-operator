@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const callOffDeparture = vi.fn();
 
@@ -127,5 +128,72 @@ describe("calling a departure off", () => {
     expect(
       screen.getByText(/needs an owner, an admin or a manager/),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+  The audit before release, O1: the trigger took itself away when the confirm
+  opened, and Keep took itself away on the way out, so a keyboard or
+  screen-reader user's focus fell to the page each time.
+*/
+describe("focus in the call-off confirm", () => {
+  it("lands on the question, and Keep it puts it back on the trigger", async () => {
+    const user = userEvent.setup();
+    render(
+      <CallOffPanel
+        slotId="slot_dawn"
+        alreadyCalledOff={false}
+        canManage
+        time="09:00"
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Call this departure off" }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Call off 09:00?" }),
+    ).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(
+      screen.getByRole("button", { name: "Call this departure off" }),
+    ).toHaveFocus();
+  });
+});
+
+/*
+  The audit before release, O8: on the listing hub Keep it takes the whole
+  panel away, and it could while the call-off ran, so the call-off happened
+  and its receipt (the refund, the cash to hand back) was never seen.
+*/
+describe("while the call-off runs", () => {
+  it("cannot be kept, and tells the screen that opened it to hold it", async () => {
+    let finish: (value: unknown) => void = () => {};
+    callOffDeparture.mockImplementation(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    const busy: boolean[] = [];
+    const user = userEvent.setup();
+    render(
+      <CallOffPanel
+        slotId="slot_dawn"
+        alreadyCalledOff={false}
+        canManage
+        time="09:00"
+        startOpen
+        onKeep={() => {}}
+        onBusyChange={(b) => busy.push(b)}
+      />,
+    );
+    await user.type(
+      screen.getByLabelText("Type the departure id to confirm"),
+      "slot_dawn",
+    );
+    await user.click(screen.getAllByRole("radio")[0]);
+    await user.click(screen.getByRole("button", { name: "Call it off" }));
+
+    expect(screen.getByRole("button", { name: "Keep it" })).toBeDisabled();
+    expect(busy.at(-1)).toBe(true);
+    finish({});
+    await screen.findByRole("button", { name: "Keep it" });
   });
 });

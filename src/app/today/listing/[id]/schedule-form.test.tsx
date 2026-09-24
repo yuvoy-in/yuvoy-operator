@@ -94,6 +94,10 @@ describe("a schedule that has been changed", () => {
       target: { value: "07:15" },
     });
     fireEvent.click(save() as HTMLElement);
+    // Tuesday 09:00 went, so it asks first (below); the answer sends.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save and close them" }),
+    );
 
     const sent = saveSchedule.mock.calls[0][1] as FormData;
     expect(sent.get("experienceId")).toBe("exp_snorkel");
@@ -116,6 +120,82 @@ describe("a schedule that has been changed", () => {
     expect(
       screen.getByRole("button", { name: "Remove Friday 14:30" }),
     ).toBeVisible();
+  });
+});
+
+/*
+  The audit before release, O2: "Removing a weekday and time closes what this
+  schedule made at it." Only an empty save asked; a save that dropped Tuesday
+  09:00 closed a season of Tuesdays with no question at all.
+*/
+describe("a save that stops a weekday and time selling", () => {
+  it("asks first, naming what stops taking bookings and what stays", () => {
+    form();
+    fireEvent.change(screen.getAllByLabelText("Time")[0], {
+      target: { value: "07:15" },
+    });
+    fireEvent.click(save() as HTMLElement);
+
+    expect(saveSchedule).not.toHaveBeenCalled();
+    expect(screen.getByText("Save the schedule?")).toHaveFocus();
+    expect(
+      screen.getByText(
+        "Departures it made on Tuesdays at 09:00 stop taking new bookings. Bookings already on them stay.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save and close them" }),
+    ).toHaveClass("border-2", "border-terra-deep");
+  });
+
+  it("names every time a removed row and a changed day take away", () => {
+    form();
+    fireEvent.change(screen.getAllByLabelText("Day")[0], {
+      target: { value: "3" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Friday 14:30" }),
+    );
+    fireEvent.click(save() as HTMLElement);
+
+    expect(
+      screen.getByText(
+        "Departures it made on Tuesdays at 09:00 and Fridays at 14:30 stop taking new bookings. Bookings already on them stay.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("goes back to editing, with nothing sent, and focus on Save", () => {
+    form();
+    fireEvent.change(screen.getAllByLabelText("Time")[0], {
+      target: { value: "07:15" },
+    });
+    fireEvent.click(save() as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+
+    expect(saveSchedule).not.toHaveBeenCalled();
+    expect(save()).toHaveFocus();
+  });
+
+  it("asks again about the rows as they are after another edit", () => {
+    form();
+    fireEvent.change(screen.getAllByLabelText("Time")[0], {
+      target: { value: "07:15" },
+    });
+    fireEvent.click(save() as HTMLElement);
+    // Put the time back: nothing is removed now, so there is nothing to ask.
+    fireEvent.change(screen.getAllByLabelText("Time")[0], {
+      target: { value: "09:00" },
+    });
+    expect(screen.queryByText("Save the schedule?")).toBeNull();
+  });
+
+  it("saves a change of seats at once: it closes nothing", () => {
+    form();
+    fireEvent.change(screen.getAllByLabelText("Seats")[0], {
+      target: { value: "10" },
+    });
+    expect(save()).toHaveAttribute("type", "submit");
   });
 });
 

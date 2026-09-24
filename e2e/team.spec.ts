@@ -732,7 +732,10 @@ test("removing somebody ends their access now, and says so", async ({
   const row = page.locator("li").filter({ hasText: who.name });
   await expect(row.getByText("No sign-in recorded")).toBeVisible();
 
-  await row.getByRole("button", { name: "Remove", exact: true }).click();
+  // The trigger says whose it is to a screen reader; the confirm says Remove.
+  await row
+    .getByRole("button", { name: `Remove ${who.name}`, exact: true })
+    .click();
   await expect(
     row.getByText("Their sessions end immediately. Not at their next sign-in."),
   ).toBeVisible();

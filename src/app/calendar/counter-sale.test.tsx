@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { OperatorSlot } from "@/lib/day/types";
 
 /*
@@ -217,5 +218,34 @@ describe("taking it back", () => {
     expect(
       screen.getByText("Incident inc_9 stays open until we close it."),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+  The audit before release, O1: focus lands on the question when the confirm
+  opens, and goes back to the control that opened it when it is kept.
+*/
+describe("focus in the take-back confirm", () => {
+  it("lands on the question, and Keep them puts it back on the undo", async () => {
+    recordOfflineSale.mockResolvedValue({
+      result: {
+        id: "adj_1",
+        seatsRecorded: 2,
+        seatsRemaining: 4,
+        totalSoldOffline: 2,
+      },
+    });
+    await recordTwo();
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "That was a mistake" }),
+    );
+    expect(
+      screen.getByText("Take back the 2 seats you just recorded?"),
+    ).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Keep them" }));
+    expect(
+      screen.getByRole("button", { name: "That was a mistake" }),
+    ).toHaveFocus();
   });
 });

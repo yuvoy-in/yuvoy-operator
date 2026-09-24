@@ -12,6 +12,7 @@ import {
 import { PAUSE_REASONS } from "@/lib/services/listings";
 import { helpHref } from "@/lib/help/types";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 
@@ -93,6 +94,7 @@ export function PauseResume({
     {},
   );
   const [open, setOpen] = useState(false);
+  const { trigger, question } = useConfirmFocus(open);
 
   const resumeIsLatest = (resumed.at ?? 0) > (paused.at ?? 0);
 
@@ -179,10 +181,12 @@ export function PauseResume({
     return (
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
         <Button
+          ref={trigger}
           onClick={() => setOpen(true)}
           variant="danger-quiet"
           size="md"
           block={false}
+          aria-expanded={false}
         >
           Pause
         </Button>
@@ -211,7 +215,11 @@ export function PauseResume({
       <input type="hidden" name="id" value={experienceId} />
 
       <Panel tone="alert">
-        <p className="text-sm font-bold">
+        <p
+          ref={question}
+          tabIndex={-1}
+          className="text-sm font-bold outline-none"
+        >
           Pause {title}? It stops new bookings. It does not cancel the ones you
           have, and those travellers still expect their trip.
         </p>
@@ -335,11 +343,17 @@ function ResumeControl({
   message?: string;
 }) {
   const [armed, setArmed] = useState(false);
+  const { trigger, question } = useConfirmFocus(armed);
 
   if (!armed) {
     return (
       <div className="mt-4">
-        <Button onClick={() => setArmed(true)} variant="secondary">
+        <Button
+          ref={trigger}
+          onClick={() => setArmed(true)}
+          variant="secondary"
+          aria-expanded={false}
+        >
           Resume
         </Button>
         {message ? (
@@ -354,7 +368,13 @@ function ResumeControl({
   return (
     <form action={action} className="border-paper-line mt-4 border-t pt-4">
       <input type="hidden" name="id" value={experienceId} />
-      <p className="text-sm font-bold">Put {title} back on sale?</p>
+      <p
+        ref={question}
+        tabIndex={-1}
+        className="text-sm font-bold outline-none"
+      >
+        Put {title} back on sale?
+      </p>
       <p className="text-forest/80 mt-1.5 text-sm">
         It goes back on sale as soon as you do. There is no review to wait for.
       </p>

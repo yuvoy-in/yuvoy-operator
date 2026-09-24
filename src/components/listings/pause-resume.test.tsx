@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const pauseListing = vi.fn();
 const resumeListing = vi.fn();
@@ -252,5 +253,33 @@ describe("putting a listing back on sale", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Still missing: where to meet. It is still paused.",
     );
+  });
+});
+
+/*
+  The audit before release, O1: focus lands on the question when the confirm
+  opens, and goes back to the control that opened it when it is kept.
+*/
+describe("focus in the pause and resume confirms", () => {
+  it("lands on the pause question, and Not now puts it back on Pause", async () => {
+    const user = userEvent.setup();
+    control();
+    await user.click(screen.getByRole("button", { name: "Pause" }));
+    expect(
+      screen.getByText(/^Pause Snorkel trip at Coral Bay\?/),
+    ).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Not now" }));
+    expect(screen.getByRole("button", { name: "Pause" })).toHaveFocus();
+  });
+
+  it("lands on the resume question, and Not yet puts it back on Resume", async () => {
+    const user = userEvent.setup();
+    control("withdrawn");
+    await user.click(screen.getByRole("button", { name: "Resume" }));
+    expect(
+      screen.getByText("Put Snorkel trip at Coral Bay back on sale?"),
+    ).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Not yet" }));
+    expect(screen.getByRole("button", { name: "Resume" })).toHaveFocus();
   });
 });

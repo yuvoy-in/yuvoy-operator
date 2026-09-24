@@ -4,6 +4,7 @@ import { useActionState, useId, useState, type ReactNode } from "react";
 import { addBlackout, type BlackoutState } from "./actions";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
 import { Panel, panelClass } from "@/components/ui/panel";
 
@@ -96,6 +97,7 @@ function BlackoutRound({
   );
   // A day's form is already inside the panel somebody opened to reach it.
   const [open, setOpen] = useState(Boolean(day));
+  const { trigger, question } = useConfirmFocus(open);
   /*
     Unique per form. The calendar can hold this form more than once — the
     range closure at the top and a day's inside its Manage panel — and two
@@ -160,10 +162,12 @@ function BlackoutRound({
   if (!open) {
     return (
       <Button
+        ref={trigger}
         onClick={() => setOpen(true)}
         variant="danger-quiet"
         size="md"
         block={false}
+        aria-expanded={false}
       >
         Close dates to new bookings
       </Button>
@@ -172,7 +176,11 @@ function BlackoutRound({
 
   return (
     <form action={act} className={day ? undefined : panelClass()}>
-      <p className="text-base font-bold">
+      <p
+        ref={question}
+        tabIndex={-1}
+        className="text-base font-bold outline-none"
+      >
         {day
           ? `Close ${spoken} to new bookings`
           : "Close dates to new bookings"}

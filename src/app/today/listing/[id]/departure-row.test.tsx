@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { OperatorSlot } from "@/lib/day/types";
 
 const moveDeparture = vi.fn();
@@ -290,5 +291,58 @@ describe("what a row offers in each state", () => {
     expect(
       screen.getByText("The bookings already on this departure still stand."),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+  The audit before release: O1, focus in a confirm opened already asked; O8,
+  a call-off or a stop taken away while it runs loses its receipt.
+*/
+describe("an act opened from Manage", () => {
+  it("puts focus on its question, and Keep it gives it back to the act", async () => {
+    const user = userEvent.setup();
+    row();
+    await user.click(screen.getByRole("button", { name: "Manage 09:00" }));
+    await user.click(screen.getByRole("button", { name: "Call off" }));
+    expect(
+      screen.getByRole("heading", { name: "Call off 09:00?" }),
+    ).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(screen.getByRole("button", { name: "Call off" })).toHaveFocus();
+  });
+
+  it("holds a running call-off until its receipt is in", async () => {
+    let finish: (value: unknown) => void = () => {};
+    callOffDeparture.mockImplementation(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    const user = userEvent.setup();
+    row();
+    await user.click(screen.getByRole("button", { name: "Manage 09:00" }));
+    await user.click(screen.getByRole("button", { name: "Call off" }));
+    await user.click(screen.getAllByRole("radio")[0]);
+    await user.type(
+      screen.getByLabelText("Type the departure id to confirm"),
+      "slot_1",
+    );
+    await user.click(screen.getByRole("button", { name: "Call it off" }));
+
+    // Nothing on the row can take the panel away while it runs.
+    for (const name of ["Seats", "Stop selling", "Call off", "Keep it"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    expect(screen.getByRole("button", { name: "Manage 09:00" })).toBeDisabled();
+
+    finish({
+      result: {
+        bookingsCancelled: 1,
+        guestsAffected: 2,
+        refundedPaise: 400_000,
+        holdsReleased: 0,
+      },
+    });
+    expect(await screen.findByText("What that did")).toBeInTheDocument();
+    // And the row is usable again once it has.
+    expect(screen.getByRole("button", { name: "Seats" })).toBeEnabled();
   });
 });

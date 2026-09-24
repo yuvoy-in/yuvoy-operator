@@ -9,6 +9,7 @@ import type { Removability, TeamPerson } from "@/lib/team/members";
 import { AccessControls } from "./access-controls";
 import { JoinLink } from "./join-link";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { Chip } from "@/components/ui/chip";
 import { panelClass } from "@/components/ui/panel";
 
@@ -79,6 +80,7 @@ export function MemberRow({
     {},
   );
   const [confirming, setConfirming] = useState(false);
+  const { trigger, question } = useConfirmFocus(confirming);
 
   /*
     A role this build cannot describe is the one case the chip alone cannot
@@ -260,7 +262,11 @@ export function MemberRow({
           confirming ? (
             <form action={act} className="border-paper-line mt-4 border-t pt-4">
               <input type="hidden" name="id" value={member.id} />
-              <p className="text-sm font-bold">
+              <p
+                ref={question}
+                tabIndex={-1}
+                className="text-sm font-bold outline-none"
+              >
                 {member.pending
                   ? `Revoke the invitation to ${member.name}?`
                   : `Remove ${member.name}?`}
@@ -293,13 +299,24 @@ export function MemberRow({
             </form>
           ) : (
             <Button
+              ref={trigger}
               onClick={() => setConfirming(true)}
               variant="danger-quiet"
               size="md"
               block={false}
+              aria-expanded={false}
               className="mt-3"
             >
-              {member.pending ? "Revoke invitation" : "Remove"}
+              {/*
+                Whose, for a screen reader: every row says "Remove", and a list
+                of identical names is a list nobody can pick from (the audit,
+                O15). The space belongs to the visible word, so no name
+                computation can join the two.
+              */}
+              {member.pending ? "Revoke invitation" : "Remove"}{" "}
+              <span className="sr-only">
+                {member.pending ? `to ${member.name}` : member.name}
+              </span>
             </Button>
           )
         ) : (

@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from "react";
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, Ref } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 
@@ -82,6 +82,8 @@ export function Button({
   size?: ButtonSize;
   /** Full width, which on a phone is the default. */
   block?: boolean;
+  /** A prop since React 19, passed to the `<button>` with the rest. */
+  ref?: Ref<HTMLButtonElement>;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button

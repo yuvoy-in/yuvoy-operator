@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Removability, TeamPerson } from "@/lib/team/members";
 
 /*
@@ -100,7 +101,7 @@ describe("removing somebody", () => {
   it("is quiet: never a pill, never full width, never the tallest control", () => {
     row(ARUN, { removable: true }, true);
 
-    const remove = screen.getByRole("button", { name: "Remove" });
+    const remove = screen.getByRole("button", { name: "Remove Arun Biswas" });
     // The accent as text (op#81's danger-quiet), with no fill and no pill.
     expect(remove.className).toContain("text-terra-deep");
     expect(remove.className).not.toContain("bg-forest");
@@ -117,10 +118,18 @@ describe("removing somebody", () => {
     ).toContain("dock-target");
   });
 
+  it("says whose it is, for somebody who cannot see the row", () => {
+    row(ARUN);
+    // Visually the one word; the name rides along for a screen reader.
+    const trigger = screen.getByRole("button", { name: "Remove Arun Biswas" });
+    expect(trigger).toHaveTextContent(/^Remove Arun Biswas$/);
+    expect(within(trigger).getByText("Arun Biswas")).toHaveClass("sr-only");
+  });
+
   it("asks first, and sends nothing on the first tap", () => {
     row(ARUN);
 
-    const trigger = screen.getByRole("button", { name: "Remove" });
+    const trigger = screen.getByRole("button", { name: "Remove Arun Biswas" });
     fireEvent.click(trigger);
 
     // Named, and told what happens, before the tap that does it.
@@ -135,7 +144,7 @@ describe("removing somebody", () => {
 
   it("puts the danger pill on the button that does it, not on the way in", () => {
     row(ARUN);
-    const trigger = screen.getByRole("button", { name: "Remove" });
+    const trigger = screen.getByRole("button", { name: "Remove Arun Biswas" });
     fireEvent.click(trigger);
 
     const confirm = screen.getByRole("button", { name: "Remove" });
@@ -149,7 +158,7 @@ describe("removing somebody", () => {
   it("takes the confirm back without sending anything", () => {
     row(ARUN);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Arun Biswas" }));
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
     expect(screen.queryByText("Remove Arun Biswas?")).toBeNull();
@@ -166,7 +175,7 @@ describe("removing somebody", () => {
     removeMember.mockResolvedValue({ removed: true });
     row(ARUN);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Arun Biswas" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
     expect(await screen.findByText("Arun Biswas removed")).toBeInTheDocument();
@@ -178,7 +187,7 @@ describe("removing somebody", () => {
     removeMember.mockResolvedValue({ message: "We could not do that." });
     row(ARUN);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Arun Biswas" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -191,7 +200,7 @@ describe("removing somebody", () => {
     // read as a bug, so it is stated. The control is not offered either way.
     row(ARUN, { removable: false, reason: "The last owner or admin." });
 
-    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull();
     expect(screen.getByText("The last owner or admin.")).toBeInTheDocument();
   });
 });
@@ -203,7 +212,11 @@ describe("an invitation nobody has accepted", () => {
     removeMember.mockResolvedValue({ removed: true });
     row(INVITED);
 
-    fireEvent.click(screen.getByRole("button", { name: "Revoke invitation" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Revoke invitation to Ramesh Toppo",
+      }),
+    );
     expect(
       screen.getByText("Revoke the invitation to Ramesh Toppo?"),
     ).toBeInTheDocument();
@@ -215,5 +228,24 @@ describe("an invitation nobody has accepted", () => {
     expect(
       screen.getByText("The invitation and its code no longer work."),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+  The audit before release, O1: focus lands on the question when the confirm
+  opens, and goes back to the control that opened it when it is kept.
+*/
+describe("focus in the remove confirm", () => {
+  it("lands on the question, and Back puts it back on Remove", async () => {
+    const user = userEvent.setup();
+    row(ARUN);
+    await user.click(
+      screen.getByRole("button", { name: "Remove Arun Biswas" }),
+    );
+    expect(screen.getByText("Remove Arun Biswas?")).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(
+      screen.getByRole("button", { name: "Remove Arun Biswas" }),
+    ).toHaveFocus();
   });
 });

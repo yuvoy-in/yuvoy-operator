@@ -59,6 +59,12 @@ export function DepartureRow({
 }) {
   const [managing, setManaging] = useState(false);
   const [open, setOpen] = useState<Act | null>(null);
+  /*
+    A stop or a call-off is running. Its panel is held until the receipt is
+    in: taking it away mid-flight (another act, or Manage) lost the receipt of
+    something that still happened (the audit, O8).
+  */
+  const [busy, setBusy] = useState(false);
   const panelId = useId();
   const time = marketTime(slot.startsAt, slot.timezone);
   const calledOff = slot.status === "cancelled";
@@ -109,6 +115,7 @@ export function DepartureRow({
             type="button"
             aria-expanded={managing}
             aria-controls={panelId}
+            disabled={busy}
             onClick={() => {
               setManaging(!managing);
               setOpen(null);
@@ -143,6 +150,7 @@ export function DepartureRow({
               size="md"
               block={false}
               aria-expanded={open === "time"}
+              disabled={busy}
               onClick={() => choose("time")}
             >
               Change time
@@ -154,6 +162,7 @@ export function DepartureRow({
               size="md"
               block={false}
               aria-expanded={open === "seats"}
+              disabled={busy}
               onClick={() => choose("seats")}
             >
               Seats
@@ -165,6 +174,7 @@ export function DepartureRow({
               size="md"
               block={false}
               aria-expanded={open === "stop"}
+              disabled={busy}
               onClick={() => choose("stop")}
             >
               Stop selling
@@ -175,6 +185,7 @@ export function DepartureRow({
             size="md"
             block={false}
             aria-expanded={open === "off"}
+            disabled={busy}
             onClick={() => choose("off")}
           >
             Call off
@@ -216,6 +227,7 @@ export function DepartureRow({
             available={slot.status === "open"}
             startOpen
             onKeep={() => setOpen(null)}
+            onBusyChange={setBusy}
           />
         </div>
       ) : null}
@@ -228,6 +240,7 @@ export function DepartureRow({
           time={time}
           startOpen
           onKeep={() => setOpen(null)}
+          onBusyChange={setBusy}
           className="mt-3"
         />
       ) : null}

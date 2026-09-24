@@ -9,6 +9,7 @@ import {
 } from "./actions";
 import type { OperatorSlot } from "@/lib/day/types";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 
@@ -257,14 +258,17 @@ function TakeBack({
   pending: boolean;
 }) {
   const [asking, setAsking] = useState(false);
+  const { trigger, question } = useConfirmFocus(asking);
 
   if (!asking) {
     return (
       <div className="mt-3">
         <Button
+          ref={trigger}
           variant="danger-quiet"
           size="md"
           block={false}
+          aria-expanded={false}
           onClick={() => setAsking(true)}
         >
           That was a mistake
@@ -277,7 +281,11 @@ function TakeBack({
     <form action={act} className="border-paper-line mt-4 border-t pt-4">
       <input type="hidden" name="slotId" value={slotId} />
       <input type="hidden" name="saleId" value={saleId} />
-      <p className="text-sm font-bold">
+      <p
+        ref={question}
+        tabIndex={-1}
+        className="text-sm font-bold outline-none"
+      >
         Take back the {seatCount(seats)} you just recorded?
       </p>
       <p className="text-forest/80 mt-1 text-sm">

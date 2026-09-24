@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { callOffDeparture, type CallOffState } from "./actions";
 import { CALL_OFF_REASONS } from "@/lib/day/relay-types";
 import { formatPaise } from "@/lib/format/money";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
@@ -42,6 +43,7 @@ export function CallOffPanel({
   time,
   startOpen = false,
   onKeep,
+  onBusyChange,
   className = "mt-10",
 }: {
   slotId: string;
@@ -57,6 +59,13 @@ export function CallOffPanel({
   /** Where "Keep it" goes when the screen that opened this should close it. */
   onKeep?: () => void;
   /**
+   * Told while the call-off is running, so a screen that can take this panel
+   * away (the listing hub's Manage row) holds it until the receipt is in.
+   * Taken away mid-flight, the call-off still happened and its receipt, the
+   * refund and the cash to hand back, was never seen (the audit, O8).
+   */
+  onBusyChange?: (busy: boolean) => void;
+  /**
    * The space above it: the foot of a manifest wants a gap, a row on the
    * listing hub does not.
    */
@@ -67,6 +76,12 @@ export function CallOffPanel({
     {},
   );
   const [open, setOpen] = useState(startOpen);
+  const { trigger, question } = useConfirmFocus(open);
+
+  useEffect(() => {
+    onBusyChange?.(pending);
+  }, [pending, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
   if (state.result) {
     const r = state.result;
@@ -137,10 +152,12 @@ export function CallOffPanel({
     return (
       <div className={className}>
         <Button
+          ref={trigger}
           onClick={() => setOpen(true)}
           variant="danger-quiet"
           size="md"
           block={false}
+          aria-expanded={false}
         >
           Call this departure off
         </Button>
@@ -153,7 +170,11 @@ export function CallOffPanel({
       action={act}
       className={panelClass("alert", cn("bg-paper", className))}
     >
-      <h2 className="text-base font-bold">
+      <h2
+        ref={question}
+        tabIndex={-1}
+        className="text-base font-bold outline-none"
+      >
         {time ? `Call off ${time}?` : "Call off this departure?"}
       </h2>
       {/*
@@ -252,6 +273,7 @@ export function CallOffPanel({
         </Button>
         <Button
           onClick={() => (onKeep ? onKeep() : setOpen(false))}
+          disabled={pending}
           variant="secondary"
           block={false}
           className="flex-1"

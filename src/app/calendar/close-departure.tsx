@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { closeDeparture, type CloseDepartureState } from "./actions";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { choiceClass, textareaClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 
@@ -44,9 +45,9 @@ export function CloseDeparture({
   title,
   time,
   available,
-  onClosed,
   startOpen = false,
   onKeep,
+  onBusyChange,
 }: {
   slotId: string;
   title: string;
@@ -54,14 +55,18 @@ export function CloseDeparture({
   time: string;
   /** Whether it is still selling, so there is anything to stop. */
   available: boolean;
-  /** Told once it is closed, for a screen that also wants the words. */
-  onClosed?: (title: string, note: string) => void;
   /** Opens on the question, for a screen that already asked which act. */
   startOpen?: boolean;
   /** Where "Keep selling" goes when the screen that opened this closes it. */
   onKeep?: () => void;
+  /**
+   * Told while the close is running, so a screen that can take this away
+   * holds it until the receipt is in (the audit, O8).
+   */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [open, setOpen] = useState(startOpen);
+  const { trigger, question } = useConfirmFocus(open);
   const [state, act, pending] = useActionState<CloseDepartureState, FormData>(
     closeDeparture,
     {},
@@ -85,11 +90,15 @@ export function CloseDeparture({
   */
   useEffect(() => {
     if (!state.done) return;
-    onClosed?.(heading, note);
     router.refresh();
     // `done` flips once; the rest is fixed for this departure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.done]);
+
+  useEffect(() => {
+    onBusyChange?.(pending);
+  }, [pending, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
   if (state.done) {
     return (
@@ -106,9 +115,11 @@ export function CloseDeparture({
     return (
       <div>
         <Button
+          ref={trigger}
           variant="danger-quiet"
           size="md"
           block={false}
+          aria-expanded={false}
           onClick={() => setOpen(true)}
         >
           Stop selling
@@ -120,7 +131,11 @@ export function CloseDeparture({
   return (
     <form action={act} className="border-paper-line border-t pt-4">
       <input type="hidden" name="slotId" value={slotId} />
-      <p className="text-sm font-bold">
+      <p
+        ref={question}
+        tabIndex={-1}
+        className="text-sm font-bold outline-none"
+      >
         Stop selling {time} {title}?
       </p>
       <p className="text-forest/80 mt-1 text-sm">

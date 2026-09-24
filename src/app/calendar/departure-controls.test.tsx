@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { OperatorSlot } from "@/lib/day/types";
 
 const refresh = vi.fn();
@@ -245,5 +246,22 @@ describe("stopping one departure", () => {
     expect(
       screen.getByText("The bookings already on this departure still stand."),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+  The audit before release, O1: focus lands on the question when the confirm
+  opens, and goes back to the control that opened it when it is kept.
+*/
+describe("focus in the stop-selling confirm", () => {
+  it("lands on the question, and Keep selling puts it back on Stop selling", async () => {
+    const user = userEvent.setup();
+    render(<DepartureControls slot={slot()} canManage canSellAtCounter />);
+    await user.click(screen.getByRole("button", { name: "Stop selling" }));
+    expect(
+      screen.getByText(/^Stop selling \d\d:\d\d Sky diving at key west\?$/),
+    ).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Keep selling" }));
+    expect(screen.getByRole("button", { name: "Stop selling" })).toHaveFocus();
   });
 });
