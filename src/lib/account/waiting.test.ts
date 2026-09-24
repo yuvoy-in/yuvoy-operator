@@ -29,7 +29,7 @@ const HC_DIVING: Blocker[] = [
 
 describe("what is waiting on the operator", () => {
   it("names each thing and links it to where it is fixed", () => {
-    expect(waitingItems(HC_DIVING)).toEqual([
+    expect(waitingItems(HC_DIVING, true)).toEqual([
       { text: "Complete your details", href: "/profile" },
       { text: "Add your logo", href: "/logo" },
     ]);
@@ -37,14 +37,17 @@ describe("what is waiting on the operator", () => {
 
   it("names a document from the API's own sentence", () => {
     expect(
-      waitingItems([
-        blocker(
-          "CREDENTIAL_MISSING",
-          "We still need your insurance certificate",
-        ),
-        blocker("CREDENTIAL_EXPIRED", "boat registration has expired"),
-        blocker("CREDENTIAL_REJECTED", "GST registration was not accepted"),
-      ]),
+      waitingItems(
+        [
+          blocker(
+            "CREDENTIAL_MISSING",
+            "We still need your insurance certificate",
+          ),
+          blocker("CREDENTIAL_EXPIRED", "boat registration has expired"),
+          blocker("CREDENTIAL_REJECTED", "GST registration was not accepted"),
+        ],
+        true,
+      ),
     ).toEqual([
       {
         text: "Send your insurance certificate",
@@ -59,13 +62,16 @@ describe("what is waiting on the operator", () => {
   it("says the API's sentence when it cannot read the document out of it", () => {
     // The contract: render `label` for anything you do not recognise.
     expect(
-      waitingItems([
-        blocker(
-          "CREDENTIAL_MISSING",
-          "We have no equipment inspection on file.",
-        ),
-        blocker("OTHER", "Sign the updated terms"),
-      ]),
+      waitingItems(
+        [
+          blocker(
+            "CREDENTIAL_MISSING",
+            "We have no equipment inspection on file.",
+          ),
+          blocker("OTHER", "Sign the updated terms"),
+        ],
+        true,
+      ),
     ).toEqual([
       {
         text: "We have no equipment inspection on file.",
@@ -78,14 +84,17 @@ describe("what is waiting on the operator", () => {
 
   it("leaves out what is waiting on Yuvoy, which is not the operator's to do", () => {
     expect(
-      waitingItems([
-        ...HC_DIVING,
-        blocker(
-          "AWAITING_REVIEW",
-          "Everything is with us: we are reviewing your account",
-          "yuvoy",
-        ),
-      ]),
+      waitingItems(
+        [
+          ...HC_DIVING,
+          blocker(
+            "AWAITING_REVIEW",
+            "Everything is with us: we are reviewing your account",
+            "yuvoy",
+          ),
+        ],
+        true,
+      ),
     ).toHaveLength(2);
   });
 
@@ -114,6 +123,36 @@ describe("what is waiting on the operator", () => {
       },
       requests: [],
     }).business;
-    expect(waitingItems(blocking)).toHaveLength(badge!);
+    expect(waitingItems(blocking, true)).toHaveLength(badge!);
+  });
+});
+
+describe("what a staff phone is told", () => {
+  /*
+    The audit before release (M10): "Add your logo" and "Complete your
+    details" were links for a staff login, into screens that then said only
+    an owner, admin or manager can. A document is anybody's to send.
+  */
+  it("names the logo and the details without a link, and keeps documents linked", () => {
+    const items = waitingItems(
+      [
+        { code: "LOGO_MISSING", waitingOn: "operator", label: "Add your logo" },
+        {
+          code: "BUSINESS_DETAILS_INCOMPLETE",
+          waitingOn: "operator",
+          label: "Your registered business details are not complete",
+        },
+        {
+          code: "CREDENTIAL_MISSING",
+          waitingOn: "operator",
+          label: "We still need your insurance certificate",
+        },
+      ] as never,
+      false,
+    );
+    expect(items[0].href).toBeUndefined();
+    expect(items[1].href).toBeUndefined();
+    expect(items[2].href).toBeDefined();
+    expect(items[2].text).toBe("Send your insurance certificate");
   });
 });

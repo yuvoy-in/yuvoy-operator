@@ -3,6 +3,7 @@ import {
   blockerText,
   byGatingFirst,
   gatesSale,
+  mayActOn,
   splitByWaitingOn,
   type Blocker,
   type Standing,
@@ -68,17 +69,8 @@ const DOCUMENT = new Set([
   "CREDENTIAL_REJECTED",
 ]);
 
-/**
- * Whether this login may act on a blocker's way forward.
- *
- * The business details and the logo are OWNER, ADMIN or MANAGER in the API
- * (yuvoy-api#222); a document may be sent by anybody on the account. A staff
- * phone is not shown a button the server will refuse.
- */
-export function mayActOn(blocker: Blocker, canManage: boolean): boolean {
-  if (canManage) return true;
-  return DOCUMENT.has(blocker.code ?? "");
-}
+/** Kept exported from here for the callers that read it from Home. */
+export { mayActOn };
 
 /** One blocker, as a reason with its way forward when this login has one. */
 export function blockerReason(

@@ -38,14 +38,27 @@ export function WaitingStrip({ items }: { items: readonly WaitingItem[] }) {
       </Link>
       <ul className="border-paper-line divide-paper-line divide-y border-t">
         {items.map((item, i) => (
-          <li key={`${item.href}-${i}`}>
-            <Link
-              href={item.href}
-              className="ease-interaction hover:bg-paper flex min-h-12 items-center justify-between gap-4 px-4 py-3 transition-colors duration-200 focus-visible:-outline-offset-2"
-            >
-              <span className="min-w-0 text-base">{item.text}</span>
-              <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
-            </Link>
+          <li key={`${item.href ?? item.text}-${i}`}>
+            {item.href ? (
+              <Link
+                href={item.href}
+                className="ease-interaction hover:bg-paper flex min-h-12 items-center justify-between gap-4 px-4 py-3 transition-colors duration-200 focus-visible:-outline-offset-2"
+              >
+                <span className="min-w-0 text-base">{item.text}</span>
+                <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+              </Link>
+            ) : (
+              /*
+                Something this login cannot do: said, with who can, rather than
+                a link to a screen that would only say so after the tap.
+              */
+              <div className="min-h-12 px-4 py-3">
+                <p className="text-base">{item.text}</p>
+                <p className="text-forest/70 mt-0.5 text-sm">
+                  An owner, admin or manager can do this.
+                </p>
+              </div>
+            )}
           </li>
         ))}
       </ul>

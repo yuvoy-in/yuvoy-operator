@@ -12,6 +12,7 @@ import { render, screen, within } from "@testing-library/react";
 */
 
 let account: unknown = null;
+let canManage = true;
 
 vi.mock("@/lib/auth/session", () => ({
   readSessionToken: async () => "tok",
@@ -19,7 +20,7 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 vi.mock("@/lib/api/server-client", () => ({
   operatorApi: () => ({
-    GET: async () => ({ data: { account }, error: undefined }),
+    GET: async () => ({ data: { account, canManage }, error: undefined }),
   }),
 }));
 vi.mock("next/navigation", () => ({
@@ -64,12 +65,29 @@ const LIVE_OUTSTANDING = {
   requiredDocuments: [{ type: "equipment", satisfied: false }],
 };
 
-async function renderFor(standing: unknown) {
+async function renderFor(standing: unknown, manage = true) {
   account = standing;
+  canManage = manage;
   render(await VerificationPage());
 }
 
 describe("Verification", () => {
+  it("gives a staff login only the document it may send, and says who does the rest", async () => {
+    /*
+      The audit before release (M10): "Complete your details" was the primary
+      button for a staff phone, on a screen that then said only an owner,
+      admin or manager can. A document is anybody's to send.
+    */
+    await renderFor(LIVE_OUTSTANDING, false);
+    const waiting = screen.getByRole("region", { name: "Waiting on you" });
+    const actions = within(waiting).getAllByRole("link");
+    expect(actions.map((a) => a.textContent)).toEqual(["Send us the document"]);
+    expect(actions[0].className).toContain("bg-forest");
+    expect(
+      within(waiting).getAllByText("An owner, admin or manager can do this."),
+    ).toHaveLength(2);
+  });
+
   it("makes the first thing waiting the one primary action", async () => {
     await renderFor(LIVE_OUTSTANDING);
     const waiting = screen.getByRole("region", { name: "Waiting on you" });

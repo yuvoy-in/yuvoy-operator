@@ -170,7 +170,7 @@ export default async function AccountPage({
     Each thing waiting on the operator, named and linked where it is fixed
     (op#86 s9). The same list the Business tab's badge counts.
   */
-  const waiting = standing ? waitingItems(standing.blocking) : [];
+  const waiting = standing ? waitingItems(standing.blocking, canManage) : [];
   const rating = ratingLine(story?.stats?.rating);
   const since = sinceLine(story?.reviewed?.operatingSince, story?.languages);
   // `null` when there is no slug, which the actions treat as "no share".

@@ -194,6 +194,26 @@ export function blockerAction(
   }
 }
 
+/** The document codes, as the account's blockers name them. */
+const DOCUMENT_BLOCKERS = new Set([
+  "CREDENTIAL_MISSING",
+  "CREDENTIAL_EXPIRED",
+  "CREDENTIAL_REJECTED",
+]);
+
+/**
+ * Whether this login may act on a blocker's way forward.
+ *
+ * The business details and the logo are OWNER, ADMIN or MANAGER in the API
+ * (yuvoy-api#222); a document may be sent by anybody on the account. A staff
+ * phone is not shown a button the server will refuse. Home, the Business
+ * strip and Verification all read this one rule.
+ */
+export function mayActOn(blocker: Blocker, canManage: boolean): boolean {
+  if (canManage) return true;
+  return DOCUMENT_BLOCKERS.has(blocker.code ?? "");
+}
+
 /**
  * Whether this blocker actually stops a sale — or `null` when it will not say.
  *

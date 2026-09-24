@@ -51,6 +51,30 @@ const BACK = { href: "/earnings", label: "Money" };
  */
 export default async function PayoutsPage() {
   const { token, me } = await requireOperator();
+
+  /*
+    Behind the Money tab, which is owners', admins' and managers' (#96), as
+    Earnings and Cash are. A staff login that typed the URL saw the account on
+    file, any change in flight and the history; `GET /change-requests` does
+    not refuse them, so the refusal is said here, before the read, the same
+    way the other money screens say it.
+  */
+  if (!me.canManage) {
+    return (
+      <Screen nav={{ back: BACK }}>
+        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+          Payout details
+        </h1>
+        <div className="mt-6">
+          <Problem
+            title="Only owners, admins and managers can see where the business is paid"
+            body="Ask an owner, an admin or a manager if you need to know."
+          />
+        </div>
+      </Screen>
+    );
+  }
+
   const requests = await readChangeRequests(token);
 
   /*

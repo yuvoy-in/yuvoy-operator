@@ -1,8 +1,9 @@
 import {
+  type Blocker,
   blockerAction,
   blockerText,
+  mayActOn,
   splitByWaitingOn,
-  type Blocker,
 } from "./standing";
 
 /**
@@ -31,17 +32,29 @@ import {
  */
 export interface WaitingItem {
   text: string;
-  href: string;
+  /**
+   * Where it is put right, or absent when this login cannot: a staff phone is
+   * told what is waiting and who can do it, not sent to a screen that then
+   * says only an owner, admin or manager may (the audit before release, M10).
+   */
+  href?: string;
 }
 
 /** Where a blocker with no screen of its own is dealt with, and read in full. */
 const VERIFICATION = "/account/verification";
 
-export function waitingItems(blocking: readonly Blocker[]): WaitingItem[] {
-  return splitByWaitingOn(blocking).operator.map((blocker) => ({
-    text: itemText(blocker),
-    href: blockerAction(blocker)?.href ?? VERIFICATION,
-  }));
+export function waitingItems(
+  blocking: readonly Blocker[],
+  canManage: boolean,
+): WaitingItem[] {
+  return splitByWaitingOn(blocking).operator.map((blocker) =>
+    mayActOn(blocker, canManage)
+      ? {
+          text: itemText(blocker),
+          href: blockerAction(blocker)?.href ?? VERIFICATION,
+        }
+      : { text: blockerText(blocker) },
+  );
 }
 
 function itemText(blocker: Blocker): string {

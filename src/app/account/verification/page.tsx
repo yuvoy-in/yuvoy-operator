@@ -18,6 +18,7 @@ import {
   standingOf,
   verifiedWithoutFile,
   type Standing,
+  mayActOn,
 } from "@/lib/account/standing";
 import { SUPPORT_PHONE, SUPPORT_PHONE_HREF } from "@/lib/site/contact";
 import { documentCount, fileLine, takesFile } from "@/lib/account/documents";
@@ -79,6 +80,12 @@ export default async function VerificationPage() {
   const standing: Standing | null = unreadable
     ? null
     : standingOf(result.data?.account);
+  /*
+    The logo and the business details are OWNER, ADMIN or MANAGER in the API;
+    documents are anybody's. Absent reads as the narrower, so a staff phone is
+    never handed a button the server will refuse (the audit, M10).
+  */
+  const canManage = Boolean(result?.data?.canManage);
   const at = await now();
 
   return (
@@ -155,7 +162,7 @@ export default async function VerificationPage() {
 
       {standing === null ? null : (
         <>
-          <Outstanding standing={standing} />
+          <Outstanding standing={standing} canManage={canManage} />
           <Credentials standing={standing} at={at} />
         </>
       )}
@@ -163,7 +170,14 @@ export default async function VerificationPage() {
   );
 }
 
-function Outstanding({ standing }: { standing: Standing }) {
+function Outstanding({
+  standing,
+  canManage,
+}: {
+  standing: Standing;
+  /** OWNER, ADMIN or MANAGER: may add the logo and the business details. */
+  canManage: boolean;
+}) {
   /*
     Sorted before it is split, so the thing that is costing money is the first
     row an operator meets in each section — yuvoy-operator#38. `gates` is the
@@ -178,7 +192,9 @@ function Outstanding({ standing }: { standing: Standing }) {
     that has one (op#88 s13). Every other way out is secondary, so the eye
     lands on the thing to do next rather than on a row of equal buttons.
   */
-  const primary = operator.findIndex((b) => blockerAction(b) !== null);
+  const primary = operator.findIndex(
+    (b) => blockerAction(b) !== null && mayActOn(b, canManage),
+  );
 
   return (
     <div className="mt-8 space-y-6">
@@ -203,6 +219,12 @@ function Outstanding({ standing }: { standing: Standing }) {
                 reason can be added operationally without a contract change.
               */
               const action = blockerAction(b);
+              /*
+                A way out only for somebody who may take it: a staff phone was
+                handed "Complete your details" as the primary button, on a
+                screen that then said only an owner, admin or manager can.
+              */
+              const mayAct = mayActOn(b, canManage);
               return (
                 <li
                   key={`${b.code}-${i}`}
@@ -241,7 +263,7 @@ function Outstanding({ standing }: { standing: Standing }) {
                       Outstanding since {marketDateLabel(b.since.slice(0, 10))}.
                     </p>
                   ) : null}
-                  {action ? (
+                  {action && mayAct ? (
                     <ButtonLink
                       href={action.href}
                       variant={i === primary ? "primary" : "secondary"}
@@ -249,6 +271,11 @@ function Outstanding({ standing }: { standing: Standing }) {
                     >
                       {action.label}
                     </ButtonLink>
+                  ) : null}
+                  {action && !mayAct ? (
+                    <p className="text-forest/70 mt-2 text-sm">
+                      An owner, admin or manager can do this.
+                    </p>
                   ) : null}
                 </li>
               );

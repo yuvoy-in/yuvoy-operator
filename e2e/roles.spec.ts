@@ -227,6 +227,25 @@ test("a staff login sees capacity and is told it cannot change it", async ({
   ).toBeVisible();
 });
 
+test("payout details refuses a staff login, as the other money screens do", async ({
+  page,
+}) => {
+  /*
+    The audit before the #96 release: a staff login typing /payouts saw the
+    account on file, any bank change in flight and the history. Money is the
+    owners', admins' and managers' tab, and the refusal is said up front.
+  */
+  await signIn(page, STAFF);
+  await page.goto("/payouts");
+  await expect(
+    page.getByText(
+      "Only owners, admins and managers can see where the business is paid",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/····4417/)).toHaveCount(0);
+  await expect(page.getByText(/HDFC0001234/)).toHaveCount(0);
+});
+
 test("earnings refuses a staff login before the request, not after", async ({
   page,
 }) => {
