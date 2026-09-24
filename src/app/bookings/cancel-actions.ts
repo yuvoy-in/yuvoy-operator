@@ -6,6 +6,7 @@ import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { CALL_OFF_REASONS, type CallOffReason } from "@/lib/day/relay-types";
 import { suspendedMessage } from "@/lib/account/suspended";
+import { dedash } from "@/lib/format/dedash";
 
 /**
  * Cancelling one booking, and recording that its cash went back — #43 items 4
@@ -129,7 +130,8 @@ export async function cancelBooking(
       done: {
         refundedPaise: data.refundedPaise,
         seatsReleased: data.seatsReleased,
-        ...(data.note ? { note: data.note } : {}),
+        // The API's sentence, printed as it is, long dashes out.
+        ...(data.note ? { note: dedash(data.note) } : {}),
       },
     };
   } catch (err) {

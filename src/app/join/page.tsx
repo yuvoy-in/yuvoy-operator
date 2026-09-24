@@ -27,13 +27,16 @@ export const dynamic = "force-dynamic";
 export default function JoinPage() {
   return (
     <Screen nav="none" stageLabel="For operators" width="sm">
-      <p className="eyebrow text-terra-deep">Yuvoy for operators</p>
-      <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Accept an invitation
       </h1>
+      {/*
+        The one sentence that changes what somebody types: which code. "Somebody
+        has added you to their business" explained the screen its heading
+        already names (yuvoy-operator#80 t4).
+      */}
       <p className="text-forest/70 mt-3 text-base">
-        Somebody has added you to their business on Yuvoy. Enter your number and
-        the code from your invitation.
+        Enter your number and the code from your invitation.
       </p>
 
       <JoinForm />

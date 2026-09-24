@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { RelayPanel } from "./relay-panel";
 import { CashCollect } from "@/app/bookings/cash-collect";
 import { Button } from "@/components/ui/button";
+import { CheckIcon } from "@/components/ui/icons";
 
 /**
  * One party on the manifest.
@@ -195,26 +196,6 @@ export function PartyRow({
         </details>
       ) : null}
 
-      {/*
-        Cancelling this one party — yuvoy-operator#56 item 10, and the same
-        component the booking's own screen uses (#43 item 4), because the act is
-        the same and a second confirmation written for the manifest would be a
-        second chance to get the reference check wrong.
-
-        Withheld on a departure that has left and on a booking that has already
-        ended: the API answers `409 departure_started` and `409 booking_ended`,
-        and both are knowable from what is on this row.
-      */}
-      {party.bookingId && (cancellable || cancelledHere) ? (
-        <CancelBooking
-          bookingId={party.bookingId}
-          reference={party.reference ?? ""}
-          isCash={Boolean(cash)}
-          context="manifest"
-          onDone={() => setCancelledHere(true)}
-        />
-      ) : null}
-
       {cancelledHere ? null : holding ? (
         <p className="text-terra-deep mt-3 text-sm font-bold">
           Still paying. Not a confirmed seat yet. They may still turn up.
@@ -233,6 +214,10 @@ export function PartyRow({
             keeps the first arrival time and is not an error somebody has to
             read while eleven people wait" — so the button stays live rather
             than disabling, and simply reads as done.
+
+            "Check in", and "Checked in" once done: the words the totals above
+            use (yuvoy-operator#88 s3). "Here" read as a question on a jetty.
+            The tick is drawn, not a character, so it matches every other icon.
           */}
           <Button
             type="submit"
@@ -243,7 +228,14 @@ export function PartyRow({
             block={false}
             className="flex-1"
           >
-            {arrived ? "Here ✓" : "Here"}
+            {arrived ? (
+              <>
+                <CheckIcon className="size-5" />
+                Checked in
+              </>
+            ) : (
+              "Check in"
+            )}
           </Button>
 
           {/*
@@ -351,6 +343,30 @@ export function PartyRow({
           who={party.name ?? "them"}
         />
       )}
+
+      {/*
+        Cancelling this one party — yuvoy-operator#56 item 10, and the same
+        component the booking's own screen uses (#43 item 4), because the act is
+        the same and a second confirmation written for the manifest would be a
+        second chance to get the reference check wrong.
+
+        Withheld on a departure that has left and on a booking that has already
+        ended: the API answers `409 departure_started` and `409 booking_ended`,
+        and both are knowable from what is on this row.
+
+        Last on the row, below Check in, the cash and the message: the act that
+        ends something sits under the ones a jetty reaches for (#81). It sat
+        above Check in, a thumb's slip from it (the audit, O11).
+      */}
+      {party.bookingId && (cancellable || cancelledHere) ? (
+        <CancelBooking
+          bookingId={party.bookingId}
+          reference={party.reference ?? ""}
+          isCash={Boolean(cash)}
+          context="manifest"
+          onDone={() => setCancelledHere(true)}
+        />
+      ) : null}
     </li>
   );
 }

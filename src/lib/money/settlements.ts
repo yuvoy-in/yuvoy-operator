@@ -1,4 +1,5 @@
 import type { components } from "@/lib/api/schema.gen";
+import { marketDate, marketDateLabel } from "@/lib/format/market-time";
 
 export type Settlement = components["schemas"]["Settlement"];
 export type SettlementLine = components["schemas"]["SettlementLine"];
@@ -38,6 +39,32 @@ export const SETTLEMENT_STATE_LABEL: Record<Settlement["state"], string> = {
   approved: "Approved",
   settled: "Paid",
 };
+
+/**
+ * A payout's state as the line under its heading on its own page: what has
+ * happened, and what it is waiting for.
+ *
+ * The list rows say "Paid", "Approved" or "Locked", which is enough beside a
+ * figure; on the week's own page the word is the heading's only context, and
+ * "Locked" alone does not say whether anybody still has to act. The paid date
+ * is the market's calendar day, formatted here on the server.
+ */
+export function stateLine(
+  settlement: Pick<Settlement, "state" | "settledAt">,
+): string {
+  switch (settlement.state) {
+    case "settled": {
+      const at = settlement.settledAt ? Date.parse(settlement.settledAt) : NaN;
+      return Number.isNaN(at)
+        ? "Paid"
+        : `Paid on ${marketDateLabel(marketDate(new Date(at)))}`;
+    }
+    case "approved":
+      return "Approved, waiting to be sent";
+    case "locked":
+      return "Locked, waiting to be approved";
+  }
+}
 
 /**
  * Whether this settlement has a statement to download.

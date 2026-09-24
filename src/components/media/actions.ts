@@ -12,6 +12,7 @@ import {
   type WithdrawReason,
 } from "@/lib/media/rights";
 import { suspendedMessage } from "@/lib/account/suspended";
+import { dedashText } from "@/lib/format/dedash";
 
 /**
  * O8's three writes. The fourth step — the bytes — does not happen here.
@@ -328,7 +329,7 @@ export async function attestRights(
       inside it before the operator has read either — the rule this repo learned
       at #43 and twice at #45. The grid refreshes when the sheet closes.
     */
-    return { done: { note: data.note } };
+    return { done: { note: dedashText(data.note) } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was recorded. Try again." };
@@ -411,7 +412,7 @@ export async function withdrawMedia(
       at #43 and twice at #45. The grid refreshes when the sheet closes.
     */
     // Not `/account`: see `attachMedia`. The note below is the receipt.
-    return { withdrawn: { note: data.note } };
+    return { withdrawn: { note: dedashText(data.note) } };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. It is still up. Try again." };

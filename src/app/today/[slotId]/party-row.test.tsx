@@ -18,6 +18,13 @@ vi.mock("./actions", () => ({
 vi.mock("@/app/bookings/cash-actions", () => ({
   recordCashCollected: vi.fn(async () => ({})),
 }));
+vi.mock("@/app/bookings/cancel-actions", () => ({
+  cancelBooking: vi.fn(async () => ({})),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/today/slot_dawn",
+}));
 
 const party = {
   bookingId: "bk_1",
@@ -96,8 +103,51 @@ describe("PartyRow — terminal outcomes", () => {
         />
       </ul>,
     );
-    await user.click(screen.getByRole("button", { name: "Here" }));
+    await user.click(screen.getByRole("button", { name: "Check in" }));
     expect(markAttendance).toHaveBeenCalled();
+  });
+
+  it("says Checked in once they are, with a drawn tick rather than a character", () => {
+    /*
+      yuvoy-operator#88 s3: "Here" is our word, and on a jetty it reads as a
+      question. The button and the total above the list say the same thing.
+    */
+    render(
+      <ul>
+        <PartyRow
+          party={{ ...party, arrived: true }}
+          slotId="slot_dawn"
+          departed
+          screening={null}
+          cash={null}
+          timezone={TZ}
+          canManage={false}
+        />
+      </ul>,
+    );
+    const done = screen.getByRole("button", { name: "Checked in" });
+    expect(done.querySelector("svg")).not.toBeNull();
+    expect(done.textContent).not.toMatch(/[✓✔]/);
+    expect(screen.queryByRole("button", { name: /^Here/ })).toBeNull();
+  });
+
+  it("offers a message to the one party, by name", () => {
+    render(
+      <ul>
+        <PartyRow
+          party={party}
+          slotId="slot_dawn"
+          departed={false}
+          screening={null}
+          cash={null}
+          timezone={TZ}
+          canManage={false}
+        />
+      </ul>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Message Asha Menon" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -214,9 +264,11 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
         />
       </ul>,
     );
-    expect(screen.getByRole("button", { name: "Here" })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Cash taken" }),
+      screen.getByRole("button", { name: "Check in" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Take ₹9,000" }),
     ).toBeInTheDocument();
     expect(screen.getByText("₹9,000 to take in cash")).toBeInTheDocument();
   });
@@ -235,7 +287,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
         />
       </ul>,
     );
-    expect(screen.queryByRole("button", { name: /Cash taken/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Take / })).toBeNull();
     expect(screen.queryByText(/in cash/)).toBeNull();
   });
 
@@ -253,7 +305,7 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
         />
       </ul>,
     );
-    expect(screen.queryByRole("button", { name: /Cash taken/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Take / })).toBeNull();
   });
 
   it("warns before a trip is completed with its cash unrecorded", async () => {
@@ -296,5 +348,34 @@ describe("PartyRow — cash at the counter (yuvoy-operator#40 §1)", () => {
     );
     await user.click(screen.getByRole("button", { name: "Completed" }));
     expect(screen.queryByText(/Record the cash first/)).toBeNull();
+  });
+});
+
+/*
+  The audit before release, O11 and #81: the act that ends something sits under
+  the ones a jetty reaches for. The quiet cancel sat above Check in, a thumb's
+  slip from it.
+*/
+describe("PartyRow: where the cancel sits", () => {
+  it("is below Check in, not above it", () => {
+    render(
+      <ul>
+        <PartyRow
+          party={party}
+          slotId="slot_dawn"
+          departed={false}
+          screening={null}
+          cash={null}
+          timezone={TZ}
+          canManage
+        />
+      </ul>,
+    );
+    const checkIn = screen.getByRole("button", { name: "Check in" });
+    const cancel = screen.getByRole("button", { name: "Cancel this booking" });
+    expect(
+      checkIn.compareDocumentPosition(cancel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

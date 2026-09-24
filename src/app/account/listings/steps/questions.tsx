@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { saveQuestions, type StepState } from "../builder-actions";
 import { Button } from "@/components/ui/button";
-import { inputClass } from "@/components/ui/input";
+import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 import { StepShell } from "./step-shell";
 
@@ -77,7 +77,7 @@ export function QuestionsStep({
   return (
     <StepShell
       title="Questions"
-      blurb="What you need to know before the day. An empty list is fine."
+      blurb="You can leave this empty."
       action={act}
       pending={pending}
       message={state.message}
@@ -97,7 +97,7 @@ export function QuestionsStep({
         <ul className="space-y-4">
           {rows.map((row, i) => (
             <li key={i} className={panelClass("outline", "p-4")}>
-              <label htmlFor={`q-${i}`} className="label text-forest/75">
+              <label htmlFor={`q-${i}`} className={fieldLabelClass()}>
                 Question {i + 1}
               </label>
               <input
@@ -113,7 +113,7 @@ export function QuestionsStep({
 
               <div className="mt-3 flex flex-wrap items-center gap-4">
                 <label className="text-sm">
-                  <span className="label text-forest/75 mr-2">Answer</span>
+                  <span className={fieldLabelClass("mr-2")}>Answer</span>
                   <select
                     value={row.answerType}
                     onChange={(e) =>
@@ -140,7 +140,7 @@ export function QuestionsStep({
                 <div className="mt-3">
                   <label
                     htmlFor={`q-${i}-options`}
-                    className="label text-forest/75"
+                    className={fieldLabelClass()}
                   >
                     The choices
                   </label>

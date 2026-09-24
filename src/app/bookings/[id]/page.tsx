@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { helpHref } from "@/lib/help";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
@@ -52,6 +53,14 @@ export const dynamic = "force-dynamic";
  * there; a booking detail page is not a second place to leak a health answer
  * from. The product demo shows one here; the owner ruled on 11 Sep 2026 that
  * this rule stands (yuvoy-operator#43).
+ *
+ * ## The trip and its time first, then who (yuvoy-operator#81 s5)
+ *
+ * An operator looks for 09:00 first, not for a person they have never met, so
+ * the time and the trip are the title and the traveller's name sits under it.
+ * One title and no stage caption (#80 t2), and no paragraph explaining the
+ * screen (#80 t4): what those said is in help, and the one that is not
+ * obvious (why there is no phone number) is linked from the foot.
  */
 export default async function BookingPage({
   params,
@@ -83,6 +92,14 @@ export default async function BookingPage({
   const at = await now();
   const ended = endingLine(booking.cancellation, booking.timezone);
   const questions = booking.questions ?? [];
+  const time = booking.startsAt
+    ? marketTime(booking.startsAt, booking.timezone)
+    : null;
+  const day = booking.startsAt
+    ? marketDay(booking.startsAt, booking.timezone)
+    : null;
+  const trip = booking.experience || "Booking";
+  const who = booking.name || booking.reference;
 
   /*
     The conversation, fetched here rather than in the client so the first page is
@@ -103,14 +120,39 @@ export default async function BookingPage({
   }
 
   return (
-    <Screen
-      nav={{ back: { href: "/bookings", label: "bookings" } }}
-      stageLabel="Booking"
-    >
-      <div className="flex items-baseline justify-between gap-3">
-        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
-          {booking.name || booking.reference}
-        </h1>
+    <Screen nav={{ back: { href: "/bookings", label: "bookings" } }}>
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        {time ? (
+          <>
+            <span className="tabular-nums">{time}</span>{" "}
+            <span className="text-3xl">{trip}</span>
+          </>
+        ) : (
+          trip
+        )}
+      </h1>
+      {day ? <p className="text-forest/80 mt-2 text-base">{day}</p> : null}
+
+      <div className="mt-5 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xl font-bold wrap-break-word">{who}</p>
+          <p className="text-forest/70 mt-1 text-sm">
+            {booking.guests === 1 ? "1 guest" : `${booking.guests} guests`}
+            {/*
+              The reference, which is what the traveller reads out at the jetty
+              and what support asks for. Under the name rather than instead of
+              it, and only once: a booking with no name already leads with it.
+            */}
+            {booking.name && booking.reference ? (
+              <>
+                {" · "}
+                <span className="font-mono tracking-wider">
+                  {booking.reference}
+                </span>
+              </>
+            ) : null}
+          </p>
+        </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
           {state ? (
             <Chip tone={state.live ? "accent" : "neutral"}>{state.label}</Chip>
@@ -128,35 +170,17 @@ export default async function BookingPage({
         </div>
       </div>
 
-      {booking.reference ? (
-        <p className="text-forest/70 mt-3 font-mono text-lg tracking-wider">
-          {booking.reference}
-        </p>
-      ) : null}
-
       {/*
-        Why it ended, above everything else about it. An operator opening a
-        cancelled booking is asking one question, and reading the departure time
-        and the guest count first is reading the answer to a different one.
+        Why it ended, straight under which trip and whose it was, and above
+        everything else about it. An operator opening a cancelled booking is
+        asking one question, and the money and the answers below are the
+        answers to different ones.
       */}
       {ended ? (
         <Panel tone="alert" className="mt-6 p-4">
           <p className="text-sm font-bold">{ended}</p>
         </Panel>
       ) : null}
-
-      <Panel className="mt-8 p-0">
-        <dl className="divide-paper-line divide-y text-sm">
-          <Row label="Experience">{booking.experience}</Row>
-          {booking.startsAt ? (
-            <Row label="Departs">
-              {marketDay(booking.startsAt, booking.timezone)},{" "}
-              {marketTime(booking.startsAt, booking.timezone)}
-            </Row>
-          ) : null}
-          <Row label="Guests">{booking.guests}</Row>
-        </dl>
-      </Panel>
 
       {booking.cash ? (
         /*
@@ -169,34 +193,23 @@ export default async function BookingPage({
           paid for in full. `toBookingLine` drops it; this says what is true
           instead, and puts the collection where the operator can record it.
         */
-        <section className="mt-6" aria-labelledby="cash-heading">
+        <section className="mt-8" aria-labelledby="cash-heading">
           <Panel>
             <h2 id="cash-heading" className="label text-forest/75">
               Cash at the counter
             </h2>
-            <p className="text-forest/80 mt-2 text-sm">
-              They hand you the fare on the day. None of it passes through
-              Yuvoy, so there is no payout on this booking.
-            </p>
             {/*
-              `/cash` is OWNER, ADMIN or MANAGER, like earnings, so a staff login is
-              not sent to a screen that turns it away.
+              The screen's one primary action while the fare is still owed
+              (#81 s5): "Take ₹10,000", and a quieter link for any other
+              amount. How a cash booking pays out is in help, not here.
             */}
-            {me.canManage ? (
-              <p className="text-forest/80 mt-2 text-sm">
-                Yuvoy&rsquo;s share of it shows on{" "}
-                <Link href="/cash" className="underline underline-offset-2">
-                  Cash you&rsquo;ve collected
-                </Link>{" "}
-                once the trip is done.
-              </p>
-            ) : null}
             <CashCollect
               bookingId={booking.id}
               slotId=""
               state={booking.state}
               cash={booking.cash}
               timezone={booking.timezone}
+              emphasis="primary"
             />
 
             {/*
@@ -233,7 +246,7 @@ export default async function BookingPage({
           less than I expected" question. Frozen at capture, so a commission
           change today cannot restate what was earned last week.
         */
-        <Panel className="mt-6 p-0">
+        <Panel className="mt-8 p-0">
           <dl className="divide-paper-line divide-y text-sm">
             <Row label="Gross">{formatPaise(booking.money.grossPaise)}</Row>
             <Row label="Yuvoy's commission">
@@ -246,11 +259,6 @@ export default async function BookingPage({
               <strong>{formatPaise(booking.money.netPaise)}</strong>
             </Row>
           </dl>
-          <p className="text-forest/70 border-paper-line border-t px-5 py-4 text-xs">
-            These are the frozen figures Earnings sums, for this booking alone.
-            Earnings counts by when the money moved and this list by when the
-            trip runs, so a screenful of these will not add up to a month.
-          </p>
         </Panel>
       ) : (
         /*
@@ -258,7 +266,7 @@ export default async function BookingPage({
           answer has captured nothing — so the absence stays an absence rather
           than becoming a row of zeroes somebody tries to reconcile.
         */
-        <p className="text-forest/70 mt-6 text-sm">
+        <p className="text-forest/70 mt-8 text-sm">
           No money has moved on this one yet.
         </p>
       )}
@@ -301,8 +309,11 @@ export default async function BookingPage({
         Cancelling one booking. Withheld rather than offered and refused: the
         API takes it only on a booking that is still on, on a departure that has
         not left, and both are knowable from what is already on this screen.
-        `me.canManage` is the role gate — STAFF never sees it — and it stays
+        `me.canManage` is the role gate (STAFF never sees it), and it stays
         drawn while the business is suspended (#50).
+
+        Quiet text, behind a confirm that names what happens (#81), and below
+        everything that is not destructive.
       */}
       {/*
         Mounted for every manager whether or not the booking can still be
@@ -316,7 +327,7 @@ export default async function BookingPage({
           reference={booking.reference}
           isCash={Boolean(booking.cash)}
           available={canCancelBooking(booking.state, booking.startsAt, at)}
-          heading="Cannot run this one"
+          className="mt-8"
         />
       ) : null}
 
@@ -345,12 +356,19 @@ export default async function BookingPage({
         </section>
       )}
 
-      <p className="text-forest/70 border-paper-line mt-10 border-t pt-6 text-xs">
-        We do not show traveller phone numbers, and neither side can type one
-        into the conversation. Read the reference back to them at the jetty (it
-        is on their booking page), and to tell everybody on a departure
-        something at once, use the message box on that day under Today.
-      </p>
+      {/*
+        Why there is no number, one tap away rather than a paragraph at the
+        foot of every booking (#80 t4). It is the one question this screen
+        raises that nothing on it answers, so it earns a link.
+      */}
+      <div className="border-paper-line mt-10 border-t pt-4">
+        <Link
+          href={helpHref("traveller-phone-numbers", `/bookings/${id}`)}
+          className="text-forest/80 decoration-forest/40 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
+        >
+          Why there is no phone number
+        </Link>
+      </div>
     </Screen>
   );
 }

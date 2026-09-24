@@ -59,10 +59,9 @@ export function RequestQueue({
 
   if (receipts.length === 0 && waiting.length === 0) {
     return (
-      <Empty
-        title="Nothing waiting"
-        body="When somebody asks for seats on a request-mode departure, it appears here with a clock on it."
-      />
+      // The title is the whole of it: what a request looks like when one
+      // arrives explained the screen (yuvoy-operator#80 t4).
+      <Empty title="Nothing waiting" />
     );
   }
 

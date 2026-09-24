@@ -47,12 +47,16 @@ export default async function RootLayout({
   await gateSession();
 
   /*
-    The bar's two counts — yuvoy-operator#42. Read here because the chrome is
-    a client component and the counts come from `/operator/v1`, which a
-    browser is never allowed to call. `navBadges` cannot throw: a signed-out
-    door, a dead session or a dropped connection costs a badge, never a page.
+    Everything the chrome shows that only the server can read: the bar's two
+    counts (yuvoy-operator#42), the business name beside the mark and the
+    unread count on the inbox (#80 t1, #96), and whether this login is shown
+    the Money stop (#96). Read here because the chrome is a client component
+    and all of it comes from `/operator/v1`, which a browser is never allowed
+    to call. `chromeData` cannot throw: a signed-out door, a dead session or a
+    dropped connection costs a piece of chrome, never a page.
   */
-  const { badges, suspension } = await chromeData();
+  const { badges, suspension, businessName, canManage, unread } =
+    await chromeData();
 
   return (
     <html lang="en" className={`${fraunces.variable} ${satoshi.variable}`}>
@@ -65,6 +69,11 @@ export default async function RootLayout({
         </a>
         <AppShell
           badges={badges}
+          identity={{
+            businessName,
+            canManage,
+            ...(unread !== undefined ? { unread } : {}),
+          }}
           banner={<SuspensionBanner suspension={suspension} />}
         >
           {children}

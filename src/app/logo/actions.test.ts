@@ -5,11 +5,11 @@ import { OperatorApiError } from "@/lib/api/errors";
   The logo write, read by its STATUS rather than by its body.
 
   A LIVE business's `PUT /logo` answers `202 { state: "in_review", next }`: the
-  new mark is recorded for review and the old one stays up (D-032.3). The
-  contract declares that answer under `GET /logo` (yuvoy-api#222), so
+  new mark is recorded for review and the old one stays up (D-032.3).
   `openapi-fetch` hands it back as `data` like any 2xx, and the screen used to
   say "Saved. Your mark is on your listings now." about a logo nobody could
-  see yet (yuvoy-operator#89 f10).
+  see yet (yuvoy-operator#89 f10). The contract declared that answer under
+  `GET /logo` until yuvoy-api#222 moved it to the `PUT`.
 */
 
 const put = vi.fn();
@@ -87,6 +87,31 @@ describe("saving the logo: yuvoy-operator#89 f10", () => {
 
     expect(result.message).toBe("That upload did not finish. Choose it again.");
     expect(result.inReview).toBeUndefined();
+  });
+
+  it("asks for the picture again when the image is not one we have (404)", async () => {
+    /*
+      "No such image: the id was minted for another business, or nobody
+      minted it" (yuvoy-api#222). The same id is refused however often it is
+      sent, so "Try again" would be the wrong advice.
+    */
+    put.mockResolvedValue({
+      data: undefined,
+      error: new OperatorApiError({
+        code: "not_found",
+        message: "no such image",
+        status: 404,
+      }),
+      response: new Response(null, { status: 404 }),
+    });
+
+    const result = await saveLogo("img_someone_elses");
+
+    expect(result.message).toBe(
+      "We could not find that picture. Choose it again.",
+    );
+    expect(result.inReview).toBeUndefined();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("sends nothing for an empty id", async () => {

@@ -261,9 +261,8 @@ function InviteFields({ state }: { state: InviteState }) {
           where they come from instead.
         */}
         <p className="text-forest/70 mt-3 text-xs">
-          Staff is preselected: it is the safer of the two, and the one a boat
-          phone should have. Manager and Admin are given after somebody has
-          joined, from their row on this list.
+          Manager and Admin are given after somebody has joined, from their row
+          on this list.
         </p>
       </fieldset>
 

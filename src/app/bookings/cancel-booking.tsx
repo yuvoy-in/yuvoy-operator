@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ReactNode } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelBooking, type CancelState } from "@/app/bookings/cancel-actions";
 import { CALL_OFF_REASONS } from "@/lib/day/relay-types";
 import { formatPaise } from "@/lib/format/money";
+import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { Panel } from "@/components/ui/panel";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
 
@@ -31,6 +33,13 @@ import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
  * notes, the response says so and they are the ones holding them. Those are
  * opposite facts, so the copy is chosen by whether this is a cash booking
  * rather than being written to cover both.
+ *
+ * ## Quiet until it is asked for
+ *
+ * The control is text in the warning colour, not a pill (yuvoy-operator#81):
+ * cancelling somebody's trip must not carry the weight of the safe action
+ * beside it. The confirm it opens names what happens and carries the `danger`
+ * pill. There is no heading over it any more: one control is not a group.
  */
 export function CancelBooking({
   bookingId,
@@ -38,7 +47,7 @@ export function CancelBooking({
   isCash,
   available = true,
   context = "booking",
-  heading,
+  className = "mt-4",
   onDone,
 }: {
   bookingId: string;
@@ -62,12 +71,18 @@ export function CancelBooking({
    *               the row, and the receipt with it, straight off the list.
    */
   context?: "booking" | "manifest";
-  /** Drawn over the control on the booking page, only when it shows anything. */
-  heading?: string;
+  /** Space above the control, which differs between a page and a row. */
+  className?: string;
   /** Called once, when the booking is cancelled. */
   onDone?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { trigger, question } = useConfirmFocus(open);
+  /*
+    Per booking: a manifest can hold several of these open at once, and two
+    `id="cancel-note"` fields would give two labels one field (the audit, O11).
+  */
+  const ids = useId();
   const [state, act, pending] = useActionState<CancelState, FormData>(
     cancelBooking,
     {},
@@ -94,21 +109,9 @@ export function CancelBooking({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finished]);
 
-  const wrap = (body: ReactNode) =>
-    heading ? (
-      <section className="mt-8" aria-labelledby={`cancel-${bookingId}`}>
-        <h2 id={`cancel-${bookingId}`} className="label text-forest/75">
-          {heading}
-        </h2>
-        {body}
-      </section>
-    ) : (
-      body
-    );
-
   if (finished) {
-    return wrap(
-      <Panel tone="done" role="status" className="mt-4 p-4">
+    return (
+      <Panel tone="done" role="status" className={cn(className, "p-4")}>
         <p className="text-base font-bold">This booking is cancelled</p>
         {state.done ? (
           <>
@@ -148,27 +151,43 @@ export function CancelBooking({
             </Button>
           </div>
         ) : null}
-      </Panel>,
+      </Panel>
     );
   }
 
   if (!available) return null;
 
   if (!open) {
-    return wrap(
-      <div className="mt-4">
-        <Button variant="danger" onClick={() => setOpen(true)}>
+    return (
+      <div className={className}>
+        <Button
+          ref={trigger}
+          variant="danger-quiet"
+          size="md"
+          block={false}
+          aria-expanded={false}
+          onClick={() => setOpen(true)}
+        >
           Cancel this booking
         </Button>
-      </div>,
+      </div>
     );
   }
 
-  return wrap(
-    <form action={act} className="border-paper-line mt-4 border-t pt-4">
+  return (
+    <form
+      action={act}
+      className={cn(className, "border-paper-line border-t pt-4")}
+    >
       <input type="hidden" name="bookingId" value={bookingId} />
 
-      <p className="text-base font-bold">Cancel {reference}?</p>
+      <p
+        ref={question}
+        tabIndex={-1}
+        className="text-base font-bold outline-none"
+      >
+        Cancel {reference}?
+      </p>
       <p className="text-forest/80 mt-1.5 text-sm">
         {/*
           Opposite facts, so they are not merged. A cash booking refunds nothing
@@ -199,11 +218,11 @@ export function CancelBooking({
       </fieldset>
 
       <div className="mt-4">
-        <label htmlFor="cancel-note" className="label text-forest/75">
+        <label htmlFor={`${ids}-note`} className="label text-forest/75">
           A note <span className="text-forest/70">(optional)</span>
         </label>
         <textarea
-          id="cancel-note"
+          id={`${ids}-note`}
           name="note"
           rows={2}
           maxLength={500}
@@ -222,11 +241,11 @@ export function CancelBooking({
       </div>
 
       <div className="mt-4">
-        <label htmlFor="confirm-reference" className="label text-forest/75">
+        <label htmlFor={`${ids}-reference`} className="label text-forest/75">
           Type {reference} to confirm
         </label>
         <input
-          id="confirm-reference"
+          id={`${ids}-reference`}
           name="confirmReference"
           type="text"
           autoComplete="off"
@@ -266,6 +285,6 @@ export function CancelBooking({
           Keep it
         </Button>
       </div>
-    </form>,
+    </form>
   );
 }

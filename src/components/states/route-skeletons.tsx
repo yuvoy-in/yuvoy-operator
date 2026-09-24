@@ -44,11 +44,10 @@ import { Skeleton } from "@/components/ui/states";
 /**
  * The stage-and-sheet chassis — every screen behind the session.
  *
- * `nav` defaults to `"tabs"`, which is right for the four tab roots and is the
- * only thing a fallback can honestly assume. A focused screen's back control
- * is not drawn: a fallback cannot know where back leads, and a disc that
- * flashes the wrong destination is worse than one that arrives with the
- * screen. The strip is the same height either way, so nothing below it moves.
+ * `nav` defaults to `"tabs"`, which is right for the tab roots and is the only
+ * thing a fallback can honestly assume. No eyebrow above the title: no screen
+ * draws one since yuvoy-operator#80 t2, and a skeleton that reserves a line
+ * the screen does not have moves the title when it lands.
  */
 export function SheetSkeleton({
   nav = "tabs",
@@ -65,10 +64,7 @@ export function SheetSkeleton({
       <div role="status" aria-busy="true" aria-label="Loading">
         <span className="sr-only">Loading</span>
         <div className="space-y-6">
-          <div className="space-y-3">
-            <Skeleton className="h-3 w-24 rounded-full" />
-            <Skeleton className="h-8 w-2/3 rounded-full" />
-          </div>
+          <Skeleton className="h-8 w-2/3 rounded-full" />
           <div className="space-y-3">
             {Array.from({ length: rows }, (_, i) => (
               <Skeleton key={i} className="h-24 w-full" />
@@ -83,10 +79,14 @@ export function SheetSkeleton({
 /**
  * A screen an operator goes INTO: no tab bar, so no clearance for one.
  *
- * `nav="none"` is what the real focused screens differ from only by the back
- * disc, which a fallback cannot draw because it cannot know where back leads.
- * The header height, the sheet and the `pb-8` foot are all identical, so the
- * content lands exactly where the skeleton stood.
+ * It wore the signed-out doors' chassis (`nav="none"`) before, which put the
+ * wordmark where the back disc goes and left the inbox off, so every focused
+ * screen swapped its header when it arrived. `nav="focused"` is the focused
+ * header itself: the back disc's place held by an inert disc (a fallback
+ * cannot know where back leads, and a link to the wrong place is worse than
+ * none), and the inbox, which is the same on every signed-in screen and hides
+ * itself on the conversations list. The sheet and the `pb-8` foot match too,
+ * so the content lands exactly where the skeleton stood.
  */
 export function FocusedSkeleton({
   width = "md",
@@ -95,7 +95,7 @@ export function FocusedSkeleton({
   width?: "sm" | "md" | "lg";
   rows?: number;
 }) {
-  return <SheetSkeleton nav="none" width={width} rows={rows} />;
+  return <SheetSkeleton nav="focused" width={width} rows={rows} />;
 }
 
 /**

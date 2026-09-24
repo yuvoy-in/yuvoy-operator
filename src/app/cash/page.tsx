@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { requireOperator } from "@/lib/auth/session";
 import { getCommissionOwed } from "@/lib/money/fetch";
 import {
@@ -9,6 +10,7 @@ import {
 } from "@/lib/money/commission";
 import { formatPaise } from "@/lib/format/money";
 import { marketDateLabel } from "@/lib/format/market-time";
+import { helpHref } from "@/lib/help";
 import { Empty, Problem } from "@/components/ui/states";
 import { Screen } from "@/components/chrome/screen";
 import { Panel, panelClass } from "@/components/ui/panel";
@@ -21,7 +23,8 @@ export const metadata: Metadata = { title: "Cash you've collected" };
 */
 export const dynamic = "force-dynamic";
 
-const BACK = { href: "/account/settings", label: "settings" };
+/* Cash sits behind the Money tab now (yuvoy-operator#96). */
+const BACK = { href: "/earnings", label: "Money" };
 
 /**
  * What the operator owes Yuvoy on cash we never handled — yuvoy-operator#40 §2.
@@ -72,15 +75,13 @@ export default async function CashPage() {
   */
   if (!me.canManage) {
     return (
-      <Screen nav={{ back: BACK }} stageLabel="Cash">
-        <p className="eyebrow text-terra-deep">The money</p>
-        <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+      <Screen nav={{ back: BACK }}>
+        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
           Cash you&rsquo;ve collected
         </h1>
         <p className="text-forest/80 mt-4 text-base">
           This one is for whoever handles the money. Ask an owner, an admin or a
-          manager at your business. Your sign-in works, it just does not open
-          this.
+          manager at your business.
         </p>
       </Screen>
     );
@@ -97,14 +98,14 @@ export default async function CashPage() {
     (unrecorded?.bookings ?? 0) === 0;
 
   return (
-    <Screen nav={{ back: BACK }} stageLabel="Cash">
+    <Screen nav={{ back: BACK }}>
       {/*
-        The money, not the person holding the phone. This printed the
-        signed-in person's name above the business's cash, which on a shared
-        phone reads as one staff member's takings (op#87 t3).
+        The heading and nothing above it. This printed the signed-in person's
+        name above the business's cash, which on a shared phone reads as one
+        staff member's takings (op#87 t3), and then an eyebrow that said "The
+        money" over a heading that already did (op#80 t2).
       */}
-      <p className="eyebrow text-terra-deep">The money</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Cash you&rsquo;ve collected
       </h1>
 
@@ -115,10 +116,7 @@ export default async function CashPage() {
           ₹0 across a table, which reads as a screen that failed to load.
         */
         <div className="mt-8">
-          <Empty
-            title="Nothing owed"
-            body="Everything's settled. When a traveller books and pays you in cash on the day, the trip and Yuvoy's share of it appear here."
-          />
+          <Empty title="Nothing owed" body="Everything's settled." />
         </div>
       ) : (
         <>
@@ -161,11 +159,11 @@ export default async function CashPage() {
                 </div>
               ) : null}
             </dl>
-            {held ? (
-              <p className="text-forest/70 mt-3 text-sm">
-                The share on a trip still to run is owed once the trip is done.
-              </p>
-            ) : null}
+            {/*
+              When a share becomes owed is the one idea here that is not
+              obvious, and its explanation lives in Help (op#80 t4).
+            */}
+            <HelpLink id="cash-owed">When Yuvoy&rsquo;s share is owed</HelpLink>
           </Panel>
 
           {/*
@@ -191,7 +189,7 @@ export default async function CashPage() {
                       ? "1 past cash trip has no payment recorded"
                       : `${unrecorded.bookings} past cash trips have no payment recorded`
                   }
-                  body="These trips have happened and nothing says whether you were paid. Record the cash if you took it, or mark the party a no-show if they did not come."
+                  body="Record the cash if you took it, or mark the party a no-show if they did not come."
                 />
               </div>
               <ul className="mt-3 space-y-3">
@@ -228,25 +226,9 @@ export default async function CashPage() {
               Owed now
             </h2>
             {commission.bookings === 0 ? (
-              <p className="text-forest/70 mt-3 text-sm">
-                Nothing yet. A trip&rsquo;s share is owed once it is done and
-                its cash is recorded.
-              </p>
+              <p className="text-forest/70 mt-3 text-sm">Nothing owed yet.</p>
             ) : (
               <>
-                {/*
-                  Said plainly, because it is the question this screen answers
-                  and the one an operator asks first. Nothing anywhere implies
-                  we are holding the fare.
-                */}
-                <p className="text-forest/70 mt-2 text-sm">
-                  You took this money directly, so there is no payout for us to
-                  take our share out of. It is a balance instead:{" "}
-                  {commission.bookings === 1
-                    ? "one completed trip"
-                    : `${commission.bookings} completed trips`}
-                  , listed so every rupee is checkable.
-                </p>
                 {/*
                   Every line is checkable is only TRUE if they add up. When they
                   do not, say so rather than let an operator find it with a
@@ -271,11 +253,6 @@ export default async function CashPage() {
               <h2 id="held" className="label text-forest/75">
                 Held, trip still to run
               </h2>
-              <p className="text-forest/70 mt-2 text-sm">
-                Cash you have taken for trips that have not run yet. Trips
-                finish on their own six hours after they end, and then this
-                moves to owed.
-              </p>
               {!heldAddsUp ? (
                 <div className="mt-4">
                   <Problem
@@ -291,15 +268,28 @@ export default async function CashPage() {
       )}
 
       {/*
-        No "pay now", and this says why rather than leaving a silence somebody
-        reads as an omission.
+        No "pay now", and the reason is one tap away rather than a paragraph
+        at the foot of every visit: "Cash ends with 'There is nothing to tap
+        here.' An operator reads none of it after the first week" (op#80 t4).
       */}
-      <p className="border-paper-line text-forest/70 mt-10 border-t pt-6 text-sm">
-        There is nothing to tap here. Settling up happens between us and a
-        person, not through this screen. This is so the number is never a
-        surprise when it does.
-      </p>
+      <div className="border-paper-line mt-10 border-t pt-4">
+        <HelpLink id="settling-cash">
+          How to settle Yuvoy&rsquo;s share
+        </HelpLink>
+      </div>
     </Screen>
+  );
+}
+
+/** A small way to the answer, for an idea on this screen that is not obvious. */
+function HelpLink({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <Link
+      href={helpHref(id, "/cash")}
+      className="text-forest/80 hover:text-forest mt-3 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
+    >
+      {children}
+    </Link>
   );
 }
 

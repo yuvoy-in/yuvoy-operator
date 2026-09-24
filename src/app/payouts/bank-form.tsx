@@ -16,11 +16,35 @@ import { Panel } from "@/components/ui/panel";
 /**
  * Changing where the money goes.
  *
- * The whole design is deliberately slow, and this form's job is to **explain
- * that rather than apologise for it**. An operator who understands why it
- * takes 48 hours does not phone us on hour two; one who does not, does.
+ * The whole design is deliberately slow, and the form says what raising a
+ * change does before the tap: nothing today, then two clocks, stoppable
+ * throughout. WHY it is slow is an answer in Help (yuvoy-operator#80 t4).
+ *
+ * ## Empty, always
+ *
+ * yuvoy-operator#87 s14: "The form arrives half filled: IFSC shows
+ * HDFC0001234, the account number is empty." Nothing was filled: the IFSC's
+ * placeholder was an example IFSC, which on a phone in the sun is
+ * indistinguishable from a saved one. So there is no placeholder, the shape
+ * is said under the field instead, and what IS on file is shown as text above
+ * the form, never as values in it.
+ *
+ * Only an owner of a business that is not suspended is shown this form; the
+ * screen says so to everybody else before they reach it.
  */
-export function BankForm({ canRaise }: { canRaise: boolean }) {
+export function BankForm({
+  onCancel,
+  autoFocus = false,
+}: {
+  /** Closes the form when an account is already on file: "Keep this account". */
+  onCancel?: () => void;
+  /**
+   * Put the caret in the first field. Set when the form was opened by tapping
+   * Change, which is a request to type; never on arrival, where a keyboard
+   * opening by itself would cover the account on file.
+   */
+  autoFocus?: boolean;
+}) {
   const [step, setStep] = useState<StepUpState>({});
   const [sending, setSending] = useState(false);
   const [account, setAccount] = useState("");
@@ -28,16 +52,6 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
     changeBank,
     {},
   );
-
-  if (!canRaise) {
-    return (
-      <p className="text-forest/70 text-sm">
-        Only the owner can change where the money goes. That is not a
-        permissions quirk. A stolen login plus one convincing phone call is
-        otherwise enough to redirect a season&rsquo;s takings.
-      </p>
-    );
-  }
 
   return (
     <form action={act} className="space-y-5">
@@ -50,6 +64,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
           name="accountHolder"
           type="text"
           autoComplete="off"
+          autoFocus={autoFocus}
           required
           className={inputClass("mt-2")}
         />
@@ -72,16 +87,18 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
         />
         {/*
           Shown before sending, because it is what will actually be stored.
-          Only the last four digits are kept — nothing in this service pays
+          Only the last four digits are kept: nothing in this service pays
           anybody, so holding the full number would be a liability with no
-          matching capability.
+          matching capability. The rest is confirmed by a person, on a call,
+          which is what the sentence says rather than "out of band", a phrase
+          nobody outside software uses (op#87 s14).
         */}
         <p className="text-forest/70 mt-1.5 text-xs">
           We store the last four digits only
           {account.replace(/\D/g, "").length >= 4
             ? `: ${maskAccount(account)}`
             : ""}
-          . A person confirms the rest with you out of band.
+          . We will call you to confirm the account number.
         </p>
       </div>
 
@@ -95,9 +112,17 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
           type="text"
           autoComplete="off"
           required
-          placeholder="HDFC0001234"
+          aria-describedby="ifsc-hint"
           className={inputClass("mt-2 font-mono uppercase")}
         />
+        {/*
+          The shape, said beside the field rather than typed into it: a
+          placeholder IFSC read as a saved one (op#87 s14). The fifth character
+          is the one people get wrong, a reserved zero that reads as an O.
+        */}
+        <p id="ifsc-hint" className="text-forest/70 mt-1.5 text-xs">
+          11 characters. The fifth is always a zero.
+        </p>
       </div>
 
       <div>
@@ -121,10 +146,8 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
           goes to the owner's email address (yuvoy-operator#91). Who it goes to
           is the part that matters, and is unchanged: an owner, whoever asks.
         */}
-        <p className="text-sm font-bold">A code is emailed to the owner</p>
-        <p className="text-forest/80 mt-1.5 text-sm">
-          Whoever asks. A manager who requested this will not receive it. That
-          is the point of sending it to the owner.
+        <p className="text-sm font-bold">
+          A code is emailed to the owner, whoever asks
         </p>
 
         {step.sent ? (
@@ -142,9 +165,7 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
               className={inputClass("mt-2 font-mono text-2xl tracking-[0.4em]")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
-              It lasts ten minutes: long enough for a bad phone keyboard, short
-              enough that a session left open at a dive shop is not still
-              elevated after lunch.
+              It lasts ten minutes.
             </p>
             {step.devCode ? (
               <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
@@ -204,21 +225,30 @@ export function BankForm({ canRaise }: { canRaise: boolean }) {
         </p>
       ) : null}
 
-      <Button type="submit" disabled={pending || !step.sent}>
-        {pending ? "Raising…" : "Raise the change"}
-      </Button>
-
       {/*
-        "The owner is messaged immediately" was the claim here, and it is not
-        true: the bank-change warning is phone only, by design, and with no
-        phone sender it is suppressed (yuvoy-operator#91). What stands is the
-        window and the brake on this screen, so that is what it promises.
+        Said before the tap, which is what it is for: the consequence of
+        raising a change. "The owner is messaged immediately" was the claim
+        here, and it is not true: the bank-change warning is phone only, by
+        design, and with no phone sender it is suppressed (yuvoy-operator#91).
+        What stands is the window and the brake on this screen, so that is
+        what it promises.
       */}
       <p className="text-forest/70 text-xs">
         Raising it changes nothing today. For 24 hours an owner or an admin can
         stop it from this screen; a person at Yuvoy then reviews it; and it goes
         live 24 hours after that, still stoppable the whole time.
       </p>
+
+      <div className="flex flex-col gap-2">
+        <Button type="submit" disabled={pending || !step.sent}>
+          {pending ? "Raising…" : "Raise the change"}
+        </Button>
+        {onCancel ? (
+          <Button variant="secondary" onClick={onCancel} disabled={pending}>
+            Keep this account
+          </Button>
+        ) : null}
+      </div>
     </form>
   );
 }

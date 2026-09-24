@@ -46,6 +46,7 @@ import {
   type MockThread,
   type MockParty,
   WIDE_READ_FAILS_ID,
+  NEW_BUSINESS_ID,
   type MockSlot,
   type MockTeamMember,
 } from "./fixtures";
@@ -127,6 +128,17 @@ function businessOf(request: Request): string {
 }
 
 /**
+ * Whether this session is the business with nothing on it yet
+ * (yuvoy-operator#96): no listings, departures, requests, reels or
+ * conversations. Every other identity reads the fixture dive shop's, which is
+ * what their own screens are tested against, so this one is answered empty by
+ * name rather than by changing what a business owns for everybody.
+ */
+function isNewBusiness(request: Request): boolean {
+  return sessionUser(request)?.id === NEW_BUSINESS_ID;
+}
+
+/**
  * The change requests this session's business actually has.
  *
  * `CHANGE_REQUESTS` is Reef Divers' history; `bankChanges` is what anybody has
@@ -193,9 +205,15 @@ function fileForReview(
   ];
 }
 
-/** OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it. */
+/**
+ * OWNER, ADMIN or MANAGER, exactly as `GET /me` defines it (yuvoy-api
+ * `Identity.CanManage`). It left ADMIN out, so an admin read as staff here and
+ * nowhere else: the mock refused them what the API allows.
+ */
 const canManage = (member: MockTeamMember) =>
-  member.roles.includes("OWNER") || member.roles.includes("MANAGER");
+  member.roles.includes("OWNER") ||
+  member.roles.includes("ADMIN") ||
+  member.roles.includes("MANAGER");
 
 let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
 /** Wrong sign-in codes per number. The sixth answers 429. */
@@ -217,6 +235,17 @@ let calledOff: Record<string, string> = {};
 let capacity: Record<string, number> = {};
 /** Seats reported sold at the operator's own counter. */
 let offlineSold: Record<string, number> = {};
+/**
+ * Each counter sale recorded this session, so one can be taken back by its id
+ * (`DELETE /slots/{id}/offline-sales/{saleId}`, yuvoy-api#226). A take-back
+ * leaves the entry on the record, as the API's append-only adjustments do.
+ */
+let offlineEntries: {
+  id: string;
+  slotId: string;
+  seats: number;
+  takenBack: boolean;
+}[] = [];
 /** Sessions elevated by a step-up code, and bank changes raised. */
 let steppedUp = false;
 let bankChanges: Record<string, unknown>[] = [];
@@ -1289,6 +1318,25 @@ function storyResponse() {
     languages: story.languages,
     photos: story.photos.map(storyPhotoJson),
     reviewed: STORY_REVIEWED,
+    /*
+      The three numbers at the top of the business profile (yuvoy-api#185):
+      "always present, zeroes included". This mock never sent them, so the
+      profile's row of numbers had never once been drawn against it, and the
+      finding it carried ("the header says 3 listings; the grid below shows
+      six", op#86 s9) could not be seen here at all.
+
+      `listings` is counted the way the API counts it: what a traveller can
+      buy now, live or live with changes in review. `tripsRun` is a constant,
+      because this mock keeps no record of departures that ran. No review has
+      been published, which is what a count of 0 and a null average say.
+    */
+    stats: {
+      listings: mockExperiences.filter(
+        (e) => e.status === "live" || e.status === "live_changes_in_review",
+      ).length,
+      tripsRun: 128,
+      rating: { average: null, count: 0 },
+    },
   };
 }
 
@@ -1334,6 +1382,12 @@ function slotDay(slot: MockSlot): string {
 }
 
 /** Every departure this operator has, fixtures and ones a test added. */
+/**
+ * Every departure there is, fixture or made this session. Every route that
+ * acts on one departure reads this, as the API reads one table: six read the
+ * fixtures alone, so a departure a test had just made answered 404 to its
+ * seats, its manifest, a message, a call-off and a counter sale.
+ */
 function allSlots(): MockSlot[] {
   return [...SLOTS, ...createdSlots];
 }
@@ -1424,6 +1478,32 @@ function slotStatusOf(slot: MockSlot): string {
  * that was closed and then called off is called off, and the heavier fact is
  * the one somebody needs.
  */
+/**
+ * A departure's seat numbers the way `GET /slots` computes them (yuvoy-api
+ * `ListSlots` at 2afd7b4): counter sales come OFF `seats`, floored at zero,
+ * `sold` is what Yuvoy sold, and `soldOffline` is every counter sale, the
+ * fixture's own and this session's, the same number the manifest reports.
+ *
+ * It added counter sales to `sold` before, which no API sends: a six-seat boat
+ * with two walk-ups read "2 of 6 sold" here and "0 of 4 sold" in production.
+ * A fixture's `seats` is already net of its own `seatsSoldOffline`.
+ */
+function departureSeats(slot: MockSlot): {
+  seats: number;
+  sold: number;
+  remaining: number;
+  soldOffline: number;
+} {
+  const session = offlineSold[slot.id] ?? 0;
+  const seats = Math.max(0, (capacity[slot.id] ?? slot.seats) - session);
+  return {
+    seats,
+    sold: slot.sold,
+    remaining: Math.max(0, seats - slot.sold),
+    soldOffline: (slot.seatsSoldOffline ?? 0) + session,
+  };
+}
+
 function saleVerdictOf(
   slot: MockSlot,
   seats: number,
@@ -1434,6 +1514,31 @@ function saleVerdictOf(
     notOnSaleReason: reason,
     notOnSaleDetail: detail,
   });
+  /*
+    The listing's own state first, as the API ranks them (yuvoy-api
+    `catalog.OperatorSaleBlock`: a kill switch, then the listing, then the
+    departure), with the API's own sentences. Without it every draft's
+    departure read as on sale here, and a screen that keeps drafts off Home
+    was green against an answer production never gives.
+  */
+  const owner = mockExperiences.find((e) => e.id === slot.experienceId);
+  switch (owner?.publicationState) {
+    case "draft":
+      return notOnSale(
+        "listing_draft",
+        "This listing is still a draft. Send it to us and we will check it.",
+      );
+    case "in_review":
+      return notOnSale(
+        "listing_in_review",
+        "We are checking this listing. These departures go on sale when it is approved.",
+      );
+    case "withdrawn":
+      return notOnSale(
+        "listing_withdrawn",
+        "This listing is off sale. Send it to us again to put it back.",
+      );
+  }
   const status = slotStatusOf(slot);
   if (status === "cancelled") {
     return notOnSale(
@@ -1453,14 +1558,14 @@ function saleVerdictOf(
       "Bookings for this departure have closed.",
     );
   }
-  if (slot.bookingMode === "allotment" && seats - sold <= 0) {
-    return notOnSale("departure_full", "Every seat on this departure is sold.");
-  }
   if (seatsAwaitingConfirmation(slot)) {
     return notOnSale(
       "departure_seats_unconfirmed",
       "Nobody has confirmed the seats on this departure for two days, so it is not on sale. Confirm them to put it back.",
     );
+  }
+  if (slot.bookingMode === "allotment" && seats - sold <= 0) {
+    return notOnSale("departure_full", "Every seat on this departure is sold.");
   }
   return { onSale: true };
 }
@@ -1734,6 +1839,8 @@ function accountFor(me: { id: string }) {
     return ACCOUNT_PROSPECT;
   }
   if (me.id === AWAITING_ID) return ACCOUNT_AWAITING;
+  // A business with nothing yet, two documents to send (yuvoy-operator#96).
+  if (me.id === NEW_BUSINESS_ID) return ACCOUNT_PROSPECT;
   if (me.id === LIVE_OUTSTANDING_ID) {
     /*
       Live, selling, and still owing us the logo and the registered address
@@ -1768,6 +1875,7 @@ export function __resetOperatorMocks() {
   calledOff = {};
   capacity = {};
   offlineSold = {};
+  offlineEntries = [];
   steppedUp = false;
   bankChanges = [];
   accountChanges = [];
@@ -1816,8 +1924,8 @@ function profileResponse() {
   /*
     `editable` is sent as `true` for everybody, as the API has since D-032.3
     (`operator_business_details.go`): a LIVE account's write is queued for
-    review rather than refused. The contract still describes the old lock
-    (yuvoy-api#222).
+    review rather than refused. The contract's description of `editable`
+    still says the old lock, at 2afd7b4 (asked again on yuvoy-api#222).
   */
   return { ...profile, editable: true, missing };
 }
@@ -1972,7 +2080,9 @@ function requireSession(request: Request) {
  * mask" (yuvoy-api#62), and this mock keeps that property.
  */
 function publicMember(member: MockTeamMember) {
-  const { phone, ...rest } = member;
+  // `inviteEmail` is dropped with the number: neither is in `TeamMember`.
+  const { phone, inviteEmail: _inviteEmail, ...rest } = member;
+  void _inviteEmail;
   return { ...rest, phoneMasked: `••••${phone.slice(-4)}` };
 }
 
@@ -2890,6 +3000,8 @@ export const handlers = [
       state: "invited",
       pending: true,
       phone,
+      // What `POST /join/{token}/code` reads to say whether a code can go.
+      ...(email ? { inviteEmail: email } : {}),
     });
 
     /*
@@ -2897,15 +3009,17 @@ export const handlers = [
 
       There is no WhatsApp sender, so the only thing that can carry an
       invitation is the email address, and with none the message is written
-      suppressed: `sent: false`, and a `note` saying to pass the link on. The
-      API's own words, and the same override it makes: a role it did not grant
-      as asked replaces the note, because that is the sentence the inviter
-      must not miss. It asserted `true` for every invitation before, which is
-      how an owner came to believe a colleague had been told.
+      suppressed: `sent: false`, and a `note` saying to add them again with an
+      email address. The API's own words since yuvoy-api#227 (it used to say to
+      pass on "the code yourself", which the inviter never has), and the same
+      override it makes: a role it did not grant as asked replaces the note,
+      because that is the sentence the inviter must not miss. It asserted
+      `true` for every invitation before, which is how an owner came to believe
+      a colleague had been told.
     */
     const sent = email !== "";
     const notSent =
-      "We could not send that invitation to them. Give them the join link and the code yourself, or add them again with an email address.";
+      "We could not send that invitation to them. Add them again with an email address, so we have somewhere to send it.";
 
     /*
       `joinUrl` alongside the queued message, because "on an island the person
@@ -3021,18 +3135,35 @@ export const handlers = [
     const leaving =
       phone === LEAVING_PHONE ? "Havelock Water Sports" : undefined;
 
+    /*
+      `sent` read back from what could be queued (yuvoy-api#227), where it used
+      to be `true` for everybody: with no phone sender an invitation made
+      without an email address has nowhere to send its code. Both sentences
+      can be true at once and then arrive together in `note`, the one about
+      the code first, in the API's own words.
+    */
+    const sent = Boolean(invite.inviteEmail);
+    const notes = [
+      ...(sent
+        ? []
+        : [
+            "We could not send your code. Ask whoever invited you to add you again with an email address, so we have somewhere to send it.",
+          ]),
+      ...(leaving
+        ? [
+            `Accepting removes you from ${leaving}. One number works with one business at a time.`,
+          ]
+        : []),
+    ];
+
     return HttpResponse.json(
       {
-        sent: true,
+        sent,
         businessName: BUSINESS_NAME,
         role: invite.roles[0] ?? "STAFF",
         name: invite.name,
-        ...(leaving
-          ? {
-              leavingBusiness: leaving,
-              note: `One number works with one business at a time. Joining ${BUSINESS_NAME} ends your access to ${leaving} straight away, including on any device already signed in.`,
-            }
-          : {}),
+        ...(leaving ? { leavingBusiness: leaving } : {}),
+        ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
         devCode: DEV_CODE,
       },
       { status: 202 },
@@ -3497,6 +3628,33 @@ export const handlers = [
     return HttpResponse.json(storyResponse());
   }),
 
+  /**
+   * What travellers said (yuvoy-api#185). Nothing has been published, which
+   * agrees with the `stats.rating` above: "published reviews only, so
+   * `summary` and `stats.rating` always agree". Unmocked, the Reviews tab had
+   * only ever said it did not load.
+   */
+  http.get(url("/reviews"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    return HttpResponse.json({
+      summary: {
+        averageRating: null,
+        count: 0,
+        tags: {
+          guide: 0,
+          safety: 0,
+          value: 0,
+          organisation: 0,
+          punctuality: 0,
+          equipment: 0,
+        },
+      },
+      items: [],
+      complete: true,
+    });
+  }),
+
   http.put(url("/story"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
@@ -3599,8 +3757,8 @@ export const handlers = [
    *     "in_review", next }` and deliberately no `logoUrl`, because the old
    *     logo is still the live one (D-032.3). `GET /logo` goes on answering
    *     with the old mark, and the new one is listed on `GET
-   *     /change-requests` as `logo`, pending. Declared under `GET /logo` in
-   *     the contract rather than here (yuvoy-api#222).
+   *     /change-requests` as `logo`, pending. Declared under this `PUT` in
+   *     the contract since yuvoy-api#222.
    *   - Anybody else's is applied: `200 { logoUrl }`.
    */
   http.put(url("/logo"), async ({ request }) => {
@@ -3962,6 +4120,7 @@ export const handlers = [
     if (sessionUser(request)?.id === WIDE_READ_FAILS_ID) {
       return envelope("internal_error", "Something went wrong.", 500);
     }
+    if (isNewBusiness(request)) return HttpResponse.json({ experiences: [] });
     return HttpResponse.json({
       experiences: mockExperiences.map((e) => ({
         ...e,
@@ -4119,8 +4278,7 @@ export const handlers = [
       .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
       .slice(0, 200)
       .map((slot) => {
-        const seats = capacity[slot.id] ?? slot.seats;
-        const sold = slot.sold + (offlineSold[slot.id] ?? 0);
+        const { seats, sold, remaining, soldOffline } = departureSeats(slot);
         return {
           id: slot.id,
           experienceId: slot.experienceId,
@@ -4129,7 +4287,8 @@ export const handlers = [
           timezone: slot.timezone,
           seats,
           sold,
-          remaining: Math.max(0, seats - sold),
+          remaining,
+          soldOffline,
           ...(slot.bookingMode ? { bookingMode: slot.bookingMode } : {}),
           status: slotStatusOf(slot),
           ...saleVerdictOf(slot, seats, sold),
@@ -4299,6 +4458,12 @@ export const handlers = [
       return envelope("not_found", "we could not find that listing", 404);
     }
 
+    /*
+      The API counts every departure it re-stamps: each open, future one in
+      the window whose seats were set by hand, waiting or not. The mock knows
+      only which were waiting, so it counts those, a smaller number on the
+      same screen.
+    */
     let confirmed = 0;
     for (const slot of allSlots()) {
       if (experienceId && slot.experienceId !== experienceId) continue;
@@ -4541,6 +4706,10 @@ export const handlers = [
     }
 
     found.status = "in_review";
+    // A first submission moves the listing itself into review (yuvoy-api
+    // `SubmitDraft`), which its departures then say.
+    if (found.publicationState === "draft")
+      found.publicationState = "in_review";
     found.review = { state: "submitted", since: new Date().toISOString() };
     found.sentBack = undefined;
     return HttpResponse.json({ id: found.id, status: "in_review" });
@@ -4767,6 +4936,9 @@ export const handlers = [
   http.get(url("/media"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    if (isNewBusiness(request)) {
+      return HttpResponse.json({ items: [], complete: true });
+    }
 
     const query = new URL(request.url).searchParams;
     const asked = Number(query.get("limit"));
@@ -5382,6 +5554,9 @@ export const handlers = [
   http.get(url("/slots"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    if (isNewBusiness(request)) {
+      return HttpResponse.json({ items: [], complete: true });
+    }
 
     const u = new URL(request.url);
     const from = u.searchParams.get("from");
@@ -5416,8 +5591,7 @@ export const handlers = [
     */
     return HttpResponse.json({
       items: inRange.map((s) => {
-        const seats = capacity[s.id] ?? s.seats;
-        const sold = s.sold + (offlineSold[s.id] ?? 0);
+        const { seats, sold, remaining, soldOffline } = departureSeats(s);
         return {
           id: s.id,
           experienceId: s.experienceId,
@@ -5426,7 +5600,9 @@ export const handlers = [
           timezone: s.timezone,
           seats,
           sold,
-          remaining: Math.max(0, seats - sold),
+          remaining,
+          // Always sent since 2afd7b4, 0 when none (yuvoy-api#226).
+          soldOffline,
           // Omitted when the fixture omits it. One departure has no mode on
           // purpose: the screen must say nothing rather than assume held seats.
           ...(s.bookingMode ? { bookingMode: s.bookingMode } : {}),
@@ -5447,7 +5623,7 @@ export const handlers = [
     const failed = requireSession(request);
     if (failed) return failed;
 
-    const slot = SLOTS.find((s) => s.id === String(params.id));
+    const slot = allSlots().find((s) => s.id === String(params.id));
     // Missing and "belongs to somebody else" are one answer, by design.
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
@@ -5506,7 +5682,10 @@ export const handlers = [
       totals: {
         parties: parties.length,
         guests,
-        arrived: parties.filter((p) => p.arrived).length,
+        // Guests, not parties: the API adds up each arrived party's guests.
+        arrived: parties
+          .filter((p) => p.arrived)
+          .reduce((n, p) => n + (p.guests ?? 0), 0),
         seatsSold: slot.sold,
         // Counter sales recorded this session count, as they would.
         seatsSoldOffline:
@@ -5563,6 +5742,18 @@ export const handlers = [
         },
         { status: 400 },
       );
+    }
+    /*
+      A business with nothing on it has never been booked. It read the fixture
+      dive shop's bookings before, which Home now reads as "has sold" and
+      which would have ended its start-selling checklist on day one.
+    */
+    if (isNewBusiness(request)) {
+      return HttpResponse.json({
+        items: [],
+        complete: true,
+        counts: { requests: 0, upcoming: 0, past: 0, cancelled: 0 },
+      });
     }
     if (q.length > 60) {
       return HttpResponse.json(
@@ -5942,6 +6133,9 @@ export const handlers = [
   http.get(url("/message-threads"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    if (isNewBusiness(request)) {
+      return HttpResponse.json({ threads: [], complete: true });
+    }
 
     const rows = threads
       .map((t) => {
@@ -6243,6 +6437,7 @@ export const handlers = [
   http.get(url("/requests"), async ({ request }) => {
     const failed = requireSession(request);
     if (failed) return failed;
+    if (isNewBusiness(request)) return HttpResponse.json({ requests: [] });
 
     // Answered requests leave the queue. Ordered soonest-to-expire, which is
     // the endpoint's own order and the whole shape of the screen.
@@ -6519,8 +6714,17 @@ export const handlers = [
       — this repo has no scenario switch — and it buys the zero case a real
       screen to be rendered on. `bookings: 0` is not an error and not a
       spinner, and it is common: every cash trip settled, or none taken yet.
+
+      The business with nothing on it yet answers the same way, and has to:
+      it has no listings and no departures, so it can have taken no cash and
+      left no past trip unrecorded. Without this it read the fixture dive
+      shop's figures and Home put "1 past cash trip has no payment recorded"
+      in front of an operator who has never sold anything (yuvoy-operator#96).
     */
-    if (sessionUser(request)!.id === "usr_manager_dev") {
+    if (
+      sessionUser(request)!.id === "usr_manager_dev" ||
+      isNewBusiness(request)
+    ) {
       return HttpResponse.json({
         bookings: 0,
         farePaise: 0,
@@ -6712,8 +6916,13 @@ export const handlers = [
 
     const id = `chg_${Math.random().toString(36).slice(2, 10)}`;
     const objectionUntil = new Date(Date.now() + 24 * 3600_000).toISOString();
-    // Masked. Only the last four digits are ever stored.
-    const summary = `${body.bankName || "Bank"} ••••${account.slice(-4)} · ${(body.ifsc ?? "").toUpperCase()}`;
+    /*
+      Masked, in the API's own shape (`BankChange.Summary`): "HDFC Bank ····4412
+      (HDFC0001234)", or "····4412 (HDFC0001234)" with no bank name. It wrote
+      "Bank ••••4412 · HDFC0001234" before, a shape no API sends.
+    */
+    const ifsc = (body.ifsc ?? "").toUpperCase();
+    const summary = `${body.bankName ? `${body.bankName} ` : ""}····${account.slice(-4)} (${ifsc})`;
 
     bankChanges.unshift({
       // Whose it is. See `changesFor`.
@@ -6788,7 +6997,7 @@ export const handlers = [
     if (shut) return shut;
 
     const id = String(params.id);
-    const slot = SLOTS.find((s) => s.id === id);
+    const slot = allSlots().find((s) => s.id === id);
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
     const { seats } = (await request.json()) as { seats?: number };
@@ -6820,6 +7029,15 @@ export const handlers = [
     }
 
     capacity[id] = seats;
+    /*
+      Saving a seat count CONFIRMS it: `POST /slots/confirm-seats` is "the same
+      confirmation that saving a seat count with `PATCH /slots/{id}` makes, over
+      a range of dates". The mock only modelled the range, so a departure's own
+      "Confirm seats" on the calendar (yuvoy-operator#84 s7) saved the count
+      and left it off sale, which is a screen tested green against an answer
+      production never gives.
+    */
+    seatsConfirmed[id] = true;
     return new HttpResponse(null, { status: 204 });
   }),
 
@@ -7099,13 +7317,19 @@ export const handlers = [
   }),
 
   http.post(url("/slots/:id/offline-sales"), async ({ request, params }) => {
-    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    /*
+      Everybody signed in, as in the API: `POST /slots/{id}/offline-sales` is
+      plain `auth`, and its only 403 is a suspension (yuvoy-api
+      `internal/server/routes.go`). The mock refused STAFF here, which is how
+      the portal came to hide counter sales from the person at the counter.
+    */
+    const failed = requireSession(request);
     if (failed) return failed;
     const shut = requireWritable(request);
     if (shut) return shut;
 
     const id = String(params.id);
-    const slot = SLOTS.find((s) => s.id === id);
+    const slot = allSlots().find((s) => s.id === id);
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
     const { seats } = (await request.json()) as { seats?: number };
@@ -7126,15 +7350,19 @@ export const handlers = [
     const offered = capacity[id] ?? slot.seats;
     const previouslyOffline = offlineSold[id] ?? 0;
     offlineSold[id] = previouslyOffline + seats;
+    const entryId = `adj_${Math.random().toString(36).slice(2, 10)}`;
+    offlineEntries.push({ id: entryId, slotId: id, seats, takenBack: false });
 
     const taken = slot.sold + offlineSold[id];
     const over = taken - offered;
 
     const result: Record<string, unknown> = {
+      // The entry, which is what "That was a mistake" sends back (#226).
+      id: entryId,
       seatsRecorded: seats,
       // Never negative: an oversell is an incident, not a number on a screen.
       seatsRemaining: Math.max(0, offered - taken),
-      totalSoldOffline: offlineSold[id],
+      totalSoldOffline: (slot.seatsSoldOffline ?? 0) + offlineSold[id],
     };
 
     if (over > 0) {
@@ -7151,6 +7379,52 @@ export const handlers = [
     return HttpResponse.json(result);
   }),
 
+  /*
+    "That was a mistake" (yuvoy-api#226): one counter sale taken back by the
+    id its record answer carried. The same people as recording one, which is
+    everybody signed in. One 404 for an entry on another departure or no entry
+    at all; a second take-back is `409 already_taken_back`, and nothing moves
+    twice.
+  */
+  http.delete(
+    url("/slots/:id/offline-sales/:saleId"),
+    async ({ request, params }) => {
+      const failed = requireSession(request);
+      if (failed) return failed;
+      const shut = requireWritable(request);
+      if (shut) return shut;
+
+      const id = String(params.id);
+      const slot = allSlots().find((s) => s.id === id);
+      const entry = offlineEntries.find(
+        (e) => e.id === String(params.saleId) && e.slotId === id,
+      );
+      if (!slot || !entry) {
+        return envelope(
+          "not_found",
+          "we could not find that counter sale on this departure",
+          404,
+        );
+      }
+      if (entry.takenBack) {
+        return envelope(
+          "already_taken_back",
+          "that counter sale has already been taken back, and its seats are back on the departure",
+          409,
+        );
+      }
+
+      entry.takenBack = true;
+      offlineSold[id] = Math.max(0, (offlineSold[id] ?? 0) - entry.seats);
+      const { remaining, soldOffline } = departureSeats(slot);
+      return HttpResponse.json({
+        seatsTakenBack: entry.seats,
+        seatsRemaining: remaining,
+        totalSoldOffline: soldOffline,
+      });
+    },
+  ),
+
   /* --------------------------------------------------------------- relay - */
 
   http.post(url("/bookings/:id/relay"), async ({ request, params }) =>
@@ -7162,7 +7436,7 @@ export const handlers = [
 
   http.post(url("/slots/:id/relay"), async ({ request, params }) =>
     relay(request, () => {
-      const slot = SLOTS.find((s) => s.id === String(params.id));
+      const slot = allSlots().find((s) => s.id === String(params.id));
       // A live hold has no booking to message; `relay` keeps only bookings.
       return slot ? slot.parties : null;
     }),
@@ -7178,7 +7452,7 @@ export const handlers = [
     if (failed) return failed;
 
     const id = String(params.id);
-    const slot = SLOTS.find((s) => s.id === id);
+    const slot = allSlots().find((s) => s.id === id);
     if (!slot) return envelope("not_found", "No such departure.", 404);
 
     if (calledOff[id] || slot.status === "cancelled") {

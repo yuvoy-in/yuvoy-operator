@@ -86,9 +86,9 @@ test("the four pills carry counts, and the screen explains nothing", async ({
 
 test("Bookings opens on Requests while any are waiting", async ({ page }) => {
   /*
-    "Requests if `counts.requests > 0` in that response, otherwise Upcoming.
-    Past and Cancelled are never the default." A request has a clock on it and a
-    traveller behind it; nothing else on this screen expires.
+    The first pill with anything in it (yuvoy-operator#83 s4), and Requests
+    comes first: a request has a clock on it and a traveller behind it, and
+    nothing else on this screen expires.
   */
   await signIn(page);
   await page.goto("/bookings");
@@ -96,6 +96,55 @@ test("Bookings opens on Requests while any are waiting", async ({ page }) => {
   await expect(pill(page, "Requests")).toHaveAttribute("aria-current", "page");
   // And the queue is what is under it, with its answer-by times.
   await expect(page.getByText("Reuben Mathai")).toBeVisible();
+});
+
+test("Bookings opens on the first pill with anything in it, never on an empty one", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#83 s4: the screen opened on "Upcoming 0" while Past held ten,
+    a blank screen as the first thing an operator saw. Searched to one booking
+    that only Cancelled holds, with no pill named in the URL, the screen has to
+    open on Cancelled and show it. Ishaan's departure was called off in the
+    fixtures, so nothing in the suite can move him to another pill.
+  */
+  await signIn(page);
+  await page.goto("/bookings?q=Ishaan");
+
+  await expect(pill(page, "Cancelled")).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("main")).toContainText("Ishaan Roy");
+  await expect(page.getByText("No upcoming bookings")).toHaveCount(0);
+});
+
+test("the pills are one row that never wraps, each a thumb's height", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#83 s4: a wrapped row read as two groups rather than one
+    choice. The row scrolls sideways instead, so every pill sits on the same
+    line whatever the width, and each is at least 44px tall.
+  */
+  await signIn(page);
+  await page.goto("/bookings?view=upcoming");
+
+  const tops: number[] = [];
+  for (const name of ["Requests", "Upcoming", "Past", "Cancelled"]) {
+    const box = await pill(page, name).boundingBox();
+    expect(box, `the ${name} pill is drawn`).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    tops.push(Math.round(box!.y));
+  }
+  expect(new Set(tops).size, "all four pills on one line").toBe(1);
+});
+
+test("the lit pill is scrolled into view when the row is wider than the phone", async ({
+  page,
+}) => {
+  // On a phone the last pills start off screen; opening on Cancelled must
+  // bring it into view rather than light a pill nobody can see.
+  await signIn(page);
+  await page.goto("/bookings?view=cancelled");
+  await expect(pill(page, "Cancelled")).toBeInViewport({ ratio: 1 });
 });
 
 test("a pill is a URL, so back and refresh land where you were", async ({

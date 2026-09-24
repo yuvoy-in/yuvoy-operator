@@ -222,7 +222,48 @@ path=contracts/operator-openapi.yaml
 #
 # `git ls-remote` was the check for this ref, re-read immediately before
 # pinning.
+#
+# ---
+#
+# 23 Sep 2026. Forward from e7291e354307 to 2afd7b4f2d1b, yuvoy-api #229 to
+# #233: the answers to the four FE asks raised while shipping op#89 and #91
+# (yuvoy-api#222, #223, #226, #227). Nothing this portal reads is removed.
+#
+# Removals, read by set difference as before:
+#   - The `202 in_review` blocks leave `GET /logo` and `GET /profile`, where no
+#     GET ever sent them, and arrive under the two `PUT`s that do
+#     (yuvoy-api#222). The portal already branched on the status; the logo
+#     action now also has a type for the body.
+#   - `409 details_locked` leaves `PUT /profile`. It is returned by no path
+#     (a LIVE account's write is queued and answers 202), so the branch that
+#     read it goes too.
+#
+# Added and consumed in the changes that follow this pin:
+#   - `soldOffline` on `OperatorDeparture`, always present, already taken off
+#     `seats`, and `DELETE /slots/{id}/offline-sales/{saleId}` with the `id`
+#     `recordOfflineSale` now returns (yuvoy-api#226, op#89 f12).
+#   - `ChangeRequest.rejectionReason`, a sentence written for the business,
+#     present only on a refusal somebody gave a reason for (yuvoy-api#223).
+#   - `sent` read back from what was queued on `POST /join/{token}/code`, with
+#     `note` saying what to do when it is `false` (yuvoy-api#227).
+#   - `404` on `PUT /logo` (an image this business never minted) and on
+#     `PUT /profile`.
+#
+# Still NOT in the contract, and carried as before:
+#   - The roles on `PUT /logo`, `POST /logo/upload-intents` and `PUT /profile`
+#     (`PROSE_GAPS` in `scripts/qa.mjs`, which fails the run once they land).
+#   - `BusinessDetails.editable` still says "False once the account is LIVE";
+#     the handler sends `true` to everybody since D-032.3. The portal follows
+#     the handler. Both asked again on yuvoy-api#222.
+#   - `ChangeRequest.kind` has no enum. The API writes `bank_account`, `logo`
+#     and `profile`; this portal matched bank changes on `bank` since O4 and so
+#     never found one in production. Fixed here, and the enum asked for so the
+#     typechecker can hold it.
+#
+# `git ls-remote` was the check for this ref, re-read immediately before
+# pinning, and the take-back route answered 401 (a made-up route 404) on
+# api.yuvoy.in, so this pin describes the API that is running.
 
-ref=e7291e3543072083cff851714b97fabe3cd4f111
+ref=2afd7b4f2d1b6b75626505eab6e38bed3e36a7e6
 branch=master
-pinned_on=2026-09-22
+pinned_on=2026-09-23

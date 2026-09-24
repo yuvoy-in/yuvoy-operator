@@ -107,7 +107,11 @@ describe("business details: yuvoy-operator#89 f10", () => {
         details={DETAILS}
         values={VALUES}
         canManage
-        review={{ state: "waiting", sentOn: "21 September 2026" }}
+        review={{
+          state: "waiting",
+          sentOn: "21 September 2026",
+          reason: null,
+        }}
       />,
     );
     expect(
@@ -116,13 +120,39 @@ describe("business details: yuvoy-operator#89 f10", () => {
     expect(screen.getByText(/Sent on 21 September 2026/)).toBeInTheDocument();
   });
 
+  it("says why in the API's own sentence when it sent one, and nothing twice", () => {
+    render(
+      <DetailsForm
+        details={DETAILS}
+        values={VALUES}
+        canManage
+        review={{
+          state: "refused",
+          sentOn: "21 September 2026",
+          reason:
+            "We could not accept the change to your registered details. What we hold stays as it was. Call us on +91 81216 57657 and we will tell you what we need.",
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        /We could not accept the change to your registered details/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Sent on 21 September 2026.")).toBeInTheDocument();
+    // Our generic words are not said beside it.
+    expect(
+      screen.queryByText("We did not apply the change you sent"),
+    ).toBeNull();
+  });
+
   it("says a refused change was not applied, without inventing why", () => {
     render(
       <DetailsForm
         details={DETAILS}
         values={VALUES}
         canManage={false}
-        review={{ state: "refused", sentOn: null }}
+        review={{ state: "refused", sentOn: null, reason: null }}
       />,
     );
     expect(

@@ -99,6 +99,23 @@ export function soldOn(departures: readonly OperatorSlot[]): number {
 }
 
 /**
+ * What a day's row says under its date: "2 start times · 6 sold".
+ *
+ * A day whose every departure was called off read "0 start times · 0 sold",
+ * which says it never had any (the audit before release, O9). It says what is
+ * true instead: "1 departure called off", "3 departures called off".
+ */
+export function daySummary(departures: readonly OperatorSlot[]): string {
+  if (departures.length === 0) return "No departures scheduled";
+  const times = startTimeCount(departures);
+  if (times === 0) {
+    const n = departures.length;
+    return `${n} ${n === 1 ? "departure" : "departures"} called off`;
+  }
+  return `${times} ${times === 1 ? "start time" : "start times"} · ${soldOn(departures)} sold`;
+}
+
+/**
  * Whether every departure on the day is closed — which is NOT the same question
  * as whether the day is closed.
  *

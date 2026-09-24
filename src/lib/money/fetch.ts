@@ -3,7 +3,7 @@ import { operatorApi } from "@/lib/api/server-client";
 import { toChangeRequest, type ChangeRequest } from "@/lib/account/change-kind";
 import { toCommission, type Commission } from "./commission";
 import type { Settlement } from "./settlements";
-import { NO_COUNTS, type Counts } from "@/lib/bookings/list";
+import { toCounts, type Counts } from "@/lib/bookings/list";
 import { byDeparture, toBookingLine, type BookingLine } from "./bookings";
 
 /**
@@ -28,6 +28,31 @@ export async function getChangeRequests(
     return (data.requests ?? []).map(toChangeRequest);
   } catch {
     return [];
+  }
+}
+
+/**
+ * The same list, for the one screen whose subject it is: Payout details.
+ *
+ * `null` when the read failed, where `getChangeRequests` answers `[]`. On the
+ * screens that borrow the list for a warning, a failed read is a missing
+ * warning; on Payout details an empty list means "nothing on file, nothing in
+ * flight" and draws the form straight away, which is the wrong thing to show
+ * an owner whose account and open change simply did not load.
+ */
+export async function readChangeRequests(
+  token: string,
+): Promise<ChangeRequest[] | null> {
+  try {
+    const { data, error } = await operatorApi(token).GET(
+      "/change-requests",
+      {},
+    );
+    if (error) throw error;
+    // Narrowed on the way in, as `getChangeRequests` does. See `change-kind.ts`.
+    return (data.requests ?? []).map(toChangeRequest);
+  } catch {
+    return null;
   }
 }
 
@@ -93,7 +118,8 @@ export interface BookingPage {
   items: BookingLine[];
   complete: boolean;
   nextCursor?: string;
-  counts: Counts;
+  /** `null` when the answer carried none: unknown, never zeroes. */
+  counts: Counts | null;
 }
 
 /**
@@ -148,9 +174,10 @@ export async function searchBookings(
         Zeroes are a real answer and are kept. An absent `counts` is not: the
         contract marks it required, so a response without one is not the API
         this was built against, and drawing four zeroes would say a busy
-        operator has nothing.
+        operator has nothing. So it is `null`, unknown (`toCounts`); it was
+        four zeroes, which is exactly that claim (the audit, O6).
       */
-      counts: data.counts ?? NO_COUNTS,
+      counts: toCounts(data.counts),
     };
   } catch {
     /*
@@ -174,6 +201,25 @@ export async function getCommissionOwed(token: string): Promise<Commission> {
   const { data, error } = await operatorApi(token).GET("/commission-owed", {});
   if (error) throw error;
   return toCommission(data);
+}
+
+/**
+ * The same read, for a screen where cash is one section among several: the
+ * Money tab's summary (yuvoy-operator#96).
+ *
+ * SOFT-failing, where `getCommissionOwed` is hard, and for the reason that one
+ * is hard: on `/cash` the balance IS the screen, while on Money a failed read
+ * must cost the cash figures and nothing else. `null` is "we could not read
+ * it", and the caller draws no owed figure at all rather than a ₹0.
+ */
+export async function readCommissionOwed(
+  token: string,
+): Promise<Commission | null> {
+  try {
+    return await getCommissionOwed(token);
+  } catch {
+    return null;
+  }
 }
 
 /* ---------------------------------------------------- settlements (op#47) -- */

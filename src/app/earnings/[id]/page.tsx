@@ -4,10 +4,10 @@ import { requireOperator } from "@/lib/auth/session";
 import { getSettlement } from "@/lib/money/fetch";
 import { OperatorApiError } from "@/lib/api/errors";
 import {
-  SETTLEMENT_STATE_LABEL,
   hasStatement,
   isOwedBack,
   showsAdjustments,
+  stateLine,
   weekLabel,
   dayWithWeekday,
 } from "@/lib/money/settlements";
@@ -18,10 +18,11 @@ import { Panel } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
 import { DownloadStatement } from "./download-statement";
 
-export const metadata: Metadata = { title: "Settlement" };
+export const metadata: Metadata = { title: "Payout" };
 export const dynamic = "force-dynamic";
 
-const BACK = { href: "/earnings", label: "earnings" };
+/* Back to the tab it was opened from (yuvoy-operator#96). */
+const BACK = { href: "/earnings", label: "Money" };
 
 /**
  * One payout week, and the bookings it paid — yuvoy-operator#47 item 6.
@@ -48,14 +49,14 @@ export default async function SettlementPage({
 
   if (!me.canManage) {
     return (
-      <Screen nav={{ back: BACK }} stageLabel="Settlement">
+      <Screen nav={{ back: BACK }}>
         <h1 className="font-display tracking-display text-3xl leading-tight">
-          Settlement
+          Payout
         </h1>
         <div className="mt-6">
           <Problem
             title="Only owners, admins and managers can see what the business is paid"
-            body="A staff login runs the day and does not carry what the business is owed. Ask an owner, an admin or a manager if you need the figure."
+            body="Ask an owner, an admin or a manager if you need a figure."
           />
         </div>
       </Screen>
@@ -79,13 +80,16 @@ export default async function SettlementPage({
   const lines = settlement.lines ?? [];
 
   return (
-    <Screen nav={{ back: BACK }} stageLabel="Settlement">
-      <p className="eyebrow text-terra-deep">
-        {SETTLEMENT_STATE_LABEL[settlement.state]}
-      </p>
-      <h1 className="font-display tracking-display mt-3 text-3xl leading-tight">
+    <Screen nav={{ back: BACK }}>
+      {/*
+        One title: the week. Its state was an eyebrow above it (op#80 t2), and
+        it is a fact rather than a label, so it is the line under the heading,
+        with what the week is waiting for.
+      */}
+      <h1 className="font-display tracking-display text-3xl leading-tight">
         {weekLabel(settlement.periodStart, settlement.periodEnd)}
       </h1>
+      <p className="text-forest/80 mt-2 text-base">{stateLine(settlement)}</p>
 
       <Panel className="mt-6">
         <p
@@ -99,8 +103,9 @@ export default async function SettlementPage({
 
         <dl className="mt-5 space-y-2 text-sm">
           <Row label="Fares" value={formatPaise(settlement.grossPaise)} />
+          {/* "Yuvoy's share", the words Cash uses (op#87 s15). */}
           <Row
-            label="Our commission"
+            label="Yuvoy's share"
             value={formatPaise(settlement.commissionPaise)}
           />
           <Row label="Refunded" value={formatPaise(settlement.refundsPaise)} />
@@ -185,7 +190,7 @@ export default async function SettlementPage({
                   <dl className="mt-3 space-y-1.5 text-sm">
                     <Row label="Fare" value={formatPaise(line.grossPaise)} />
                     <Row
-                      label="Our commission"
+                      label="Yuvoy's share"
                       value={formatPaise(line.commissionPaise)}
                     />
                     {/*

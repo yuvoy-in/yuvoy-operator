@@ -4,6 +4,7 @@ import type { paths } from "./schema.gen";
 import {
   OperatorApiError,
   OperatorNetworkError,
+  apiError,
   isErrorEnvelope,
 } from "./errors";
 
@@ -151,13 +152,7 @@ const errorMiddleware: Middleware = {
     }
 
     if (isErrorEnvelope(body)) {
-      throw new OperatorApiError({
-        code: body.error.code,
-        message: body.error.message,
-        status: response.status,
-        details: body.error.details,
-        requestId: body.error.requestId ?? requestId,
-      });
+      throw apiError(body, response.status, requestId);
     }
 
     throw new OperatorApiError({

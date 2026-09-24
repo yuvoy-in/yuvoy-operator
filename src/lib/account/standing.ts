@@ -194,6 +194,26 @@ export function blockerAction(
   }
 }
 
+/** The document codes, as the account's blockers name them. */
+const DOCUMENT_BLOCKERS = new Set([
+  "CREDENTIAL_MISSING",
+  "CREDENTIAL_EXPIRED",
+  "CREDENTIAL_REJECTED",
+]);
+
+/**
+ * Whether this login may act on a blocker's way forward.
+ *
+ * The business details and the logo are OWNER, ADMIN or MANAGER in the API
+ * (yuvoy-api#222); a document may be sent by anybody on the account. A staff
+ * phone is not shown a button the server will refuse. Home, the Business
+ * strip and Verification all read this one rule.
+ */
+export function mayActOn(blocker: Blocker, canManage: boolean): boolean {
+  if (canManage) return true;
+  return DOCUMENT_BLOCKERS.has(blocker.code ?? "");
+}
+
 /**
  * Whether this blocker actually stops a sale — or `null` when it will not say.
  *
@@ -208,6 +228,39 @@ export function blockerAction(
  */
 export function gatesSale(blocker: Blocker): boolean | null {
   return typeof blocker.gates === "boolean" ? blocker.gates : null;
+}
+
+/**
+ * Whether this blocker is stopping the business selling right now.
+ *
+ * Nothing is, once the account can sell. Until then a blocker that gates a
+ * sale does, and so does one that will not say (`gates` absent): the status
+ * line reads it that way too, because unknown is never "fine".
+ */
+export function stopsSelling(
+  standing: Pick<Standing, "bookable">,
+  blocker: Blocker,
+): boolean {
+  return !standing.bookable && gatesSale(blocker) !== false;
+}
+
+/**
+ * What stops this business selling that this login can do something about:
+ * what Home's "Needs you" leads with, and what the Business badge counts.
+ *
+ * yuvoy-operator#96 item 6: "The Business badge reads '2' (two non-blocking
+ * verification items)" is a label that does not scan. A badge is a number to
+ * act on now. Outstanding items that stop nothing are still named on Business
+ * and in Needs you, without one.
+ */
+export function stoppingSales(
+  standing: Standing,
+  canManage: boolean,
+): Blocker[] {
+  return splitByWaitingOn(standing.blocking).operator.filter(
+    (blocker) =>
+      stopsSelling(standing, blocker) && mayActOn(blocker, canManage),
+  );
 }
 
 /**

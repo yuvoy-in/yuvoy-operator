@@ -7,6 +7,7 @@ import {
   apiWindow,
   calendarDays,
   confirmedGuestsByDay,
+  daySummary,
   departuresOn,
   inMarketDays,
   everyDepartureClosed,
@@ -169,5 +170,45 @@ describe("who is already confirmed on a day", () => {
     expect(alreadyConfirmedSentence(1)).toBe(
       "1 guest is already confirmed. Closing won't move them. Resolve each booking in Bookings.",
     );
+  });
+});
+
+describe("what a day's row says", () => {
+  const at = (over: Partial<OperatorSlot>): OperatorSlot => ({
+    id: "s",
+    title: "Reef dive",
+    startsAt: "2026-09-27T03:30:00Z",
+    timezone: "Asia/Kolkata",
+    seats: 8,
+    sold: 3,
+    remaining: 5,
+    status: "open",
+    ...over,
+  });
+
+  it("counts start times and what is sold", () => {
+    expect(
+      daySummary([
+        at({ id: "a" }),
+        at({ id: "b", startsAt: "2026-09-27T08:30:00Z", sold: 2 }),
+      ]),
+    ).toBe("2 start times · 5 sold");
+  });
+
+  it("says a day whose every departure was called off was called off", () => {
+    // It read "0 start times · 0 sold" (the audit before release, O9).
+    expect(daySummary([at({ status: "cancelled" })])).toBe(
+      "1 departure called off",
+    );
+    expect(
+      daySummary([
+        at({ id: "a", status: "cancelled" }),
+        at({ id: "b", status: "cancelled", startsAt: "2026-09-27T08:30:00Z" }),
+      ]),
+    ).toBe("2 departures called off");
+  });
+
+  it("says an empty day is empty", () => {
+    expect(daySummary([])).toBe("No departures scheduled");
   });
 });

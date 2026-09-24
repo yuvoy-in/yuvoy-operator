@@ -13,6 +13,7 @@ import { now } from "@/lib/format/market-time";
 import { Empty } from "@/components/ui/states";
 import { InviteForm } from "./invite-form";
 import { MemberRow } from "./member-row";
+import { RoleGuide } from "./role-guide";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
 
@@ -36,7 +37,16 @@ export const dynamic = "force-dynamic";
  *
  * Two lists, not one. `GET /team` returns "active people and unaccepted
  * invitations, in one list", and on a pending row `id` is the **invitation**,
- * not a user — different thing, different verb, different consequences.
+ * not a user: different thing, different verb, different consequences.
+ *
+ * ## Said once, or in Help (yuvoy-operator#88 s16, #80 t4)
+ *
+ * Each row carried a paragraph describing its role, and the screen closed on
+ * four paragraphs under "Why the roles are different". The role is the chip
+ * on each row now, what each role may do is one disclosure for the whole list
+ * (`RoleGuide`), and the reasons are answers in Help. What removing somebody
+ * does is also said in its own confirm, before the tap, which is where it
+ * changes a decision.
  */
 export default async function TeamPage() {
   const { token, me } = await requireOperator();
@@ -73,23 +83,15 @@ export default async function TeamPage() {
   const { people, invitations } = splitTeam(team.people);
 
   return (
-    <Screen
-      nav={{ back: { href: "/account/settings", label: "settings" } }}
-      stageLabel="Team access"
-    >
-      <p className="eyebrow text-terra-deep">Your account</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>
+      {/*
+        One title (op#80 t2). The eyebrow and the line explaining the screen
+        went; what each role may do is the disclosure below, said once.
+      */}
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Team access
       </h1>
-      <p className="text-forest/70 mt-3 text-base">
-        Who can get into this business, and what each of them can do.
-      </p>
 
-      {/*
-        Said up front, not after a tap. Same call as the request queue, where
-        staff are told they cannot answer it before they choose a reason:
-        finding out at the end is worse than not being offered it.
-      */}
       {/*
         Said up front, not after a tap. Same call as the request queue, where
         staff are told they cannot answer it before they choose a reason:
@@ -102,12 +104,13 @@ export default async function TeamPage() {
       */}
       {!canInvite ? (
         <Panel className="mt-6 p-4 text-sm">
-          Only an owner or an admin can change who is on this account. You can
-          see who is on it.
+          Only an owner or an admin can change who is on this account.
         </Panel>
       ) : null}
 
-      <section className="mt-8" aria-labelledby="people">
+      <RoleGuide />
+
+      <section className="mt-6" aria-labelledby="people">
         <h2 id="people" className="label text-forest/75">
           {people.length === 1 ? "1 person" : `${people.length} people`}
         </h2>
@@ -212,36 +215,6 @@ export default async function TeamPage() {
           </div>
         </section>
       ) : null}
-
-      <section className="mt-12" aria-labelledby="why">
-        <h2 id="why" className="label text-forest/75">
-          Why the roles are different
-        </h2>
-        <Panel className="mt-3">
-          <p className="text-sm">
-            The crew phone goes out on the boat and gets left on a bench. It
-            should be able to tick people off a manifest and nothing else.
-          </p>
-          <p className="text-forest/80 mt-3 text-sm">
-            Payout details are the owner&rsquo;s alone. A stolen manager login
-            plus one convincing phone call is otherwise enough to redirect a
-            season&rsquo;s takings. This list is an owner&rsquo;s or an
-            admin&rsquo;s, because an owner who is off the island cannot be the
-            only person who can let somebody in.
-          </p>
-          <p className="text-forest/80 mt-3 text-sm">
-            Making somebody an owner hands them the payout details too. An admin
-            who does it cannot change that person&rsquo;s access afterwards.
-          </p>
-          <p className="text-forest/80 mt-3 text-sm">
-            Removing somebody ends their sessions immediately: on their next
-            tap, not at their next sign-in. That is the difference between
-            &ldquo;we removed them&rdquo; and &ldquo;we removed them a fortnight
-            from now&rdquo;, and the reason somebody is removed in a hurry is
-            usually that the fortnight matters.
-          </p>
-        </Panel>
-      </section>
     </Screen>
   );
 }

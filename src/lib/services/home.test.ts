@@ -1,14 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  dayLine,
   listingGroup,
   listingLabel,
   liveWithNothingToSell,
-  nextDeparture,
   orderListings,
   posterFor,
-  requestsLine,
-  seatsLine,
   withinFortnight,
 } from "./home";
 import type { OperatorSlot } from "@/lib/day/types";
@@ -96,70 +92,6 @@ describe("what a listing's badge says", () => {
   });
 });
 
-describe("a listing's next departure", () => {
-  const now = Date.parse("2026-09-15T04:00:00Z");
-
-  it("is the soonest OPEN one still to come, from the one read", () => {
-    /*
-      "Never one call per listing." A shop with nine listings would otherwise
-      make nine slot requests on the screen an operator opens at six in the
-      morning on one bar of signal.
-    */
-    const rows = [
-      slot({
-        id: "past",
-        experienceId: "exp",
-        startsAt: "2026-09-15T01:00:00Z",
-      }),
-      slot({
-        id: "next",
-        experienceId: "exp",
-        startsAt: "2026-09-15T06:00:00Z",
-      }),
-      slot({
-        id: "later",
-        experienceId: "exp",
-        startsAt: "2026-09-16T01:00:00Z",
-      }),
-    ];
-    expect(nextDeparture(rows, "exp", now)?.id).toBe("next");
-  });
-
-  it("skips a closed or called-off one, which is not what 'next' means", () => {
-    const rows = [
-      slot({
-        id: "closed",
-        experienceId: "exp",
-        status: "closed",
-        startsAt: "2026-09-15T06:00:00Z",
-      }),
-      slot({
-        id: "off",
-        experienceId: "exp",
-        status: "cancelled",
-        startsAt: "2026-09-15T07:00:00Z",
-      }),
-      slot({
-        id: "open",
-        experienceId: "exp",
-        startsAt: "2026-09-15T08:00:00Z",
-      }),
-    ];
-    expect(nextDeparture(rows, "exp", now)?.id).toBe("open");
-  });
-
-  it("never borrows another listing's departure", () => {
-    const rows = [
-      slot({
-        id: "theirs",
-        experienceId: "other",
-        startsAt: "2026-09-15T06:00:00Z",
-      }),
-    ];
-    expect(nextDeparture(rows, "exp", now)).toBeNull();
-  });
-});
-
 describe("the picture on a listing's tile", () => {
   it("prefers a live one, then the newest", () => {
     // `OperatorMedia` has no hero field yet, so this is the issue's rule and
@@ -192,51 +124,6 @@ describe("the picture on a listing's tile", () => {
     expect(posterFor([{ listing: { experienceId: "exp" } }], "exp")).toBeNull();
     // And media that predates the upload-time choice carries no listing at all.
     expect(posterFor([{ posterUrl: "x.jpg" }], "exp")).toBeNull();
-  });
-});
-
-describe("the day's header and rows", () => {
-  it("counts every departure and only the guests still going", () => {
-    /*
-      A called-off departure's seats were cancelled and refunded. Counting them
-      would tell an operator to expect people who are not coming, which is the
-      one arithmetic error on this screen that puts somebody on a jetty.
-    */
-    expect(
-      dayLine("Today", [
-        slot({ sold: 6 }),
-        slot({ sold: 5 }),
-        slot({ sold: 4, status: "cancelled" }),
-      ]),
-    ).toBe("Today · 3 departures · 11 guests");
-  });
-
-  it("does not say 1 departures or 1 guests", () => {
-    expect(dayLine("Tomorrow", [slot({ sold: 1 })])).toBe(
-      "Tomorrow · 1 departure · 1 guest",
-    );
-  });
-
-  it("says what each row is, on its right", () => {
-    expect(seatsLine(slot())).toBe("6/8");
-    expect(seatsLine(slot({ status: "closed" }))).toBe("6/8 · Closed");
-    // Never seats on a called-off departure: there is nothing to sell and
-    // nobody on it.
-    expect(seatsLine(slot({ status: "cancelled" }))).toBe("Called off");
-  });
-});
-
-describe("the requests strip", () => {
-  it("is not drawn at zero", () => {
-    // A strip saying "0 requests waiting" is a line an operator reads every
-    // morning and learns to skip.
-    expect(requestsLine(0, 0)).toBeNull();
-  });
-
-  it("adds the urgent count only when there is one", () => {
-    expect(requestsLine(5, 2)).toBe("5 requests waiting · 2 within the hour");
-    expect(requestsLine(5, 0)).toBe("5 requests waiting");
-    expect(requestsLine(1, 1)).toBe("1 request waiting · 1 within the hour");
   });
 });
 

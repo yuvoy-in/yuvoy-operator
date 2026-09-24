@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   ACCEPT_ATTRIBUTE,
   MAX_FILE_BYTES,
-  blockerFor,
   documentCount,
   fileLine,
   fileProblem,
@@ -30,37 +29,6 @@ describe("how many required documents are verified", () => {
   it("says nothing at all when nothing is required", () => {
     // "0 of 0 verified" reads as a fault rather than as an absence.
     expect(documentCount([])).toBeNull();
-  });
-});
-
-describe("why a document is not satisfied", () => {
-  const blocking = [
-    {
-      code: "CREDENTIAL_EXPIRED",
-      label: "Your insurance expired on 1 August.",
-    },
-    { code: "CREDENTIAL_MISSING", label: "We have no instructor certificate." },
-    {
-      code: "PROFILE_INCOMPLETE",
-      label: "Your registered address is missing.",
-    },
-  ];
-
-  it("finds the blocker that names the document", () => {
-    expect(blockerFor("insurance", blocking)?.code).toBe("CREDENTIAL_EXPIRED");
-    expect(blockerFor("instructor_cert", blocking)?.code).toBe(
-      "CREDENTIAL_MISSING",
-    );
-  });
-
-  it("never returns a blocker that is not about a document", () => {
-    // A missing address explains nothing about a boat's papers, and putting it
-    // beside one sends an operator to fix the wrong thing.
-    expect(blockerFor("boat", blocking)).toBeNull();
-  });
-
-  it("says nothing rather than inventing a reason", () => {
-    expect(blockerFor("oxygen", [])).toBeNull();
   });
 });
 

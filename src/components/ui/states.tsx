@@ -1,11 +1,11 @@
 import { cn } from "@/lib/cn";
 import { Panel } from "./panel";
 
-export function Empty({ title, body }: { title: string; body: string }) {
+export function Empty({ title, body }: { title: string; body?: string }) {
   return (
     <Panel className="p-6">
       <p className="text-base font-bold">{title}</p>
-      <p className="text-forest/70 mt-2 text-sm">{body}</p>
+      {body ? <p className="text-forest/70 mt-2 text-sm">{body}</p> : null}
     </Panel>
   );
 }

@@ -164,6 +164,33 @@ test("a needs-review party is chipped, and nothing else from screening shows", a
   }
 });
 
+test("a booking leads with the trip and its time, and the traveller under it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#81 s5: "an operator looks for 09:00 first, not for a person
+    they have never met." The time and the trip are the one title, and the
+    stage caption that repeated it is gone (#80 t2).
+
+    Priya's booking, because no message on it carries her name: the title and
+    the line under it are the only places it can be.
+  */
+  await signIn(page);
+  await page.goto(`/bookings/${UNANSWERED}`);
+
+  const title = page.getByRole("heading", { level: 1 });
+  await expect(title).toHaveText(/^\d\d:\d\d Try-dive at Nemo Reef$/);
+  const name = page.getByText("Priya Raghavan", { exact: true });
+  await expect(name).toBeVisible();
+
+  const titleBox = await title.boundingBox();
+  const nameBox = await name.boundingBox();
+  expect(nameBox!.y, "the name sits under the title").toBeGreaterThan(
+    titleBox!.y,
+  );
+  await expect(page.getByText("Booking", { exact: true })).toHaveCount(0);
+});
+
 test("cancelling asks for the reference, and another one changes nothing", async ({
   page,
 }, testInfo) => {
@@ -175,6 +202,13 @@ test("cancelling asks for the reference, and another one changes nothing", async
   await signIn(page);
   await page.goto(`/bookings/${who.id}`);
 
+  /*
+    Quiet text behind a confirm (yuvoy-operator#81), with no heading of its
+    own: "Cannot run this one" labelled a single control.
+  */
+  await expect(
+    page.getByRole("heading", { name: "Cannot run this one" }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Cancel this booking" }).click();
 
   // A cash booking refunds nothing, because nothing reached us. Saying
@@ -227,7 +261,7 @@ test("cancelling works, reports what it cost, and a second press is not an error
   await expect(
     page.getByText(/^Cancelled by your team on \d+ \w+: Not enough people$/),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Cash taken" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Take / })).toHaveCount(0);
   // And the receipt is still there, beside the new state rather than gone.
   await expect(page.getByText("This booking is cancelled")).toBeVisible();
 

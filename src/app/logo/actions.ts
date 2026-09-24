@@ -89,12 +89,13 @@ export async function saveLogo(imageId: string): Promise<LogoSaveState> {
     /*
       `202` is "recorded for review, not applied": on a LIVE business a new
       mark is looked at before it replaces the one on every reel and listing
-      (D-032.3), and the answer deliberately carries no `logoUrl`. Read by
-      STATUS, because the contract declares this answer under `GET /logo`
-      rather than here (yuvoy-api#222), so no type describes it, and
-      `openapi-fetch` hands any 2xx back as `data`. Treating it as saved is
-      how this screen told operators their logo was up when it was not
-      (yuvoy-operator#89 f10).
+      (D-032.3), and the answer deliberately carries no `logoUrl`. Treating it
+      as saved is how this screen told operators their logo was up when it was
+      not (yuvoy-operator#89 f10).
+
+      Read by STATUS, as the contract asks. It declares the answer under this
+      `PUT` since yuvoy-api#222, so the body has a type now as well, and the
+      `"logoUrl" in data` below is that type narrowing, not a guess.
 
       Nothing is revalidated. The receipt says it now, and the logo page says
       it on every visit after (a new mark waiting, read from
@@ -110,12 +111,20 @@ export async function saveLogo(imageId: string): Promise<LogoSaveState> {
     */
     revalidatePath("/logo");
     revalidatePath("/account");
-    return { logoUrl: data.logoUrl };
+    return { logoUrl: "logoUrl" in data ? data.logoUrl : undefined };
   } catch (err) {
     if (err instanceof OperatorApiError && err.status === 400) {
       // "The upload has not arrived at the host yet." The honest reading is
       // that the file never made it, whatever the browser reported.
       return { message: "That upload did not finish. Choose it again." };
+    }
+    /*
+      "No such image: the id was minted for another business, or nobody
+      minted it" (yuvoy-api#222). The same id will be refused however often it
+      is sent, so this says to choose the picture again rather than to retry.
+    */
+    if (err instanceof OperatorApiError && err.isNotFound) {
+      return { message: "We could not find that picture. Choose it again." };
     }
     return failure(err);
   }

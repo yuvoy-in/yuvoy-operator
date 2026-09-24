@@ -24,11 +24,16 @@ import { Panel } from "@/components/ui/panel";
  * shown on the traveller's status page and **never sent to a phone**. An
  * operator who thinks they messaged somebody and did not is worse than one who
  * knows they left a note.
+ *
+ * The button says what it does and to whom, "Message everyone booked" or
+ * "Message Asha Menon", so it needs no heading over it (yuvoy-operator#88
+ * s3): the departure's "Tell everybody" heading repeated its own button.
  */
 export function RelayPanel(props: {
   slotId: string;
   /** Empty means the whole departure. */
   bookingId?: string;
+  /** Who it reaches, as the button says it: "everyone booked", or a name. */
   who: string;
 }) {
   /*
@@ -102,7 +107,7 @@ function RelayRound({
           </p>
         ) : null}
         <Button onClick={onAgain} variant="secondary" className="mt-3">
-          Tell {who} something else
+          Message {who} again
         </Button>
       </Panel>
     );
@@ -115,7 +120,7 @@ function RelayRound({
         variant="secondary"
         className="mt-4"
       >
-        Tell {who}
+        Message {who}
       </Button>
     );
   }

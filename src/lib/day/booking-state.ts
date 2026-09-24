@@ -44,9 +44,9 @@ const STATES: Record<string, BookingStateCopy> = {
   pending_request: { label: "Waiting on you", live: true },
   confirmed: { label: "Confirmed", live: true },
   /*
-    A party marked present on the manifest. The manifest's own total for this
-    is "Here"; on a booking row, where there is no departure around it to give
-    that word context, "Checked in" is the same fact said in full.
+    A party marked present on the manifest. The departure screen says the same
+    words, on its total and on the party's own button, since "Here" read as a
+    question on a jetty (yuvoy-operator#88 s3): one word for one thing.
   */
   arrived: { label: "Checked in", live: true },
   /*

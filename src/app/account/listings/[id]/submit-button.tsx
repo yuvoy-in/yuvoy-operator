@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { useRouter } from "next/navigation";
 import { submitListing, type SubmitState } from "./actions";
+import { sendLabel } from "@/lib/services/draft";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -11,13 +12,23 @@ import { Button } from "@/components/ui/button";
  * One action behind two labels. On a draft it is the first time anybody at
  * Yuvoy will see it; on a listing that was sent back it is the second, and the
  * operator already knows what was wrong with the first.
+ *
+ * ## It stays on the screen while the listing is not ready (#85 s10)
+ *
+ * Counting, and disabled: "Send for review (1 thing missing)". A button that
+ * disappears until a listing is complete answers neither "can I send this yet"
+ * nor "how much is left", and the count is the whole explanation, so nothing
+ * beside it has to say the same thing in a sentence.
  */
 export function SubmitButton({
   experienceId,
   label,
+  missing = 0,
 }: {
   experienceId: string;
   label: "Send for review" | "Send again";
+  /** How many fields the API says are still outstanding. */
+  missing?: number;
 }) {
   const [state, act, pending] = useActionState<SubmitState, FormData>(
     submitListing,
@@ -36,8 +47,8 @@ export function SubmitButton({
   return (
     <form action={act}>
       <input type="hidden" name="experienceId" value={experienceId} />
-      <Button type="submit" block={false} disabled={pending}>
-        {pending ? "Sending…" : label}
+      <Button type="submit" block={false} disabled={pending || missing > 0}>
+        {pending ? "Sending…" : sendLabel(label, missing)}
       </Button>
       {state.message ? (
         <div className="mt-2">

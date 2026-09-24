@@ -31,15 +31,21 @@ async function signIn(page: Page, phone: string) {
   await page.waitForURL("**/today");
 }
 
-test("the business door leads to it", async ({ page }) => {
+test("Money leads to it, and it goes back to Money", async ({ page }) => {
+  /*
+    Cash sits behind the Money tab (yuvoy-operator#96), not behind Settings,
+    so the way in is the cash summary there and the way back is to Money.
+  */
   await signIn(page, OWNER);
-  // The doors moved behind the gear on the profile, #58 item 9.
-  await page.goto("/account/settings");
+  await page.goto("/earnings");
   await page.getByRole("link", { name: /Cash you.{1,3}ve collected/ }).click();
   await page.waitForURL("**/cash");
   await expect(
     page.getByRole("heading", { name: /Cash you.{1,3}ve collected/ }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to Money" }),
+  ).toHaveAttribute("href", "/earnings");
 });
 
 test("it leads with what was collected, and the share reads as a share", async ({
@@ -77,6 +83,15 @@ test("it leads with what was collected, and the share reads as a share", async (
   const body = (await page.locator("body").textContent()) ?? "";
   expect(body).not.toMatch(/commission due|amount due|outstanding balance/i);
   expect(body).not.toMatch(/we are holding|held by Yuvoy/i);
+
+  /*
+    Nothing above the heading: not the signed-in person's name, which read as
+    one staff member's takings on a shared phone (op#87 t3), and not an
+    eyebrow saying "The money" over a heading that already said it (op#80 t2).
+  */
+  const main = await page.locator("main").innerText();
+  expect(main).not.toContain("Priya Raut");
+  expect(main).not.toMatch(/the money/i);
 });
 
 test("every trip behind the number is listed and checkable", async ({
@@ -94,9 +109,13 @@ test("every trip behind the number is listed and checkable", async ({
   await expect(owed.getByText("2 guests")).toBeVisible();
   await expect(owed.getByText("1 guest", { exact: true })).toBeVisible();
 
-  // Most recent first, so two loads do not disagree about the top row.
-  const refs = await owed.locator("li p.font-mono").allTextContents();
-  expect(refs).toEqual(["YV-8F3K2A", "YV-2M9QX1", "YV-7T4WPZ"]);
+  // Most recent first, so two loads do not disagree about the top row. A
+  // waiting assertion: a bare read can land on the loading skeleton.
+  await expect(owed.locator("li p.font-mono")).toHaveText([
+    "YV-8F3K2A",
+    "YV-2M9QX1",
+    "YV-7T4WPZ",
+  ]);
 });
 
 test("cash taken for trips still to run is shown apart from what is owed", async ({
@@ -111,8 +130,12 @@ test("cash taken for trips still to run is shown apart from what is owed", async
   await page.goto("/cash");
 
   const held = page.getByRole("region", { name: "Held, trip still to run" });
-  const refs = await held.locator("li p.font-mono").allTextContents();
-  expect(refs).toEqual(["YV-H3LD0A1", "YV-H3LD0B2"]);
+  // Waiting, not a bare read: a bare read landed on the loading skeleton and
+  // found nothing.
+  await expect(held.locator("li p.font-mono")).toHaveText([
+    "YV-H3LD0A1",
+    "YV-H3LD0B2",
+  ]);
   await expect(
     page.getByRole("region", { name: "Owed now" }),
   ).not.toContainText("YV-H3LD0A1");
@@ -167,13 +190,15 @@ test("owing nothing is a sentence, not a table of zeroes", async ({ page }) => {
   await expect(page.getByText("₹0")).toHaveCount(0);
 });
 
-test("there is no way to pay from this screen, and it says why", async ({
+test("there is no way to pay from this screen, and why is one tap away", async ({
   page,
 }) => {
   /*
-    Deliberate. Settling is money moving back to us — the same class of act as
-    money leaving — and the payout run spends two tables and three signatures
-    getting that right. A silence here would read as an omission.
+    Deliberate. Settling is money moving back to us, the same class of act as
+    money leaving, and the payout run spends two tables and three signatures
+    getting that right. The reason used to close every visit as a paragraph
+    ("There is nothing to tap here", op#80 t4); it is an answer in Help now,
+    one tap from the foot of the screen.
   */
   await signIn(page, OWNER);
   await page.goto("/cash");
@@ -181,7 +206,13 @@ test("there is no way to pay from this screen, and it says why", async ({
   await expect(page.getByRole("button", { name: /pay|settle/i })).toHaveCount(
     0,
   );
-  await expect(page.getByText(/nothing to tap here/i)).toBeVisible();
+  await expect(page.getByText(/nothing to tap here/i)).toHaveCount(0);
+
+  await page.getByRole("link", { name: /How to settle Yuvoy.s share/ }).click();
+  await page.waitForURL(/\/account\/help\?from=%2Fcash#settling-cash$/);
+  const answer = page.locator("#settling-cash");
+  await expect(answer).toHaveAttribute("open", "");
+  await expect(answer.getByText(/There is no pay button/)).toBeVisible();
 });
 
 test("staff are told, not refused into the error boundary", async ({
@@ -239,22 +270,23 @@ test("a cash booking says what to take, and a card booking says nothing", async 
 
   const owed = page.locator("li").filter({ hasText: "Anil Kumar" });
   await expect(owed.getByText("₹9,000 to take in cash")).toBeVisible();
-  await expect(owed.getByRole("button", { name: "Cash taken" })).toBeVisible();
+  // One button that names the amount it records (yuvoy-operator#81 s5).
+  await expect(owed.getByRole("button", { name: "Take ₹9,000" })).toBeVisible();
   // A separate act from arriving — "somebody can turn up and not pay".
   await expect(
-    owed.getByRole("button", { name: "Here", exact: true }),
+    owed.getByRole("button", { name: "Check in", exact: true }),
   ).toBeVisible();
 
   // Paid online: nothing to collect, and nothing said about cash.
   const card = page.locator("li").filter({ hasText: "Sofia Alves" });
-  await expect(card.getByRole("button", { name: /Cash taken/ })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /^Take / })).toHaveCount(0);
   await expect(card.getByText(/to take in cash|taken ·/)).toHaveCount(0);
 
   // Already taken: read plainly, "with no way to tap it again".
   const taken = page.locator("li").filter({ hasText: "Meera Das" });
   await expect(taken.getByText("₹9,000 taken · 08:10")).toBeVisible();
   await expect(
-    taken.getByRole("button", { name: /Cash taken|Took less/ }),
+    taken.getByRole("button", { name: /^Take |different amount/ }),
   ).toHaveCount(0);
 });
 
@@ -270,20 +302,22 @@ test("the whole fare is one tap, and a second phone's tap is not an error", asyn
   await second.goto(CASH_DEPARTURE);
   const theirs = second.locator("li").filter({ hasText: who });
   await expect(
-    theirs.getByRole("button", { name: "Cash taken" }),
+    theirs.getByRole("button", { name: "Take ₹9,000" }),
   ).toBeVisible();
 
   const mine = page.locator("li").filter({ hasText: who });
-  await mine.getByRole("button", { name: "Cash taken" }).click();
+  await mine.getByRole("button", { name: "Take ₹9,000" }).click();
   await expect(mine.getByText(/^₹9,000 taken · \d\d:\d\d$/)).toBeVisible();
-  await expect(mine.getByRole("button", { name: "Cash taken" })).toHaveCount(0);
+  await expect(mine.getByRole("button", { name: "Take ₹9,000" })).toHaveCount(
+    0,
+  );
 
   /*
     The retry, which "will happen" and "must not be punished": the API answers
     it with the first report and `alreadyRecorded`. The stale phone shows the
     recorded state — not an error, and not a second confirmation.
   */
-  await theirs.getByRole("button", { name: "Cash taken" }).click();
+  await theirs.getByRole("button", { name: "Take ₹9,000" }).click();
   await expect(theirs.getByText(/^₹9,000 taken · \d\d:\d\d$/)).toBeVisible();
   await expect(theirs.getByRole("alert")).toHaveCount(0);
   await expect(theirs.getByText(/short of the fare/)).toHaveCount(0);
@@ -307,7 +341,9 @@ test("taking less says the gap before it is recorded, and once after", async ({
   await page.goto(CASH_DEPARTURE);
 
   const row = page.locator("li").filter({ hasText: who });
-  await row.getByRole("button", { name: "Took less" }).click();
+  await row
+    .getByRole("button", { name: "They paid a different amount" })
+    .click();
   const box = row.getByLabel("What you took, in rupees");
 
   // More than the fare is refused before anything is sent.
@@ -367,7 +403,17 @@ test("a cash booking's own page offers the collection, and no card arithmetic", 
   await expect(
     page.getByRole("heading", { name: "Cash at the counter" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Cash taken" })).toBeVisible();
+  /*
+    The screen's one primary action while the fare is owed (yuvoy-operator#81
+    s5): a filled button naming the amount, and a quieter link for any other.
+  */
+  const take = page.getByRole("button", { name: "Take ₹9,000" });
+  await expect(take).toBeVisible();
+  await expect(take).toHaveClass(/bg-forest/);
+  await page
+    .getByRole("button", { name: "They paid a different amount" })
+    .click();
+  await expect(page.getByLabel("What you took, in rupees")).toBeVisible();
 
   /*
     The API sends `money` on a cash booking as gross ₹0, the share as
@@ -387,7 +433,7 @@ test("staff can take the cash — whoever holds the phone at the gangway", async
   await signIn(page, STAFF);
   await page.goto(CASH_DEPARTURE);
   const owed = page.locator("li").filter({ hasText: "Anil Kumar" });
-  await expect(owed.getByRole("button", { name: "Cash taken" })).toBeEnabled();
+  await expect(owed.getByRole("button", { name: "Take ₹9,000" })).toBeEnabled();
 });
 
 test("/today/slot_cash has no accessibility violations", async ({ page }) => {

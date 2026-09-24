@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { operatorApi } from "@/lib/api/server-client";
 import { classifyMeFailure } from "@/lib/account/status";
@@ -17,14 +18,10 @@ import {
   standingOf,
   verifiedWithoutFile,
   type Standing,
+  mayActOn,
 } from "@/lib/account/standing";
 import { SUPPORT_PHONE, SUPPORT_PHONE_HREF } from "@/lib/site/contact";
-import {
-  blockerFor,
-  documentCount,
-  fileLine,
-  takesFile,
-} from "@/lib/account/documents";
+import { documentCount, fileLine, takesFile } from "@/lib/account/documents";
 import { credentialTypeLabel } from "@/lib/profile/credentials";
 import { marketDateLabel, now } from "@/lib/format/market-time";
 import { readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
@@ -39,15 +36,23 @@ export const metadata: Metadata = { title: "Verification" };
 export const dynamic = "force-dynamic";
 
 /**
- * What is outstanding, and every document we hold — yuvoy-operator#58 item 10.
+ * What is outstanding, and every document we hold: yuvoy-operator#58 item 10.
  *
- * Moved here from the Business tab UNCHANGED, which is the point: the profile
- * became a profile (#58 item 2) and this is what came off it. Everything that
- * links to "what is outstanding" now links here — Home's account strip, the
- * profile's own strip, and a `not_selling` listing.
+ * Moved here from the Business tab: the profile became a profile (#58 item 2)
+ * and this is what came off it. Everything that links to "what is
+ * outstanding" links here: Home's account strip, the profile's own strip, and
+ * a `not_selling` listing.
  *
- * The two components below are the ones that were on `/account`, reading
- * `GET /me` as they did there. Nothing about what they say has changed.
+ * ## The first thing waiting is the one action (yuvoy-operator#88 s13)
+ *
+ * "The biggest, darkest button on a screen about outstanding paperwork is 'Go
+ * to today' ... Make the first outstanding item the primary action ('Add your
+ * logo'). Demote Go to today to a back link. Show each blocker in one place
+ * only, and link to it from the other." So the first item's way out is the
+ * screen's one primary button, Go to today is a plain link, each blocker's
+ * sentence is said once on this screen (a missing document's row names the
+ * document and says it is needed, where it used to repeat the blocker), and
+ * Business details links here instead of repeating the list.
  */
 export default async function VerificationPage() {
   const token = await readSessionToken();
@@ -75,15 +80,18 @@ export default async function VerificationPage() {
   const standing: Standing | null = unreadable
     ? null
     : standingOf(result.data?.account);
+  /*
+    The logo and the business details are OWNER, ADMIN or MANAGER in the API;
+    documents are anybody's. Absent reads as the narrower, so a staff phone is
+    never handed a button the server will refuse (the audit, M10).
+  */
+  const canManage = Boolean(result?.data?.canManage);
   const at = await now();
 
   return (
-    <Screen
-      nav={{ back: { href: "/account/settings", label: "settings" } }}
-      stageLabel="Verification"
-    >
-      <p className="eyebrow text-terra-deep">Your account</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>
+      {/* One title (op#80 t2): no eyebrow over it, no caption in the bar. */}
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Verification
       </h1>
 
@@ -122,7 +130,12 @@ export default async function VerificationPage() {
       {standing?.state ? (
         <Chip
           className={cn(
-            "label mt-4",
+            /*
+              `self-start`: the sheet lays its children out in a column, which
+              stretched this pill across the whole screen, where it read as a
+              bar rather than a state.
+            */
+            "label mt-4 self-start",
             standing.bookable
               ? "bg-forest text-paper"
               : "border-terra-deep text-terra-deep border bg-transparent",
@@ -135,17 +148,21 @@ export default async function VerificationPage() {
       {/*
         And out of the way. An operator who can sell came here to check one
         thing; the way back to the day is on the screen rather than two taps up
-        through settings.
+        through settings. A plain link, not the biggest button on a screen
+        about paperwork (op#88 s13): the button is for what is waiting.
       */}
       {standing?.bookable ? (
-        <ButtonLink href="/today" className="mt-6">
+        <Link
+          href="/today"
+          className="text-forest/80 hover:text-forest mt-3 inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4"
+        >
           Go to today
-        </ButtonLink>
+        </Link>
       ) : null}
 
       {standing === null ? null : (
         <>
-          <Outstanding standing={standing} />
+          <Outstanding standing={standing} canManage={canManage} />
           <Credentials standing={standing} at={at} />
         </>
       )}
@@ -153,7 +170,14 @@ export default async function VerificationPage() {
   );
 }
 
-function Outstanding({ standing }: { standing: Standing }) {
+function Outstanding({
+  standing,
+  canManage,
+}: {
+  standing: Standing;
+  /** OWNER, ADMIN or MANAGER: may add the logo and the business details. */
+  canManage: boolean;
+}) {
   /*
     Sorted before it is split, so the thing that is costing money is the first
     row an operator meets in each section — yuvoy-operator#38. `gates` is the
@@ -162,6 +186,14 @@ function Outstanding({ standing }: { standing: Standing }) {
   */
   const { operator, yuvoy } = splitByWaitingOn(
     byGatingFirst(standing.blocking),
+  );
+  /*
+    The screen's one primary action: the way out of the first thing waiting
+    that has one (op#88 s13). Every other way out is secondary, so the eye
+    lands on the thing to do next rather than on a row of equal buttons.
+  */
+  const primary = operator.findIndex(
+    (b) => blockerAction(b) !== null && mayActOn(b, canManage),
   );
 
   return (
@@ -187,6 +219,12 @@ function Outstanding({ standing }: { standing: Standing }) {
                 reason can be added operationally without a contract change.
               */
               const action = blockerAction(b);
+              /*
+                A way out only for somebody who may take it: a staff phone was
+                handed "Complete your details" as the primary button, on a
+                screen that then said only an owner, admin or manager can.
+              */
+              const mayAct = mayActOn(b, canManage);
               return (
                 <li
                   key={`${b.code}-${i}`}
@@ -225,29 +263,30 @@ function Outstanding({ standing }: { standing: Standing }) {
                       Outstanding since {marketDateLabel(b.since.slice(0, 10))}.
                     </p>
                   ) : null}
-                  {action ? (
+                  {action && mayAct ? (
                     <ButtonLink
                       href={action.href}
-                      variant="secondary"
+                      variant={i === primary ? "primary" : "secondary"}
                       className="mt-4"
                     >
                       {action.label}
                     </ButtonLink>
+                  ) : null}
+                  {action && !mayAct ? (
+                    <p className="text-forest/70 mt-2 text-sm">
+                      An owner, admin or manager can do this.
+                    </p>
                   ) : null}
                 </li>
               );
             })}
           </ul>
           {/*
-            "There is no upload on this screen yet" was here, and it stopped
-            being true: `/profile` sends business details and documents, and
-            `/logo` sends the logo. What is left to say is the thing the links
-            above cannot — that a person reads each one.
+            What to do about a refusal, which the rows cannot say: the reason
+            is not in any response. Who checks, and why, is in Help.
           */}
           <p className="text-forest/70 mt-3 text-sm">
-            A person at Yuvoy checks each of these. If one was turned down and
-            you do not know why, ring us. We cannot show you the reason here
-            yet.
+            If one was turned down and you do not know why, call us.
           </p>
         </section>
       ) : null}
@@ -325,38 +364,31 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
       {count ? <p className="mt-2 text-base font-bold">{count}</p> : null}
 
       {/*
-        Every required document that is NOT met, with the blocker that says why.
-        Above the list of what we hold, because the list is a history — last
-        year's certificate sits beside this year's — and what is missing does not
-        appear in it at all.
+        Every required document that is NOT met. Above the list of what we
+        hold, because the list is a history (last year's certificate sits
+        beside this year's) and what is missing does not appear in it at all.
+
+        The document and that it is needed, and not the blocker's sentence
+        again: that is said once, under "Waiting on you" above, with the way
+        to send it (op#88 s13, "show each blocker in one place only").
       */}
       {required.some((d) => !d.satisfied) ? (
         <ul className="mt-3 space-y-2">
           {required
             .filter((d) => !d.satisfied)
-            .map((doc) => {
-              const blocker = blockerFor(doc.type, standing.blocking);
-              return (
-                <li key={doc.type}>
-                  <Panel tone="alert" className="p-4">
-                    <p className="text-sm font-bold">
-                      {credentialTypeLabel(doc.type)}
-                    </p>
-                    {/*
-                      "A document that is not satisfied always has a
-                      `CREDENTIAL_*` entry in `blocking` saying why." Rendered
-                      verbatim; when nothing matches, the type alone is said
-                      rather than a reason nobody gave.
-                    */}
-                    {blocker ? (
-                      <p className="text-forest/80 mt-1 text-sm">
-                        {blocker.label}
-                      </p>
-                    ) : null}
-                  </Panel>
-                </li>
-              );
-            })}
+            .map((doc) => (
+              <li key={doc.type}>
+                <Panel
+                  tone="alert"
+                  className="flex items-baseline justify-between gap-3 p-4"
+                >
+                  <p className="text-sm font-bold">
+                    {credentialTypeLabel(doc.type)}
+                  </p>
+                  <p className="text-terra-deep shrink-0 text-sm">Needed</p>
+                </Panel>
+              </li>
+            ))}
         </ul>
       ) : null}
       {expiring.length > 0 ? (

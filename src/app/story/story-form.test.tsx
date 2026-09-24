@@ -31,8 +31,48 @@ describe("writing the story — yuvoy-operator#41", () => {
     fireEvent.change(screen.getByLabelText("About your business"), {
       target: { value: "   " },
     });
-    expect(screen.getByText(/Empty is fine/)).toBeInTheDocument();
+    /*
+      The count answers this now, at every length including none. It used to
+      give way to "Empty is fine. Nothing shows on your page until you write
+      something", a third helper line on a field that says the same thing by
+      letting Save through (yuvoy-operator#88 s17).
+    */
+    expect(screen.getByText("0 of 600")).toBeInTheDocument();
+    expect(screen.queryByText(/Empty is fine/)).toBeNull();
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("keeps the example that shapes what gets written, and nothing else", () => {
+    /*
+      #88 s17: "Keep the example for About (it genuinely shapes what people
+      write), drop the rest." What a traveller does with it afterwards, and why
+      the languages matter, are answers in Help (#80 t4).
+    */
+    render(<StoryForm about="" languages={[]} />);
+
+    expect(
+      screen.getByText(/Who you are, how long you have been at it/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Travellers read this before they book/),
+    ).toBeNull();
+    expect(screen.queryByText(/Separate them with commas/)).toBeNull();
+    expect(screen.queryByText(/nervous in the water/)).toBeNull();
+  });
+
+  it("shows the languages example in the field, where it leaves when typed", () => {
+    render(<StoryForm about="" languages={[]} />);
+    const languages = screen.getByLabelText("Languages your crew speaks");
+
+    expect(languages).toHaveAttribute("placeholder", "English, Hindi, Bengali");
+    // Nothing describes it until something is wrong with what was typed.
+    expect(languages).not.toHaveAttribute("aria-describedby");
+
+    fireEvent.change(languages, {
+      target: { value: "A, B, C, D, E, F, G, H, I" },
+    });
+    expect(languages).toHaveAttribute("aria-describedby", "languages-problem");
+    expect(languages).toHaveAttribute("aria-invalid", "true");
   });
 
   it("counts the way the API counts, which is now the letters typed", () => {

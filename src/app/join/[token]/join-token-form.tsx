@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { acceptJoin, requestJoinCode, type JoinState } from "./actions";
+import { codeStep } from "./code-step";
 import { roleLabel } from "@/lib/team/roles";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
@@ -68,6 +69,11 @@ export function JoinTokenForm({
   }
 
   const leaving = state.leavingBusiness;
+  /* What this step can honestly show when no code was sent. See `codeStep`. */
+  const step = codeStep(state, businessName);
+  /** An unanswered "this takes you off another business" is on screen. */
+  const askingToLeave =
+    state.step === "code" && Boolean(leaving && step.leavingText);
 
   return (
     <form action={act} className="mt-8 space-y-5">
@@ -110,19 +116,24 @@ export function JoinTokenForm({
             why it needs a deliberate tap: it happens to a person who may be
             standing on a jetty using the other business's app right now.
           */}
-          {leaving ? (
+          {/*
+            Nothing was sent (yuvoy-api#227), so it says so first and in the
+            API's own words: the only person who can fix it is whoever sent
+            the invitation. No code box follows it, because nothing is coming
+            to type into it.
+          */}
+          {step.notSent ? (
+            <Panel tone="alert" role="alert" className="p-4">
+              <p className="text-sm font-bold">{step.notSent}</p>
+            </Panel>
+          ) : null}
+
+          {leaving && step.leavingText ? (
             <Panel tone="alert" className="p-4">
               <p className="text-sm font-bold">
                 This will take you off {leaving}
               </p>
-              <p className="text-forest/90 mt-2 text-sm">
-                {state.note ??
-                  `One number works with one business at a time. Joining ${
-                    state.invited?.businessName ??
-                    businessName ??
-                    "this business"
-                  } ends your access to ${leaving} straight away, including on any device already signed in.`}
-              </p>
+              <p className="text-forest/90 mt-2 text-sm">{step.leavingText}</p>
               <label className="mt-3 flex items-start gap-3 text-sm">
                 <input
                   type="checkbox"
@@ -135,38 +146,42 @@ export function JoinTokenForm({
             </Panel>
           ) : null}
 
-          <div>
-            <label htmlFor="code" className="label text-forest/75">
-              Your code
-            </label>
-            <input
-              id="code"
-              name="code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="[0-9]*"
-              required
-              autoFocus
-              className={inputClass("mt-2 font-mono text-2xl tracking-[0.4em]")}
-            />
-            {/*
+          {step.askForCode ? (
+            <div>
+              <label htmlFor="code" className="label text-forest/75">
+                Your code
+              </label>
+              <input
+                id="code"
+                name="code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+                required
+                autoFocus
+                className={inputClass(
+                  "mt-2 font-mono text-2xl tracking-[0.4em]",
+                )}
+              />
+              {/*
               "For", not "sent to" — the same rule `/sign-in` and `/signup`
               keep, and `pnpm qa` enforces on all three. A code may arrive by
               WhatsApp or be handed over by Yuvoy, and this screen is never told
               which.
             */}
-            <p className="text-forest/70 mt-2 text-sm">
-              For the number you entered. It lasts a few minutes.
-            </p>
-            {state.devCode ? (
-              <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
-                Development build: the code is{" "}
-                <strong className="font-mono">{state.devCode}</strong>. This
-                never appears in production.
+              <p className="text-forest/70 mt-2 text-sm">
+                For the number you entered. It lasts a few minutes.
               </p>
-            ) : null}
-          </div>
+              {state.devCode ? (
+                <p className="rounded-card border-terra-deep text-terra-deep mt-3 border border-dashed p-3 text-sm">
+                  Development build: the code is{" "}
+                  <strong className="font-mono">{state.devCode}</strong>. This
+                  never appears in production.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </>
       )}
 
@@ -175,7 +190,7 @@ export function JoinTokenForm({
         action could read stale. Absent unless the box is ticked, which is what
         keeps `confirmLeaving` out of every request nobody authorised.
       */}
-      {state.step === "code" && leaving && agreed ? (
+      {askingToLeave && agreed ? (
         <input type="hidden" name="confirmLeaving" value="yes" />
       ) : null}
 
@@ -185,24 +200,26 @@ export function JoinTokenForm({
         </p>
       ) : null}
 
-      <Button
-        type="submit"
-        disabled={
-          pending ||
-          (state.step === "phone" && !complete) ||
-          // Nothing may be sent while an unanswered "this removes you from
-          // somewhere" is on screen.
-          (state.step === "code" && Boolean(leaving) && !agreed)
-        }
-      >
-        {pending
-          ? "Working…"
-          : state.step === "code"
-            ? leaving
-              ? `Join and leave ${leaving}`
-              : "Join"
-            : "Continue"}
-      </Button>
+      {state.step === "phone" || step.askForCode ? (
+        <Button
+          type="submit"
+          disabled={
+            pending ||
+            (state.step === "phone" && !complete) ||
+            // Nothing may be sent while an unanswered "this removes you from
+            // somewhere" is on screen.
+            (askingToLeave && !agreed)
+          }
+        >
+          {pending
+            ? "Working…"
+            : state.step === "code"
+              ? askingToLeave
+                ? `Join and leave ${leaving}`
+                : "Join"
+              : "Continue"}
+        </Button>
+      ) : null}
     </form>
   );
 }

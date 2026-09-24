@@ -4,9 +4,10 @@ import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { isBareRoute, type NavBadges } from "@/lib/site/nav";
+import { ChromeProvider, type ChromeIdentity } from "./chrome-context";
 import { NavList } from "./nav-items";
+import { StageIdentity } from "./stage-identity";
 import { TabBar } from "./tab-bar";
-import { Wordmark } from "@/components/ui/wordmark";
 
 /**
  * The portal's chassis (v2.7).
@@ -32,18 +33,22 @@ import { Wordmark } from "@/components/ui/wordmark";
  * session to navigate with, and a rail whose every link bounces back to the
  * sign-in form is a rail that teaches somebody the portal is broken.
  *
- * `badges` are counted on the server by the root layout (yuvoy-operator#42)
- * and only drawn here. This component cannot read them itself: it is a client
- * component, and the counts come from `/operator/v1`, which a browser is never
- * allowed to call.
+ * `badges` and `identity` are read on the server by the root layout
+ * (yuvoy-operator#42, #80 t1, #96) and only drawn here. This component cannot
+ * read them itself: it is a client component, and they come from
+ * `/operator/v1`, which a browser is never allowed to call. `identity` is
+ * handed to every screen's stage through `ChromeProvider`.
  */
 export function AppShell({
   children,
   badges,
+  identity = { businessName: null, canManage: false },
   banner,
 }: {
   children: ReactNode;
   badges?: NavBadges;
+  /** The business's name, the inbox count, and whether Money is drawn. */
+  identity?: ChromeIdentity;
   /**
    * The suspension banner, rendered by the server layout and placed here
    * (yuvoy-operator#50). It sits above `children` inside `main`, so it is the
@@ -62,29 +67,39 @@ export function AppShell({
   const bare = isBareRoute(usePathname());
 
   return (
-    <div className="stage on-dark flex min-h-dvh flex-col lg:flex-row">
-      <aside
-        className={cn(
-          "app-chrome border-paper/10 hidden w-64 shrink-0 flex-col border-r",
-          !bare && "lg:sticky lg:top-0 lg:flex lg:h-dvh lg:overflow-y-auto",
-        )}
-      >
-        <div className="px-6 py-7">
-          <Wordmark tone="paper" className="h-10" priority />
-          <p className="label text-paper/70 mt-3">For operators</p>
-        </div>
-        <nav aria-label="Primary" className="px-3">
-          <NavList orientation="rail" badges={badges} />
-        </nav>
-      </aside>
+    <ChromeProvider identity={identity}>
+      <div className="stage on-dark flex min-h-dvh flex-col lg:flex-row">
+        <aside
+          className={cn(
+            "app-chrome border-paper/10 hidden w-64 shrink-0 flex-col border-r",
+            !bare && "lg:sticky lg:top-0 lg:flex lg:h-dvh lg:overflow-y-auto",
+          )}
+        >
+          {/*
+            The compact mark and the business's name, and nothing else: the
+            "For operators" caption under the marketing lockup went with the
+            lockup (yuvoy-operator#80 t1). Everybody reading this is one.
+          */}
+          <div className="px-6 pt-7 pb-6">
+            <StageIdentity size="rail" />
+          </div>
+          <nav aria-label="Primary" className="px-3">
+            <NavList
+              orientation="rail"
+              badges={badges}
+              canManage={identity.canManage}
+            />
+          </nav>
+        </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <main id="main" className="flex min-w-0 flex-1 flex-col">
-          {bare ? null : banner}
-          {children}
-        </main>
-        <TabBar badges={badges} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main id="main" className="flex min-w-0 flex-1 flex-col">
+            {bare ? null : banner}
+            {children}
+          </main>
+          <TabBar badges={badges} canManage={identity.canManage} />
+        </div>
       </div>
-    </div>
+    </ChromeProvider>
   );
 }

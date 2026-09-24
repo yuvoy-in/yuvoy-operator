@@ -99,6 +99,18 @@ export interface OperatorSlot {
   sold: number;
   remaining: number;
   /**
+   * Seats the operator sold at their own counter (yuvoy-api#226).
+   *
+   * **Already taken off `seats`**, which is why it has to be carried: without
+   * it a six-seat departure with two walk-ups reads "0 of 4 sold · 4 left" on
+   * every visit after the receipt, with nothing naming the two people at the
+   * counter. The same number the manifest reports as `seatsSoldOffline`.
+   *
+   * Optional because an API older than 2afd7b4 does not send it, and absent
+   * must read as "not said", never as zero: it only ever ADDS a sentence.
+   */
+  soldOffline?: number;
+  /**
    * Whether this departure holds seats or waits on the operator to answer.
    *
    * On the departure rather than the listing, because "a listing can carry

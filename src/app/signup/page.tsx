@@ -36,9 +36,14 @@ export const dynamic = "force-dynamic";
  */
 export default function SignUpPage() {
   return (
-    <Screen>
-      <p className="eyebrow text-terra-deep">Yuvoy for operators</p>
-      <h1 className="font-display tracking-display mt-3 text-4xl leading-[1.05]">
+    /*
+      A signed-out door, drawn like the other three (sign-in and both join
+      pages): the mark and "For operators", and no inbox, which was here only
+      because this page took the signed-in chrome by default and led nowhere
+      but sign-in (yuvoy-operator#96).
+    */
+    <Screen nav="none" stageLabel="For operators">
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Create your account
       </h1>
       <p className="text-forest/70 mt-3 text-base">
