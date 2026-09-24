@@ -7,6 +7,8 @@
  * operator portal as the third consumer that triggers it).
  */
 
+import { dedash, dedashReviver } from "@/lib/format/dedash";
+
 export interface ErrorEnvelope {
   error: {
     code: string;
@@ -76,4 +78,33 @@ export class OperatorNetworkError extends Error {
     this.name = "OperatorNetworkError";
     this.cause = cause;
   }
+}
+
+/**
+ * The error an API refusal becomes, its sentences made fit to print.
+ *
+ * `message` and every string in `details` are the API's own words, and the
+ * copy rule (no long dash in anything an operator reads) cannot reach another
+ * team's database. So they are stripped here, where every refusal enters,
+ * rather than at each action that prints one: a dozen passed `err.message`
+ * through untouched (the audit before release, O10). Punctuation only, and
+ * call sites branch on `code`, never on the words.
+ */
+export function apiError(
+  body: ErrorEnvelope,
+  status: number,
+  requestId?: string,
+): OperatorApiError {
+  return new OperatorApiError({
+    code: body.error.code,
+    message: dedash(
+      typeof body.error.message === "string" ? body.error.message : "",
+    ),
+    status,
+    details:
+      body.error.details === undefined
+        ? undefined
+        : JSON.parse(JSON.stringify(body.error.details), dedashReviver),
+    requestId: body.error.requestId ?? requestId,
+  });
 }

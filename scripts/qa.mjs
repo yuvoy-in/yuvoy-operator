@@ -634,6 +634,26 @@ for (const f of walk(APP)) {
 const OWNER_ONLY = [];
 const OWNER_OR_ADMIN = [];
 const NEEDS_MANAGE = [];
+/**
+ * Segments that decide on `canManage` for who may READ the screen, while the
+ * OWNER-only write on it is gated on OWNER (the OWNER check below still
+ * applies to them). Each entry says why; one without a reason fails.
+ */
+const READ_GATED_ON_MANAGE = new Map([
+  [
+    join("src", "app", "payouts"),
+    "Payout details is a Money screen, OWNER, ADMIN or MANAGER to read (#96, " +
+      "the audit before release M9); raising a bank change is gated on OWNER " +
+      "(isOwner) and stopping one on canManageAccess.",
+  ],
+]);
+for (const [segment, reason] of READ_GATED_ON_MANAGE) {
+  if (!reason || reason.trim().length < 20) {
+    problems.push(
+      `scripts/qa.mjs: READ_GATED_ON_MANAGE entry "${segment}" has no real reason.`,
+    );
+  }
+}
 {
   const lines = readFileSync(
     join(ROOT, "contracts", "operator-openapi.yaml"),
@@ -946,7 +966,7 @@ for (const page of pages) {
   ).map(({ method, path }) => `${method} ${path}`);
 
   if (ownerCalls.length) {
-    if (gatesOnManage) {
+    if (gatesOnManage && !READ_GATED_ON_MANAGE.has(rel(segment))) {
       problems.push(
         `${rel(segment)}: decides on \`canManage\` while reaching ` +
           `${ownerCalls.join(", ")}, which the contract marks OWNER only. ` +
@@ -1888,6 +1908,56 @@ for (const f of files) {
           );
         }
       }
+    }
+  }
+}
+
+/* ------- 17. the API's words reach a screen without a long dash --------- */
+
+/**
+ * The copy rule (no em dash, en dash or horizontal bar in anything an operator
+ * reads) cannot reach another team's database, so the API's own sentences are
+ * stripped where they enter (`lib/format/dedash.ts`). The audit before release
+ * (O10) found a dozen Server Actions handing `err.message` to the screen
+ * untouched, and two handing back a success `note` the same way.
+ *
+ * Refusals are stripped in ONE place now: `apiError` builds every
+ * `OperatorApiError` from an API envelope. So:
+ *
+ *   - `new OperatorApiError(` appears only in `lib/api/errors.ts` and, for the
+ *     non-envelope fallback whose words are ours, `lib/api/server-client.ts`;
+ *   - nothing reads `body.error.message` except `lib/api/errors.ts`;
+ *   - no action returns an API `note` raw (`note: data.note`): it goes through
+ *     `dedash`, `dedashText` or `sentence` on the way out.
+ */
+{
+  const BUILDS_ERRORS = new Set([
+    join("src", "lib", "api", "errors.ts"),
+    join("src", "lib", "api", "server-client.ts"),
+  ]);
+  for (const f of files) {
+    if (/\.test\.tsx?$/.test(f)) continue;
+    const s = code(f);
+    if (/new OperatorApiError\(/.test(s) && !BUILDS_ERRORS.has(rel(f))) {
+      problems.push(
+        `${rel(f)}: builds an OperatorApiError itself. Use apiError() in ` +
+          `lib/api/errors.ts, which strips the API's long dashes (O10).`,
+      );
+    }
+    if (
+      /body\.error\.message/.test(s) &&
+      rel(f) !== join("src", "lib", "api", "errors.ts")
+    ) {
+      problems.push(
+        `${rel(f)}: reads the API's refusal text directly. Go through ` +
+          `apiError() so it reaches the screen without a long dash (O10).`,
+      );
+    }
+    if (/\bnote:\s*data\.note\s*[,}\n)]/.test(s)) {
+      problems.push(
+        `${rel(f)}: returns the API's note raw. Pass it through dedash, ` +
+          `dedashText or sentence: its long dashes reach the screen (O10).`,
+      );
     }
   }
 }

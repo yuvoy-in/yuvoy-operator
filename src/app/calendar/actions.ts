@@ -686,7 +686,7 @@ export async function reopenClosure(
       The same trap `cancelBooking` hit: revalidate only when the re-render
       shows more than the returned value, and here it shows less.
     */
-    return { done: true, note: data.note };
+    return { done: true, note: dedashText(data.note) };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was reopened. Try again." };
