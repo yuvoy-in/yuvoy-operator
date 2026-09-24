@@ -1,5 +1,13 @@
 import type { NextConfig } from "next";
 import { cspHeaders } from "./src/lib/site/csp";
+import { assertNoSecretPublicVars } from "./src/lib/site/public-env";
+
+/*
+  Before anything is built: a public variable stored in Vercel as a Secret
+  arrives here as "[SENSITIVE]" and would be inlined as that. Stop the build
+  and name it instead. See src/lib/site/public-env.ts.
+*/
+assertNoSecretPublicVars();
 
 /**
  * The operator portal is a higher-value target than the traveller app.
