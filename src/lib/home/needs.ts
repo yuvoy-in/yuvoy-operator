@@ -2,7 +2,7 @@ import {
   blockerAction,
   blockerText,
   byGatingFirst,
-  gatesSale,
+  stopsSelling,
   type Blocker,
   type Standing,
 } from "@/lib/account/standing";
@@ -196,8 +196,7 @@ export function needsYou(input: {
   }
   if (standing) {
     byGatingFirst(standing.blocking).forEach((blocker, index) => {
-      // Once the account can sell, nothing on it is stopping a sale.
-      const stopping = !standing.bookable && gatesSale(blocker) !== false;
+      const stopping = stopsSelling(standing, blocker);
       const row = blockerNeed(
         blocker,
         canManage,

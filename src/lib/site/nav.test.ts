@@ -277,7 +277,8 @@ describe("the two badges, yuvoy-operator#42", () => {
 
   it("says what the number is of, for somebody who cannot see the bubble", () => {
     expect(BADGES.bookings?.spoken).toMatch(/waiting/);
-    expect(BADGES.business?.spoken).toMatch(/waiting/);
+    // What stops the business selling (yuvoy-operator#96 item 6).
+    expect(BADGES.business?.spoken).toBe("stopping sales");
   });
 
   it("stops being exact once exact stops mattering", () => {

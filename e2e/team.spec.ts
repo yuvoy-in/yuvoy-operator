@@ -143,7 +143,9 @@ test("the team is two lists: people, and invitations nobody has used", async ({
     arun.locator("span.label").filter({ hasText: /^Staff$/ }),
   ).toHaveCount(1);
   await expect(
-    arun.getByText("Today's manifest: marks people off as they arrive."),
+    arun.getByText(
+      "Who is booked on today's departures, and checking them in as they arrive.",
+    ),
   ).toHaveCount(0);
   const dev = page.locator("li").filter({ hasText: "Dev Kapoor" });
   await expect(
@@ -177,7 +179,7 @@ test("the team is two lists: people, and invitations nobody has used", async ({
     "Everything, including where the money goes and who is on this list.",
     "Everything a manager can, plus this list: the stand-in for an owner who is off the island.",
     "Seats, closed dates, seat requests, calling off a departure, earnings and listing edits.",
-    "Today's manifest: marks people off as they arrive.",
+    "Who is booked on today's departures, and checking them in as they arrive.",
   ]) {
     await expect(guide.getByText(claim)).toBeVisible();
     await expect(page.locator("li").getByText(claim)).toHaveCount(0);

@@ -191,7 +191,7 @@ export const ACCOUNT_HELP: readonly HelpTopic[] = [
     area: "Team",
     question: "Why are the roles different?",
     answer: [
-      "The crew phone goes out on the boat and gets left on a bench. It should be able to tick people off a manifest and nothing else.",
+      "The crew phone goes out on the boat and gets left on a bench. It should be able to check people in on a departure and nothing else.",
       "Payout details are the owner's alone. A stolen manager login plus one convincing phone call is otherwise enough to redirect a season's takings.",
       "Who is on the account is an owner's or an admin's, because an owner who is off the island cannot be the only person who can let somebody in.",
       "Making somebody an owner hands them the payout details too. An admin who does it cannot change that person's access afterwards.",

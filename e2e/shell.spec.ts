@@ -335,10 +335,11 @@ test("the rail stays put while the page scrolls", async ({
 /*
   The two counts on the bar — yuvoy-operator#42.
 
-  "These badges turn unfinished obligations into visible work queues." Each is
-  the number of rows under "Waiting on you" on the screen its stop opens, and
-  each is SAID, not just drawn: the bubble is decorative and the link carries
-  the number in words, so a screen reader hears what it counts.
+  "These badges turn unfinished obligations into visible work queues." Bookings
+  counts the requests its queue shows; Business counts what stops the business
+  selling (#96 item 6). Each is SAID, not just drawn: the bubble is decorative
+  and the link carries the number in words, so a screen reader hears what it
+  counts.
 
   Asserted as a shape rather than a figure on Bookings: other specs answer
   requests against the same server while this runs.
@@ -368,23 +369,22 @@ test("Business carries no count when nothing is waiting on the operator", async 
   await expect(business).toHaveAccessibleName("Business");
 });
 
-test("Business counts exactly the list it opens", async ({ page }) => {
-  // A new account with two documents to send.
+test("Business counts what stops the business selling", async ({ page }) => {
+  // A new account that cannot sell until it sends two documents.
   await signIn(page, "+919000000105");
   const business = page
     .getByRole("navigation", { name: /Primary/i })
     .first()
     .getByRole("link", { name: /^Business/ });
-  await expect(business).toHaveAccessibleName("Business, 2 waiting on you");
+  await expect(business).toHaveAccessibleName("Business, 2 stopping sales");
 
   await business.click();
   await page.waitForURL("**/account");
 
   /*
     The profile carries the COUNT and the list lives one tap further in, on
-    Verification (#58 items 2 and 10). The badge and the strip agree because
-    both count `splitByWaitingOn(blocking).operator`; the list is what the strip
-    opens, and it is the list the badge is a count of.
+    Verification (#58 items 2 and 10). Both documents stop sales, so here the
+    badge and the list are the same two things.
   */
   const strip = page.getByRole("link", { name: /things? waiting on you/ });
   await expect(strip).toContainText("2 things waiting on you");
@@ -394,6 +394,29 @@ test("Business counts exactly the list it opens", async ({ page }) => {
   await expect(
     page.getByRole("region", { name: "Waiting on you" }).getByRole("listitem"),
   ).toHaveCount(2);
+});
+
+test("Business carries no count for items that stop nothing", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#96 item 6: "The Business badge reads '2' (two non-blocking
+    verification items)", a label that does not scan. This business is
+    selling with three things outstanding: they are named on Business, and
+    the bar carries no number for them.
+  */
+  await signIn(page, "+919000000115");
+  const business = page
+    .getByRole("navigation", { name: /Primary/i })
+    .first()
+    .getByRole("link", { name: /^Business/ });
+  await expect(business).toHaveAccessibleName("Business");
+
+  await business.click();
+  await page.waitForURL("**/account");
+  await expect(
+    page.getByRole("link", { name: /things? waiting on you/ }),
+  ).toBeVisible();
 });
 
 /*

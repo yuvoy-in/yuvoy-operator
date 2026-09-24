@@ -178,7 +178,7 @@ export function navFor(access: { canManage: boolean }): readonly NavItem[] {
 export interface NavBadges {
   /** Seat requests waiting on an answer: the queue on Bookings. */
   bookings?: number;
-  /** Items on the account waiting on the operator: the list on Business. */
+  /** What stops the business selling that this login can act on. */
   business?: number;
 }
 
@@ -187,7 +187,7 @@ export const BADGES: Partial<
   Record<NavIcon, { key: keyof NavBadges; spoken: string }>
 > = {
   bookings: { key: "bookings", spoken: "waiting on your answer" },
-  business: { key: "business", spoken: "waiting on you" },
+  business: { key: "business", spoken: "stopping sales" },
 };
 
 /** A count as the bubble draws it. Past nine the exact number is not the point. */

@@ -14,12 +14,13 @@ import {
  * this screen that needs action is the one thing that stays vague. Name the two
  * things in the strip: 'Add your logo · Complete business details'."
  *
- * ## The same list the Business badge counts
+ * ## The list the Business badge counts part of
  *
  * One item per blocker in `splitByWaitingOn(blocking).operator`, in its order,
- * and nothing else: the badge on the Business tab counts exactly that list
- * (owner ruling on #42, `NavBadges`), so a strip naming three things under a
- * badge saying two would teach somebody to ignore both.
+ * and nothing else. The badge on the Business tab counts only the items in it
+ * that stop the business selling (`stoppingSales`, yuvoy-operator#96 item 6),
+ * so every badged item is here, and an item that stops nothing is named here
+ * without a number on the bar.
  *
  * ## The words
  *

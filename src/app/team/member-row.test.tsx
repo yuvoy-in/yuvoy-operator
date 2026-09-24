@@ -72,7 +72,9 @@ describe("the role on a row", () => {
     expect(screen.getByText("Staff")).toBeInTheDocument();
     // The same words are said once for the whole list, in the disclosure.
     expect(
-      screen.queryByText("Today's manifest: marks people off as they arrive."),
+      screen.queryByText(
+        "Who is booked on today's departures, and checking them in as they arrive.",
+      ),
     ).toBeNull();
     expect(
       screen.queryByText(/Sees seat requests but cannot answer them/),

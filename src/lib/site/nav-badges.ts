@@ -106,15 +106,17 @@ export async function chromeData(): Promise<ChromeData> {
       ? inbox.value.conversations
       : undefined;
 
+  const canManage = me.status === "fulfilled" && me.value.canManage === true;
   return {
     badges: countBadges({
       account: account ? standingOf(account) : null,
+      canManage,
       requests: requests.status === "fulfilled" ? requests.value : undefined,
     }),
     suspension: suspensionOf(account),
     businessName:
       businessName.status === "fulfilled" ? businessName.value : null,
-    canManage: me.status === "fulfilled" && me.value.canManage === true,
+    canManage,
     ...(unread !== undefined ? { unread } : {}),
   };
 }

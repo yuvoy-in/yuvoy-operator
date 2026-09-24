@@ -54,7 +54,9 @@ describe("what each role can do", () => {
     render(<RoleGuide />);
 
     expect(
-      screen.getByText("Today's manifest: marks people off as they arrive."),
+      screen.getByText(
+        "Who is booked on today's departures, and checking them in as they arrive.",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(

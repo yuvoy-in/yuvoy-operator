@@ -98,32 +98,49 @@ describe("what is waiting on the operator", () => {
     ).toHaveLength(2);
   });
 
-  it("is exactly as long as the count on the Business tab", () => {
+  it("names every item the Business badge counts, and the ones it does not", () => {
     /*
-      Owner ruling on #42: the badge counts the list it opens. A strip naming
-      a different number of things than the badge beside it is the fastest
-      way to teach somebody to ignore both.
+      The badge counts only what stops the business selling (yuvoy-operator
+      #96 item 6: a "2" for two items that stop nothing does not scan), and
+      the strip names everything waiting on the operator. So every badged item
+      is named here, and a selling business's outstanding items are named with
+      no number on the bar.
     */
     const blocking = [
       ...HC_DIVING,
-      blocker("CREDENTIAL_MISSING", "We still need your insurance certificate"),
+      {
+        ...blocker(
+          "CREDENTIAL_MISSING",
+          "We still need your insurance certificate",
+        ),
+        gates: true,
+      },
       blocker(
         "CREDENTIAL_UNVERIFIED",
         "We are checking your oxygen record",
         "yuvoy",
       ),
     ];
-    const badge = countBadges({
-      account: {
-        state: "LIVE",
-        bookable: true,
-        blocking,
-        credentials: [],
-        requiredDocuments: [],
-      },
-      requests: [],
-    }).business;
-    expect(waitingItems(blocking, true)).toHaveLength(badge!);
+    const badge = (bookable: boolean) =>
+      countBadges({
+        account: {
+          state: bookable ? "LIVE" : "PROSPECT",
+          bookable,
+          blocking,
+          credentials: [],
+          requiredDocuments: [],
+        },
+        canManage: true,
+        requests: [],
+      }).business;
+    const items = waitingItems(blocking, true);
+    expect(items).toHaveLength(3);
+    expect(badge(true)).toBe(0);
+    // Not selling: the insurance stops sales; the logo and details do not.
+    expect(badge(false)).toBe(1);
+    expect(items.map((i) => i.text)).toContain(
+      "Send your insurance certificate",
+    );
   });
 });
 
