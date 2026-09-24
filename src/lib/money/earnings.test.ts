@@ -17,7 +17,12 @@ import { payoutHold, type ChangeRequest } from "./earnings";
 
 describe("payoutHold", () => {
   const req = (over: Partial<ChangeRequest>): ChangeRequest =>
-    ({ id: "c1", kind: "bank", state: "cooling", ...over }) as ChangeRequest;
+    ({
+      id: "c1",
+      kind: "bank_account",
+      state: "cooling",
+      ...over,
+    }) as ChangeRequest;
 
   it("holds while a bank change is anywhere before applied", () => {
     const holding = ["objection_window", "pending", "cooling"] as const;

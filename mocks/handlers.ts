@@ -6676,7 +6676,7 @@ export const handlers = [
     */
     const open = changesFor(request).filter(
       (r) =>
-        (r as { kind?: string }).kind === "bank" &&
+        (r as { kind?: string }).kind === "bank_account" &&
         !stoppedChanges.includes(String((r as { id?: string }).id)) &&
         ["objection_window", "pending", "cooling", "approved"].includes(
           String((r as { state?: string }).state),
@@ -6719,7 +6719,7 @@ export const handlers = [
       // Whose it is. See `changesFor`.
       raisedFor: businessOf(request),
       id,
-      kind: "bank",
+      kind: "bank_account",
       state: "objection_window",
       summary,
       requestedAt: new Date().toISOString(),
