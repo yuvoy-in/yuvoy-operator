@@ -201,7 +201,7 @@ test("there is no way to pay from this screen, and why is one tap away", async (
   await expect(page.getByText(/nothing to tap here/i)).toHaveCount(0);
 
   await page.getByRole("link", { name: /How to settle Yuvoy.s share/ }).click();
-  await page.waitForURL("**/account/help#settling-cash");
+  await page.waitForURL(/\/account\/help\?from=%2Fcash#settling-cash$/);
   const answer = page.locator("#settling-cash");
   await expect(answer).toHaveAttribute("open", "");
   await expect(answer.getByText(/There is no pay button/)).toBeVisible();

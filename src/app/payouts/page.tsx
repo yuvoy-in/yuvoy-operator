@@ -207,7 +207,7 @@ export default async function PayoutsPage() {
       ) : null}
 
       <Link
-        href={helpHref("bank-change-two-days")}
+        href={helpHref("bank-change-two-days", "/payouts")}
         className="text-forest/80 hover:text-forest mt-8 inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4"
       >
         Why a change takes two days

@@ -188,7 +188,7 @@ test("the team is two lists: people, and invitations nobody has used", async ({
   // And the reasons that closed this screen are an answer in Help now (#80 t4).
   await expect(
     guide.getByRole("link", { name: "Why the roles are different" }),
-  ).toHaveAttribute("href", "/account/help#why-roles-differ");
+  ).toHaveAttribute("href", "/account/help?from=%2Fteam#why-roles-differ");
   await expect(
     page.getByRole("heading", { name: "Why the roles are different" }),
   ).toHaveCount(0);

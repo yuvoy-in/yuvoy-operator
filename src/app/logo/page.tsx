@@ -152,7 +152,7 @@ export default async function LogoPage() {
         one travellers see.
       </p>
       <Link
-        href={helpHref("where-logo-appears")}
+        href={helpHref("where-logo-appears", "/logo")}
         className="text-forest/80 hover:text-forest mt-3 inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4"
       >
         Where travellers see your logo

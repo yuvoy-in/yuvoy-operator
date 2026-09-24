@@ -871,7 +871,10 @@ test("a booking opens, and shows no phone number", async ({ page }) => {
   */
   await expect(
     page.getByRole("link", { name: "Why there is no phone number" }),
-  ).toHaveAttribute("href", "/account/help#traveller-phone-numbers");
+  ).toHaveAttribute(
+    "href",
+    /^\/account\/help\?from=%2Fbookings%2F[\w-]+#traveller-phone-numbers$/,
+  );
 });
 
 test("a booking that is not yours is a 404, never a 403", async ({ page }) => {

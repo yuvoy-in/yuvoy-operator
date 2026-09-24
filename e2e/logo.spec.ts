@@ -155,5 +155,5 @@ test("the logo screen leads with its title, and the rest is an answer in Help", 
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Where travellers see your logo" }),
-  ).toHaveAttribute("href", "/account/help#where-logo-appears");
+  ).toHaveAttribute("href", "/account/help?from=%2Flogo#where-logo-appears");
 });

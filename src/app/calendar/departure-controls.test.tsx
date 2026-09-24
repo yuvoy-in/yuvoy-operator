@@ -165,7 +165,10 @@ describe("seats nobody confirmed", () => {
     expect(confirm).toHaveClass("bg-forest");
     expect(
       screen.getByRole("link", { name: "Why seats need confirming" }),
-    ).toHaveAttribute("href", "/account/help#confirming-seats");
+    ).toHaveAttribute(
+      "href",
+      "/account/help?from=%2Fcalendar#confirming-seats",
+    );
   });
 
   it("sends the count as it is, and keeps its receipt once the departure is back on sale", async () => {

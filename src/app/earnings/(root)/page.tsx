@@ -666,7 +666,7 @@ function Door({
 function HelpLink({ id, children }: { id: string; children: string }) {
   return (
     <Link
-      href={helpHref(id)}
+      href={helpHref(id, "/earnings")}
       className="text-forest/80 hover:text-forest mt-3 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
     >
       {children}

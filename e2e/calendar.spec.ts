@@ -762,7 +762,10 @@ test("a day marks what is off sale under it, and only that", async ({
     ).toBeVisible();
     await expect(
       opened.getByRole("link", { name: "Why seats need confirming" }),
-    ).toHaveAttribute("href", "/account/help#confirming-seats");
+    ).toHaveAttribute(
+      "href",
+      "/account/help?from=%2Fcalendar#confirming-seats",
+    );
   }
 });
 

@@ -4,6 +4,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 const pauseListing = vi.fn();
 const resumeListing = vi.fn();
 
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/today/listing/exp_snorkel",
+}));
 vi.mock("./actions", () => ({
   pauseListing: (prev: unknown, form: FormData) => pauseListing(prev, form),
   resumeListing: (prev: unknown, form: FormData) => resumeListing(prev, form),
@@ -44,7 +47,10 @@ describe("the control that takes a listing off sale", () => {
     expect(container.textContent).not.toContain("Anybody already booked");
     expect(
       screen.getByRole("link", { name: "What pausing does" }),
-    ).toHaveAttribute("href", "/account/help#pausing-a-listing");
+    ).toHaveAttribute(
+      "href",
+      "/account/help?from=%2Ftoday%2Flisting%2Fexp_snorkel#pausing-a-listing",
+    );
   });
 
   it("asks with the listing's name, and the one sentence that changes it", () => {

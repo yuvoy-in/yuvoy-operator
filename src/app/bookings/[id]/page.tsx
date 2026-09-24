@@ -363,7 +363,7 @@ export default async function BookingPage({
       */}
       <div className="border-paper-line mt-10 border-t pt-4">
         <Link
-          href={helpHref("traveller-phone-numbers")}
+          href={helpHref("traveller-phone-numbers", `/bookings/${id}`)}
           className="text-forest/80 decoration-forest/40 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
         >
           Why there is no phone number

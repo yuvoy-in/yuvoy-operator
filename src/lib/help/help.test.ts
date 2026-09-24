@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { HELP, HELP_AREAS, helpHref } from "./index";
+import { HELP, HELP_AREAS, helpBack, helpHref } from "./index";
 
 /** Every `.ts`/`.tsx` under `src/` that is not itself a test. */
 function sources(dir = "src", acc: string[] = []): string[] {
@@ -42,6 +42,12 @@ describe("the help registry", () => {
     expect(helpHref("not-on-sale")).toBe("/account/help#not-on-sale");
   });
 
+  it("carries the screen it was opened from, for the way back", () => {
+    expect(helpHref("pausing-a-listing", "/today/listing/exp_1")).toBe(
+      "/account/help?from=%2Ftoday%2Flisting%2Fexp_1#pausing-a-listing",
+    );
+  });
+
   /*
     `helpHref` builds a URL out of whatever it is handed, so a screen can link
     to an anchor nobody wrote and land the reader at the top of the help page
@@ -58,5 +64,41 @@ describe("the help registry", () => {
       }
     }
     expect(broken).toEqual([]);
+  });
+});
+
+/*
+  The audit before release, M12: help's back control always went to Settings,
+  so somebody who opened "What pausing does" on a listing was sent somewhere
+  they had never been.
+*/
+describe("where help's back control goes", () => {
+  it("returns to the screen that opened it", () => {
+    expect(helpBack("/today/listing/exp_1")).toEqual({
+      href: "/today/listing/exp_1",
+      label: "the listing",
+    });
+    expect(helpBack("/calendar")).toEqual({
+      href: "/calendar",
+      label: "calendar",
+    });
+    expect(helpBack("/bookings/bk_1")).toEqual({
+      href: "/bookings/bk_1",
+      label: "the booking",
+    });
+    expect(helpBack("/team").label).toBe("your team");
+  });
+
+  it("falls back to Settings on a direct load, or anything it does not know", () => {
+    const settings = { href: "/account/settings", label: "settings" };
+    expect(helpBack(undefined)).toEqual(settings);
+    expect(helpBack(["/calendar", "/team"])).toEqual(settings);
+    expect(helpBack("")).toEqual(settings);
+    // Never out of the portal, and never somewhere it cannot name.
+    expect(helpBack("https://evil.example")).toEqual(settings);
+    expect(helpBack("//evil.example/calendar")).toEqual(settings);
+    expect(helpBack("/calendar?day=1")).toEqual(settings);
+    expect(helpBack("/account/help")).toEqual(settings);
+    expect(helpBack("/nowhere")).toEqual(settings);
   });
 });

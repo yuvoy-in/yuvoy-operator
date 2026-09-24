@@ -3,7 +3,7 @@ import { HOME_HELP } from "./home";
 import { OPERATING_HELP } from "./operating";
 import type { HelpTopic } from "./types";
 
-export { HELP_AREAS, HELP_PATH, helpHref } from "./types";
+export { HELP_AREAS, HELP_PATH, helpBack, helpHref } from "./types";
 export type { HelpArea, HelpTopic } from "./types";
 
 /** Every answer in the portal. The help page groups them by `area`. */

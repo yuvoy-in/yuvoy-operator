@@ -181,7 +181,7 @@ export function ConfirmDepartureSeats({ slot }: { slot: OperatorSlot }) {
         rather than a paragraph under every departure (#80 t4).
       */}
       <Link
-        href={helpHref("confirming-seats")}
+        href={helpHref("confirming-seats", "/calendar")}
         className="text-forest/80 decoration-forest/40 mt-1 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
       >
         Why seats need confirming

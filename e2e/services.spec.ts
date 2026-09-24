@@ -1013,7 +1013,10 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
   */
   await expect(
     row.getByRole("link", { name: "What pausing does" }),
-  ).toHaveAttribute("href", "/account/help#pausing-a-listing");
+  ).toHaveAttribute(
+    "href",
+    "/account/help?from=%2Ftoday%2Flisting%2Fexp_offsale#pausing-a-listing",
+  );
   await row.getByRole("button", { name: "Pause", exact: true }).click();
 
   // Warned BEFORE the decision, too.

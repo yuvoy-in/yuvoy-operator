@@ -342,7 +342,7 @@ function ConfirmSeatsRow({
             guess, so the answer is one tap away rather than on the row.
           */}
           <Link
-            href={helpHref("seats-not-confirmed")}
+            href={helpHref("seats-not-confirmed", "/today")}
             className="text-forest/80 tap-target text-sm underline underline-offset-4"
           >
             Why?

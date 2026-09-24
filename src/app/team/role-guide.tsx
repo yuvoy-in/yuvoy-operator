@@ -45,7 +45,7 @@ export function RoleGuide() {
         })}
       </dl>
       <Link
-        href={helpHref("why-roles-differ")}
+        href={helpHref("why-roles-differ", "/team")}
         className="text-forest/80 hover:text-forest mt-3 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
       >
         Why the roles are different

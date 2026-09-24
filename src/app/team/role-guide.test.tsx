@@ -72,6 +72,6 @@ describe("what each role can do", () => {
 
     expect(
       screen.getByRole("link", { name: "Why the roles are different" }),
-    ).toHaveAttribute("href", helpHref("why-roles-differ"));
+    ).toHaveAttribute("href", helpHref("why-roles-differ", "/team"));
   });
 });

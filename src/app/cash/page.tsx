@@ -285,7 +285,7 @@ export default async function CashPage() {
 function HelpLink({ id, children }: { id: string; children: ReactNode }) {
   return (
     <Link
-      href={helpHref(id)}
+      href={helpHref(id, "/cash")}
       className="text-forest/80 hover:text-forest mt-3 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
     >
       {children}

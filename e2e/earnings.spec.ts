@@ -329,10 +329,14 @@ test("the one idea that is not obvious is a tap from its answer", async ({
   await signIn(page);
   await page.goto("/earnings");
   await page.getByRole("link", { name: "How a payout is worked out" }).click();
-  await page.waitForURL("**/account/help#how-payouts-work");
+  await page.waitForURL(/\/account\/help\?from=%2Fearnings#how-payouts-work$/);
 
   const answer = page.locator("#how-payouts-work");
   await expect(answer).toHaveAttribute("open", "");
+  // And back goes where the link was, not to Settings (the audit, M12).
+  await expect(
+    page.getByRole("link", { name: "Back to money" }),
+  ).toHaveAttribute("href", "/earnings");
   await expect(
     answer.getByText(/A payout week runs Monday to Sunday/),
   ).toBeVisible();

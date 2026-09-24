@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   pauseListing,
   resumeListing,
@@ -68,6 +69,9 @@ export function PauseResume({
   /** The publication act's own field — `status` folds in the latest revision. */
   publicationState: string | undefined;
 }) {
+  // It sits on the listing hub and on the edit screen: help's back returns
+  // to whichever this is.
+  const pathname = usePathname() ?? undefined;
   const [paused, pause, pausing] = useActionState<
     Stamped<PauseState>,
     FormData
@@ -188,7 +192,7 @@ export function PauseResume({
           is in the confirm; the rest is one tap away (#80 t4).
         */}
         <Link
-          href={helpHref("pausing-a-listing")}
+          href={helpHref("pausing-a-listing", pathname)}
           className="text-forest/80 decoration-forest/40 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
         >
           What pausing does

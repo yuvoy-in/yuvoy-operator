@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
-import { HELP } from "@/lib/help";
+import { HELP, helpBack } from "@/lib/help";
 import { helpSections } from "@/lib/help/sections";
 import { SUPPORT_PHONE, SUPPORT_PHONE_HREF } from "@/lib/site/contact";
 import { Screen } from "@/components/chrome/screen";
@@ -25,12 +25,18 @@ export const dynamic = "force-dynamic";
  * It reads nothing from the API, and still asks who is signed in: it sits
  * behind the session like every screen under Settings.
  */
-export default async function HelpPage() {
+export default async function HelpPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string | string[] }>;
+}) {
   await requireOperator();
   const sections = helpSections(HELP);
+  // Back to the screen whose link opened this, or to Settings (`helpBack`).
+  const back = helpBack((await searchParams).from);
 
   return (
-    <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>
+    <Screen nav={{ back }}>
       <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Help
       </h1>
