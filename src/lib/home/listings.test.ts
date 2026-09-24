@@ -6,6 +6,7 @@ import {
   neverPublished,
   toHomeListing,
   type HomeListing,
+  saleKnown,
 } from "./listings";
 
 const listing = (over: Partial<HomeListing> = {}): HomeListing => ({
@@ -76,6 +77,28 @@ describe("where a listing stands", () => {
     expect(isLive({ status: "live" })).toBe(true);
     expect(isLive({ status: "live_changes_in_review" })).toBe(true);
     expect(isLive({ status: "not_selling" })).toBe(false);
+  });
+
+  it("is live while an edit is declined, and not once it was sent back", () => {
+    // A declined EDIT on something published still sells (op audit, H1).
+    expect(isLive({ status: "changes_rejected", sentBack: false })).toBe(true);
+    // A first listing bounced back to draft never sold.
+    expect(isLive({ status: "changes_rejected", sentBack: true })).toBe(false);
+  });
+
+  it("reads the publication state when there is no status", () => {
+    expect(isLive({ publicationState: "published", sentBack: false })).toBe(
+      true,
+    );
+    expect(isLive({ publicationState: "draft", sentBack: false })).toBe(false);
+  });
+
+  it("knows it cannot place a status it has never heard of", () => {
+    expect(saleKnown({ status: "live" })).toBe(true);
+    expect(saleKnown({ status: "withdrawn" })).toBe(true);
+    expect(saleKnown({ status: "archived_by_ops" })).toBe(false);
+    expect(saleKnown({ publicationState: "published" })).toBe(true);
+    expect(saleKnown({})).toBe(false);
   });
 
   it("was never on sale as a draft, a first review, or one sent back", () => {

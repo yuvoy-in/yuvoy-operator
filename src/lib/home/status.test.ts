@@ -224,7 +224,8 @@ describe("whether the business is selling", () => {
         listing({ id: "exp_ns", title: "Coral wall", status: "not_selling" }),
       ],
     });
-    expect(status.tone).toBe("attention");
+    // Red, as the spec draws every "Not selling" (#96 block 1).
+    expect(status.tone).toBe("blocked");
     expect(status.line).toBe("Not selling: no listing is live");
     expect(status.reasons).toEqual([
       {
@@ -236,5 +237,27 @@ describe("whether the business is selling", () => {
     expect(sellingStatus({ ...base, listings: [] }).line).toBe(
       "Not selling yet: no listings",
     );
+  });
+
+  it("counts a published listing whose edit was declined as selling", () => {
+    const status = sellingStatus({
+      ...base,
+      listings: [
+        listing({ status: "changes_rejected", publicationState: "published" }),
+      ],
+    });
+    expect(status.line).toBe("Selling · 1 listing live");
+    expect(status.tone).toBe("selling");
+  });
+
+  it("does not say not selling about a listing it cannot place", () => {
+    const status = sellingStatus({
+      ...base,
+      listings: [
+        listing({ status: "archived_by_ops", publicationState: undefined }),
+      ],
+    });
+    expect(status.line).toBe("Your account is live");
+    expect(status.line).not.toMatch(/Not selling/);
   });
 });

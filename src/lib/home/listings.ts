@@ -56,11 +56,57 @@ export function toHomeListing(raw: OperatorExperience): HomeListing | null {
   return listing;
 }
 
-/** On the traveller app right now: `live`, or live with an edit in review. */
-export function isLive(listing: Pick<HomeListing, "status">): boolean {
-  return (
-    listing.status === "live" || listing.status === "live_changes_in_review"
-  );
+/**
+ * On the traveller app right now.
+ *
+ * `live`, live with an edit in review, and a published listing whose EDIT was
+ * declined: that one still sells (it carries no `sentBack`; see
+ * `neverPublished`), and the glance line below has always counted it as live.
+ * Leaving it out had Home say "Not selling: no listing is live" to a business
+ * whose one listing was on sale. With no `status` at all, the publication
+ * state says it.
+ */
+export function isLive(listing: {
+  status?: string;
+  publicationState?: string;
+  sentBack?: boolean;
+}): boolean {
+  switch (listing.status) {
+    case "live":
+    case "live_changes_in_review":
+      return true;
+    case "changes_rejected":
+      return !listing.sentBack;
+    case undefined:
+      return listing.publicationState === "published";
+    default:
+      return false;
+  }
+}
+
+/** Every status this build can place, live or not. */
+const KNOWN_STATUSES = new Set([
+  "live",
+  "live_changes_in_review",
+  "changes_rejected",
+  "withdrawn",
+  "not_selling",
+  "in_review",
+  "draft",
+]);
+
+/**
+ * Whether this build can say if the listing sells at all.
+ *
+ * A status it has never heard of (the set grows on the server), or none and no
+ * publication state either, is not a listing that does not sell. It is one
+ * nobody here can place, and "Not selling" about it would be a guess.
+ */
+export function saleKnown(
+  listing: Pick<HomeListing, "status" | "publicationState">,
+): boolean {
+  if (listing.status !== undefined) return KNOWN_STATUSES.has(listing.status);
+  return listing.publicationState !== undefined;
 }
 
 /**

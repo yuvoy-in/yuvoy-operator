@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Manifest, OperatorSlot } from "@/lib/day/types";
 import type { HomeListing } from "./listings";
-import { cashToCollect, departureState, holdsPeople, runDay } from "./day";
+import {
+  cashToCollect,
+  checkedIn,
+  departureState,
+  holdsPeople,
+  runDay,
+} from "./day";
 
 const NOW = Date.parse("2026-09-22T03:00:00Z"); // 08:30 in the market
 
@@ -160,17 +166,20 @@ describe("cash still to take on a departure", () => {
         manifest([
           {
             bookingId: "b1",
+            state: "confirmed",
             guests: 2,
             cash: { collectPaise: 900_000, collected: false },
           },
           {
             bookingId: "b2",
+            state: "confirmed",
             guests: 3,
             cash: { collectPaise: 1_350_000, collected: false },
           },
           // Taken already, and a recorded time is a recorded collection.
           {
             bookingId: "b3",
+            state: "confirmed",
             guests: 1,
             cash: {
               collectPaise: 450_000,
@@ -197,11 +206,13 @@ describe("cash still to take on a departure", () => {
         manifest([
           {
             bookingId: "b1",
+            state: "confirmed",
             guests: 2,
             cash: { collectPaise: 900_000, collected: false },
           },
           {
             bookingId: "b2",
+            state: "confirmed",
             guests: 2,
             // A fare that did not come back.
             cash: { collected: false } as never,
@@ -209,6 +220,118 @@ describe("cash still to take on a departure", () => {
         ]),
       ),
     ).toEqual({ parties: 2, collectPaise: null });
+  });
+});
+
+describe("seats sold at the counter", () => {
+  /*
+    yuvoy-api#226: `soldOffline` is taken off `seats` and is not in `sold`, so
+    a boat whose only guests walked up to the counter read as empty on Home.
+  */
+  it("keeps a closed or draft departure somebody walked up to", () => {
+    expect(
+      holdsPeople(slot({ status: "closed", sold: 0, soldOffline: 2 }), LIVE),
+    ).toBe(true);
+    expect(
+      holdsPeople(
+        slot({ experienceId: "exp_draft", sold: 0, soldOffline: 1 }),
+        DRAFT,
+      ),
+    ).toBe(true);
+  });
+
+  it("never says none sold, names the walk-ups, and counts them as guests", () => {
+    const day = runDay({
+      caption: "Today",
+      now: NOW,
+      listings: [LIVE],
+      slots: [slot({ sold: 0, seats: 4, remaining: 4, soldOffline: 2 })],
+    });
+    expect(day.rows[0].state).toBe("4 seats left · 2 at your counter");
+    expect(day.rows[0].state).not.toMatch(/none sold/);
+    expect(day.summary).toBe("1 departure · 2 guests");
+  });
+
+  it("says nothing about the counter once the boat has left", () => {
+    const day = runDay({
+      caption: "Today",
+      now: NOW,
+      listings: [LIVE],
+      slots: [
+        slot({
+          startsAt: "2026-09-22T01:30:00Z",
+          sold: 1,
+          soldOffline: 2,
+        }),
+      ],
+    });
+    expect(day.rows[0].state).toBe("Departed");
+  });
+
+  it("reads exactly as before against an API that sends no count", () => {
+    const day = runDay({
+      caption: "Today",
+      now: NOW,
+      listings: [LIVE],
+      slots: [slot({ sold: 0, seats: 6, remaining: 6 })],
+    });
+    expect(day.rows[0].state).toBe("6 seats, none sold");
+    expect(day.summary).toBe("1 departure · 0 guests");
+  });
+});
+
+describe("cash only where the manifest will take it", () => {
+  /*
+    The audit before the #96 release: Home said "Collect ₹5,000" about a
+    no-show, and about a trip that completed on its own six hours later, which
+    is counted again under "no payment recorded". The manifest takes cash only
+    on a booking that is `paid_pending_ops` or `confirmed`.
+  */
+  it("leaves out a no-show, a completed trip, and a party with no state", () => {
+    const owed = (state?: string) => ({
+      bookingId: `b_${state ?? "none"}`,
+      guests: 2,
+      ...(state ? { state } : {}),
+      cash: { collectPaise: 500_000, collected: false },
+    });
+    expect(
+      cashToCollect(
+        manifest([
+          owed("paid_pending_ops"),
+          owed("confirmed"),
+          owed("no_show"),
+          owed("completed"),
+          owed(),
+        ]),
+      ),
+    ).toEqual({ parties: 2, collectPaise: 1_000_000 });
+  });
+});
+
+describe("checked in, as the manifest counts it", () => {
+  it("uses the server's totals, which the departure's screen shows", () => {
+    const m: Manifest = {
+      slotId: "slot_1",
+      parties: [
+        { bookingId: "b1", guests: 2, state: "confirmed", arrived: true },
+        { bookingId: "", guests: 1, state: "holding", arrived: false },
+      ],
+      // Counted on the server, holds included, in guests.
+      totals: { parties: 2, guests: 3, arrived: 2 },
+    };
+    expect(checkedIn(m, true)).toBe("2 of 3 checked in");
+  });
+
+  it("counts for itself only when the answer carries no totals", () => {
+    expect(
+      checkedIn(
+        manifest([
+          { bookingId: "b1", guests: 2, state: "confirmed", arrived: true },
+          { bookingId: "b2", guests: 1, state: "confirmed", arrived: false },
+        ]),
+        true,
+      ),
+    ).toBe("2 of 3 checked in");
   });
 });
 
@@ -236,6 +359,7 @@ describe("the day's sheet", () => {
           manifest([
             {
               bookingId: "b1",
+              state: "confirmed",
               guests: 2,
               arrived: true,
               cash: { collectPaise: 900_000, collected: false },

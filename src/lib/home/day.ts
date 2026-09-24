@@ -1,7 +1,7 @@
 import type { Manifest, OperatorSlot } from "@/lib/day/types";
 import { marketTime } from "@/lib/format/market-time";
 import { formatPaise } from "@/lib/format/money";
-import { toBookingCash } from "@/lib/money/bookings";
+import { takesCash, toBookingCash } from "@/lib/money/bookings";
 import { neverPublished, type HomeListing } from "./listings";
 import { count } from "./words";
 
@@ -57,13 +57,24 @@ export interface RunDay {
   rows: RunRow[];
 }
 
+/**
+ * Everybody on a departure: sold through Yuvoy, and sold at the counter.
+ *
+ * `soldOffline` is taken OFF `seats` and is not in `sold` (yuvoy-api#226), so
+ * a boat with two walk-ups and no Yuvoy booking read as empty here: dropped
+ * from the sheet when closed or on a draft, "none sold", and no guests.
+ */
+function peopleOn(slot: OperatorSlot): number {
+  return slot.sold + (slot.soldOffline ?? 0);
+}
+
 /** Whether a departure belongs on the day's sheet. See the module comment. */
 export function holdsPeople(
   slot: OperatorSlot,
   listing: HomeListing | undefined,
 ): boolean {
   if (slot.status === "cancelled") return false;
-  if (slot.sold > 0) return true;
+  if (peopleOn(slot) > 0) return true;
   if (slot.status === "closed") return false;
   if (listing && neverPublished(listing)) return false;
   return true;
@@ -103,7 +114,7 @@ export function departureState(
         return { state: "Not on sale", tone: "attention" };
     }
   }
-  if (slot.sold === 0) {
+  if (peopleOn(slot) === 0) {
     return {
       state: `${count(slot.seats, "seat", "seats")}, none sold`,
       tone: "attention",
@@ -143,12 +154,18 @@ export interface DepartureCash {
  * What is still to take from a party is `collectPaise` while `collected` is
  * false. A fare that did not come back is still a party to collect from, so
  * it is counted and the sum is said as unknown rather than understated.
+ *
+ * Only from a party the manifest will take cash from (`takesCash`). Counting
+ * every uncollected party had Home say "Collect ₹5,000" about a no-show, and
+ * about a trip that completed on its own six hours later, which is counted
+ * again under "no payment recorded" and cannot be taken on the manifest.
  */
 export function cashToCollect(manifest: Manifest): DepartureCash {
   let parties = 0;
   let paise: number | null = 0;
   for (const party of manifest.parties ?? []) {
     if (!party.bookingId) continue;
+    if (!takesCash(party.state)) continue;
     const cash = toBookingCash(party.cash);
     if (!cash || cash.collected) continue;
     parties += 1;
@@ -160,17 +177,34 @@ export function cashToCollect(manifest: Manifest): DepartureCash {
   return { parties, collectPaise: parties === 0 ? 0 : paise };
 }
 
-/** "2 of 5 checked in", in guests, or nothing worth saying yet. */
-function checkedIn(manifest: Manifest, departed: boolean): string | undefined {
+/**
+ * "2 of 5 checked in", in guests, or nothing worth saying yet.
+ *
+ * The manifest's own `totals` when it sent them: "computed server-side so
+ * three clients cannot disagree about them on a dock", and the departure's
+ * screen shows exactly these, so Home and that screen say one number. Counted
+ * here only when an answer carries no totals.
+ */
+export function checkedIn(
+  manifest: Manifest,
+  departed: boolean,
+): string | undefined {
+  const whole = (v: unknown): v is number =>
+    typeof v === "number" && Number.isInteger(v) && v >= 0;
   let booked = 0;
   let here = 0;
-  for (const party of manifest.parties ?? []) {
-    if (!party.bookingId) continue;
-    const guests = Number.isInteger(party.guests)
-      ? (party.guests as number)
-      : 0;
-    booked += guests;
-    if (party.arrived) here += guests;
+  if (whole(manifest.totals?.guests) && whole(manifest.totals?.arrived)) {
+    booked = manifest.totals.guests;
+    here = manifest.totals.arrived;
+  } else {
+    for (const party of manifest.parties ?? []) {
+      if (!party.bookingId) continue;
+      const guests = Number.isInteger(party.guests)
+        ? (party.guests as number)
+        : 0;
+      booked += guests;
+      if (party.arrived) here += guests;
+    }
   }
   if (booked === 0) return undefined;
   // Before anybody arrives and before it leaves, "0 of 5" is not news.
@@ -202,11 +236,20 @@ export function runDay(input: {
     if (!holdsPeople(slot, listing)) continue;
 
     const { state, tone } = departureState(slot, input.now);
+    /*
+      The walk-ups, named, while the boat has not left: its `seats` are
+      already short by them and `sold` does not count them, so nothing else on
+      the row says why (yuvoy-api#226).
+    */
+    const counter =
+      (slot.soldOffline ?? 0) > 0 && state !== "Departed"
+        ? ` · ${slot.soldOffline} at your counter`
+        : "";
     const row: RunRow = {
       id: slot.id,
       time: marketTime(slot.startsAt, slot.timezone),
       title: slot.title,
-      state,
+      state: `${state}${counter}`,
       tone,
       sold: slot.sold,
       seats: slot.seats,
@@ -226,7 +269,7 @@ export function runDay(input: {
       }
     }
 
-    guests += slot.sold;
+    guests += peopleOn(slot);
     rows.push(row);
   }
 

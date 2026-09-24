@@ -5,7 +5,11 @@ import {
   recordCashCollected,
   type CashState,
 } from "@/app/bookings/cash-actions";
-import { describeCash, type BookingCash } from "@/lib/money/bookings";
+import {
+  describeCash,
+  takesCash,
+  type BookingCash,
+} from "@/lib/money/bookings";
 import {
   canRecordAmount,
   compareToFare,
@@ -17,9 +21,6 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { CoinsIcon } from "@/components/ui/icons";
 import { inputClass } from "@/components/ui/input";
-
-/** The states the API will take money in. Anything else answers 409. */
-const TAKES_CASH = new Set(["paid_pending_ops", "confirmed"]);
 
 /**
  * The cash on one booking, and the tap that records it — yuvoy-operator#40 §1.
@@ -117,7 +118,8 @@ export function CashCollect({
   }
 
   const key = state.trim().toLowerCase();
-  if (!TAKES_CASH.has(key)) {
+  // The states the API will take money in (`takesCash`); anything else is 409.
+  if (!takesCash(key)) {
     if (key !== "completed") return null;
     return (
       <div className="border-paper-line mt-4 border-t pt-3">

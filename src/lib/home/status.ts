@@ -10,7 +10,12 @@ import {
 import { SUPPORT_PHONE_HREF } from "@/lib/site/contact";
 import { sentence } from "@/lib/format/sentence";
 import { count } from "./words";
-import { isLive, liveWithNoDates, type HomeListing } from "./listings";
+import {
+  isLive,
+  liveWithNoDates,
+  saleKnown,
+  type HomeListing,
+} from "./listings";
 
 /**
  * Whether the business is selling, in one line (yuvoy-operator#96 block 1).
@@ -208,8 +213,20 @@ export function sellingStatus(input: {
   }
 
   if (live.length === 0) {
+    /*
+      Said only when every listing could be placed. One this build cannot read
+      might be the one on sale, so the line says what IS known, the account,
+      as when the listings did not load at all.
+    */
+    if (!listings.every(saleKnown)) {
+      return { tone: "selling", line: "Your account is live", reasons };
+    }
+    /*
+      Red, as the spec draws every "Not selling" (#96 block 1): nothing a
+      traveller can book is the state, whatever the account says.
+    */
     return {
-      tone: "attention",
+      tone: "blocked",
       line:
         listings.length === 0
           ? "Not selling yet: no listings"
