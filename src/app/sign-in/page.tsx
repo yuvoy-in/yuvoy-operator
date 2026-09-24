@@ -53,8 +53,7 @@ export default async function SignInPage({
 
   return (
     <Screen nav="none" stageLabel="For operators" width="sm">
-      <p className="eyebrow text-terra-deep">Yuvoy for operators</p>
-      <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         Sign in
       </h1>
       {/*

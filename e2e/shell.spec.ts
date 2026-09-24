@@ -157,8 +157,28 @@ test("every signed-in screen carries the inbox, and it opens the conversations",
 });
 
 test("a signed-out door carries no inbox", async ({ page }) => {
-  await page.goto("/sign-in");
-  await expect(page.getByRole("link", { name: /^Messages/ })).toHaveCount(0);
+  /*
+    Every door, not only sign-in: /signup drew the signed-in chrome by default
+    and so offered "Messages" to somebody with no account, which bounced them
+    to sign-in (the audit before the #96 release).
+  */
+  for (const path of [
+    "/sign-in",
+    "/signup",
+    "/join",
+    "/join/jn_reefdivers",
+    "/no-such-page",
+  ]) {
+    await page.goto(path);
+    await expect(
+      page.getByRole("heading", { level: 1 }),
+      `the heading on ${path}`,
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /^Messages/ }),
+      `no inbox on ${path}`,
+    ).toHaveCount(0);
+  }
 });
 
 test("the bar reaches every destination", async ({ page }) => {
