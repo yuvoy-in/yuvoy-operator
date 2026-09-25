@@ -1,18 +1,20 @@
-# operators.yuvoy.in
+# operators.yuvoy.in: a MANUAL redeploy, and nothing else.
 #
-# Its own Vercel project and its own origin — D-102 puts the operator portal on
+# Vercel's Git integration deploys `main` on every push (connected 20 Sep
+# 2026), so this workflow no longer runs on push. For four days it did both:
+# every release deployed production twice, and the two builds raced for the
+# domain.
+#
+# Its own Vercel project and its own origin: D-102 puts the operator portal on
 # a separate origin from the traveller app deliberately, and the two are
 # different security surfaces (see next.config.ts).
-#
-# `main` is the only branch that deploys.
 name: Production deployment
 
 on:
   # Manual redeploy. Environment values are read at BUILD time, so changing one
-  # in Vercel does nothing until a rebuild.
+  # in Vercel does nothing until a rebuild. Vercel's own Redeploy button does
+  # the same job.
   workflow_dispatch:
-  push:
-    branches: [main]
 
 concurrency:
   group: production
