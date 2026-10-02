@@ -3408,12 +3408,25 @@ paths:
       summary: Confirm the seats on many departures at once
       operationId: confirmOperatorSeats
       description: >-
-        Confirms that the seat counts are still right on every open, upcoming,
-        instant-book departure of your business whose seats were set by hand,
-        with a market day from `from` to `to` (both included, at most 31 days),
-        and only on one listing when `experienceId` is given. Seat counts are
-        not changed. It is the same confirmation that saving a seat count with
-        `PATCH /slots/{id}` makes, over a range of dates.
+        Confirms that the seat counts are still right on many departures of
+        your business at once, and only on one listing's when `experienceId`
+        is given. Seat counts are not changed. It is the same confirmation that
+        saving a seat count with `PATCH /slots/{id}` makes, over many
+        departures.
+
+
+        **With no dates**, every departure that `departuresNotOnSale` and
+        `departuresGoingOffSaleSoon` count on `GET /experiences`, however far
+        ahead it leaves: off sale, or going off sale within a day, because
+        nobody has confirmed its seats. Those counts have no end date, so this
+        is the one call behind "Confirm all", and it clears both. Send `{}`, or
+        only `experienceId` for one listing's.
+
+
+        **With `from` and `to`**, every open, upcoming, instant-book departure
+        whose seats were set by hand, with a market day from `from` to `to`
+        (both included, at most 31 days). Send both dates or neither: one
+        without the other answers **400**.
 
 
         Seats set by hand stop being offered to travellers once nobody has
@@ -3430,12 +3443,14 @@ paths:
         confirming once did. OWNER, ADMIN or MANAGER only. A listing belonging
         to another business answers **404**.
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required: [from, to]
+              description: >-
+                Every field is optional. No dates confirms every departure the
+                counts include; a range needs both `from` and `to`.
               properties:
                 experienceId:
                   type: string
@@ -3444,11 +3459,13 @@ paths:
                 from:
                   type: string
                   format: date
-                  description: The first market day, included.
+                  description: The first market day, included. Sent with `to`, or not at all.
                 to:
                   type: string
                   format: date
-                  description: The last market day, included. At most 30 days after `from`.
+                  description: >-
+                    The last market day, included. At most 30 days after
+                    `from`. Sent with `from`, or not at all.
       responses:
         "200":
           description: How many departures were confirmed.
@@ -3463,7 +3480,7 @@ paths:
                     minimum: 0
                     description: >-
                       Departures whose seats were confirmed. 0 is a legitimate
-                      answer: nothing in that range needed it.
+                      answer: nothing needed it.
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -4771,6 +4788,42 @@ paths:
           description: >-
             `conflict` — the listing is no longer a draft. Change it through
             `POST /experiences/{id}/revisions`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [listings]
+      summary: Delete a draft nobody has seen
+      description: >-
+        Removes a **draft**, and only a draft. A listing is created the moment
+        its first step is saved, not only once the builder finishes, so an
+        operator who started one and changed their mind, or was only trying
+        the app, is left with a listing they can never publish and cannot make
+        go away. This is that way back.
+
+
+        Once a listing has been sent to us (`POST /experiences/{id}/submit`),
+        this answers `409`: a reviewer or a traveller may already have seen it,
+        so from there the only door is `POST /experiences/{id}/revisions` or
+        `POST /experiences/{id}/withdraw`. A draft is seen by nobody, so this
+        deletes it outright rather than marking it withdrawn.
+
+
+        OWNER, ADMIN or MANAGER only, the same as `PATCH` on this listing.
+      operationId: deleteListingDraft
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            `conflict` — either the listing is no longer a draft (change it
+            through `POST /experiences/{id}/revisions` instead), or, in
+            principle only since a draft cannot be booked, it carries activity
+            that stops it being deleted.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -6798,6 +6851,27 @@ components:
           deprecated: true
           description: "Deprecated spelling of `meetingPoint`. Send `meetingPoint`."
         meetingLandmark: { type: string }
+        meetingLat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          nullable: true
+          description: >-
+            A pin on the meeting point, additional to `meetingPoint` and
+            `meetingLandmark` rather than a replacement for either. Sent
+            together with `meetingLng`, both or neither. The column and the
+            traveller-facing read have existed since the catalog was built;
+            this is the first way to write it. Explicit `null` clears a pin
+            already set; leaving the field out of the request, as with every
+            other field here, leaves it unchanged.
+        meetingLng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          nullable: true
+          description: "The pin's longitude. See `meetingLat`."
         inclusions:
           type: array
           items: { type: string }
@@ -7245,6 +7319,16 @@ components:
             `PATCH /experiences/{id}` or a revision. Always present, and an
             empty string when none was written.
           examples: ["Blue gate beside the fuel pump"]
+        meetingLat:
+          type: number
+          format: double
+          nullable: true
+          description: "A pin on the meeting point, or null when none is set. See `meetingLat` on ListingEdit."
+        meetingLng:
+          type: number
+          format: double
+          nullable: true
+          description: "The pin's longitude, or null when none is set."
         inclusions: { type: array, items: { type: string } }
         requirements: { type: array, items: { type: string } }
         safetyNotes: { type: string }
@@ -7266,8 +7350,9 @@ components:
             departure stop being offered once nobody has confirmed them for two
             days. The same departures `GET /slots` reports with
             `notOnSaleReason: departure_seats_unconfirmed`. Always present, 0
-            when none. Add them up across listings for Home, and confirm them
-            with `POST /slots/confirm-seats`.
+            when none. Add them up across listings for Home. One
+            `POST /slots/confirm-seats` with no dates confirms every departure
+            this and `departuresGoingOffSaleSoon` count, however far ahead.
         departuresGoingOffSaleSoon:
           type: integer
           minimum: 0
@@ -7624,9 +7709,12 @@ components:
                 # Same route. The clip is not in a state that can come down —
                 # it was never published, or it is already withdrawn.
                 - cannot_withdraw
-                # PUT /profile. The account is LIVE, so the business details
-                # were verified against documents and can no longer be edited
-                # in place. The next step is to ask us, not to retry.
+                # No longer returned by any route. PUT /profile answered it for
+                # a LIVE account until a change to the registered name or
+                # address became a request for review (migration 0064), which
+                # answers 202 `in_review`. Left declared, as `closure_started`
+                # is, because removing a code from a closed enum breaks every
+                # generated client that already handles it.
                 - details_locked
                 # POST /blackouts/{id}/reopen. The closure was reopened before,
                 # so there is nothing left for this call to put back.
@@ -7685,6 +7773,19 @@ components:
                 # nobody can join the business right now (D43). The message
                 # says whom to ask and never why, and nothing changes until then.
                 - invitation_unavailable
+                # DELETE /slots/{id}/offline-sales/{saleId}, as a 409. Both
+                # codes were named in that route's own prose from the day it
+                # shipped (yuvoy-api#233) and left out of this list.
+                #
+                # The counter sale was taken back before, and its seats are
+                # already back on the departure. Nothing moved a second time,
+                # so a client that lost the first answer can treat it as done.
+                - already_taken_back
+                # Same route. Taking it back would leave the departure having
+                # sold fewer than none at its own counter. A guard against a
+                # correction made some other way; the message says to record
+                # what was actually sold, or to call us.
+                - counter_sales_below_zero
             message: { type: string, description: Human-readable; safe to show. }
             details:
               type: object
@@ -8445,7 +8546,16 @@ components:
       type: object
       properties:
         id: { type: string }
-        kind: { type: string }
+        kind:
+          type: string
+          enum: [bank_account, profile, logo, contact, capacity, listing]
+          description: >-
+            What the business asked to change, one of the six kinds the
+            database allows. `bank_account` is raised by
+            `POST /change-requests/bank`, `profile` by `PUT /profile` and `logo`
+            by `PUT /logo` once the account is LIVE. Nothing raises `contact`,
+            `capacity` or `listing` yet; they are declared so a client has a
+            case for every value it can be sent.
         state:
           type: string
           enum: [pending, objection_window, cooling, approved, rejected, withdrawn, applied]

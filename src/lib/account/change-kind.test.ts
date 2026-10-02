@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   BANK_CHANGE,
   CHANGE_KINDS,
   toChangeKind,
   toChangeRequest,
+  type ChangeKind,
 } from "./change-kind";
 import { payoutHold } from "@/lib/money/earnings";
 
@@ -53,6 +54,15 @@ describe("a change request's kind, as it enters", () => {
       "capacity",
       "listing",
     ]);
+  });
+
+  it("lists every kind the contract declares, and no other", () => {
+    /*
+      Checked by the typechecker, not at run time: since yuvoy-api#240 the
+      contract's enum is the type, so a seventh kind added there and missing
+      here fails `pnpm typecheck` on this line.
+    */
+    expectTypeOf<(typeof CHANGE_KINDS)[number]>().toEqualTypeOf<ChangeKind>();
   });
 });
 

@@ -1860,12 +1860,13 @@ for (const f of files) {
       an entry the enum now declares FAILS the run, because from then on it
       only covers whatever is written under that name next.
     */
-    const UNDECLARED_CODES = new Map([
-      [
-        "already_taken_back",
-        "TakeBackOfflineSale writes 409 already_taken_back for postgres.ErrAlreadyTakenBack (yuvoy-api internal/handler/operator_day.go at 2afd7b4); declared in the operation's prose, not in the Error code enum. Asked on yuvoy-api#226, and again on #240.",
-      ],
-    ]);
+    /*
+      Empty since 2 Oct 2026: yuvoy-api#240 (#243, 791892c) declared
+      `already_taken_back` and `counter_sales_below_zero` in the enum, and this
+      run failed on the entry until it was removed, as built. Kept, empty, for
+      the next gap.
+    */
+    const UNDECLARED_CODES = new Map(/** @type {[string, string][]} */ ([]));
     for (const [gap, reason] of UNDECLARED_CODES) {
       if (!reason || reason.length < 40) {
         problems.push(
