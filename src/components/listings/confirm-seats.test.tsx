@@ -50,14 +50,12 @@ describe("confirming seats from a listing", () => {
       <ConfirmSeats experienceId="exp_1" notOnSale={3} goingOffSoon={0} />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Confirm seats for the next 12 months",
-      }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm all" }));
     expect(
       await screen.findByText("Seats confirmed on 3 departures"),
     ).toBeInTheDocument();
+    // The listing's own, and nothing that limits how far ahead.
+    expect(confirmSeats.mock.calls[0][1].get("experienceId")).toBe("exp_1");
 
     // What the re-read page passes once they are back on sale.
     rerender(
@@ -66,5 +64,18 @@ describe("confirming seats from a listing", () => {
     expect(
       screen.getByText("Seats confirmed on 3 departures"),
     ).toBeInTheDocument();
+  });
+
+  it("says nothing needed confirming, and claims no horizon", async () => {
+    confirmSeats.mockResolvedValue({ confirmed: 0 });
+    render(
+      <ConfirmSeats experienceId="exp_1" notOnSale={1} goingOffSoon={0} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm all" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /^Nothing needed confirming$/,
+    );
   });
 });

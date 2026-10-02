@@ -816,11 +816,6 @@ export interface ConfirmSeatsState {
   confirmed?: number;
 }
 
-/** Days one confirm covers: "both included, at most 31 days". */
-const CONFIRM_WINDOW_DAYS = 31;
-/** Windows swept per tap: twelve of 31 days, a year of departures. */
-const CONFIRM_WINDOWS = 12;
-
 /**
  * Confirm the seats on many departures at once (yuvoy-operator#94 item 2).
  *
@@ -829,27 +824,24 @@ const CONFIRM_WINDOWS = 12;
  * used to find out one departure at a time, by noticing it was off sale, and
  * confirm each by saving its seat count again.
  *
- * ## A year, in windows of 31 days
+ * ## One call, with no dates (yuvoy-api#241)
  *
- * One call covers "a market day from `from` to `to` (both included, at most
- * 31 days)", but the count Home and the hub show (`departuresNotOnSale`) is
- * every upcoming departure, with no end date (yuvoy-api `seats_to_confirm.go`),
- * and a departure can be added for any date. Confirming only the next 31 days
- * left a departure 45 days out off sale, and the row that counted it came
- * back on every load after "Confirm all". So a year is swept, in windows laid
- * end to end from the market's today, and their answers added up. The windows
- * are decided here on the server, never taken from the form, so a stale page
- * cannot send one the API refuses.
+ * The counts Home and the hub show (`departuresNotOnSale`,
+ * `departuresGoingOffSaleSoon`) have no end date, and the ranged form of this
+ * call takes at most 31 days, so "Confirm all" used to sweep a year in twelve
+ * windows and still could not reach past it. Since yuvoy-api#244 a request
+ * with no dates confirms "every departure that `departuresNotOnSale` and
+ * `departuresGoingOffSaleSoon` count ..., however far ahead it leaves": in the
+ * contract's words, "the one call behind 'Confirm all'". So that is what is
+ * sent, `{}` from Home and only `experienceId` from a listing's hub, and what
+ * it confirms is exactly what the row counted.
  *
- * The windows go at once, not one after another: they touch different dates,
- * the route has no rate limit, and a tap on a phone waits for one round trip
- * instead of twelve.
+ * An API from before #244 refuses that body, and only then does the old
+ * sweep run (`confirmSeatsByWindows`, below, with when to delete it).
  *
- * One listing when `experienceId` is sent, every listing when not: the listing
- * hub sends its own, Home sends none. Safe to send twice ("confirming twice
- * leaves the departures as confirming once did"), so a double tap on one bar
- * of signal costs nothing, and a sweep cut short is finished by trying again.
- * Seat counts are not changed.
+ * Safe to send twice ("confirming twice leaves the departures as confirming
+ * once did"), so a double tap on one bar of signal costs nothing. Seat counts
+ * are not changed.
  */
 export async function confirmSeats(
   _prev: ConfirmSeatsState,
@@ -860,8 +852,72 @@ export async function confirmSeats(
   const { token, me } = await requireOperator();
   if (!me.canManage) return { message: ROLE_REFUSAL };
 
-  const { today } = await marketDays();
   const api = operatorApi(token);
+  try {
+    const { data, error } = await api.POST("/slots/confirm-seats", {
+      body: experienceId ? { experienceId } : {},
+    });
+    if (error) throw error;
+
+    revalidateConfirmed(experienceId);
+    return {
+      confirmed: Number.isInteger(data.confirmed) ? data.confirmed : 0,
+    };
+  } catch (err) {
+    if (refusesNoDates(err)) return confirmSeatsByWindows(api, experienceId);
+    return confirmFailure(err);
+  }
+}
+
+/*
+  THE FALLBACK FOR AN API FROM BEFORE yuvoy-api#244 (yuvoy-api#241).
+
+  Delete `refusesNoDates`, `confirmSeatsByWindows` and the two constants once
+  production is confirmed on yuvoy-api #244 or later. Merged is not deployed:
+  on 2 Oct 2026 #244 was on master, the API's deploy workflow had failed on
+  every push since 24 Sep and deploys were run by hand, so nobody could say
+  whether api.yuvoy.in answers the call above.
+
+  Before #244 the body had to carry `from` and `to`, and `{}` reaches a date
+  parse of an empty string: `400 invalid_input`, "dates look like
+  2006-01-02", with `details.from`. That refusal, and only that one, is read
+  as an older API. Every other answer is a real one, and is reported as one
+  rather than retried as a range.
+*/
+
+/** Days one ranged confirm covers: "both included, at most 31 days". */
+const CONFIRM_WINDOW_DAYS = 31;
+/** Windows swept per tap: twelve of 31 days, a year of departures. */
+const CONFIRM_WINDOWS = 12;
+
+/** The answer an API from before #244 gives a confirm with no dates. */
+function refusesNoDates(err: unknown): boolean {
+  return (
+    err instanceof OperatorApiError &&
+    err.status === 400 &&
+    err.code === "invalid_input"
+  );
+}
+
+/**
+ * The old way: a year, in windows of 31 days.
+ *
+ * One ranged call covers "a market day from `from` to `to` (both included, at
+ * most 31 days)", and confirming only the next 31 days left a departure 45
+ * days out off sale, the row that counted it back on every load. So a year is
+ * swept, in windows laid end to end from the market's today, and their
+ * answers added up. The windows are decided here on the server, never taken
+ * from the form, so a stale page cannot send one the API refuses.
+ *
+ * The windows go at once, not one after another: they touch different dates,
+ * the route has no rate limit, and a tap on a phone waits for one round trip
+ * instead of twelve. A sweep cut short is finished by trying again.
+ */
+async function confirmSeatsByWindows(
+  api: ReturnType<typeof operatorApi>,
+  experienceId: string,
+): Promise<ConfirmSeatsState> {
+  const { today } = await marketDays();
 
   const answers = await Promise.allSettled(
     Array.from({ length: CONFIRM_WINDOWS }, async (_, i) => {
@@ -932,7 +988,9 @@ function confirmFailure(err: unknown): ConfirmSeatsState {
     if (err.isNotFound) {
       return { message: "That listing is not on this account any more." };
     }
-    if (err.status === 400) return { message: dedash(err.message) };
+    // The API writes its refusals in lower case for its logs; `sentence`
+    // capitalises and ends them, and leaves the words alone.
+    if (err.status === 400) return { message: sentence(err.message) };
   }
   return { message: "Nothing was confirmed. Try again." };
 }

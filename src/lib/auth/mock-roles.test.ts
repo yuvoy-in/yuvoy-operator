@@ -196,6 +196,36 @@ describe("the mock's calendar and its patience", () => {
     const body = (await throttled.json()) as { error: { code: string } };
     expect(body.error.code).toBe("rate_limited");
   });
+
+  it("confirms seats with no dates as the API does since yuvoy-api#244", async () => {
+    /*
+      yuvoy-api#241. No dates is every departure the counts include, however
+      far ahead: the one call behind "Confirm all". Half a range is neither
+      form and is refused naming the missing date, as the handler does.
+    */
+    const owner = await signIn(OWNER);
+
+    const half = await call(owner, "POST", "/slots/confirm-seats", {
+      from: "2030-01-01",
+    });
+    expect(half.status).toBe(400);
+    const refusal = (await half.json()) as {
+      error: { code: string; details?: unknown };
+    };
+    expect(refusal.error.code).toBe("invalid_input");
+    expect(refusal.error.details).toEqual({ to: "needed with from" });
+
+    // One listing's, then everybody else's, then nothing left to confirm.
+    for (const [body, confirmed] of [
+      [{ experienceId: "exp_nofootage" }, 1],
+      [{}, 1],
+      [{}, 0],
+    ] as const) {
+      const res = await call(owner, "POST", "/slots/confirm-seats", body);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ confirmed });
+    }
+  });
 });
 
 /**

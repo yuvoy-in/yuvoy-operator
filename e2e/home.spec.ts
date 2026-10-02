@@ -697,9 +697,8 @@ test.describe.serial("confirming seats", () => {
       page.getByText("Live, but no dates in the next 30 days"),
     ).toBeVisible();
 
-    await page
-      .getByRole("button", { name: "Confirm seats for the next 12 months" })
-      .click();
+    // One call with no dates (yuvoy-api#241): no horizon on the button.
+    await page.getByRole("button", { name: "Confirm all" }).click();
 
     await expect(
       page.getByText("Seats confirmed on 1 departure"),

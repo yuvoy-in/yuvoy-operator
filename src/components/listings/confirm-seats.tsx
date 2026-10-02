@@ -44,11 +44,18 @@ export function ConfirmSeats({
               ? "Seats confirmed on 1 departure"
               : `Seats confirmed on ${n} departures`}
         </p>
-        <p className="text-forest/80 mt-1.5 text-sm">
-          {n === 0
-            ? "Every departure in the next 12 months was already confirmed."
-            : "Anything that was off sale only for this is back on sale. The seat counts are as they were."}
-        </p>
+        {/*
+          Nothing more on a 0, as on Home. It used to name "the next 12
+          months", the reach of the old year of windows; one call with no
+          dates reaches every departure the counts include (yuvoy-api#241),
+          so no horizon is claimed either way.
+        */}
+        {n > 0 ? (
+          <p className="text-forest/80 mt-1.5 text-sm">
+            Anything that was off sale only for this is back on sale. The seat
+            counts are as they were.
+          </p>
+        ) : null}
       </Panel>
     );
   }
@@ -84,7 +91,7 @@ export function ConfirmSeats({
         </p>
       ) : null}
       <Button type="submit" disabled={pending} className="mt-3">
-        {pending ? "Confirming…" : "Confirm seats for the next 12 months"}
+        {pending ? "Confirming…" : "Confirm all"}
       </Button>
     </form>
   );
