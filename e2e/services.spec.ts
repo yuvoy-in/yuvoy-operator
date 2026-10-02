@@ -317,7 +317,7 @@ test("another market's destination cannot be chosen at all", async ({
   }
 });
 
-test("sending a change on a live listing says it keeps selling", async ({
+test("a change to a live listing says which half is live and which is with us", async ({
   page,
 }, testInfo) => {
   /*
@@ -344,11 +344,22 @@ test("sending a change on a live listing says it keeps selling", async ({
   await expect(live.getByText(/does not take it off sale/i)).toBeVisible();
   await expect(live.getByText(/keeps what they booked on/i)).toBeVisible();
 
+  /*
+    One field the operator owns and one we read (D-032.3). The meeting point
+    is live the moment it is sent; the summary waits for us, and the listing
+    keeps selling meanwhile. The row used to say "with us" to both.
+  */
   await live.getByLabel("Where to meet").fill("Beach 3 dive hut, gate 2");
+  await live.getByLabel("One line about it").fill("Two tanks, one reef");
   await live.getByRole("button", { name: "Send it to us" }).click();
 
-  // Not "saved". With us, and still selling.
-  await expect(page.getByText(/Your change is with us/)).toBeVisible();
+  const answer = live.getByRole("status").filter({ hasText: "Live now" });
+  await expect(answer).toContainText(
+    "The first list is live now. We read the second",
+  );
+  await expect(answer).toContainText("Live now: Where to meet");
+  await expect(answer).toContainText("With us: One line about it");
+  await expect(answer).not.toContainText(/saved/i);
 });
 
 test("the two screens answer the same question from both ends", async ({

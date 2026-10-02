@@ -1950,6 +1950,66 @@ async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
+/**
+ * Every field a listing edit may carry, in the order the API declares them
+ * (`listingFields` at fb9245e), which is the order `applied` and `inReview`
+ * come back in.
+ */
+const LISTING_FIELDS = [
+  "title",
+  "summary",
+  "description",
+  "category",
+  "activityType",
+  "destination",
+  "meetingPoint",
+  "meetingLandmark",
+  "meetingLat",
+  "meetingLng",
+  "inclusions",
+  "requirements",
+  "safetyNotes",
+  "screenerKey",
+  "durationMinutes",
+  "maxPartySize",
+  "unitPricePaise",
+  "pricingUnit",
+  "bookingMode",
+];
+
+/**
+ * What the operator owns and changes without review once a listing has been
+ * approved (D-032.3, `OperatorDirect` at fb9245e).
+ */
+const OPERATOR_DIRECT = new Set([
+  "meetingPoint",
+  "meetingLandmark",
+  "meetingLat",
+  "meetingLng",
+  "durationMinutes",
+  "maxPartySize",
+  "unitPricePaise",
+  "pricingUnit",
+  "bookingMode",
+]);
+
+/** The fields marked *material* at fb9245e: a change to one needs review. */
+const MATERIAL_FIELDS = new Set([
+  "category",
+  "activityType",
+  "destination",
+  "meetingPoint",
+  "inclusions",
+  "requirements",
+  "safetyNotes",
+  "screenerKey",
+  "durationMinutes",
+  "maxPartySize",
+  "unitPricePaise",
+  "pricingUnit",
+  "bookingMode",
+]);
+
 function envelope(
   code: string,
   message: string,
@@ -4967,18 +5027,6 @@ export const handlers = [
     return HttpResponse.json(found);
   }),
 
-  /**
-   * Propose a change — **never a write to the live listing.**
-   *
-   * The mock moves `status` and leaves the listing's own fields alone, which
-   * is the behaviour a screen would otherwise get wrong: a client that
-   * expected its edit to appear immediately would look broken against the real
-   * API and correct against a mock that applied it.
-   *
-   * A draft becomes `in_review`. A published listing becomes
-   * `live_changes_in_review` and KEEPS SELLING — "bookings already made are
-   * unaffected either way; their terms were snapshotted at checkout".
-   */
   /*
     Pausing and resuming a listing — yuvoy-operator#30 §6, #44. Each is one
     handler under two names, as the API registers it; see the factories above.
@@ -4988,6 +5036,22 @@ export const handlers = [
   resumeHandler("/experiences/:id/resume"),
   resumeHandler("/experiences/:id/relist"),
 
+  /**
+   * A change to a listing, in two halves (D-032.3), as `SubmitRevision` and the
+   * handler answer it at fb9245e.
+   *
+   * The fields the operator owns (`OPERATOR_DIRECT`) are written to the
+   * listing now. The rest wait for a person: only then is a revision created,
+   * and only then does a draft become `in_review` or a published listing
+   * `live_changes_in_review`, which KEEPS SELLING. `200` when nothing needed
+   * reading, `201` when something did, with `applied` and `inReview` in the
+   * order the fields are declared and the API's own `next` and `note`.
+   *
+   * It used to move `status` on every edit and leave every field alone, which
+   * modelled the API before D-032.3: a price change looked queued here while
+   * the real API had already put it live, so the portal's "with us" for it
+   * was never caught.
+   */
   http.post(url("/experiences/:id/revisions"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
@@ -5011,6 +5075,59 @@ export const handlers = [
       );
     }
 
+    // The schema is closed: every key it does not know, named at once.
+    const unknownFields = Object.keys(body)
+      .filter((k) => !LISTING_FIELDS.includes(k) && k !== "meetingPointText")
+      .sort();
+    if (unknownFields.length > 0) {
+      return envelope(
+        "invalid_input",
+        `we do not know how to change that: ${unknownFields.join(", ")}`,
+        400,
+        { allowed: LISTING_FIELDS, unknownFields },
+      );
+    }
+    if (body.meetingPointText !== undefined && !("meetingPoint" in body)) {
+      body.meetingPoint = body.meetingPointText;
+    }
+    delete body.meetingPointText;
+
+    const applied = LISTING_FIELDS.filter(
+      (f) => f in body && OPERATOR_DIRECT.has(f),
+    );
+    const inReview = LISTING_FIELDS.filter(
+      (f) => f in body && !OPERATOR_DIRECT.has(f),
+    );
+
+    // The operator's half, live now.
+    for (const field of applied) {
+      const value = body[field];
+      (listing as Record<string, unknown>)[field] =
+        value === "" ? undefined : value;
+    }
+    if (applied.includes("pricingUnit") && body.pricingUnit) {
+      listing.pricingUnitStated = true;
+    }
+    if (applied.includes("unitPricePaise")) {
+      listing.sellable =
+        typeof listing.unitPricePaise === "number" &&
+        listing.unitPricePaise > 0;
+    }
+
+    const note =
+      "Bookings already made are unaffected: they keep the price and terms they were made on.";
+    if (inReview.length === 0) {
+      return HttpResponse.json({
+        applied,
+        inReview,
+        state: "applied",
+        needsReview: false,
+        next: "These are live now. Travellers see them on your listing straight away.",
+        note,
+      });
+    }
+
+    // Ours, read before it goes live. The listing keeps selling meanwhile.
     listing.status =
       listing.publicationState === "published"
         ? "live_changes_in_review"
@@ -5018,7 +5135,21 @@ export const handlers = [
     listing.review = { state: "submitted", since: new Date().toISOString() };
 
     return HttpResponse.json(
-      { state: "submitted", next: "wait_for_review" },
+      {
+        applied,
+        inReview,
+        revisionId: `rev_${listing.id}_${Date.now()}`,
+        state: "submitted",
+        // Over the whole edit, as `RevisionIsMaterial` reads it.
+        needsReview: [...applied, ...inReview].some((f) =>
+          MATERIAL_FIELDS.has(f),
+        ),
+        next:
+          applied.length === 0
+            ? "We read every change to what a listing promises. It stays on sale on the old wording meanwhile."
+            : "The first list is live now. We read the second, and the listing keeps selling on the old wording meanwhile.",
+        note,
+      },
       { status: 201 },
     );
   }),
