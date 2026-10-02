@@ -6,6 +6,7 @@ import { screenerChoices, type Vocabulary } from "@/lib/services/vocabulary";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
+import { FieldLabel } from "./field-help";
 
 /**
  * Step 4 — where the day starts, and what it needs of the people on it.
@@ -54,9 +55,9 @@ export function LocationStep({
       <input type="hidden" name="id" value={id} />
 
       <div>
-        <label htmlFor="l-meeting" className={fieldLabelClass()}>
+        <FieldLabel htmlFor="l-meeting" required>
           Where to meet
-        </label>
+        </FieldLabel>
         {needed("meetingPoint", "l-meeting")}
         <input
           id="l-meeting"

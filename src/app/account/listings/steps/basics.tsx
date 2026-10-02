@@ -7,9 +7,10 @@ import {
   type Choice,
   type Vocabulary,
 } from "@/lib/services/vocabulary";
-import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
+import { FieldLabel, Why } from "./field-help";
 
 /**
  * Step 1 — what the listing IS.
@@ -17,6 +18,10 @@ import { fieldMarks } from "./field-marks";
  * The one step that can run without a draft behind it: on `/account/listings/
  * new` there is no id yet, and saving here is what creates one. Every later
  * step is a `PATCH` and needs the id this produces.
+ *
+ * Labels and boxes (yuvoy-operator#110): `Required` on the three the save
+ * refuses without, one example under the name, and every reason folded behind
+ * a disclosure. See `field-help.tsx`.
  */
 export function BasicsStep({
   id,
@@ -59,9 +64,9 @@ export function BasicsStep({
       <input type="hidden" name="id" value={id} />
 
       <div>
-        <label htmlFor="b-title" className={fieldLabelClass()}>
+        <FieldLabel htmlFor="b-title" required>
           Name
-        </label>
+        </FieldLabel>
         {needed("title", "b-title")}
         <input
           id="b-title"
@@ -74,15 +79,18 @@ export function BasicsStep({
           aria-describedby={describedBy("title", "b-title", "b-title-help")}
         />
         <p id="b-title-help" className="text-forest/70 mt-1.5 text-xs">
-          The first thing a traveller reads. &ldquo;Try-dive at Nemo
-          Reef&rdquo;, not &ldquo;Package A&rdquo;.
+          For example, &ldquo;Try-dive at Nemo Reef&rdquo;.
         </p>
+        <Why>
+          It is the first thing a traveller reads, so &ldquo;Package A&rdquo;
+          tells them nothing.
+        </Why>
       </div>
 
       <div>
-        <label htmlFor="b-category" className={fieldLabelClass()}>
+        <FieldLabel htmlFor="b-category" required>
           Category
-        </label>
+        </FieldLabel>
         {needed("category", "b-category")}
         <select
           id="b-category"
@@ -111,9 +119,7 @@ export function BasicsStep({
       */}
       {activities.length > 0 ? (
         <div>
-          <label htmlFor="b-activity" className={fieldLabelClass()}>
-            Activity
-          </label>
+          <FieldLabel htmlFor="b-activity">Activity</FieldLabel>
           {needed("activityType", "b-activity")}
           <select
             id="b-activity"
@@ -121,11 +127,7 @@ export function BasicsStep({
             defaultValue={listing.activityType ?? ""}
             className={inputClass("mt-2")}
             aria-invalid={marked("activityType")}
-            aria-describedby={describedBy(
-              "activityType",
-              "b-activity",
-              "b-activity-help",
-            )}
+            aria-describedby={describedBy("activityType", "b-activity")}
           >
             <option value="">Choose one</option>
             {activities.map((a) => (
@@ -134,17 +136,17 @@ export function BasicsStep({
               </option>
             ))}
           </select>
-          <p id="b-activity-help" className="text-forest/70 mt-1.5 text-xs">
-            This decides which documents we need from you, so a lapsed
-            certificate stops only the listings it applies to.
-          </p>
+          <Why>
+            It decides which documents we need from you, so a lapsed certificate
+            stops only the listings it applies to.
+          </Why>
         </div>
       ) : null}
 
       <div>
-        <label htmlFor="b-destination" className={fieldLabelClass()}>
+        <FieldLabel htmlFor="b-destination" required>
           Where it runs
-        </label>
+        </FieldLabel>
         {needed("destination", "b-destination")}
         <select
           id="b-destination"
@@ -165,9 +167,7 @@ export function BasicsStep({
       </div>
 
       <div>
-        <label htmlFor="b-summary" className={fieldLabelClass()}>
-          One line about it
-        </label>
+        <FieldLabel htmlFor="b-summary">One line about it</FieldLabel>
         {needed("summary", "b-summary")}
         <input
           id="b-summary"
@@ -180,9 +180,7 @@ export function BasicsStep({
       </div>
 
       <div>
-        <label htmlFor="b-description" className={fieldLabelClass()}>
-          What happens on the day
-        </label>
+        <FieldLabel htmlFor="b-description">What happens on the day</FieldLabel>
         {needed("description", "b-description")}
         <textarea
           id="b-description"
@@ -191,20 +189,17 @@ export function BasicsStep({
           defaultValue={listing.description ?? ""}
           className={inputClass("mt-2 h-auto py-3")}
           aria-invalid={marked("description")}
-          aria-describedby={describedBy(
-            "description",
-            "b-description",
-            "b-description-help",
-          )}
+          aria-describedby={describedBy("description", "b-description")}
         />
         {/*
-          A hint, never a refusal. The API takes a short description and so does
+          A tip, never a refusal. The API takes a short description and so does
           this: blocking a save over a character count would stop somebody
-          writing the rest of the listing.
+          writing the rest of the listing. Folded, and named for the question
+          it answers, because it is advice rather than a reason (#110).
         */}
-        <p id="b-description-help" className="text-forest/70 mt-1.5 text-xs">
+        <Why summary="How much to write?">
           30 characters or more reads best.
-        </p>
+        </Why>
       </div>
     </StepShell>
   );

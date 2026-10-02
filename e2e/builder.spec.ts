@@ -217,6 +217,34 @@ test("a step that is refused stays where it is and says why", async ({
   await expect(page).toHaveURL(/step=selling/);
 });
 
+test("Basics reads as labels and boxes, each reason one tap away", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#110: "This need trimming. It's confusing." Required is said
+    beside the three the save refuses without, one example stays under the
+    name, and the reasons are folded rather than deleted.
+  */
+  await signIn(page);
+  await page.goto("/account/listings/new");
+  // The activity picker, and its reason, are drawn once there is a category.
+  await page.getByLabel("Category", { exact: true }).selectOption("adventure");
+
+  await expect(page.getByText("Required", { exact: true })).toHaveCount(3);
+  await expect(
+    page.getByLabel("Name", { exact: true }),
+  ).toHaveAccessibleDescription("For example, “Try-dive at Nemo Reef”.");
+
+  const reason = page.getByText(/decides which documents we need/);
+  await expect(reason).toBeHidden();
+  await page
+    .locator("details")
+    .filter({ has: reason })
+    .getByText("Why?")
+    .click();
+  await expect(reason).toBeVisible();
+});
+
 test("a listing that is no longer a draft is not built, it is amended", async ({
   page,
 }) => {

@@ -8,6 +8,7 @@ import { formatPaise } from "@/lib/format/money";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
+import { FieldLabel } from "./field-help";
 
 /**
  * Step 2 — what it costs, and what the business receives.
@@ -82,9 +83,9 @@ export function SellingStep({
       <input type="hidden" name="id" value={id} />
 
       <div>
-        <label htmlFor="s-price" className={fieldLabelClass()}>
+        <FieldLabel htmlFor="s-price" required>
           Price
-        </label>
+        </FieldLabel>
         {needed("unitPrice", "s-price")}
         <input
           id="s-price"
@@ -136,9 +137,9 @@ export function SellingStep({
       </fieldset>
 
       <div>
-        <label htmlFor="s-party" className={fieldLabelClass()}>
+        <FieldLabel htmlFor="s-party" required>
           Most people per booking
-        </label>
+        </FieldLabel>
         {needed("maxPartySize", "s-party")}
         <input
           id="s-party"
@@ -154,9 +155,9 @@ export function SellingStep({
       </div>
 
       <div>
-        <label htmlFor="s-duration" className={fieldLabelClass()}>
+        <FieldLabel htmlFor="s-duration" required>
           How long
-        </label>
+        </FieldLabel>
         {needed("durationMinutes", "s-duration")}
         <input
           id="s-duration"
