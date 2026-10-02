@@ -4,6 +4,8 @@ import { useActionState } from "react";
 import { saveLocation, type StepState } from "../builder-actions";
 import { screenerChoices, type Vocabulary } from "@/lib/services/vocabulary";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { MeetingPin } from "@/components/map/meeting-pin";
+import { pinOf, pinsSupported } from "@/lib/map/pin";
 import { StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
 import { FieldLabel } from "./field-help";
@@ -15,6 +17,9 @@ import { FieldLabel } from "./field-help";
  * that declares a condition is refused before any seat is held or any money is
  * taken. That is said plainly beside the picker, because it turns somebody away
  * and an operator should choose it knowing so.
+ *
+ * The meeting point can carry a pin as well as its words (yuvoy-operator#113),
+ * offered only when the API the listing came from takes one (`pinsSupported`).
  */
 export function LocationStep({
   id,
@@ -27,6 +32,8 @@ export function LocationStep({
   listing: {
     meetingPoint?: string;
     meetingLandmark?: string;
+    meetingLat?: number | null;
+    meetingLng?: number | null;
     inclusions?: string[];
     requirements?: string[];
     safetyNotes?: string;
@@ -91,6 +98,8 @@ export function LocationStep({
           A landmark nearby: the blue boat shed, the temple gate.
         </p>
       </div>
+
+      {pinsSupported(listing) ? <MeetingPin initial={pinOf(listing)} /> : null}
 
       <div>
         <label htmlFor="l-inclusions" className={fieldLabelClass()}>

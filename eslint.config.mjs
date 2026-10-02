@@ -29,6 +29,8 @@ const eslintConfig = defineConfig([
     "playwright/.cache/**",
     ".lighthouseci/**",
     ".memsearch/**",
+    // MapLibre's minified worker, vendored byte for byte (yuvoy-operator#113).
+    "public/vendor/**",
   ]),
   {
     rules: {

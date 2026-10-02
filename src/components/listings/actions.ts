@@ -11,6 +11,11 @@ import {
   type PauseReason,
 } from "@/lib/services/listings";
 import { dedashText } from "@/lib/format/dedash";
+import { readPinFields } from "@/lib/map/pin";
+import {
+  readRevisionOutcome,
+  type RevisionOutcome,
+} from "@/lib/services/revision-outcome";
 import { suspendedMessage } from "@/lib/account/suspended";
 import { saleInProgressMessage } from "./sale-in-progress";
 
@@ -31,9 +36,14 @@ import { saleInProgressMessage } from "./sale-in-progress";
  * booking against right now, and editing it in place lets a price change
  * between somebody reading it and somebody paying."
  *
- * So neither action here returns anything resembling "Saved". An operator who
- * submits and sees a tick will assume they are selling, and will ring us on
- * the day nobody books.
+ * So nothing here returns anything resembling "Saved" for what we read. An
+ * operator who submits and sees a tick will assume they are selling, and will
+ * ring us on the day nobody books.
+ *
+ * Since D-032.3 an edit is split, though: what the operator owns (price,
+ * duration, party size, where to meet, the pin) goes live at once, and only
+ * what the listing promises is read first. The answer names both halves and
+ * the screen renders both, see `RevisionOutcome`.
  *
  * ## No role gate
  *
@@ -62,8 +72,8 @@ import { saleInProgressMessage } from "./sale-in-progress";
 
 export interface RevisionState {
   message?: string;
-  /** Set when the change is with us. Never "saved". */
-  submitted?: boolean;
+  /** Set once the change was sent: which half is live, which is with us. */
+  outcome?: RevisionOutcome;
 }
 
 /**
@@ -73,10 +83,11 @@ export interface RevisionState {
  * it — submitting a draft moves it to `in_review`, while submitting against a
  * live listing leaves it selling on the old terms until we answer.
  *
- * The body is `additionalProperties: true` — "the fields to change, any subset
- * of the listing" — so this sends only the fields the form actually carried.
- * Sending the whole listing back would turn every submission into a claim
- * about every field, including ones the operator never looked at.
+ * The body is "the fields to change, any subset of the listing", so this sends
+ * only the fields the form actually carried. Sending the whole listing back
+ * would turn every submission into a claim about every field, including ones
+ * the operator never looked at. The form drops the fields nobody changed
+ * before they reach here (`onlyChanged`).
  */
 const revisionSchema = z.object({
   id: z.string().min(1),
@@ -250,18 +261,35 @@ export async function submitRevision(
   const required = lines(requirements);
   if (required !== undefined) body.requirements = required;
 
+  /*
+    The pin (yuvoy-operator#113): both numbers, or both null to clear. The
+    form sends it only when it moved, and only an API that takes pins is
+    shown one (`pinsSupported`).
+  */
+  const pin = readPinFields(form);
+  if (pin.kind === "invalid") return { message: pin.message };
+  if (pin.kind === "set") {
+    body.meetingLat = pin.lat;
+    body.meetingLng = pin.lng;
+  } else if (pin.kind === "clear") {
+    body.meetingLat = null;
+    body.meetingLng = null;
+  }
+
   if (Object.keys(body).length === 0) {
     return { message: "Nothing has changed, so there is nothing to send." };
   }
 
   const { token } = await requireOperator();
 
+  let outcome: RevisionOutcome;
   try {
-    const { error } = await operatorApi(token).POST(
+    const { data, error } = await operatorApi(token).POST(
       "/experiences/{id}/revisions",
       { params: { path: { id } }, body },
     );
     if (error) throw error;
+    outcome = readRevisionOutcome(data);
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. Nothing was sent. Try again." };
@@ -306,7 +334,7 @@ export async function submitRevision(
     their change now. The listing's own screen shows the new state the moment
     they go to it.
   */
-  return { submitted: true };
+  return { outcome };
 }
 
 export interface PauseState {

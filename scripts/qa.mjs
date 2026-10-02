@@ -13,6 +13,7 @@
  */
 import { readdirSync, statSync, readFileSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
+import { vendorProblems } from "./vendor-maplibre.mjs";
 
 const ROOT = process.cwd();
 const SRC = join(ROOT, "src");
@@ -1954,6 +1955,16 @@ for (const f of files) {
     }
   }
 }
+
+/* ------------------------------------------------------ vendored map -- */
+
+/*
+  MapLibre's worker, committed under public/vendor/maplibre (yuvoy-operator
+  #113). It has to be the worker the installed maplibre-gl ships: a stale copy
+  talks to a newer main thread and the map breaks in production with nothing
+  failing here. See scripts/vendor-maplibre.mjs.
+*/
+for (const p of vendorProblems()) problems.push(p);
 
 /* --------------------------------------------------------------- report -- */
 
