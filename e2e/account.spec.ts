@@ -86,12 +86,21 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
   await expect(add).toHaveText("Add");
   expect((await add.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
   await add.click();
+  const choices = page.getByRole("dialog", { name: "Add a listing or a reel" });
   await expect(
-    page
-      .getByRole("dialog", { name: "Add a listing or a reel" })
-      .getByRole("button", { name: "Add a listing" }),
+    choices.getByRole("button", { name: "Add a listing" }),
   ).toBeVisible();
+  /*
+    The choices open below the button and leave it reachable: they used to
+    cover it, and Settings, on a phone, so a second tap could not land and
+    nothing else closed them. Escape closes them too.
+  */
   await add.click();
+  await expect(choices).toBeHidden();
+  await add.click();
+  await page.keyboard.press("Escape");
+  await expect(choices).toBeHidden();
+  await expect(add).toBeFocused();
 
   /*
     The status, the documents and what is outstanding came off the profile in

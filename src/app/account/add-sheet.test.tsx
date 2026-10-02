@@ -59,6 +59,40 @@ describe("the + on the business profile", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  /*
+    The panel used to sit over its own button on a phone, with no other way
+    out than choosing something. It closes like a menu now.
+  */
+  it("closes on Escape and gives focus back to the button", () => {
+    render(<AddSheet canManage listings={LISTINGS} />);
+    const add = screen.getByRole("button", { name: "Add a listing or a reel" });
+
+    fireEvent.click(add);
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(add).toHaveAttribute("aria-expanded", "false");
+    expect(add).toHaveFocus();
+  });
+
+  it("closes on a press anywhere else, and not on a press inside", () => {
+    render(
+      <>
+        <p>Elsewhere</p>
+        <AddSheet canManage listings={LISTINGS} />
+      </>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add a listing or a reel" }),
+    );
+
+    fireEvent.pointerDown(screen.getByRole("dialog"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByText("Elsewhere"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("goes to the builder from Add a listing", () => {
     render(<AddSheet canManage listings={LISTINGS} />);
     fireEvent.click(

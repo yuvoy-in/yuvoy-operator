@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, buttonClass } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -33,6 +33,16 @@ import type { ListingOption } from "@/components/media/attach-form";
  * reel" for STAFF. The name starts with the word on screen, so saying "tap
  * Add" to a voice control still reaches it (WCAG 2.5.3, label in name). The
  * word is short on purpose: it shares a phone's width with the business name.
+ *
+ * ## The two choices open below the button, and close like a menu
+ *
+ * The panel was absolutely positioned inside the header's flex row with no
+ * positioned box of its own, so its static position put it over the row: on a
+ * phone it covered this button and Settings, and with no Escape and no tap
+ * outside, an operator who opened it by mistake could only leave by choosing
+ * something. It is anchored to the button now, below it, and closes on a
+ * second tap, on Escape (focus goes back to the button) and on a tap anywhere
+ * else.
  */
 export function AddSheet({
   canManage,
@@ -45,67 +55,91 @@ export function AddSheet({
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const router = useRouter();
+  const anchor = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      trigger.current?.focus();
+    }
+    // A press inside (the button or a choice) is theirs to handle.
+    function onPress(e: PointerEvent) {
+      if (!anchor.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPress);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPress);
+    };
+  }, [open]);
 
   const name = canManage ? "Add a listing or a reel" : "Add a reel";
 
   return (
     <>
-      <button
-        type="button"
-        aria-label={name}
-        aria-haspopup="dialog"
-        aria-expanded={canManage ? open : undefined}
-        onClick={() => (canManage ? setOpen((was) => !was) : setAdding(true))}
-        className={buttonClass({
-          variant: "secondary",
-          size: "md",
-          block: false,
-          className: "gap-1.5 px-4",
-        })}
-      >
-        <PlusIcon />
-        Add
-      </button>
-
-      {open ? (
-        <Panel
-          role="dialog"
+      <div ref={anchor} className="relative">
+        <button
+          ref={trigger}
+          type="button"
           aria-label={name}
-          className="absolute right-5 z-20 mt-14 w-64 p-3"
+          aria-haspopup="dialog"
+          aria-expanded={canManage ? open : undefined}
+          onClick={() => (canManage ? setOpen((was) => !was) : setAdding(true))}
+          className={buttonClass({
+            variant: "secondary",
+            size: "md",
+            block: false,
+            className: "gap-1.5 px-4",
+          })}
         >
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setOpen(false);
-              router.push("/account/listings/new");
-            }}
+          <PlusIcon />
+          Add
+        </button>
+
+        {open ? (
+          <Panel
+            role="dialog"
+            aria-label={name}
+            className="absolute top-full right-0 z-20 mt-2 w-60 p-3"
           >
-            Add a listing
-          </Button>
-          <div className="mt-2">
-            {/*
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setOpen(false);
+                router.push("/account/listings/new");
+              }}
+            >
+              Add a listing
+            </Button>
+            <div className="mt-2">
+              {/*
               The upload itself is the shipped `Uploader`, opened here rather
               than on a page of its own: two upload screens would be two places
               for the one-clip-in-flight rule to drift, and that rule is what
               stops a jetty phone starting three uploads.
             */}
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setOpen(false);
-                setAdding(true);
-              }}
-            >
-              Add a reel
-            </Button>
-          </div>
-          {listings.length === 0 ? (
-            <p className="text-forest/70 mt-2 text-xs">
-              A reel goes on a listing, so make one first.
-            </p>
-          ) : null}
-        </Panel>
-      ) : null}
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setOpen(false);
+                  setAdding(true);
+                }}
+              >
+                Add a reel
+              </Button>
+            </div>
+            {listings.length === 0 ? (
+              <p className="text-forest/70 mt-2 text-xs">
+                A reel goes on a listing, so make one first.
+              </p>
+            ) : null}
+          </Panel>
+        ) : null}
+      </div>
 
       {adding ? (
         <AddReelSheet
