@@ -134,6 +134,32 @@ describe("Content-Security-Policy", () => {
     expect(connect).not.toContain("*.amazonaws.com");
   });
 
+  it("lets the meeting-point map reach its two hosts, exactly", () => {
+    /*
+      yuvoy-operator#113. The map's tiles and the place search are fetched
+      from the browser, so both must be in `connect-src`, as exact origins:
+      a wildcard here would be a destination for a stolen session.
+    */
+    const connect = sources(reportOnlyCsp(PROD), "connect-src");
+    expect(connect).toContain("https://tiles.openfreemap.org");
+    expect(connect).toContain("https://photon.komoot.io");
+    expect(connect.filter((s) => s.includes("openfreemap"))).toEqual([
+      "https://tiles.openfreemap.org",
+    ]);
+    expect(connect.filter((s) => s.includes("komoot"))).toEqual([
+      "https://photon.komoot.io",
+    ]);
+    // The worker is ours; the images are drawn through blob:, not loaded.
+    expect(sources(reportOnlyCsp(PROD), "worker-src")).toEqual([
+      "'self'",
+      "blob:",
+    ]);
+    expect(sources(reportOnlyCsp(PROD), "img-src")).not.toContain(
+      "https://tiles.openfreemap.org",
+    );
+    expect(enforcedCsp(PROD)).toBe(reportOnlyCsp(PROD));
+  });
+
   it("does not let a document be read BACK from a page", () => {
     // The bucket is private and a file goes one way. Nothing in this portal
     // renders a document, so naming it in `img-src` would widen the policy for

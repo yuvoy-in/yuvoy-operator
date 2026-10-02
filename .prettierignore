@@ -10,6 +10,10 @@ src/lib/api/schema.gen.ts
 public/mockServiceWorker.js
 public/sw.js
 
+# MapLibre's worker, byte for byte. `pnpm qa` holds it to the installed
+# package, so reformatting it would fail QA. See scripts/vendor-maplibre.mjs.
+public/vendor/
+
 .next/
 node_modules/
 pnpm-lock.yaml

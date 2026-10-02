@@ -7,6 +7,7 @@ import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { requireOperator } from "@/lib/auth/session";
 import { suspendedMessage } from "@/lib/account/suspended";
 import { dedash } from "@/lib/format/dedash";
+import { WEEKDAYS, rowProblemSentences } from "./schedule-changes";
 
 /**
  * The listing hub's writes — yuvoy-operator#56 items 8 and 9.
@@ -25,8 +26,11 @@ const ROLE_REFUSAL =
 
 export interface ScheduleState {
   message?: string;
-  /** `weekly[2].startTime` → the message for that row, from `details`. */
-  rowProblems?: Record<string, string>;
+  /**
+   * Every row the API refused, each named by its day and time and why
+   * ("Tuesday at 09:00: Seats are 1 to 200."), from `details`.
+   */
+  rowProblems?: string[];
   /** The API's own sentence about what saving did. Rendered verbatim. */
   note?: string;
   /** Present when the listing is not on sale afterwards, and says why. */
@@ -36,13 +40,37 @@ export interface ScheduleState {
 
 const scheduleSchema = z.object({
   experienceId: z.string().min(1),
-  weekly: z.array(
-    z.object({
-      weekday: z.number().int().min(0).max(6),
-      startTime: z.string().regex(/^\d{2}:\d{2}$/, "Times look like 07:00."),
-      seats: z.number().int().min(1).max(200),
+  weekly: z
+    .array(
+      z.object({
+        weekday: z.number().int().min(0).max(6),
+        startTime: z.string().regex(/^\d{2}:\d{2}$/, "Times look like 07:00."),
+        seats: z
+          .number()
+          .int()
+          .min(1, "Seats are 1 to 200.")
+          .max(200, "Seats are 1 to 200."),
+      }),
+    )
+    /*
+      "Every weekday and time the listing runs, each at most once." The picker
+      cannot send one twice; a Server Action is a public POST endpoint, so it
+      is checked here as well, in words, before the API is asked.
+    */
+    .superRefine((rows, ctx) => {
+      const seen = new Set<string>();
+      rows.forEach((row, i) => {
+        const key = `${row.weekday}|${row.startTime}`;
+        if (seen.has(key)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [i],
+            message: `${WEEKDAYS[row.weekday]} at ${row.startTime} is listed twice.`,
+          });
+        }
+        seen.add(key);
+      });
     }),
-  ),
 });
 
 /**
@@ -120,19 +148,17 @@ export async function saveSchedule(
       if (err.status === 400) {
         /*
           `details` names the row and the field: keys like `weekly[2].startTime`.
-          Carried through so the form can mark that row rather than printing one
-          sentence above seven of them.
+          Said as the day and time each was sent as, against the rows this
+          action sent, because the picker draws no row for an index to mark.
         */
-        const details = err.details;
-        const rowProblems =
-          details && typeof details === "object"
-            ? Object.fromEntries(
-                Object.entries(details as Record<string, unknown>).map(
-                  ([key, value]) => [key, String(value)],
-                ),
-              )
-            : undefined;
-        return { message: dedash(err.message), rowProblems };
+        const rowProblems = rowProblemSentences(
+          err.details,
+          parsed.data.weekly,
+        );
+        return {
+          message: dedash(err.message),
+          ...(rowProblems.length > 0 ? { rowProblems } : {}),
+        };
       }
     }
     return { message: "The schedule was not saved. Try again." };

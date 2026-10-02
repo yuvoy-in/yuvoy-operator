@@ -423,6 +423,12 @@ type MockExperience = {
   pricingUnit?: string;
   meetingPoint?: string;
   /*
+    A pin on the meeting point (yuvoy-api#249, yuvoy-operator#113). Null when
+    none is set, which every read says out loud: `withPin` below.
+  */
+  meetingLat?: number | null;
+  meetingLng?: number | null;
+  /*
     The material fields — yuvoy-operator#30 §5. On the wire since the contract
     was written and settable nowhere in this portal until now, which is why
     they were never in this fixture either.
@@ -1949,6 +1955,116 @@ async function sha256Hex(text: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+/**
+ * A listing as the API reads it back since yuvoy-api#249: `meetingLat` and
+ * `meetingLng` always present, `null` when there is no pin. The portal offers
+ * a pin only to an API that sends the key, so a mock that left it out would
+ * hide the pin from every test.
+ */
+function withPin<
+  T extends { meetingLat?: number | null; meetingLng?: number | null },
+>(listing: T): T & { meetingLat: number | null; meetingLng: number | null } {
+  return {
+    ...listing,
+    meetingLat: listing.meetingLat ?? null,
+    meetingLng: listing.meetingLng ?? null,
+  };
+}
+
+/**
+ * A pin the API would refuse, in its words (`coerceListingValue` and
+ * `RevisionPayloadError` at fb9245e): each coordinate on its own, a number or
+ * null, inside its range. "we could not read: meetingLat", with the reason
+ * keyed by field in `details`. The API does not check both-or-neither; the
+ * portal does, before it sends.
+ */
+function pinRefusal(body: Record<string, unknown>) {
+  const bounds = { meetingLat: 90, meetingLng: 180 } as const;
+  const invalid: Record<string, string> = {};
+  for (const [field, limit] of Object.entries(bounds)) {
+    if (!(field in body) || body[field] === null) continue;
+    const value = body[field];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      invalid[field] = "this should be a number";
+    } else if (value < -limit) {
+      invalid[field] = `must be ${-limit} or more`;
+    } else if (value > limit) {
+      invalid[field] = `must be ${limit} or less`;
+    }
+  }
+  const names = Object.keys(invalid).sort();
+  if (names.length === 0) return null;
+  return envelope(
+    "invalid_input",
+    `we could not read: ${names.join(", ")}`,
+    400,
+    {
+      allowed: LISTING_FIELDS,
+      ...invalid,
+    },
+  );
+}
+
+/**
+ * Every field a listing edit may carry, in the order the API declares them
+ * (`listingFields` at fb9245e), which is the order `applied` and `inReview`
+ * come back in.
+ */
+const LISTING_FIELDS = [
+  "title",
+  "summary",
+  "description",
+  "category",
+  "activityType",
+  "destination",
+  "meetingPoint",
+  "meetingLandmark",
+  "meetingLat",
+  "meetingLng",
+  "inclusions",
+  "requirements",
+  "safetyNotes",
+  "screenerKey",
+  "durationMinutes",
+  "maxPartySize",
+  "unitPricePaise",
+  "pricingUnit",
+  "bookingMode",
+];
+
+/**
+ * What the operator owns and changes without review once a listing has been
+ * approved (D-032.3, `OperatorDirect` at fb9245e).
+ */
+const OPERATOR_DIRECT = new Set([
+  "meetingPoint",
+  "meetingLandmark",
+  "meetingLat",
+  "meetingLng",
+  "durationMinutes",
+  "maxPartySize",
+  "unitPricePaise",
+  "pricingUnit",
+  "bookingMode",
+]);
+
+/** The fields marked *material* at fb9245e: a change to one needs review. */
+const MATERIAL_FIELDS = new Set([
+  "category",
+  "activityType",
+  "destination",
+  "meetingPoint",
+  "inclusions",
+  "requirements",
+  "safetyNotes",
+  "screenerKey",
+  "durationMinutes",
+  "maxPartySize",
+  "unitPricePaise",
+  "pricingUnit",
+  "bookingMode",
+]);
 
 function envelope(
   code: string,
@@ -4123,7 +4239,7 @@ export const handlers = [
     if (isNewBusiness(request)) return HttpResponse.json({ experiences: [] });
     return HttpResponse.json({
       experiences: mockExperiences.map((e) => ({
-        ...e,
+        ...withPin(e),
         bookableDatesNext30Days: bookableDatesOf(e),
         departuresNotOnSale: unconfirmedDeparturesOf(e),
         departuresGoingOffSaleSoon: 0,
@@ -4297,7 +4413,7 @@ export const handlers = [
 
     return HttpResponse.json({
       listing: {
-        ...listing,
+        ...withPin(listing),
         // The single listing carries these too (yuvoy-api#205, #211).
         bookableDatesNext30Days: bookableDatesOf(listing),
         departuresNotOnSale: unconfirmedDeparturesOf(listing),
@@ -4356,7 +4472,20 @@ export const handlers = [
       portal ship without ever rendering a row problem.
     */
     const details: Record<string, string> = {};
+    /*
+      "Every weekday and time the listing runs, each at most once." A second
+      row at a weekday and time already sent is refused on that row, as every
+      other row problem is: a mock that took it would let a form ship that can
+      send a week the API refuses.
+    */
+    const sent = new Set<string>();
     weekly.forEach((row, i) => {
+      const slot = `${row.weekday}|${row.startTime}`;
+      if (sent.has(slot)) {
+        details[`weekly[${i}].startTime`] =
+          "That weekday already leaves at this time.";
+      }
+      sent.add(slot);
       if (
         !Number.isInteger(row.weekday) ||
         (row.weekday ?? -1) < 0 ||
@@ -4391,11 +4520,17 @@ export const handlers = [
     const before = listing.schedule?.weekly.length ?? 0;
     listing.schedule = {
       repeatsWeekly: weekly.length > 0,
-      weekly: weekly.map((row) => ({
-        weekday: row.weekday!,
-        startTime: row.startTime!,
-        seats: row.seats!,
-      })),
+      // Read back "by weekday from Sunday, then by time", as the API orders it.
+      weekly: weekly
+        .map((row) => ({
+          weekday: row.weekday!,
+          startTime: row.startTime!,
+          seats: row.seats!,
+        }))
+        .sort(
+          (a, b) =>
+            a.weekday - b.weekday || a.startTime.localeCompare(b.startTime),
+        ),
     };
 
     return HttpResponse.json({
@@ -4422,35 +4557,66 @@ export const handlers = [
    */
   /**
    * Confirm the seats on many departures at once (yuvoy-api#211), as the API
-   * answers it: OWNER, ADMIN or MANAGER; market days `from` to `to`, both
-   * included, at most 30 days apart; one listing when `experienceId` is sent,
-   * and another business's listing answers 404. Safe to send twice: a second
-   * call confirms nothing and says 0.
+   * answers it since #244 (yuvoy-api#241): OWNER, ADMIN or MANAGER; one
+   * listing when `experienceId` is sent, and another business's listing
+   * answers 404. Two forms, told apart the way the handler tells them apart:
+   *
+   *   - **No dates** (no body, `{}`, or only `experienceId`): every departure
+   *     `departuresNotOnSale` counts, however far ahead. The one call behind
+   *     "Confirm all".
+   *   - **`from` and `to`**: market days, both included, at most 30 days
+   *     apart, as before.
+   *
+   * One date without the other is neither form and answers 400, with the
+   * handler's sentence and a detail naming the missing one. Safe to send
+   * twice: a second call confirms nothing and says 0.
+   *
+   * The API from before #244 is not modelled here: the portal's fallback for
+   * it is driven by the unit tests (`confirm-seats.test.ts`).
    */
   http.post(url("/slots/confirm-seats"), async ({ request }) => {
     const denied = requireManager(request, "STAFF cannot confirm seats.");
     if (denied) return denied;
 
-    const body = (await request.json().catch(() => ({}))) as {
+    const body = ((await request.json().catch(() => null)) ?? {}) as {
       from?: unknown;
       to?: unknown;
       experienceId?: unknown;
     };
+    // Absent, null and "" are all "not sent", as Go's zero value reads them.
+    const sent = (v: unknown) => v !== undefined && v !== null && v !== "";
+    if (sent(body.from) !== sent(body.to)) {
+      const [missing, other] = sent(body.from)
+        ? ["to", "from"]
+        : ["from", "to"];
+      return envelope(
+        "invalid_input",
+        "send both dates, or neither to confirm every departure that needs it",
+        400,
+        { [missing]: `needed with ${other}` },
+      );
+    }
+    const ranged = sent(body.from);
     const isDay = (v: unknown): v is string =>
       typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
-    if (!isDay(body.from) || !isDay(body.to) || body.to < body.from) {
+    if (
+      ranged &&
+      (!isDay(body.from) || !isDay(body.to) || body.to < body.from)
+    ) {
       return envelope(
         "invalid_input",
         "from and to must be dates, from first",
         400,
       );
     }
-    const span =
-      (Date.parse(`${body.to}T00:00:00Z`) -
-        Date.parse(`${body.from}T00:00:00Z`)) /
-      86_400_000;
-    if (span > 30) {
-      return envelope("invalid_input", "at most 31 days at a time", 400);
+    if (ranged) {
+      const span =
+        (Date.parse(`${body.to}T00:00:00Z`) -
+          Date.parse(`${body.from}T00:00:00Z`)) /
+        86_400_000;
+      if (span > 30) {
+        return envelope("invalid_input", "at most 31 days at a time", 400);
+      }
     }
     const experienceId =
       typeof body.experienceId === "string" ? body.experienceId : "";
@@ -4459,18 +4625,22 @@ export const handlers = [
     }
 
     /*
-      The API counts every departure it re-stamps: each open, future one in
-      the window whose seats were set by hand, waiting or not. The mock knows
-      only which were waiting, so it counts those, a smaller number on the
-      same screen.
+      With dates, the API counts every departure it re-stamps: each open,
+      future one in the window whose seats were set by hand, waiting or not.
+      The mock knows only which were waiting, so it counts those, a smaller
+      number on the same screen. With no dates the two agree: the API
+      confirms exactly what the counts include, which is what
+      `unconfirmedDeparturesOf` counts here.
     */
     let confirmed = 0;
     for (const slot of allSlots()) {
       if (experienceId && slot.experienceId !== experienceId) continue;
       if (slotStatusOf(slot) !== "open") continue;
       if (Date.parse(slot.startsAt) <= Date.now()) continue;
-      const day = slotDay(slot);
-      if (day < body.from || day > body.to) continue;
+      if (ranged) {
+        const day = slotDay(slot);
+        if (day < String(body.from) || day > String(body.to)) continue;
+      }
       if (!seatsAwaitingConfirmation(slot)) continue;
       seatsConfirmed[slot.id] = true;
       confirmed += 1;
@@ -4591,6 +4761,8 @@ export const handlers = [
       "destination",
       "meetingPoint",
       "meetingLandmark",
+      "meetingLat",
+      "meetingLng",
       "inclusions",
       "requirements",
       "safetyNotes",
@@ -4610,6 +4782,9 @@ export const handlers = [
         { unknownFields, allowed },
       );
     }
+
+    const badPin = pinRefusal(body);
+    if (badPin) return badPin;
 
     /*
       A destination outside the market, refused exactly as create refuses it.
@@ -4660,7 +4835,50 @@ export const handlers = [
     found.sellable =
       typeof found.unitPricePaise === "number" && found.unitPricePaise > 0;
 
-    return HttpResponse.json(found);
+    return HttpResponse.json(withPin(found));
+  }),
+
+  /**
+   * Discard a draft nobody has seen (yuvoy-operator#112, yuvoy-api#249), as
+   * the contract has it: OWNER, ADMIN or MANAGER, "the same as `PATCH` on this
+   * listing"; `204` and it is gone, with the departures saved on it; `404` for
+   * one that is not here; and `409 conflict` "once a listing has been sent to
+   * us", which is a `review` on the row (`POST .../submit` writes one) or a
+   * listing that is past draft. The words are the handler's (`DeleteDraft` at
+   * fb9245e).
+   *
+   * Refused while suspended, like `PATCH`: it is not on the list of writes a
+   * suspended business may still make.
+   */
+  http.delete(url("/experiences/:id"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner, admin or manager can delete a listing",
+        403,
+      );
+    }
+
+    const id = String(params.id);
+    const found = mockExperiences.find((e) => e.id === id);
+    if (!found) return envelope("not_found", "no such listing", 404);
+    if ((found.publicationState ?? found.status) !== "draft" || found.review) {
+      return envelope(
+        "conflict",
+        "only a draft can be deleted. This listing has already been sent to us",
+        409,
+      );
+    }
+
+    mockExperiences = mockExperiences.filter((e) => e.id !== id);
+    // `availability_slots` cascade from `experiences`, and so do its questions.
+    createdSlots = createdSlots.filter((slot) => slot.experienceId !== id);
+    delete listingQuestions[id];
+    return new HttpResponse(null, { status: 204 });
   }),
 
   /**
@@ -4867,21 +5085,9 @@ export const handlers = [
     const found = mockExperiences.find((e) => e.id === String(params.id));
     // Gone and belonging-to-somebody-else are one answer, as everywhere else.
     if (!found) return envelope("not_found", "No such listing.", 404);
-    return HttpResponse.json(found);
+    return HttpResponse.json(withPin(found));
   }),
 
-  /**
-   * Propose a change — **never a write to the live listing.**
-   *
-   * The mock moves `status` and leaves the listing's own fields alone, which
-   * is the behaviour a screen would otherwise get wrong: a client that
-   * expected its edit to appear immediately would look broken against the real
-   * API and correct against a mock that applied it.
-   *
-   * A draft becomes `in_review`. A published listing becomes
-   * `live_changes_in_review` and KEEPS SELLING — "bookings already made are
-   * unaffected either way; their terms were snapshotted at checkout".
-   */
   /*
     Pausing and resuming a listing — yuvoy-operator#30 §6, #44. Each is one
     handler under two names, as the API registers it; see the factories above.
@@ -4891,6 +5097,22 @@ export const handlers = [
   resumeHandler("/experiences/:id/resume"),
   resumeHandler("/experiences/:id/relist"),
 
+  /**
+   * A change to a listing, in two halves (D-032.3), as `SubmitRevision` and the
+   * handler answer it at fb9245e.
+   *
+   * The fields the operator owns (`OPERATOR_DIRECT`) are written to the
+   * listing now. The rest wait for a person: only then is a revision created,
+   * and only then does a draft become `in_review` or a published listing
+   * `live_changes_in_review`, which KEEPS SELLING. `200` when nothing needed
+   * reading, `201` when something did, with `applied` and `inReview` in the
+   * order the fields are declared and the API's own `next` and `note`.
+   *
+   * It used to move `status` on every edit and leave every field alone, which
+   * modelled the API before D-032.3: a price change looked queued here while
+   * the real API had already put it live, so the portal's "with us" for it
+   * was never caught.
+   */
   http.post(url("/experiences/:id/revisions"), async ({ request, params }) => {
     const failed = requireSession(request);
     if (failed) return failed;
@@ -4914,6 +5136,61 @@ export const handlers = [
       );
     }
 
+    // The schema is closed: every key it does not know, named at once.
+    const unknownFields = Object.keys(body)
+      .filter((k) => !LISTING_FIELDS.includes(k) && k !== "meetingPointText")
+      .sort();
+    if (unknownFields.length > 0) {
+      return envelope(
+        "invalid_input",
+        `we do not know how to change that: ${unknownFields.join(", ")}`,
+        400,
+        { allowed: LISTING_FIELDS, unknownFields },
+      );
+    }
+    const badPin = pinRefusal(body);
+    if (badPin) return badPin;
+    if (body.meetingPointText !== undefined && !("meetingPoint" in body)) {
+      body.meetingPoint = body.meetingPointText;
+    }
+    delete body.meetingPointText;
+
+    const applied = LISTING_FIELDS.filter(
+      (f) => f in body && OPERATOR_DIRECT.has(f),
+    );
+    const inReview = LISTING_FIELDS.filter(
+      (f) => f in body && !OPERATOR_DIRECT.has(f),
+    );
+
+    // The operator's half, live now.
+    for (const field of applied) {
+      const value = body[field];
+      (listing as Record<string, unknown>)[field] =
+        value === "" ? undefined : value;
+    }
+    if (applied.includes("pricingUnit") && body.pricingUnit) {
+      listing.pricingUnitStated = true;
+    }
+    if (applied.includes("unitPricePaise")) {
+      listing.sellable =
+        typeof listing.unitPricePaise === "number" &&
+        listing.unitPricePaise > 0;
+    }
+
+    const note =
+      "Bookings already made are unaffected: they keep the price and terms they were made on.";
+    if (inReview.length === 0) {
+      return HttpResponse.json({
+        applied,
+        inReview,
+        state: "applied",
+        needsReview: false,
+        next: "These are live now. Travellers see them on your listing straight away.",
+        note,
+      });
+    }
+
+    // Ours, read before it goes live. The listing keeps selling meanwhile.
     listing.status =
       listing.publicationState === "published"
         ? "live_changes_in_review"
@@ -4921,7 +5198,21 @@ export const handlers = [
     listing.review = { state: "submitted", since: new Date().toISOString() };
 
     return HttpResponse.json(
-      { state: "submitted", next: "wait_for_review" },
+      {
+        applied,
+        inReview,
+        revisionId: `rev_${listing.id}_${Date.now()}`,
+        state: "submitted",
+        // Over the whole edit, as `RevisionIsMaterial` reads it.
+        needsReview: [...applied, ...inReview].some((f) =>
+          MATERIAL_FIELDS.has(f),
+        ),
+        next:
+          applied.length === 0
+            ? "We read every change to what a listing promises. It stays on sale on the old wording meanwhile."
+            : "The first list is live now. We read the second, and the listing keeps selling on the old wording meanwhile.",
+        note,
+      },
       { status: 201 },
     );
   }),

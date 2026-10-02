@@ -15,6 +15,19 @@ import AxeBuilder from "@axe-core/playwright";
 
 const DEV_CODE = "424242";
 
+/*
+  The meeting-point map's tiles and its place search are on two outside hosts
+  (yuvoy-operator#113). This suite reaches neither: a run must not depend on
+  a third party, or load its tiles. Aborted, the map says it did not load and
+  the pin is set the ways that need no network, which is what these drive. A
+  test that needs search answers it with `page.route`, which wins over this.
+*/
+const MAP_HOSTS = /^https:\/\/(tiles\.openfreemap\.org|photon\.komoot\.io)\//;
+
+test.beforeEach(async ({ context }) => {
+  await context.route(MAP_HOSTS, (route) => route.abort());
+});
+
 async function signIn(page: Page, phone = "+919000000101") {
   await page.goto("/sign-in");
   await page.getByLabel("Your phone number").fill(phone);
@@ -217,6 +230,110 @@ test("a step that is refused stays where it is and says why", async ({
   await expect(page).toHaveURL(/step=selling/);
 });
 
+test("Basics reads as labels and boxes, each reason one tap away", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#110: "This need trimming. It's confusing." Required is said
+    beside the three the save refuses without, one example stays under the
+    name, and the reasons are folded rather than deleted.
+  */
+  await signIn(page);
+  await page.goto("/account/listings/new");
+  // The activity picker, and its reason, are drawn once there is a category.
+  await page.getByLabel("Category", { exact: true }).selectOption("adventure");
+
+  await expect(page.getByText("Required", { exact: true })).toHaveCount(3);
+  await expect(
+    page.getByLabel("Name", { exact: true }),
+  ).toHaveAccessibleDescription("For example, “Try-dive at Nemo Reef”.");
+
+  const reason = page.getByText(/decides which documents we need/);
+  await expect(reason).toBeHidden();
+  await page
+    .locator("details")
+    .filter({ has: reason })
+    .getByText("Why?")
+    .click();
+  await expect(reason).toBeVisible();
+});
+
+test("the Schedule step picks the days, and sends the week in one save", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#111: "Add a day" seven times, with nothing carried from one
+    row to the next, became seven chips, one time and one seat count for every
+    day ticked, in the one `PUT` the API always took.
+  */
+  const title = unique("Week dive");
+  await signIn(page);
+  const id = await startDraft(page, title);
+  await page.goto(`/account/listings/${id}/edit?step=schedule`);
+
+  for (const day of ["Monday", "Wednesday", "Friday"]) {
+    const chip = page.getByRole("button", { name: day, exact: true });
+    await chip.click();
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
+  }
+  await page.getByLabel("Leaves at", { exact: true }).fill("07:30");
+  await page.getByLabel("Seats", { exact: true }).fill("10");
+  await page.getByRole("button", { name: "Save the schedule" }).click();
+
+  await expect(page.getByText("The weekly schedule is saved")).toBeVisible();
+  await expect(page.getByText("3 days a week, from now on.")).toBeVisible();
+});
+
+test("a draft nobody has seen can be discarded, and its tile goes with it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#112. A draft exists from the moment step one is saved, so
+    one started by mistake had no way back. Its own fresh draft, so no other
+    test loses a fixture to it.
+  */
+  const title = unique("Throwaway");
+  await signIn(page);
+  const id = await startDraft(page, title);
+
+  await page.goto(`/account/listings/${id}`);
+  await page.getByRole("button", { name: "Discard this draft" }).click();
+  // The question takes focus, and the loud button is inside it.
+  await expect(page.getByText(`Discard “${title}”?`)).toBeFocused();
+  await page.getByRole("button", { name: "Discard the draft" }).click();
+
+  // Back on Business, which re-read without it.
+  await page.waitForURL(/\/account$/);
+  await expect(page.getByRole("link", { name: new RegExp(title) })).toHaveCount(
+    0,
+  );
+  // And it is gone, not hidden: its own address finds nothing.
+  await page.goto(`/account/listings/${id}`);
+  await expect(
+    page.getByRole("heading", { name: "There is nothing at that address" }),
+  ).toBeVisible();
+});
+
+test("a draft that was sent, or a staff login, is offered no discard", async ({
+  page,
+}) => {
+  // `exp_night` was sent and came back: a draft again, and a 409 to delete.
+  await signIn(page);
+  await page.goto("/account/listings/exp_night");
+  await expect(page.getByRole("link", { name: "Edit" }).first()).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Discard this draft" }),
+  ).toHaveCount(0);
+
+  // A staff login cannot change a draft, so it cannot discard one either.
+  await page.context().clearCookies();
+  await signIn(page, "+919000000103");
+  await page.goto("/account/listings/exp_boat");
+  await expect(
+    page.getByRole("button", { name: "Discard this draft" }),
+  ).toHaveCount(0);
+});
+
 test("a listing that is no longer a draft is not built, it is amended", async ({
   page,
 }) => {
@@ -238,6 +355,149 @@ test("a listing that is no longer a draft is not built, it is amended", async ({
   await expect(
     page.getByRole("button", { name: "Propose a change" }),
   ).toBeVisible();
+});
+
+/** The Location step of a new draft, with its pin control. */
+async function openLocation(page: Page, title: string) {
+  await signIn(page);
+  const id = await startDraft(page, title);
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  const pin = page.getByRole("group", { name: "Pin on the map" });
+  // No network to the tile host here: the map says so, and the rest works.
+  await expect(pin.getByText(/The map did not load/)).toBeVisible();
+  return { id, pin };
+}
+
+const searchBox = (pin: ReturnType<Page["getByRole"]>) =>
+  pin.getByRole("searchbox", {
+    name: "Search for a place, or paste a maps link",
+  });
+
+test("the meeting point takes a pin from a pasted link, keeps it, and lets it go", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#113, as one walk: set without the map, saved by Next,
+    read back from the API, removed, and saved as gone.
+  */
+  const { id, pin } = await openLocation(page, unique("Pin dive"));
+  await expect(pin.getByText("No pin yet.")).toBeVisible();
+
+  await searchBox(pin).fill("https://www.google.com/maps/@11.9695,92.9631,17z");
+  await pin
+    .getByRole("button", { name: /Put the pin at 11\.96950, 92\.96310/ })
+    .click();
+  await expect(
+    pin.getByText("11.96950, 92.96310", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    pin.getByRole("link", { name: /Check it in Google Maps/ }),
+  ).toHaveAttribute(
+    "href",
+    "https://www.google.com/maps/search/?api=1&query=11.9695,92.9631",
+  );
+
+  await page.getByLabel("Where to meet").fill("Beach 3 dive hut");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=questions/);
+
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  const again = page.getByRole("group", { name: "Pin on the map" });
+  await expect(
+    again.getByText("11.96950, 92.96310", { exact: true }),
+  ).toBeVisible();
+
+  await again.getByRole("button", { name: "Remove the pin" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=questions/);
+
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  await expect(
+    page
+      .getByRole("group", { name: "Pin on the map" })
+      .getByText("No pin yet."),
+  ).toBeVisible();
+});
+
+test("a place found by name becomes the pin, and Enter never sends the step", async ({
+  page,
+}) => {
+  /*
+    Photon answered here the way it answered on 2 Oct 2026 for "havelock",
+    trimmed, with the CORS header the real one sends.
+  */
+  await page.route(/^https:\/\/photon\.komoot\.io\/api\//, (route) =>
+    route.fulfill({
+      headers: { "access-control-allow-origin": "*" },
+      json: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [92.9956211, 11.9651954] },
+            properties: {
+              name: "Havelock island",
+              county: "South Andaman",
+              state: "Andaman and Nicobar Islands",
+              country: "India",
+            },
+          },
+        ],
+      },
+    }),
+  );
+  const { pin } = await openLocation(page, unique("Search dive"));
+
+  await searchBox(pin).fill("havelock");
+  await expect(
+    pin.getByRole("button", { name: /Havelock island/ }),
+  ).toBeVisible();
+  // Enter takes the first place and stays on the step.
+  await searchBox(pin).press("Enter");
+
+  await expect(
+    pin.getByText("11.96519, 92.99562", { exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/step=location/);
+});
+
+test("Use my location puts the pin where the phone is", async ({
+  page,
+  context,
+}) => {
+  /*
+    The browser's own location, allowed for this origin by the
+    Permissions-Policy (`geolocation=(self)`); with `geolocation=()` this is
+    refused before the browser even asks.
+  */
+  await context.grantPermissions(["geolocation"]);
+  await context.setGeolocation({
+    latitude: 11.9695,
+    longitude: 92.9631,
+    accuracy: 10,
+  });
+  const { pin } = await openLocation(page, unique("Here dive"));
+
+  await pin.getByRole("button", { name: "Use my location" }).click();
+
+  await expect(
+    pin.getByText("11.96950, 92.96310", { exact: true }),
+  ).toBeVisible();
+});
+
+test("the Location step, pin and all, has no accessibility violations", async ({
+  page,
+}) => {
+  const { pin } = await openLocation(page, unique("Axe dive"));
+  await searchBox(pin).fill("11.9695, 92.9631");
+  await expect(
+    pin.getByRole("button", { name: /Put the pin at/ }),
+  ).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
 });
 
 test("the builder has no accessibility violations", async ({ page }) => {

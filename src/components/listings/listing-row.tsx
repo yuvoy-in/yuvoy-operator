@@ -3,6 +3,11 @@
 import { useActionState, useState } from "react";
 import { submitRevision, type RevisionState } from "./actions";
 import {
+  fieldLabels,
+  onlyChanged,
+  type RevisionOutcome,
+} from "@/lib/services/revision-outcome";
+import {
   describeRejection,
   describeBlockers,
   describeStatus,
@@ -16,6 +21,11 @@ import { PauseResume } from "./pause-resume";
 import { SentBack } from "./sent-back";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
+import { MeetingPin } from "@/components/map/meeting-pin";
+import { pinOf, pinsSupported } from "@/lib/map/pin";
+
+/** The pin's two numbers move together or not at all (yuvoy-api#249). */
+const PIN_PAIR = [["meetingLat", "meetingLng"]] as const;
 
 /**
  * One listing, and the one act available on it.
@@ -84,6 +94,7 @@ export function ListingRow({
   const status = describeStatus(listing.status);
   const rejection = describeRejection(listing.review?.rejectionCode);
   const blockers = describeBlockers(listing.publishBlockers);
+  const defaults = formDefaults(listing);
 
   return (
     <li id={`listing-${listing.id}`} className={panelClass()}>
@@ -231,23 +242,18 @@ export function ListingRow({
         </p>
       ) : null}
 
-      {state.submitted ? (
-        /*
-          The row's own confirmation, and it deliberately does not say "saved".
-          The list has revalidated behind this, so the chip above already reads
-          differently — this line is about what happens NEXT, which the chip
-          cannot say.
-        */
-        <p
-          role="status"
-          className="border-paper-line text-forest/80 mt-4 border-t pt-3 text-sm font-bold"
-        >
-          {status.selling
-            ? "Your change is with us. It stays on sale on the old terms until we answer."
-            : "It is with us now. We will come back to you."}
-        </p>
+      {state.outcome ? (
+        <RevisionAnswer outcome={state.outcome} selling={status.selling} />
       ) : editing ? (
-        <form action={act} className="border-paper-line mt-4 border-t pt-4">
+        <form
+          /*
+            Only what changed goes (see `onlyChanged`): every field is filled
+            in with what is on file, and a field nobody touched is not a change
+            anybody asked for.
+          */
+          action={(form) => act(onlyChanged(form, defaults, PIN_PAIR))}
+          className="border-paper-line mt-4 border-t pt-4"
+        >
           <input type="hidden" name="id" value={listing.id ?? ""} />
 
           {/*
@@ -276,7 +282,7 @@ export function ListingRow({
               name="title"
               required
               minLength={3}
-              defaultValue={listing.title ?? ""}
+              defaultValue={defaults.title}
               className={inputClass("mt-2")}
             />
           </div>
@@ -291,7 +297,7 @@ export function ListingRow({
             <input
               id={`summary-${listing.id}`}
               name="summary"
-              defaultValue={listing.summary ?? ""}
+              defaultValue={defaults.summary}
               className={inputClass("mt-2")}
             />
           </div>
@@ -320,7 +326,7 @@ export function ListingRow({
               <select
                 id={`activity-${listing.id}`}
                 name="activityType"
-                defaultValue={listing.activityType ?? ""}
+                defaultValue={defaults.activityType}
                 className={inputClass("mt-2")}
                 aria-describedby={`activity-help-${listing.id}`}
               >
@@ -353,7 +359,7 @@ export function ListingRow({
               id={`description-${listing.id}`}
               name="description"
               rows={4}
-              defaultValue={listing.description ?? ""}
+              defaultValue={defaults.description}
               className={inputClass("mt-2")}
             />
           </div>
@@ -368,10 +374,22 @@ export function ListingRow({
             <input
               id={`meeting-${listing.id}`}
               name="meetingPoint"
-              defaultValue={listing.meetingPoint ?? ""}
+              defaultValue={defaults.meetingPoint}
               className={inputClass("mt-2")}
             />
           </div>
+
+          {/*
+            The pin on the meeting point (yuvoy-operator#113). Here as well as
+            in the builder, because every listing on sale today is past the
+            builder and this is the only way to give one a pin. It is the
+            operator's own field (D-032.3): it goes live when sent.
+          */}
+          {pinsSupported(listing) ? (
+            <div className="mt-4">
+              <MeetingPin initial={pinOf(listing)} />
+            </div>
+          ) : null}
 
           <div className="mt-4">
             <label
@@ -384,11 +402,7 @@ export function ListingRow({
               id={`price-${listing.id}`}
               name="unitPrice"
               inputMode="numeric"
-              defaultValue={
-                listing.unitPricePaise != null
-                  ? String(Math.round(listing.unitPricePaise / 100))
-                  : ""
-              }
+              defaultValue={defaults.unitPrice}
               className={inputClass("mt-2")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">In rupees.</p>
@@ -422,7 +436,7 @@ export function ListingRow({
                     type="radio"
                     name="pricingUnit"
                     value={unit.value}
-                    defaultChecked={listing.pricingUnit === unit.value}
+                    defaultChecked={defaults.pricingUnit === unit.value}
                     className="accent-forest mt-0.5 size-5 shrink-0"
                   />
                   <span>
@@ -463,7 +477,7 @@ export function ListingRow({
                 id={`duration-${listing.id}`}
                 name="durationMinutes"
                 inputMode="numeric"
-                defaultValue={listing.durationMinutes ?? ""}
+                defaultValue={defaults.durationMinutes}
                 className={inputClass("mt-2")}
                 aria-describedby={`duration-help-${listing.id}`}
               />
@@ -485,7 +499,7 @@ export function ListingRow({
                 id={`party-${listing.id}`}
                 name="maxPartySize"
                 inputMode="numeric"
-                defaultValue={listing.maxPartySize ?? ""}
+                defaultValue={defaults.maxPartySize}
                 className={inputClass("mt-2")}
               />
             </div>
@@ -502,7 +516,7 @@ export function ListingRow({
               id={`inclusions-${listing.id}`}
               name="inclusions"
               rows={3}
-              defaultValue={(listing.inclusions ?? []).join("\n")}
+              defaultValue={defaults.inclusions}
               className={inputClass("mt-2")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
@@ -521,7 +535,7 @@ export function ListingRow({
               id={`requirements-${listing.id}`}
               name="requirements"
               rows={3}
-              defaultValue={(listing.requirements ?? []).join("\n")}
+              defaultValue={defaults.requirements}
               className={inputClass("mt-2")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
@@ -541,7 +555,7 @@ export function ListingRow({
               id={`safety-${listing.id}`}
               name="safetyNotes"
               rows={3}
-              defaultValue={listing.safetyNotes ?? ""}
+              defaultValue={defaults.safetyNotes}
               className={inputClass("mt-2")}
             />
             {/*
@@ -560,10 +574,13 @@ export function ListingRow({
             "the obvious assumption is the opposite". It goes here rather than
             in the confirmation: it changes whether somebody sends the change
             at all.
+
+            Since D-032.3 it names the half that goes live at once. It said
+            the whole change waited for us, which was wrong for a price.
           */}
           <p className="text-forest/80 mt-4 text-sm">
             {status.selling
-              ? "This does not take it off sale. It keeps selling on the old terms while we read the change, and anybody who already booked keeps what they booked on."
+              ? "This does not take it off sale. Price, duration, group size and where to meet change at once, and we read the rest first. Anybody who already booked keeps what they booked on."
               : "This sends it to us. Nothing is on sale until we approve it."}
           </p>
 
@@ -630,5 +647,84 @@ export function ListingRow({
         />
       ) : null}
     </li>
+  );
+}
+
+/**
+ * Every field's value as the form renders it, from what is on file.
+ *
+ * One record for both jobs: the inputs read their `defaultValue` from it and
+ * `onlyChanged` compares against it, so a field nobody touched can never look
+ * changed because it was formatted one way here and another way there.
+ */
+function formDefaults(listing: OperatorExperience): Record<string, string> {
+  const number = (n: number | null | undefined) => (n == null ? "" : String(n));
+  return {
+    title: listing.title ?? "",
+    summary: listing.summary ?? "",
+    activityType: listing.activityType ?? "",
+    description: listing.description ?? "",
+    meetingPoint: listing.meetingPoint ?? "",
+    unitPrice:
+      listing.unitPricePaise != null
+        ? String(Math.round(listing.unitPricePaise / 100))
+        : "",
+    pricingUnit: listing.pricingUnit ?? "",
+    durationMinutes: number(listing.durationMinutes),
+    maxPartySize: number(listing.maxPartySize),
+    inclusions: (listing.inclusions ?? []).join("\n"),
+    requirements: (listing.requirements ?? []).join("\n"),
+    safetyNotes: listing.safetyNotes ?? "",
+    // As `MeetingPin` writes them, so a pin nobody moved is not sent.
+    meetingLat: number(listing.meetingLat),
+    meetingLng: number(listing.meetingLng),
+  };
+}
+
+/**
+ * What happened to the change, in both halves (D-032.3).
+ *
+ * The API's own sentence first, then the two lists it refers to, in its order:
+ * what is live now, then what is with us. It deliberately does not say
+ * "saved" about the second half. The fallback sentences are the ones this row
+ * said before the API named the halves, for an answer that does not.
+ */
+function RevisionAnswer({
+  outcome,
+  selling,
+}: {
+  outcome: RevisionOutcome;
+  selling: boolean;
+}) {
+  const live = fieldLabels(outcome.applied);
+  const withUs = fieldLabels(outcome.inReview);
+  const next =
+    outcome.next ??
+    (live.length > 0 && withUs.length === 0
+      ? "These are live now."
+      : selling
+        ? "Your change is with us. It stays on sale on the old terms until we answer."
+        : "It is with us now. We will come back to you.");
+
+  return (
+    <div
+      role="status"
+      className="border-paper-line text-forest/80 mt-4 border-t pt-3 text-sm"
+    >
+      <p className="font-bold">{next}</p>
+      {live.length > 0 ? (
+        <p className="mt-2">
+          <span className="font-bold">Live now:</span> {live.join(", ")}
+        </p>
+      ) : null}
+      {withUs.length > 0 ? (
+        <p className="mt-1">
+          <span className="font-bold">With us:</span> {withUs.join(", ")}
+        </p>
+      ) : null}
+      {outcome.note ? (
+        <p className="text-forest/70 mt-2 text-xs">{outcome.note}</p>
+      ) : null}
+    </div>
   );
 }

@@ -67,6 +67,8 @@
  * real upload after this deploys is the thing to watch.
  */
 
+import { MAP_TILE_ORIGIN, PLACE_SEARCH_ORIGIN } from "../map/hosts";
+
 /** An origin, or nothing when the URL is unusable. Never a path. */
 function originOf(url: string | undefined): string | null {
   if (!url) return null;
@@ -139,6 +141,16 @@ export function cspDirectives(env: CspEnv): string[] {
     "'self'",
     ...MEDIA_HOSTS,
     DOCUMENT_HOST,
+    /*
+      The meeting-point pin (yuvoy-operator#113): OpenFreeMap for the map's
+      style, tiles, glyphs and sprites, and Photon for place search. Two exact
+      origins, written in `src/lib/map/hosts.ts` beside the code that calls
+      them. Fetched, not shown as `<img>`: MapLibre reads its images as bytes
+      and draws them through `blob:`, already in `img-src`, and its worker is
+      served from this origin (`worker-src 'self'`).
+    */
+    MAP_TILE_ORIGIN,
+    PLACE_SEARCH_ORIGIN,
     ...(mock ? [mock] : []),
     // Next's dev server talks HMR over a websocket to the same host.
     ...(env.dev

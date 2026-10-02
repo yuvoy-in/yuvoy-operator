@@ -1218,7 +1218,11 @@ export interface paths {
         put?: never;
         /**
          * Confirm the seats on many departures at once
-         * @description Confirms that the seat counts are still right on every open, upcoming, instant-book departure of your business whose seats were set by hand, with a market day from `from` to `to` (both included, at most 31 days), and only on one listing when `experienceId` is given. Seat counts are not changed. It is the same confirmation that saving a seat count with `PATCH /slots/{id}` makes, over a range of dates.
+         * @description Confirms that the seat counts are still right on many departures of your business at once, and only on one listing's when `experienceId` is given. Seat counts are not changed. It is the same confirmation that saving a seat count with `PATCH /slots/{id}` makes, over many departures.
+         *
+         *     **With no dates**, every departure that `departuresNotOnSale` and `departuresGoingOffSaleSoon` count on `GET /experiences`, however far ahead it leaves: off sale, or going off sale within a day, because nobody has confirmed its seats. Those counts have no end date, so this is the one call behind "Confirm all", and it clears both. Send `{}`, or only `experienceId` for one listing's.
+         *
+         *     **With `from` and `to`**, every open, upcoming, instant-book departure whose seats were set by hand, with a market day from `from` to `to` (both included, at most 31 days). Send both dates or neither: one without the other answers **400**.
          *
          *     Seats set by hand stop being offered to travellers once nobody has confirmed them for two days. A departure confirmed here goes back on sale straight away, unless something else keeps it off.
          *
@@ -1662,7 +1666,15 @@ export interface paths {
         get: operations["getOperatorExperience"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a draft nobody has seen
+         * @description Removes a **draft**, and only a draft. A listing is created the moment its first step is saved, not only once the builder finishes, so an operator who started one and changed their mind, or was only trying the app, is left with a listing they can never publish and cannot make go away. This is that way back.
+         *
+         *     Once a listing has been sent to us (`POST /experiences/{id}/submit`), this answers `409`: a reviewer or a traveller may already have seen it, so from there the only door is `POST /experiences/{id}/revisions` or `POST /experiences/{id}/withdraw`. A draft is seen by nobody, so this deletes it outright rather than marking it withdrawn.
+         *
+         *     OWNER, ADMIN or MANAGER only, the same as `PATCH` on this listing.
+         */
+        delete: operations["deleteListingDraft"];
         options?: never;
         head?: never;
         /**
@@ -2436,6 +2448,16 @@ export interface components {
              */
             meetingPointText?: string;
             meetingLandmark?: string;
+            /**
+             * Format: double
+             * @description A pin on the meeting point, additional to `meetingPoint` and `meetingLandmark` rather than a replacement for either. Sent together with `meetingLng`, both or neither. The column and the traveller-facing read have existed since the catalog was built; this is the first way to write it. Explicit `null` clears a pin already set; leaving the field out of the request, as with every other field here, leaves it unchanged.
+             */
+            meetingLat?: number | null;
+            /**
+             * Format: double
+             * @description The pin's longitude. See `meetingLat`.
+             */
+            meetingLng?: number | null;
             /** @description *material*. Documented as material since the endpoint existed, and not actually applied until now. */
             inclusions?: string[];
             /** @description *material*. As for `inclusions`. */
@@ -2672,6 +2694,16 @@ export interface components {
              * @example Blue gate beside the fuel pump
              */
             meetingLandmark?: string;
+            /**
+             * Format: double
+             * @description A pin on the meeting point, or null when none is set. See `meetingLat` on ListingEdit.
+             */
+            meetingLat?: number | null;
+            /**
+             * Format: double
+             * @description The pin's longitude, or null when none is set.
+             */
+            meetingLng?: number | null;
             inclusions?: string[];
             requirements?: string[];
             safetyNotes?: string;
@@ -2681,7 +2713,7 @@ export interface components {
              */
             screenerKey?: string;
             upcomingDepartures?: number;
-            /** @description Upcoming departures of this listing that are off sale only because nobody has confirmed their seats: seats set by hand on an instant-book departure stop being offered once nobody has confirmed them for two days. The same departures `GET /slots` reports with `notOnSaleReason: departure_seats_unconfirmed`. Always present, 0 when none. Add them up across listings for Home, and confirm them with `POST /slots/confirm-seats`. */
+            /** @description Upcoming departures of this listing that are off sale only because nobody has confirmed their seats: seats set by hand on an instant-book departure stop being offered once nobody has confirmed them for two days. The same departures `GET /slots` reports with `notOnSaleReason: departure_seats_unconfirmed`. Always present, 0 when none. Add them up across listings for Home. One `POST /slots/confirm-seats` with no dates confirms every departure this and `departuresGoingOffSaleSoon` count, however far ahead. */
             departuresNotOnSale?: number;
             /** @description Upcoming departures of this listing that are on sale now and will go off sale within 24 hours for the same reason, unless somebody confirms their seats. Always present, 0 when none. */
             departuresGoingOffSaleSoon?: number;
@@ -2781,7 +2813,7 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "account_suspended" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "departure_started" | "different_day" | "time_taken" | "not_withdrawn" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked" | "already_reopened" | "closure_started" | "already_cancelled" | "booking_ended" | "refund_already_raised" | "nothing_to_give_back" | "cash_already_returned" | "documents_unavailable" | "document_locked" | "upload_not_arrived" | "document_refused" | "upload_closed" | "not_settled" | "messages_closed" | "invitation_unavailable";
+                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "account_suspended" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "departure_started" | "different_day" | "time_taken" | "not_withdrawn" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked" | "already_reopened" | "closure_started" | "already_cancelled" | "booking_ended" | "refund_already_raised" | "nothing_to_give_back" | "cash_already_returned" | "documents_unavailable" | "document_locked" | "upload_not_arrived" | "document_refused" | "upload_closed" | "not_settled" | "messages_closed" | "invitation_unavailable" | "already_taken_back" | "counter_sales_below_zero";
                 /** @description Human-readable; safe to show. */
                 message: string;
                 /** @description Field-level messages, keyed by field name. */
@@ -3203,7 +3235,11 @@ export interface components {
         };
         ChangeRequest: {
             id?: string;
-            kind?: string;
+            /**
+             * @description What the business asked to change, one of the six kinds the database allows. `bank_account` is raised by `POST /change-requests/bank`, `profile` by `PUT /profile` and `logo` by `PUT /logo` once the account is LIVE. Nothing raises `contact`, `capacity` or `listing` yet; they are declared so a client has a case for every value it can be sent.
+             * @enum {string}
+             */
+            kind?: "bank_account" | "profile" | "logo" | "contact" | "capacity" | "listing";
             /**
              * @description `objection_window` → an owner or an admin can still stop it and no human has looked. `pending` → the window closed without objection and it is awaiting review. `cooling` → approved but not yet live, and still stoppable. `applied` → live.
              * @enum {string}
@@ -6122,7 +6158,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "application/json": {
                     /**
@@ -6132,14 +6168,14 @@ export interface operations {
                     experienceId?: string;
                     /**
                      * Format: date
-                     * @description The first market day, included.
+                     * @description The first market day, included. Sent with `to`, or not at all.
                      */
-                    from: string;
+                    from?: string;
                     /**
                      * Format: date
-                     * @description The last market day, included. At most 30 days after `from`.
+                     * @description The last market day, included. At most 30 days after `from`. Sent with `from`, or not at all.
                      */
-                    to: string;
+                    to?: string;
                 };
             };
         };
@@ -6151,7 +6187,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @description Departures whose seats were confirmed. 0 is a legitimate answer: nothing in that range needed it. */
+                        /** @description Departures whose seats were confirmed. 0 is a legitimate answer: nothing needed it. */
                         confirmed: number;
                     };
                 };
@@ -6904,6 +6940,38 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    deleteListingDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `conflict` — either the listing is no longer a draft (change it through `POST /experiences/{id}/revisions` instead), or, in principle only since a draft cannot be booked, it carries activity that stops it being deleted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     saveListingDraft: {

@@ -324,9 +324,10 @@ function ConfirmSeatsRow({
   return (
     <li className={panelClass("alert", "p-4")}>
       {/*
-        No listing named: Home confirms every listing's departures in the next
-        30 days (yuvoy-operator#94 item 2). The window is decided on the
-        server, never taken from this form.
+        No listing named: Home confirms every listing's (yuvoy-operator#94
+        item 2), everything the counts include, in one call with no dates
+        (yuvoy-api#241). Any dates are the server's to decide, never this
+        form's: a year of windows only against an API from before #244.
       */}
       <form
         action={action}

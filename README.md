@@ -492,6 +492,25 @@ stronger.
 
 Each was verified by breaking it on purpose and watching the check fail.
 
+## The meeting-point map
+
+The pin on a listing's meeting point (yuvoy-operator#113) draws a MapLibre map on
+OpenFreeMap tiles and searches places with Photon, both from the browser, with no
+API key. Their two origins are in `src/lib/map/hosts.ts`, which the CSP reads.
+
+MapLibre's web worker is **committed** under `public/vendor/maplibre/<version>/`,
+because once Next bundles MapLibre it can no longer find the worker on its own.
+After changing the `maplibre-gl` version, run:
+
+```bash
+node scripts/vendor-maplibre.mjs
+```
+
+`pnpm qa` fails until the committed worker matches the installed package byte for
+byte. The map is never the only way to set a pin: search, a pasted maps link and
+the device's location all work without it, which is also how the e2e suite sets
+pins, with both outside hosts blocked.
+
 ## The contract
 
 `contracts/operator-openapi.yaml` is a **byte-exact mirror** of `yuvoy-api`, pinned by

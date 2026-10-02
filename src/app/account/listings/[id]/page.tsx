@@ -7,6 +7,7 @@ import { OperatorApiError } from "@/lib/api/errors";
 import {
   describeRejection,
   isDraft as draftListing,
+  isUnsentDraft,
 } from "@/lib/services/listings";
 import { listingLabel, posterFor } from "@/lib/services/home";
 import { missingCount } from "@/lib/services/draft";
@@ -18,6 +19,7 @@ import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
 import { SubmitButton } from "./submit-button";
 import { DraftReadback } from "./draft-readback";
+import { DiscardDraft } from "./discard-draft";
 
 export const metadata: Metadata = { title: "Listing" };
 export const dynamic = "force-dynamic";
@@ -231,6 +233,18 @@ export default async function ListingPage({
             listing.destination,
           )}
         />
+      ) : null}
+
+      {/*
+        The way back from a draft nobody has seen (yuvoy-operator#112). Under
+        the read-back and away from Edit and Send, as quiet text: the same
+        `canAct` as Edit, since `DELETE /experiences/{id}` is "OWNER, ADMIN or
+        MANAGER only, the same as `PATCH`", and it is not a write a suspended
+        business may still make. Never on one that was ever sent: that is a
+        `409`, and a sent-back draft is one.
+      */}
+      {canAct && isUnsentDraft(listing) ? (
+        <DiscardDraft experienceId={id} title={listing.title} />
       ) : null}
 
       {/*

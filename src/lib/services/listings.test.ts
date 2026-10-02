@@ -9,6 +9,7 @@ import {
   orderListings,
   type OperatorExperience,
   isDraft,
+  isUnsentDraft,
 } from "./listings";
 
 /*
@@ -421,5 +422,58 @@ describe("which listing is a draft", () => {
     );
     expect(isDraft({ status: "changes_rejected" })).toBe(false);
     expect(isDraft({ status: "live" })).toBe(false);
+  });
+});
+
+/*
+  yuvoy-operator#112. Discarding is offered only where `DELETE` answers 204:
+  "once a listing has been sent to us, this answers 409", so every sign of a
+  send keeps the control off the screen.
+*/
+describe("which draft can be discarded", () => {
+  it("is a draft that was never sent", () => {
+    expect(isUnsentDraft({ publicationState: "draft", status: "draft" })).toBe(
+      true,
+    );
+    // An API that sends no publication state says it with the status.
+    expect(isUnsentDraft({ status: "draft" })).toBe(true);
+  });
+
+  it("is never one that was sent, even after it came back", () => {
+    // `review` is "absent if nothing was ever sent".
+    expect(
+      isUnsentDraft({
+        publicationState: "draft",
+        status: "draft",
+        review: { state: "withdrawn" },
+      }),
+    ).toBe(false);
+    // Sent back by a reviewer: a draft again, and still not discardable.
+    expect(
+      isUnsentDraft({
+        publicationState: "draft",
+        status: "changes_rejected",
+        sentBack: { at: "2026-09-29T08:00:00Z" },
+      }),
+    ).toBe(false);
+    expect(
+      isUnsentDraft({
+        publicationState: "draft",
+        status: "draft",
+        sentBack: { at: "2026-09-29T08:00:00Z" },
+      }),
+    ).toBe(false);
+    expect(
+      isUnsentDraft({ publicationState: "in_review", status: "in_review" }),
+    ).toBe(false);
+  });
+
+  it("is never a listing past draft", () => {
+    for (const publicationState of ["published", "withdrawn", "in_review"]) {
+      expect(isUnsentDraft({ publicationState, status: "draft" })).toBe(false);
+    }
+    expect(isUnsentDraft({ status: "live" })).toBe(false);
+    // Nothing known is nothing offered.
+    expect(isUnsentDraft({})).toBe(false);
   });
 });
