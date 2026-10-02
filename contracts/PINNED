@@ -290,6 +290,50 @@ path=contracts/operator-openapi.yaml
 #
 # `git ls-remote` read master as c363196060b1 immediately before pinning.
 
-ref=c363196060b190ddd8ee24b3ec9a6beafcde7dd0
+# 2 Oct 2026. Forward from c363196060b1 to fb9245eb118a, yuvoy-api #242 to
+# #249. Nothing this portal reads is removed.
+#
+# Removals, read by set difference as before:
+#   - No path, no operation and no schema disappears. One operation is new,
+#     `DELETE /experiences/{id}` (`deleteListingDraft`, #249).
+#   - `POST /slots/confirm-seats` drops `required: [from, to]` and its body
+#     becomes optional (yuvoy-api#241, #244). Nothing is newly required.
+#
+# Consumed in this change:
+#   - `ChangeRequest.kind` is an enum of the six kinds (yuvoy-api#240, #243).
+#     `ChangeKind` is now the contract's own type, held to the portal's list
+#     both ways; a row is still narrowed where it enters, since an enum says
+#     what the API will send, not what a deployed one does.
+#   - `already_taken_back` and `counter_sales_below_zero` are in the error
+#     code enum (#243). The `UNDECLARED_CODES` entry in `scripts/qa.mjs`
+#     failed the run against this document, as built, and is removed.
+#
+# Consumed in the changes that follow this pin:
+#   - `POST /slots/confirm-seats` with no dates confirms every departure Home
+#     counts, however far ahead (#244). "Confirm all" sends one call instead
+#     of twelve windows of 31 days.
+#   - `DELETE /experiences/{id}`, discarding a draft (yuvoy-operator#112).
+#   - `meetingLat` and `meetingLng` on `ListingEdit` and `OperatorExperience`,
+#     a pin on the meeting point (yuvoy-operator#113).
+#
+# Merged is not deployed. The API's deploy workflow has failed on every push
+# since 24 Sep and deploys are run by hand, so whether api.yuvoy.in runs #244
+# and #249 is unknown. Each change above degrades to what the portal does
+# today against an API without them, and says how in its own comment.
+#
+# Read and deliberately not consumed:
+#   - #242 changes no line of this document. The API's "call us" sentences
+#     now name +91 81216 57657, the published line the portal already shows.
+#     `onlyOurNumber` in `lib/account/review.ts` lets that number through and
+#     holds any other back, so a rejected change's reason now shows; it stays
+#     for any row or deploy that still carries the old number.
+#   - `details_locked` is documented as returned by no route (#245, whose
+#     only change to this document it is). The portal stopped branching on
+#     it at the 23 Sep pin.
+#   - #246 and #247 change no line of this document.
+#
+# `git ls-remote` read master as fb9245eb118a immediately before pinning.
+
+ref=fb9245eb118ac01156d1506b5f2dac951d7ae1f7
 branch=master
-pinned_on=2026-09-24
+pinned_on=2026-10-02

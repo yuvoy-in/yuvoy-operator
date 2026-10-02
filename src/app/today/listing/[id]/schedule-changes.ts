@@ -1,3 +1,5 @@
+import { sentence } from "@/lib/format/sentence";
+
 /**
  * What saving a weekly schedule would close (the audit before release, O2).
  *
@@ -64,4 +66,30 @@ export function closingSentence(removed: readonly ScheduleRow[]): string {
       ? (times[0] ?? "")
       : `${times.slice(0, -1).join(", ")} and ${times[times.length - 1]}`;
   return `Departures it made on ${list} stop taking new bookings. Bookings already on them stay.`;
+}
+
+/**
+ * The API's refusal of single rows, said about the rows it names.
+ *
+ * A `400` carries `details` keyed by where each problem is, "like
+ * `weekly[2].startTime`, and every entry is checked, so one answer names every
+ * bad row". The picker does not draw rows, so an index means nothing on the
+ * screen: each is said as the day and time it was sent as, "Tuesday at 09:00:
+ * Seats are 1 to 200." A key that names no row sent is said as it came.
+ */
+export function rowProblemSentences(
+  details: unknown,
+  rows: readonly ScheduleRow[],
+): string[] {
+  if (!details || typeof details !== "object") return [];
+  return Object.entries(details as Record<string, unknown>).map(
+    ([key, value]) => {
+      const said = sentence(String(value));
+      const index = /^weekly\[(\d+)\]/.exec(key)?.[1];
+      const row = index === undefined ? undefined : rows[Number(index)];
+      if (!row) return said;
+      const day = WEEKDAYS[row.weekday] ?? "That day";
+      return `${day} at ${row.startTime}: ${said}`;
+    },
+  );
 }

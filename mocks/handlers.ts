@@ -4356,7 +4356,20 @@ export const handlers = [
       portal ship without ever rendering a row problem.
     */
     const details: Record<string, string> = {};
+    /*
+      "Every weekday and time the listing runs, each at most once." A second
+      row at a weekday and time already sent is refused on that row, as every
+      other row problem is: a mock that took it would let a form ship that can
+      send a week the API refuses.
+    */
+    const sent = new Set<string>();
     weekly.forEach((row, i) => {
+      const slot = `${row.weekday}|${row.startTime}`;
+      if (sent.has(slot)) {
+        details[`weekly[${i}].startTime`] =
+          "That weekday already leaves at this time.";
+      }
+      sent.add(slot);
       if (
         !Number.isInteger(row.weekday) ||
         (row.weekday ?? -1) < 0 ||
@@ -4391,11 +4404,17 @@ export const handlers = [
     const before = listing.schedule?.weekly.length ?? 0;
     listing.schedule = {
       repeatsWeekly: weekly.length > 0,
-      weekly: weekly.map((row) => ({
-        weekday: row.weekday!,
-        startTime: row.startTime!,
-        seats: row.seats!,
-      })),
+      // Read back "by weekday from Sunday, then by time", as the API orders it.
+      weekly: weekly
+        .map((row) => ({
+          weekday: row.weekday!,
+          startTime: row.startTime!,
+          seats: row.seats!,
+        }))
+        .sort(
+          (a, b) =>
+            a.weekday - b.weekday || a.startTime.localeCompare(b.startTime),
+        ),
     };
 
     return HttpResponse.json({
@@ -4422,35 +4441,66 @@ export const handlers = [
    */
   /**
    * Confirm the seats on many departures at once (yuvoy-api#211), as the API
-   * answers it: OWNER, ADMIN or MANAGER; market days `from` to `to`, both
-   * included, at most 30 days apart; one listing when `experienceId` is sent,
-   * and another business's listing answers 404. Safe to send twice: a second
-   * call confirms nothing and says 0.
+   * answers it since #244 (yuvoy-api#241): OWNER, ADMIN or MANAGER; one
+   * listing when `experienceId` is sent, and another business's listing
+   * answers 404. Two forms, told apart the way the handler tells them apart:
+   *
+   *   - **No dates** (no body, `{}`, or only `experienceId`): every departure
+   *     `departuresNotOnSale` counts, however far ahead. The one call behind
+   *     "Confirm all".
+   *   - **`from` and `to`**: market days, both included, at most 30 days
+   *     apart, as before.
+   *
+   * One date without the other is neither form and answers 400, with the
+   * handler's sentence and a detail naming the missing one. Safe to send
+   * twice: a second call confirms nothing and says 0.
+   *
+   * The API from before #244 is not modelled here: the portal's fallback for
+   * it is driven by the unit tests (`confirm-seats.test.ts`).
    */
   http.post(url("/slots/confirm-seats"), async ({ request }) => {
     const denied = requireManager(request, "STAFF cannot confirm seats.");
     if (denied) return denied;
 
-    const body = (await request.json().catch(() => ({}))) as {
+    const body = ((await request.json().catch(() => null)) ?? {}) as {
       from?: unknown;
       to?: unknown;
       experienceId?: unknown;
     };
+    // Absent, null and "" are all "not sent", as Go's zero value reads them.
+    const sent = (v: unknown) => v !== undefined && v !== null && v !== "";
+    if (sent(body.from) !== sent(body.to)) {
+      const [missing, other] = sent(body.from)
+        ? ["to", "from"]
+        : ["from", "to"];
+      return envelope(
+        "invalid_input",
+        "send both dates, or neither to confirm every departure that needs it",
+        400,
+        { [missing]: `needed with ${other}` },
+      );
+    }
+    const ranged = sent(body.from);
     const isDay = (v: unknown): v is string =>
       typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
-    if (!isDay(body.from) || !isDay(body.to) || body.to < body.from) {
+    if (
+      ranged &&
+      (!isDay(body.from) || !isDay(body.to) || body.to < body.from)
+    ) {
       return envelope(
         "invalid_input",
         "from and to must be dates, from first",
         400,
       );
     }
-    const span =
-      (Date.parse(`${body.to}T00:00:00Z`) -
-        Date.parse(`${body.from}T00:00:00Z`)) /
-      86_400_000;
-    if (span > 30) {
-      return envelope("invalid_input", "at most 31 days at a time", 400);
+    if (ranged) {
+      const span =
+        (Date.parse(`${body.to}T00:00:00Z`) -
+          Date.parse(`${body.from}T00:00:00Z`)) /
+        86_400_000;
+      if (span > 30) {
+        return envelope("invalid_input", "at most 31 days at a time", 400);
+      }
     }
     const experienceId =
       typeof body.experienceId === "string" ? body.experienceId : "";
@@ -4459,18 +4509,22 @@ export const handlers = [
     }
 
     /*
-      The API counts every departure it re-stamps: each open, future one in
-      the window whose seats were set by hand, waiting or not. The mock knows
-      only which were waiting, so it counts those, a smaller number on the
-      same screen.
+      With dates, the API counts every departure it re-stamps: each open,
+      future one in the window whose seats were set by hand, waiting or not.
+      The mock knows only which were waiting, so it counts those, a smaller
+      number on the same screen. With no dates the two agree: the API
+      confirms exactly what the counts include, which is what
+      `unconfirmedDeparturesOf` counts here.
     */
     let confirmed = 0;
     for (const slot of allSlots()) {
       if (experienceId && slot.experienceId !== experienceId) continue;
       if (slotStatusOf(slot) !== "open") continue;
       if (Date.parse(slot.startsAt) <= Date.now()) continue;
-      const day = slotDay(slot);
-      if (day < body.from || day > body.to) continue;
+      if (ranged) {
+        const day = slotDay(slot);
+        if (day < String(body.from) || day > String(body.to)) continue;
+      }
       if (!seatsAwaitingConfirmation(slot)) continue;
       seatsConfirmed[slot.id] = true;
       confirmed += 1;
@@ -4661,6 +4715,49 @@ export const handlers = [
       typeof found.unitPricePaise === "number" && found.unitPricePaise > 0;
 
     return HttpResponse.json(found);
+  }),
+
+  /**
+   * Discard a draft nobody has seen (yuvoy-operator#112, yuvoy-api#249), as
+   * the contract has it: OWNER, ADMIN or MANAGER, "the same as `PATCH` on this
+   * listing"; `204` and it is gone, with the departures saved on it; `404` for
+   * one that is not here; and `409 conflict` "once a listing has been sent to
+   * us", which is a `review` on the row (`POST .../submit` writes one) or a
+   * listing that is past draft. The words are the handler's (`DeleteDraft` at
+   * fb9245e).
+   *
+   * Refused while suspended, like `PATCH`: it is not on the list of writes a
+   * suspended business may still make.
+   */
+  http.delete(url("/experiences/:id"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner, admin or manager can delete a listing",
+        403,
+      );
+    }
+
+    const id = String(params.id);
+    const found = mockExperiences.find((e) => e.id === id);
+    if (!found) return envelope("not_found", "no such listing", 404);
+    if ((found.publicationState ?? found.status) !== "draft" || found.review) {
+      return envelope(
+        "conflict",
+        "only a draft can be deleted. This listing has already been sent to us",
+        409,
+      );
+    }
+
+    mockExperiences = mockExperiences.filter((e) => e.id !== id);
+    // `availability_slots` cascade from `experiences`, and so do its questions.
+    createdSlots = createdSlots.filter((slot) => slot.experienceId !== id);
+    delete listingQuestions[id];
+    return new HttpResponse(null, { status: 204 });
   }),
 
   /**

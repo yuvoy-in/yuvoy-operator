@@ -78,6 +78,31 @@ test("an active account says so, and gets out of the way", async ({ page }) => {
   ).toBeVisible();
 
   /*
+    The + says what it adds (yuvoy-operator#109). It read "Add" to a screen
+    reader and nothing at all on screen; it now shows the word, and its name
+    starts with that word and says what is behind it. Still a 44px target.
+  */
+  const add = page.getByRole("button", { name: "Add a listing or a reel" });
+  await expect(add).toHaveText("Add");
+  expect((await add.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await add.click();
+  const choices = page.getByRole("dialog", { name: "Add a listing or a reel" });
+  await expect(
+    choices.getByRole("button", { name: "Add a listing" }),
+  ).toBeVisible();
+  /*
+    The choices open below the button and leave it reachable: they used to
+    cover it, and Settings, on a phone, so a second tap could not land and
+    nothing else closed them. Escape closes them too.
+  */
+  await add.click();
+  await expect(choices).toBeHidden();
+  await add.click();
+  await page.keyboard.press("Escape");
+  await expect(choices).toBeHidden();
+  await expect(add).toBeFocused();
+
+  /*
     The status, the documents and what is outstanding came off the profile in
     #58 item 10 and are on Verification together. The profile keeps the name,
     the logo, the three numbers and what the business sells.

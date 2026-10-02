@@ -3,7 +3,7 @@ import type { components } from "@/lib/api/schema.gen";
 /**
  * What a change request is about, in the API's own words.
  *
- * `ChangeRequest.kind` is a bare `string` in the contract, with no enum, and
+ * `ChangeRequest.kind` was a bare `string` in the contract, with no enum, and
  * when Payout details was built (O4, 1 Sep 2026) this portal guessed the bank's
  * as `bank`. The API writes `bank_account`. So for three weeks Payout details
  * found no bank change at all: not the one in flight, whose Stop exists to catch
@@ -15,12 +15,24 @@ import type { components } from "@/lib/api/schema.gen";
  * yuvoy-api migration 0064). `contact`, `capacity` and `listing` are declared
  * there and written by nothing today.
  *
- * The kind is narrowed where the response enters (`getChangeRequests`), and
- * every comparison is against this type, so a hand-typed "bank" is a type error
+ * Since yuvoy-api#240 (#243, pinned 2 Oct 2026) the contract declares the same
+ * six as an enum, so `ChangeKind` is the contract's own type rather than a copy,
+ * and the list below is held to it both ways: `satisfies` refuses a kind the
+ * contract does not have, and `change-kind.test.ts` refuses one it has that is
+ * missing here.
+ *
+ * The kind is still narrowed where the response enters (`getChangeRequests`).
+ * An enum says what the API WILL send, never what a deployed one does send
+ * (yuvoy-api#126), so a kind this list does not know arrives as `other`: kept,
+ * so nothing is dropped, and never mistaken for one this portal acts on. Every
+ * comparison is against this type, so a hand-typed "bank" is a type error
  * ("This comparison appears to be unintentional") rather than a screen that
- * quietly shows nothing. A kind this list does not know arrives as `other`:
- * kept, so nothing is dropped, and never mistaken for one this portal acts on.
+ * quietly shows nothing.
  */
+type ApiChangeRequest = components["schemas"]["ChangeRequest"];
+
+export type ChangeKind = NonNullable<ApiChangeRequest["kind"]>;
+
 export const CHANGE_KINDS = [
   "bank_account",
   "profile",
@@ -28,19 +40,18 @@ export const CHANGE_KINDS = [
   "contact",
   "capacity",
   "listing",
-] as const;
-
-export type ChangeKind = (typeof CHANGE_KINDS)[number];
+] as const satisfies readonly ChangeKind[];
 
 /** Where the money goes: OWNER to raise, OWNER or ADMIN to stop, two clocks. */
 export const BANK_CHANGE = "bank_account" satisfies ChangeKind;
-
-type ApiChangeRequest = components["schemas"]["ChangeRequest"];
 
 /** A change request as this portal reads it: its `kind` narrowed on the way in. */
 export type ChangeRequest = Omit<ApiChangeRequest, "kind"> & {
   kind: ChangeKind | "other";
 };
+
+/** A row as it may actually arrive: any string where the enum is declared. */
+type WireChangeRequest = Omit<ApiChangeRequest, "kind"> & { kind?: string };
 
 export function toChangeKind(raw: unknown): ChangeKind | "other" {
   return typeof raw === "string" &&
@@ -49,6 +60,6 @@ export function toChangeKind(raw: unknown): ChangeKind | "other" {
     : "other";
 }
 
-export function toChangeRequest(raw: ApiChangeRequest): ChangeRequest {
+export function toChangeRequest(raw: WireChangeRequest): ChangeRequest {
   return { ...raw, kind: toChangeKind(raw.kind) };
 }

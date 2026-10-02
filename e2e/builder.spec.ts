@@ -217,6 +217,110 @@ test("a step that is refused stays where it is and says why", async ({
   await expect(page).toHaveURL(/step=selling/);
 });
 
+test("Basics reads as labels and boxes, each reason one tap away", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#110: "This need trimming. It's confusing." Required is said
+    beside the three the save refuses without, one example stays under the
+    name, and the reasons are folded rather than deleted.
+  */
+  await signIn(page);
+  await page.goto("/account/listings/new");
+  // The activity picker, and its reason, are drawn once there is a category.
+  await page.getByLabel("Category", { exact: true }).selectOption("adventure");
+
+  await expect(page.getByText("Required", { exact: true })).toHaveCount(3);
+  await expect(
+    page.getByLabel("Name", { exact: true }),
+  ).toHaveAccessibleDescription("For example, “Try-dive at Nemo Reef”.");
+
+  const reason = page.getByText(/decides which documents we need/);
+  await expect(reason).toBeHidden();
+  await page
+    .locator("details")
+    .filter({ has: reason })
+    .getByText("Why?")
+    .click();
+  await expect(reason).toBeVisible();
+});
+
+test("the Schedule step picks the days, and sends the week in one save", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#111: "Add a day" seven times, with nothing carried from one
+    row to the next, became seven chips, one time and one seat count for every
+    day ticked, in the one `PUT` the API always took.
+  */
+  const title = unique("Week dive");
+  await signIn(page);
+  const id = await startDraft(page, title);
+  await page.goto(`/account/listings/${id}/edit?step=schedule`);
+
+  for (const day of ["Monday", "Wednesday", "Friday"]) {
+    const chip = page.getByRole("button", { name: day, exact: true });
+    await chip.click();
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
+  }
+  await page.getByLabel("Leaves at", { exact: true }).fill("07:30");
+  await page.getByLabel("Seats", { exact: true }).fill("10");
+  await page.getByRole("button", { name: "Save the schedule" }).click();
+
+  await expect(page.getByText("The weekly schedule is saved")).toBeVisible();
+  await expect(page.getByText("3 days a week, from now on.")).toBeVisible();
+});
+
+test("a draft nobody has seen can be discarded, and its tile goes with it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#112. A draft exists from the moment step one is saved, so
+    one started by mistake had no way back. Its own fresh draft, so no other
+    test loses a fixture to it.
+  */
+  const title = unique("Throwaway");
+  await signIn(page);
+  const id = await startDraft(page, title);
+
+  await page.goto(`/account/listings/${id}`);
+  await page.getByRole("button", { name: "Discard this draft" }).click();
+  // The question takes focus, and the loud button is inside it.
+  await expect(page.getByText(`Discard “${title}”?`)).toBeFocused();
+  await page.getByRole("button", { name: "Discard the draft" }).click();
+
+  // Back on Business, which re-read without it.
+  await page.waitForURL(/\/account$/);
+  await expect(page.getByRole("link", { name: new RegExp(title) })).toHaveCount(
+    0,
+  );
+  // And it is gone, not hidden: its own address finds nothing.
+  await page.goto(`/account/listings/${id}`);
+  await expect(
+    page.getByRole("heading", { name: "There is nothing at that address" }),
+  ).toBeVisible();
+});
+
+test("a draft that was sent, or a staff login, is offered no discard", async ({
+  page,
+}) => {
+  // `exp_night` was sent and came back: a draft again, and a 409 to delete.
+  await signIn(page);
+  await page.goto("/account/listings/exp_night");
+  await expect(page.getByRole("link", { name: "Edit" }).first()).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Discard this draft" }),
+  ).toHaveCount(0);
+
+  // A staff login cannot change a draft, so it cannot discard one either.
+  await page.context().clearCookies();
+  await signIn(page, "+919000000103");
+  await page.goto("/account/listings/exp_boat");
+  await expect(
+    page.getByRole("button", { name: "Discard this draft" }),
+  ).toHaveCount(0);
+});
+
 test("a listing that is no longer a draft is not built, it is amended", async ({
   page,
 }) => {

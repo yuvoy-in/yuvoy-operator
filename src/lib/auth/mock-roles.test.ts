@@ -81,6 +81,12 @@ const GATED: Array<[string, string, unknown?]> = [
     well as in the contract.
   */
   ["POST", "/logo/upload-intents"],
+  /*
+    Discarding a draft is "OWNER, ADMIN or MANAGER only, the same as `PATCH`
+    on this listing" (yuvoy-operator#112). Refused before the listing is even
+    looked up, so a staff phone cannot learn which drafts exist.
+  */
+  ["DELETE", "/experiences/exp_boat"],
 ];
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -195,6 +201,64 @@ describe("the mock's calendar and its patience", () => {
     expect(throttled.status).toBe(429);
     const body = (await throttled.json()) as { error: { code: string } };
     expect(body.error.code).toBe("rate_limited");
+  });
+
+  it("confirms seats with no dates as the API does since yuvoy-api#244", async () => {
+    /*
+      yuvoy-api#241. No dates is every departure the counts include, however
+      far ahead: the one call behind "Confirm all". Half a range is neither
+      form and is refused naming the missing date, as the handler does.
+    */
+    const owner = await signIn(OWNER);
+
+    const half = await call(owner, "POST", "/slots/confirm-seats", {
+      from: "2030-01-01",
+    });
+    expect(half.status).toBe(400);
+    const refusal = (await half.json()) as {
+      error: { code: string; details?: unknown };
+    };
+    expect(refusal.error.code).toBe("invalid_input");
+    expect(refusal.error.details).toEqual({ to: "needed with from" });
+
+    // One listing's, then everybody else's, then nothing left to confirm.
+    for (const [body, confirmed] of [
+      [{ experienceId: "exp_nofootage" }, 1],
+      [{}, 1],
+      [{}, 0],
+    ] as const) {
+      const res = await call(owner, "POST", "/slots/confirm-seats", body);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ confirmed });
+    }
+  });
+});
+
+describe("discarding a draft, as the API does since yuvoy-api#249", () => {
+  it("deletes one nobody has seen, refuses one that was sent, and then has neither", async () => {
+    const owner = await signIn(OWNER);
+
+    // `exp_boat` was never sent: no `review`, no `sentBack`.
+    const gone = await call(owner, "DELETE", "/experiences/exp_boat");
+    expect(gone.status).toBe(204);
+    expect(
+      (await call(owner, "GET", "/experiences/exp_boat/workspace")).status,
+    ).toBe(404);
+    expect((await call(owner, "DELETE", "/experiences/exp_boat")).status).toBe(
+      404,
+    );
+
+    // `exp_night` was sent and came back: a draft again, and still a 409.
+    const sent = await call(owner, "DELETE", "/experiences/exp_night");
+    expect(sent.status).toBe(409);
+    const refusal = (await sent.json()) as {
+      error: { code: string; message: string };
+    };
+    expect(refusal.error.code).toBe("conflict");
+    expect(refusal.error.message).toMatch(/already been sent to us/);
+    expect(
+      (await call(owner, "GET", "/experiences/exp_night/workspace")).status,
+    ).toBe(200);
   });
 });
 
