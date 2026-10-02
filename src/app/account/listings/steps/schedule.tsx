@@ -5,7 +5,9 @@ import { Panel } from "@/components/ui/panel";
 /**
  * Step 3 — the week this listing runs.
  *
- * `ScheduleForm` is the one the listing hub uses (#56 item 8), unchanged. It
+ * `ScheduleForm` is the one the listing hub uses (#56 item 8), so the weekday
+ * picker (yuvoy-operator#111: days as chips, one time and seats for all of
+ * them, the days that differ underneath) is the same in both places. It
  * already carries the dangerous half: `PUT /experiences/{id}/schedule` replaces
  * what is there, so clearing it closes every departure it made, and the form
  * asks before doing that. A second schedule editor would be a second place for

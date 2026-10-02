@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const saveSchedule = vi.fn();
 
@@ -11,15 +12,11 @@ const { ScheduleForm } = await import("./schedule-form");
 
 beforeEach(() => saveSchedule.mockReset().mockResolvedValue({}));
 
+type Row = { weekday: number; startTime: string; seats: number };
 const TUESDAY = { weekday: 2, startTime: "09:00", seats: 8 };
 const FRIDAY = { weekday: 5, startTime: "14:30", seats: 6 };
 
-function form(
-  over: {
-    weekly?: { weekday: number; startTime: string; seats: number }[];
-    repeatsWeekly?: boolean;
-  } = {},
-) {
+function form(over: { weekly?: Row[]; repeatsWeekly?: boolean } = {}) {
   return render(
     <ScheduleForm
       experienceId="exp_snorkel"
@@ -31,19 +28,31 @@ function form(
 
 const save = () => screen.queryByRole("button", { name: "Save the schedule" });
 const undo = () => screen.queryByRole("button", { name: "Undo changes" });
+const chip = (name: string) => screen.getByRole("button", { name });
+const usualTime = () => screen.getAllByLabelText("Leaves at")[0];
+const usualSeats = () => screen.getAllByLabelText("Seats")[0];
+const sent = (): Row[] =>
+  JSON.parse(String((saveSchedule.mock.calls[0][1] as FormData).get("weekly")));
 
 /*
-  The weekly schedule on the listing hub (yuvoy-operator#85 s8). "Save the
-  schedule" was the loudest button on the screen, above the departures, with
-  nothing to save: the first dark button committed a form nobody had filled
-  in. It is drawn once the rows differ from what the listing has.
+  The weekly schedule, picked (yuvoy-operator#111): days as chips, a time and
+  seats for all of them, and the days that differ underneath. The fixture
+  reads back as Tuesday on the usual 09:00 with 8 seats, and Friday with its
+  own 14:30 and 6.
 */
 describe("a schedule nobody has touched", () => {
-  it("reads the listing's own rows back, and offers nothing to commit", () => {
+  it("reads the listing's own week back, and offers nothing to commit", () => {
     form();
 
-    expect(screen.getAllByLabelText("Day")[0]).toHaveValue("2");
-    expect(screen.getAllByLabelText("Time")[1]).toHaveValue("14:30");
+    expect(chip("Tuesday")).toHaveAttribute("aria-pressed", "true");
+    expect(chip("Friday")).toHaveAttribute("aria-pressed", "true");
+    expect(chip("Monday")).toHaveAttribute("aria-pressed", "false");
+    expect(usualTime()).toHaveValue("09:00");
+    expect(usualSeats()).toHaveValue(8);
+    // Friday differs, so what it has is on screen rather than folded away.
+    expect(screen.getByLabelText("Leaves at, Friday")).toHaveValue("14:30");
+    expect(screen.getByLabelText("Seats, Friday")).toHaveValue(6);
+
     expect(save()).toBeNull();
     expect(undo()).toBeNull();
     expect(
@@ -55,71 +64,203 @@ describe("a schedule nobody has touched", () => {
     form({ weekly: [], repeatsWeekly: false });
 
     expect(screen.getByText("No weekly schedule.")).toBeInTheDocument();
+    for (const day of ["Monday", "Sunday"]) {
+      expect(chip(day)).toHaveAttribute("aria-pressed", "false");
+    }
     expect(save()).toBeNull();
     expect(undo()).toBeNull();
+  });
+
+  it("keeps a second departure on a day that already has one", () => {
+    const SUNDAY_EARLY = { weekday: 0, startTime: "07:00", seats: 8 };
+    const SUNDAY_LATE = { weekday: 0, startTime: "15:00", seats: 8 };
+    form({ weekly: [SUNDAY_EARLY, SUNDAY_LATE, TUESDAY] });
+
+    // Sunday has two, and both are read back as Sunday's own.
+    const sunday = screen.getAllByLabelText("Leaves at, Sunday");
+    expect(sunday.map((time) => (time as HTMLInputElement).value)).toEqual([
+      "07:00",
+      "15:00",
+    ]);
+    expect(save()).toBeNull();
+
+    // Another day ticked: both of Sunday's go with it, untouched.
+    fireEvent.click(chip("Monday"));
+    fireEvent.click(save() as HTMLElement);
+    expect(sent()).toEqual([
+      SUNDAY_EARLY,
+      SUNDAY_LATE,
+      { ...TUESDAY, weekday: 1 },
+      TUESDAY,
+    ]);
+  });
+});
+
+describe("the days", () => {
+  it("are toggle buttons a keyboard can work", async () => {
+    const user = userEvent.setup();
+    form({ weekly: [], repeatsWeekly: false });
+
+    chip("Monday").focus();
+    await user.keyboard(" ");
+    expect(chip("Monday")).toHaveAttribute("aria-pressed", "true");
+    await user.keyboard("{Enter}");
+    expect(chip("Monday")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("show their word and are named the whole day", () => {
+    form();
+    // "Mon" on screen, "Monday" by name: the name starts with the word.
+    expect(chip("Monday")).toHaveTextContent(/^Mon$/);
+  });
+
+  it("are all ticked by Every day, which then has nothing left to do", () => {
+    form({ weekly: [], repeatsWeekly: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "Every day" }));
+
+    for (const day of [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ]) {
+      expect(chip(day)).toHaveAttribute("aria-pressed", "true");
+    }
+    expect(screen.queryByRole("button", { name: "Every day" })).toBeNull();
   });
 });
 
 describe("a schedule that has been changed", () => {
-  it("draws Save once a row differs, beside a way to put it back", () => {
+  it("draws Save once the week differs, beside a way to put it back", () => {
     form();
 
-    fireEvent.change(screen.getAllByLabelText("Seats")[0], {
-      target: { value: "10" },
-    });
+    fireEvent.change(usualSeats(), { target: { value: "10" } });
     expect(save()).toBeVisible();
     expect(undo()).toBeVisible();
 
     fireEvent.click(undo() as HTMLElement);
-    expect(screen.getAllByLabelText("Seats")[0]).toHaveValue(TUESDAY.seats);
+    expect(usualSeats()).toHaveValue(TUESDAY.seats);
     expect(save()).toBeNull();
     expect(undo()).toBeNull();
   });
 
-  it("counts an added day, and a removed one, as a change", () => {
+  it("counts a ticked day, and unticking it again, as a change and then none", () => {
     form({ weekly: [], repeatsWeekly: false });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add a day" }));
+    fireEvent.click(chip("Monday"));
     expect(save()).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: /^Remove/ }));
+    fireEvent.click(chip("Monday"));
     expect(save()).toBeNull();
     expect(screen.getByText("No weekly schedule.")).toBeInTheDocument();
   });
 
-  it("sends the whole schedule as one field, in order", () => {
-    form();
+  it("applies one time and one seat count to every day ticked, in one body", () => {
+    form({ weekly: [], repeatsWeekly: false });
 
-    fireEvent.change(screen.getAllByLabelText("Time")[0], {
-      target: { value: "07:15" },
-    });
+    for (const day of ["Monday", "Wednesday", "Friday"]) {
+      fireEvent.click(chip(day));
+    }
+    fireEvent.change(usualTime(), { target: { value: "07:30" } });
+    fireEvent.change(usualSeats(), { target: { value: "10" } });
     fireEvent.click(save() as HTMLElement);
-    // Tuesday 09:00 went, so it asks first (below); the answer sends.
-    fireEvent.click(
-      screen.getByRole("button", { name: "Save and close them" }),
-    );
 
-    const sent = saveSchedule.mock.calls[0][1] as FormData;
-    expect(sent.get("experienceId")).toBe("exp_snorkel");
-    expect(JSON.parse(String(sent.get("weekly")))).toEqual([
-      { ...TUESDAY, startTime: "07:15" },
-      FRIDAY,
+    const sentForm = saveSchedule.mock.calls[0][1] as FormData;
+    expect(sentForm.get("experienceId")).toBe("exp_snorkel");
+    expect(sent()).toEqual([
+      { weekday: 1, startTime: "07:30", seats: 10 },
+      { weekday: 3, startTime: "07:30", seats: 10 },
+      { weekday: 5, startTime: "07:30", seats: 10 },
     ]);
   });
 
-  /*
-    The row that removes names the day and the time, because "Remove" on its
-    own is the same word four times over to anybody not looking at the screen.
-  */
-  it("names the day each Remove takes off", () => {
+  it("gives a day its own time, starting from the usual one", () => {
     form();
 
-    expect(
-      screen.getByRole("button", { name: "Remove Tuesday 09:00" }),
-    ).toBeVisible();
+    fireEvent.click(chip("Tuesday is different"));
+    // A copy of the usual departure: nothing has changed yet.
+    expect(screen.getByLabelText("Leaves at, Tuesday")).toHaveValue("09:00");
+    expect(save()).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Leaves at, Tuesday"), {
+      target: { value: "10:00" },
+    });
+    // Tuesday's 09:00 is the one that goes, so the save asks first.
+    fireEvent.click(save() as HTMLElement);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save and close them" }),
+    );
+    expect(sent()).toEqual([{ ...TUESDAY, startTime: "10:00" }, FRIDAY]);
+  });
+
+  it("adds a second time to a day, and names each Remove by what it takes off", () => {
+    form();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add another time on Friday" }),
+    );
+    const times = screen.getAllByLabelText("Leaves at, Friday");
+    fireEvent.change(times[1], { target: { value: "17:00" } });
+
     expect(
       screen.getByRole("button", { name: "Remove Friday 14:30" }),
     ).toBeVisible();
+    fireEvent.click(save() as HTMLElement);
+    expect(sent()).toEqual([
+      TUESDAY,
+      FRIDAY,
+      { ...FRIDAY, startTime: "17:00" },
+    ]);
+  });
+});
+
+describe("what would be refused, held back before it is sent", () => {
+  it("asks for a time, and says why Save waits", () => {
+    form();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add another time" }));
+
+    expect(
+      screen.getByText("Pick a time for each departure."),
+    ).toBeInTheDocument();
+    expect(save()).toBeDisabled();
+    expect(save()).toHaveAccessibleDescription(
+      "Fix what is marked above to save.",
+    );
+  });
+
+  it("never folds a day's problem out of sight", async () => {
+    form();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add another time on Friday" }),
+    );
+    const different = screen
+      .getByText("Different on some days")
+      .closest("details") as HTMLDetailsElement;
+
+    // Folded by hand, as a tap on its summary would.
+    different.open = false;
+    fireEvent(different, new Event("toggle"));
+
+    await screen.findByText("Pick a time for each departure.");
+    expect(different.open).toBe(true);
+    expect(screen.getByText("Pick a time for each departure.")).toBeVisible();
+  });
+
+  it("refuses one time twice on a day", () => {
+    form();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add another time" }));
+    fireEvent.change(screen.getAllByLabelText("Leaves at")[1], {
+      target: { value: "09:00" },
+    });
+
+    expect(screen.getByText("09:00 is listed twice.")).toBeInTheDocument();
+    expect(save()).toBeDisabled();
   });
 });
 
@@ -131,9 +272,7 @@ describe("a schedule that has been changed", () => {
 describe("a save that stops a weekday and time selling", () => {
   it("asks first, naming what stops taking bookings and what stays", () => {
     form();
-    fireEvent.change(screen.getAllByLabelText("Time")[0], {
-      target: { value: "07:15" },
-    });
+    fireEvent.change(usualTime(), { target: { value: "07:15" } });
     fireEvent.click(save() as HTMLElement);
 
     expect(saveSchedule).not.toHaveBeenCalled();
@@ -148,14 +287,10 @@ describe("a save that stops a weekday and time selling", () => {
     ).toHaveClass("border-2", "border-terra-deep");
   });
 
-  it("names every time a removed row and a changed day take away", () => {
+  it("names every time an unticked day and a changed time take away", () => {
     form();
-    fireEvent.change(screen.getAllByLabelText("Day")[0], {
-      target: { value: "3" },
-    });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Remove Friday 14:30" }),
-    );
+    fireEvent.change(usualTime(), { target: { value: "07:15" } });
+    fireEvent.click(chip("Friday"));
     fireEvent.click(save() as HTMLElement);
 
     expect(
@@ -167,9 +302,7 @@ describe("a save that stops a weekday and time selling", () => {
 
   it("goes back to editing, with nothing sent, and focus on Save", () => {
     form();
-    fireEvent.change(screen.getAllByLabelText("Time")[0], {
-      target: { value: "07:15" },
-    });
+    fireEvent.change(usualTime(), { target: { value: "07:15" } });
     fireEvent.click(save() as HTMLElement);
     fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
 
@@ -177,24 +310,18 @@ describe("a save that stops a weekday and time selling", () => {
     expect(save()).toHaveFocus();
   });
 
-  it("asks again about the rows as they are after another edit", () => {
+  it("asks again about the week as it is after another edit", () => {
     form();
-    fireEvent.change(screen.getAllByLabelText("Time")[0], {
-      target: { value: "07:15" },
-    });
+    fireEvent.change(usualTime(), { target: { value: "07:15" } });
     fireEvent.click(save() as HTMLElement);
     // Put the time back: nothing is removed now, so there is nothing to ask.
-    fireEvent.change(screen.getAllByLabelText("Time")[0], {
-      target: { value: "09:00" },
-    });
+    fireEvent.change(usualTime(), { target: { value: "09:00" } });
     expect(screen.queryByText("Save the schedule?")).toBeNull();
   });
 
   it("saves a change of seats at once: it closes nothing", () => {
     form();
-    fireEvent.change(screen.getAllByLabelText("Seats")[0], {
-      target: { value: "10" },
-    });
+    fireEvent.change(usualSeats(), { target: { value: "10" } });
     expect(save()).toHaveAttribute("type", "submit");
   });
 });
@@ -207,9 +334,8 @@ describe("a save that stops a weekday and time selling", () => {
 describe("clearing a schedule the listing has", () => {
   function clear() {
     form();
-    for (let i = 0; i < 2; i += 1) {
-      fireEvent.click(screen.getAllByRole("button", { name: /^Remove/ })[0]);
-    }
+    fireEvent.click(chip("Tuesday"));
+    fireEvent.click(chip("Friday"));
   }
 
   it("asks quietly first, and the confirm says what stays booked", () => {
@@ -247,11 +373,12 @@ describe("clearing a schedule the listing has", () => {
     ).toBeVisible();
   });
 
-  it("puts every row back when the change is undone", () => {
+  it("puts every day back when the change is undone", () => {
     clear();
     fireEvent.click(undo() as HTMLElement);
 
-    expect(screen.getAllByLabelText("Day")).toHaveLength(2);
+    expect(chip("Tuesday")).toHaveAttribute("aria-pressed", "true");
+    expect(chip("Friday")).toHaveAttribute("aria-pressed", "true");
     expect(
       screen.queryByRole("button", { name: "Remove the weekly schedule" }),
     ).toBeNull();
@@ -263,7 +390,7 @@ describe("clearing a schedule the listing has", () => {
   */
   it("is a plain save when the listing does not repeat weekly", () => {
     form({ weekly: [TUESDAY], repeatsWeekly: false });
-    fireEvent.click(screen.getByRole("button", { name: /^Remove/ }));
+    fireEvent.click(chip("Tuesday"));
 
     expect(save()).toBeVisible();
     expect(
@@ -281,9 +408,7 @@ describe("what saving says afterwards", () => {
     });
     form();
 
-    fireEvent.change(screen.getAllByLabelText("Seats")[0], {
-      target: { value: "10" },
-    });
+    fireEvent.change(usualSeats(), { target: { value: "10" } });
     fireEvent.click(save() as HTMLElement);
 
     expect(
@@ -295,23 +420,18 @@ describe("what saving says afterwards", () => {
     ).toBeVisible();
   });
 
-  it("marks the row the API refused, rather than one sentence over seven", async () => {
+  it("names every row the API refused, by its day and time", async () => {
     saveSchedule.mockResolvedValue({
-      message: "That schedule was not saved.",
-      rowProblems: { "weekly[1].startTime": "Times look like 07:00." },
+      message: "Some rows need fixing.",
+      rowProblems: ["Tuesday at 09:00: Seats are 1 to 200."],
     });
     form();
 
-    fireEvent.change(screen.getAllByLabelText("Seats")[0], {
-      target: { value: "10" },
-    });
+    fireEvent.change(usualSeats(), { target: { value: "10" } });
     fireEvent.click(save() as HTMLElement);
 
-    expect(
-      await screen.findByText("Times look like 07:00."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "That schedule was not saved.",
-    );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Some rows need fixing.");
+    expect(alert).toHaveTextContent("Tuesday at 09:00: Seats are 1 to 200.");
   });
 });

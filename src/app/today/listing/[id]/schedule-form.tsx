@@ -1,30 +1,45 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useId, useMemo, useState } from "react";
 import { saveSchedule, type ScheduleState } from "./actions";
 import {
   closingSentence,
   removedTimes,
-  WEEKDAYS,
   type ScheduleRow,
 } from "./schedule-changes";
+import {
+  planFromRows,
+  planProblems,
+  rowsFromPlan,
+  sortRows,
+  type WeekPlan,
+} from "./week-plan";
+import { WeekPicker } from "./week-picker";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 
 /**
  * The weekly schedule — yuvoy-operator#56 item 8.
+ *
+ * ## Picked, not typed a row at a time (yuvoy-operator#111)
+ *
+ * The week is days ticked as chips, a time and seats for all of them, and
+ * the days that are different underneath (`WeekPicker`). What is sent is the
+ * same body it always was, one row per weekday and time, derived from the
+ * picker by `rowsFromPlan`; and what the listing has is read back into the
+ * picker by `planFromRows` without losing a row, a second daily departure
+ * included. The builder's Schedule step draws this same form.
  *
  * ## It is the WHOLE schedule, and that is the dangerous part
  *
  * `PUT /experiences/{id}/schedule` replaces what is there, so a row removed
  * here is a row removed from the business, and "removing a weekday and time
  * closes what this schedule made at it". So a save that drops a weekday and
- * time the listing had (a row removed, or its day or time changed) is a
- * question first, naming what stops selling ("Departures it made on Tuesdays
- * at 09:00 stop taking new bookings"). Only saving with none used to ask
- * (the audit, O2). A seats change removes nothing and saves at once.
+ * time the listing had (a day unticked, or its time changed) is a question
+ * first, naming what stops selling ("Departures it made on Tuesdays at 09:00
+ * stop taking new bookings"). Only saving with none used to ask (the audit,
+ * O2). A seats change removes nothing and saves at once.
  *
  * Closed, not cancelled. That distinction is the whole reason the confirmation
  * says it: an operator who clears a schedule believing it cancelled the
@@ -34,9 +49,10 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
  *
  * "Save the schedule" was the loudest button on the listing's screen, above
  * the departures, with nothing to save: the first dark button committed a form
- * nobody had filled in. It is drawn only once the rows differ from what the
- * listing has, beside a way to put them back, and the screen's loudest thing
- * stays the departures above it.
+ * nobody had filled in. It is drawn only once the week differs from what the
+ * listing has, beside a way to put it back, and the screen's loudest thing
+ * stays the departures above it. It waits, disabled, while anything on the
+ * week would be refused, which is said where it is.
  */
 type Row = ScheduleRow;
 
@@ -49,32 +65,32 @@ export function ScheduleForm({
   repeatsWeekly: boolean;
   weekly: Row[];
 }) {
-  const [rows, setRowsNow] = useState<Row[]>(weekly);
+  const [plan, setPlanNow] = useState<WeekPlan>(() => planFromRows(weekly));
   const [confirming, setConfirming] = useState(false);
   /*
-    Any edit goes back to editing: a question asked about one set of rows is
-    not an answer about the next.
+    Any edit goes back to editing: a question asked about one week is not an
+    answer about the next.
   */
-  const setRows: typeof setRowsNow = (next) => {
+  const setPlan = (next: WeekPlan) => {
     setConfirming(false);
-    setRowsNow(next);
+    setPlanNow(next);
   };
+  const rows = rowsFromPlan(plan);
   /*
-    Compared field by field and in order, because the schedule is sent whole
-    and in order: the same days in a different order is a different body, and
-    nothing changed is nothing to send.
+    Compared field by field, in the one order both are put in: by weekday from
+    Sunday, then by time, the order the API reads them back in. The picker
+    always sends that order, so the listing's rows in any other order are the
+    same week, and nothing changed is nothing to send.
   */
-  const dirty = !sameSchedule(rows, weekly);
+  const saved = useMemo(() => sortRows(weekly), [weekly]);
+  const dirty = !sameSchedule(rows, saved);
+  const problems = planProblems(plan);
+  const blocked = problems.length > 0;
+  const blockedId = useId();
   const [state, act, pending] = useActionState<ScheduleState, FormData>(
     saveSchedule,
     {},
   );
-
-  function update(index: number, change: Partial<Row>) {
-    setRows((was) =>
-      was.map((row, i) => (i === index ? { ...row, ...change } : row)),
-    );
-  }
 
   /*
     Before any early return: the focus hook is a hook. `asks` is whether this
@@ -122,112 +138,30 @@ export function ScheduleForm({
       */}
       <input type="hidden" name="weekly" value={JSON.stringify(rows)} />
 
-      {rows.length === 0 ? (
-        <p className="text-forest/70 text-sm">No weekly schedule.</p>
-      ) : (
-        <ul className="space-y-3">
-          {rows.map((row, i) => {
-            const problem =
-              state.rowProblems?.[`weekly[${i}].startTime`] ??
-              state.rowProblems?.[`weekly[${i}].seats`] ??
-              state.rowProblems?.[`weekly[${i}].weekday`];
-            return (
-              <li key={i} className="flex flex-wrap items-end gap-2">
-                <div>
-                  <label htmlFor={`weekday-${i}`} className={fieldLabelClass()}>
-                    Day
-                  </label>
-                  <select
-                    id={`weekday-${i}`}
-                    value={row.weekday}
-                    onChange={(e) =>
-                      update(i, { weekday: Number(e.target.value) })
-                    }
-                    className={inputClass("mt-1 h-11 w-auto pr-8")}
-                  >
-                    {WEEKDAYS.map((name, value) => (
-                      <option key={value} value={value}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor={`time-${i}`} className={fieldLabelClass()}>
-                    Time
-                  </label>
-                  <input
-                    id={`time-${i}`}
-                    type="time"
-                    value={row.startTime}
-                    onChange={(e) => update(i, { startTime: e.target.value })}
-                    className={inputClass("mt-1 h-11 w-auto")}
-                  />
-                </div>
-                <div>
-                  <label htmlFor={`seats-${i}`} className={fieldLabelClass()}>
-                    Seats
-                  </label>
-                  <input
-                    id={`seats-${i}`}
-                    type="number"
-                    min={1}
-                    max={200}
-                    value={row.seats}
-                    onChange={(e) =>
-                      update(i, { seats: Number(e.target.value) })
-                    }
-                    className={inputClass("mt-1 h-11 w-24")}
-                  />
-                </div>
-                <Button
-                  variant="secondary"
-                  block={false}
-                  onClick={() =>
-                    setRows((was) => was.filter((_, at) => at !== i))
-                  }
-                >
-                  {/*
-                    The space belongs to the visible word, not to the hidden
-                    one: an accessible name is built by joining each child's
-                    own text with the whitespace trimmed off, so a space that
-                    starts the hidden span disappears and the button is
-                    announced as "RemoveTuesday 09:00".
-                  */}
-                  Remove{" "}
-                  <span className="sr-only">
-                    {WEEKDAYS[row.weekday]} {row.startTime}
-                  </span>
-                </Button>
-                {problem ? (
-                  <p className="text-terra-deep w-full text-sm font-bold">
-                    {problem}
-                  </p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      <div className="mt-4">
-        <Button
-          variant="secondary"
-          block={false}
-          onClick={() =>
-            setRows((was) => [
-              ...was,
-              { weekday: 1, startTime: "09:00", seats: 8 },
-            ])
-          }
-        >
-          Add a day
-        </Button>
-      </div>
+      <WeekPicker plan={plan} onChange={setPlan} problems={problems} />
 
       {state.message ? (
-        <p role="alert" className="text-terra-deep mt-3 text-sm font-bold">
-          {state.message}
+        <div role="alert" className="text-terra-deep mt-3 text-sm font-bold">
+          <p>{state.message}</p>
+          {/*
+            The API names every refused row, as "Tuesday at 09:00" and why
+            (`rowProblems`), rather than one sentence over seven of them.
+          */}
+          {state.rowProblems?.map((problem) => (
+            <p key={problem} className="mt-1">
+              {problem}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {/*
+        Said once, beside the save it holds back; what to fix is said where it
+        is, above. A disabled button with no reason is a dead end.
+      */}
+      {dirty && blocked ? (
+        <p id={blockedId} className="text-forest/80 mt-4 text-sm">
+          Fix what is marked above to save.
         </p>
       ) : null}
 
@@ -298,19 +232,29 @@ export function ScheduleForm({
               ref={trigger}
               block={false}
               aria-expanded={false}
+              disabled={blocked}
+              aria-describedby={blocked ? blockedId : undefined}
               onClick={() => setConfirming(true)}
             >
               Save the schedule
             </Button>
           )}
-          <UndoChanges onUndo={() => setRows(weekly)} />
+          <UndoChanges onUndo={() => setPlan(planFromRows(weekly))} />
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Button type="submit" block={false} disabled={pending}>
+          <Button
+            type="submit"
+            block={false}
+            disabled={pending || blocked}
+            aria-describedby={blocked ? blockedId : undefined}
+          >
             {pending ? "Saving…" : "Save the schedule"}
           </Button>
-          <UndoChanges onUndo={() => setRows(weekly)} disabled={pending} />
+          <UndoChanges
+            onUndo={() => setPlan(planFromRows(weekly))}
+            disabled={pending}
+          />
         </div>
       )}
     </form>

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { closingSentence, removedTimes } from "./schedule-changes";
+import {
+  closingSentence,
+  removedTimes,
+  rowProblemSentences,
+} from "./schedule-changes";
 
 const TUE = { weekday: 2, startTime: "09:00", seats: 8 };
 const FRI = { weekday: 5, startTime: "14:30", seats: 6 };
@@ -36,5 +40,38 @@ describe("what the question says", () => {
     ).toBe(
       "Departures it made on Tuesdays at 09:00, Fridays at 14:30 and Sundays at 06:00 stop taking new bookings. Bookings already on them stay.",
     );
+  });
+});
+
+/*
+  The picker draws no rows (yuvoy-operator#111), so an index in the API's
+  `details` means nothing on the screen. Each is said as the day and time it
+  was sent as.
+*/
+describe("the rows the API refused", () => {
+  it("names each by its day and time, in the API's words", () => {
+    expect(
+      rowProblemSentences(
+        {
+          "weekly[1].seats": "seats are 1 to 200",
+          "weekly[0].startTime": "Times look like 07:00.",
+        },
+        [TUE, FRI],
+      ),
+    ).toEqual([
+      "Friday at 14:30: Seats are 1 to 200.",
+      "Tuesday at 09:00: Times look like 07:00.",
+    ]);
+  });
+
+  it("says a key that names no row as it came, and nothing for no details", () => {
+    expect(rowProblemSentences({ weekly: "too many rows" }, [TUE])).toEqual([
+      "Too many rows.",
+    ]);
+    expect(rowProblemSentences({ "weekly[9].seats": "no" }, [TUE])).toEqual([
+      "No.",
+    ]);
+    expect(rowProblemSentences(undefined, [TUE])).toEqual([]);
+    expect(rowProblemSentences("a string", [TUE])).toEqual([]);
   });
 });

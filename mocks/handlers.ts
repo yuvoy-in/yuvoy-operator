@@ -4356,7 +4356,20 @@ export const handlers = [
       portal ship without ever rendering a row problem.
     */
     const details: Record<string, string> = {};
+    /*
+      "Every weekday and time the listing runs, each at most once." A second
+      row at a weekday and time already sent is refused on that row, as every
+      other row problem is: a mock that took it would let a form ship that can
+      send a week the API refuses.
+    */
+    const sent = new Set<string>();
     weekly.forEach((row, i) => {
+      const slot = `${row.weekday}|${row.startTime}`;
+      if (sent.has(slot)) {
+        details[`weekly[${i}].startTime`] =
+          "That weekday already leaves at this time.";
+      }
+      sent.add(slot);
       if (
         !Number.isInteger(row.weekday) ||
         (row.weekday ?? -1) < 0 ||
@@ -4391,11 +4404,17 @@ export const handlers = [
     const before = listing.schedule?.weekly.length ?? 0;
     listing.schedule = {
       repeatsWeekly: weekly.length > 0,
-      weekly: weekly.map((row) => ({
-        weekday: row.weekday!,
-        startTime: row.startTime!,
-        seats: row.seats!,
-      })),
+      // Read back "by weekday from Sunday, then by time", as the API orders it.
+      weekly: weekly
+        .map((row) => ({
+          weekday: row.weekday!,
+          startTime: row.startTime!,
+          seats: row.seats!,
+        }))
+        .sort(
+          (a, b) =>
+            a.weekday - b.weekday || a.startTime.localeCompare(b.startTime),
+        ),
     };
 
     return HttpResponse.json({

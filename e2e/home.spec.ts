@@ -417,15 +417,22 @@ test("the hub carries the weekly schedule, and asks before removing it", async (
   await expect(
     page.getByRole("heading", { name: "Weekly schedule" }),
   ).toBeVisible();
-  // The fixture's two days are read back, not invented.
-  await expect(page.getByLabel("Day").first()).toHaveValue("2");
+  /*
+    The fixture's two days are read back, not invented: Tuesday and Thursday
+    at 09:00, ticked on the picker (yuvoy-operator#111).
+  */
+  for (const day of ["Tuesday", "Thursday"]) {
+    await expect(
+      page.getByRole("button", { name: day, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+  }
+  await expect(page.getByLabel("Leaves at", { exact: true })).toHaveValue(
+    "09:00",
+  );
 
-  // Clearing every row turns the save into a question rather than a save.
-  for (let i = 0; i < 2; i += 1) {
-    await page
-      .getByRole("button", { name: /^Remove/ })
-      .first()
-      .click();
+  // Unticking every day turns the save into a question rather than a save.
+  for (const day of ["Tuesday", "Thursday"]) {
+    await page.getByRole("button", { name: day, exact: true }).click();
   }
   await page
     .getByRole("button", { name: "Remove the weekly schedule" })

@@ -245,6 +245,32 @@ test("Basics reads as labels and boxes, each reason one tap away", async ({
   await expect(reason).toBeVisible();
 });
 
+test("the Schedule step picks the days, and sends the week in one save", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#111: "Add a day" seven times, with nothing carried from one
+    row to the next, became seven chips, one time and one seat count for every
+    day ticked, in the one `PUT` the API always took.
+  */
+  const title = unique("Week dive");
+  await signIn(page);
+  const id = await startDraft(page, title);
+  await page.goto(`/account/listings/${id}/edit?step=schedule`);
+
+  for (const day of ["Monday", "Wednesday", "Friday"]) {
+    const chip = page.getByRole("button", { name: day, exact: true });
+    await chip.click();
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
+  }
+  await page.getByLabel("Leaves at", { exact: true }).fill("07:30");
+  await page.getByLabel("Seats", { exact: true }).fill("10");
+  await page.getByRole("button", { name: "Save the schedule" }).click();
+
+  await expect(page.getByText("The weekly schedule is saved")).toBeVisible();
+  await expect(page.getByText("3 days a week, from now on.")).toBeVisible();
+});
+
 test("a draft nobody has seen can be discarded, and its tile goes with it", async ({
   page,
 }) => {
