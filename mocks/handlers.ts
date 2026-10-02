@@ -423,6 +423,12 @@ type MockExperience = {
   pricingUnit?: string;
   meetingPoint?: string;
   /*
+    A pin on the meeting point (yuvoy-api#249, yuvoy-operator#113). Null when
+    none is set, which every read says out loud: `withPin` below.
+  */
+  meetingLat?: number | null;
+  meetingLng?: number | null;
+  /*
     The material fields — yuvoy-operator#30 §5. On the wire since the contract
     was written and settable nowhere in this portal until now, which is why
     they were never in this fixture either.
@@ -1948,6 +1954,56 @@ async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/**
+ * A listing as the API reads it back since yuvoy-api#249: `meetingLat` and
+ * `meetingLng` always present, `null` when there is no pin. The portal offers
+ * a pin only to an API that sends the key, so a mock that left it out would
+ * hide the pin from every test.
+ */
+function withPin<
+  T extends { meetingLat?: number | null; meetingLng?: number | null },
+>(listing: T): T & { meetingLat: number | null; meetingLng: number | null } {
+  return {
+    ...listing,
+    meetingLat: listing.meetingLat ?? null,
+    meetingLng: listing.meetingLng ?? null,
+  };
+}
+
+/**
+ * A pin the API would refuse, in its words (`coerceListingValue` and
+ * `RevisionPayloadError` at fb9245e): each coordinate on its own, a number or
+ * null, inside its range. "we could not read: meetingLat", with the reason
+ * keyed by field in `details`. The API does not check both-or-neither; the
+ * portal does, before it sends.
+ */
+function pinRefusal(body: Record<string, unknown>) {
+  const bounds = { meetingLat: 90, meetingLng: 180 } as const;
+  const invalid: Record<string, string> = {};
+  for (const [field, limit] of Object.entries(bounds)) {
+    if (!(field in body) || body[field] === null) continue;
+    const value = body[field];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      invalid[field] = "this should be a number";
+    } else if (value < -limit) {
+      invalid[field] = `must be ${-limit} or more`;
+    } else if (value > limit) {
+      invalid[field] = `must be ${limit} or less`;
+    }
+  }
+  const names = Object.keys(invalid).sort();
+  if (names.length === 0) return null;
+  return envelope(
+    "invalid_input",
+    `we could not read: ${names.join(", ")}`,
+    400,
+    {
+      allowed: LISTING_FIELDS,
+      ...invalid,
+    },
+  );
 }
 
 /**
@@ -4183,7 +4239,7 @@ export const handlers = [
     if (isNewBusiness(request)) return HttpResponse.json({ experiences: [] });
     return HttpResponse.json({
       experiences: mockExperiences.map((e) => ({
-        ...e,
+        ...withPin(e),
         bookableDatesNext30Days: bookableDatesOf(e),
         departuresNotOnSale: unconfirmedDeparturesOf(e),
         departuresGoingOffSaleSoon: 0,
@@ -4357,7 +4413,7 @@ export const handlers = [
 
     return HttpResponse.json({
       listing: {
-        ...listing,
+        ...withPin(listing),
         // The single listing carries these too (yuvoy-api#205, #211).
         bookableDatesNext30Days: bookableDatesOf(listing),
         departuresNotOnSale: unconfirmedDeparturesOf(listing),
@@ -4705,6 +4761,8 @@ export const handlers = [
       "destination",
       "meetingPoint",
       "meetingLandmark",
+      "meetingLat",
+      "meetingLng",
       "inclusions",
       "requirements",
       "safetyNotes",
@@ -4724,6 +4782,9 @@ export const handlers = [
         { unknownFields, allowed },
       );
     }
+
+    const badPin = pinRefusal(body);
+    if (badPin) return badPin;
 
     /*
       A destination outside the market, refused exactly as create refuses it.
@@ -4774,7 +4835,7 @@ export const handlers = [
     found.sellable =
       typeof found.unitPricePaise === "number" && found.unitPricePaise > 0;
 
-    return HttpResponse.json(found);
+    return HttpResponse.json(withPin(found));
   }),
 
   /**
@@ -5024,7 +5085,7 @@ export const handlers = [
     const found = mockExperiences.find((e) => e.id === String(params.id));
     // Gone and belonging-to-somebody-else are one answer, as everywhere else.
     if (!found) return envelope("not_found", "No such listing.", 404);
-    return HttpResponse.json(found);
+    return HttpResponse.json(withPin(found));
   }),
 
   /*
@@ -5087,6 +5148,8 @@ export const handlers = [
         { allowed: LISTING_FIELDS, unknownFields },
       );
     }
+    const badPin = pinRefusal(body);
+    if (badPin) return badPin;
     if (body.meetingPointText !== undefined && !("meetingPoint" in body)) {
       body.meetingPoint = body.meetingPointText;
     }

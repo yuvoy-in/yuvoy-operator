@@ -21,6 +21,11 @@ import { PauseResume } from "./pause-resume";
 import { SentBack } from "./sent-back";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
+import { MeetingPin } from "@/components/map/meeting-pin";
+import { pinOf, pinsSupported } from "@/lib/map/pin";
+
+/** The pin's two numbers move together or not at all (yuvoy-api#249). */
+const PIN_PAIR = [["meetingLat", "meetingLng"]] as const;
 
 /**
  * One listing, and the one act available on it.
@@ -246,7 +251,7 @@ export function ListingRow({
             in with what is on file, and a field nobody touched is not a change
             anybody asked for.
           */
-          action={(form) => act(onlyChanged(form, defaults))}
+          action={(form) => act(onlyChanged(form, defaults, PIN_PAIR))}
           className="border-paper-line mt-4 border-t pt-4"
         >
           <input type="hidden" name="id" value={listing.id ?? ""} />
@@ -373,6 +378,18 @@ export function ListingRow({
               className={inputClass("mt-2")}
             />
           </div>
+
+          {/*
+            The pin on the meeting point (yuvoy-operator#113). Here as well as
+            in the builder, because every listing on sale today is past the
+            builder and this is the only way to give one a pin. It is the
+            operator's own field (D-032.3): it goes live when sent.
+          */}
+          {pinsSupported(listing) ? (
+            <div className="mt-4">
+              <MeetingPin initial={pinOf(listing)} />
+            </div>
+          ) : null}
 
           <div className="mt-4">
             <label
@@ -658,6 +675,9 @@ function formDefaults(listing: OperatorExperience): Record<string, string> {
     inclusions: (listing.inclusions ?? []).join("\n"),
     requirements: (listing.requirements ?? []).join("\n"),
     safetyNotes: listing.safetyNotes ?? "",
+    // As `MeetingPin` writes them, so a pin nobody moved is not sent.
+    meetingLat: number(listing.meetingLat),
+    meetingLng: number(listing.meetingLng),
   };
 }
 

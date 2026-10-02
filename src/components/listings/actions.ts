@@ -11,6 +11,7 @@ import {
   type PauseReason,
 } from "@/lib/services/listings";
 import { dedashText } from "@/lib/format/dedash";
+import { readPinFields } from "@/lib/map/pin";
 import {
   readRevisionOutcome,
   type RevisionOutcome,
@@ -259,6 +260,21 @@ export async function submitRevision(
   if (included !== undefined) body.inclusions = included;
   const required = lines(requirements);
   if (required !== undefined) body.requirements = required;
+
+  /*
+    The pin (yuvoy-operator#113): both numbers, or both null to clear. The
+    form sends it only when it moved, and only an API that takes pins is
+    shown one (`pinsSupported`).
+  */
+  const pin = readPinFields(form);
+  if (pin.kind === "invalid") return { message: pin.message };
+  if (pin.kind === "set") {
+    body.meetingLat = pin.lat;
+    body.meetingLng = pin.lng;
+  } else if (pin.kind === "clear") {
+    body.meetingLat = null;
+    body.meetingLng = null;
+  }
 
   if (Object.keys(body).length === 0) {
     return { message: "Nothing has changed, so there is nothing to send." };

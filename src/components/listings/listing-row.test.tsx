@@ -10,6 +10,8 @@ vi.mock("./actions", () => ({
 }));
 // Tested where it lives; here it only has to stay out of the way.
 vi.mock("./pause-resume", () => ({ PauseResume: () => null }));
+// The map itself never loads here; the pin's other ways in are the test.
+vi.mock("next/dynamic", () => ({ default: () => () => null }));
 
 const { ListingRow } = await import("./listing-row");
 
@@ -141,5 +143,81 @@ describe("a change to a live listing", () => {
     expect(await row.findByRole("status")).toHaveTextContent(
       "Your change is with us. It stays on sale on the old terms until we answer.",
     );
+  });
+});
+
+/*
+  yuvoy-operator#113. Every listing on sale is past the builder, so the live
+  edit is where one gets a pin. An untouched pin is not a change, and a moved
+  one goes as both numbers.
+*/
+describe("the pin on a live listing", () => {
+  const PINNED: OperatorExperience = {
+    ...LIVE,
+    meetingLat: 11.9695,
+    meetingLng: 92.9631,
+  };
+
+  function renderPinned(listing: OperatorExperience = PINNED) {
+    render(
+      <ul>
+        <ListingRow listing={listing} hasFootage vocabulary={null} />
+      </ul>,
+    );
+    return within(screen.getByRole("listitem"));
+  }
+
+  it("is not offered by an API from before pins", async () => {
+    const user = userEvent.setup();
+    const row = renderRow();
+    await user.click(row.getByRole("button", { name: "Propose a change" }));
+    expect(row.queryByRole("group", { name: "Pin on the map" })).toBeNull();
+  });
+
+  it("does not send a pin nobody moved", async () => {
+    submitRevision.mockResolvedValue({
+      outcome: { applied: ["maxPartySize"], inReview: [] },
+    });
+    const user = userEvent.setup();
+    const row = renderPinned();
+
+    await user.click(row.getByRole("button", { name: "Propose a change" }));
+    const party = row.getByLabelText("Most people per booking");
+    await user.clear(party);
+    await user.type(party, "8");
+    await user.click(row.getByRole("button", { name: "Send it to us" }));
+
+    const sent: FormData = submitRevision.mock.calls[0][1];
+    expect([...sent.keys()]).toEqual(["id", "maxPartySize"]);
+  });
+
+  it("sends a removed pin as both fields empty", async () => {
+    submitRevision.mockResolvedValue({
+      outcome: { applied: ["meetingLat", "meetingLng"], inReview: [] },
+    });
+    const user = userEvent.setup();
+    const row = renderPinned();
+
+    await user.click(row.getByRole("button", { name: "Propose a change" }));
+    await user.click(row.getByRole("button", { name: "Remove the pin" }));
+    await user.click(row.getByRole("button", { name: "Send it to us" }));
+
+    const sent: FormData = submitRevision.mock.calls[0][1];
+    expect([...sent.entries()]).toEqual([
+      ["id", "exp_reef"],
+      ["meetingLat", ""],
+      ["meetingLng", ""],
+    ]);
+    expect(await row.findByRole("status")).toHaveTextContent(
+      "Live now: Pin on the map",
+    );
+  });
+
+  it("offers a pin to a live listing that has none yet", async () => {
+    const user = userEvent.setup();
+    const row = renderPinned({ ...LIVE, meetingLat: null, meetingLng: null });
+    await user.click(row.getByRole("button", { name: "Propose a change" }));
+    expect(row.getByRole("group", { name: "Pin on the map" })).toBeVisible();
+    expect(row.getByText("No pin yet.")).toBeVisible();
   });
 });

@@ -15,6 +15,19 @@ import AxeBuilder from "@axe-core/playwright";
 
 const DEV_CODE = "424242";
 
+/*
+  The meeting-point map's tiles and its place search are on two outside hosts
+  (yuvoy-operator#113). This suite reaches neither: a run must not depend on
+  a third party, or load its tiles. Aborted, the map says it did not load and
+  the pin is set the ways that need no network, which is what these drive. A
+  test that needs search answers it with `page.route`, which wins over this.
+*/
+const MAP_HOSTS = /^https:\/\/(tiles\.openfreemap\.org|photon\.komoot\.io)\//;
+
+test.beforeEach(async ({ context }) => {
+  await context.route(MAP_HOSTS, (route) => route.abort());
+});
+
 async function signIn(page: Page, phone = "+919000000101") {
   await page.goto("/sign-in");
   await page.getByLabel("Your phone number").fill(phone);
@@ -342,6 +355,149 @@ test("a listing that is no longer a draft is not built, it is amended", async ({
   await expect(
     page.getByRole("button", { name: "Propose a change" }),
   ).toBeVisible();
+});
+
+/** The Location step of a new draft, with its pin control. */
+async function openLocation(page: Page, title: string) {
+  await signIn(page);
+  const id = await startDraft(page, title);
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  const pin = page.getByRole("group", { name: "Pin on the map" });
+  // No network to the tile host here: the map says so, and the rest works.
+  await expect(pin.getByText(/The map did not load/)).toBeVisible();
+  return { id, pin };
+}
+
+const searchBox = (pin: ReturnType<Page["getByRole"]>) =>
+  pin.getByRole("searchbox", {
+    name: "Search for a place, or paste a maps link",
+  });
+
+test("the meeting point takes a pin from a pasted link, keeps it, and lets it go", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#113, as one walk: set without the map, saved by Next,
+    read back from the API, removed, and saved as gone.
+  */
+  const { id, pin } = await openLocation(page, unique("Pin dive"));
+  await expect(pin.getByText("No pin yet.")).toBeVisible();
+
+  await searchBox(pin).fill("https://www.google.com/maps/@11.9695,92.9631,17z");
+  await pin
+    .getByRole("button", { name: /Put the pin at 11\.96950, 92\.96310/ })
+    .click();
+  await expect(
+    pin.getByText("11.96950, 92.96310", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    pin.getByRole("link", { name: /Check it in Google Maps/ }),
+  ).toHaveAttribute(
+    "href",
+    "https://www.google.com/maps/search/?api=1&query=11.9695,92.9631",
+  );
+
+  await page.getByLabel("Where to meet").fill("Beach 3 dive hut");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=questions/);
+
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  const again = page.getByRole("group", { name: "Pin on the map" });
+  await expect(
+    again.getByText("11.96950, 92.96310", { exact: true }),
+  ).toBeVisible();
+
+  await again.getByRole("button", { name: "Remove the pin" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForURL(/step=questions/);
+
+  await page.goto(`/account/listings/${id}/edit?step=location`);
+  await expect(
+    page
+      .getByRole("group", { name: "Pin on the map" })
+      .getByText("No pin yet."),
+  ).toBeVisible();
+});
+
+test("a place found by name becomes the pin, and Enter never sends the step", async ({
+  page,
+}) => {
+  /*
+    Photon answered here the way it answered on 2 Oct 2026 for "havelock",
+    trimmed, with the CORS header the real one sends.
+  */
+  await page.route(/^https:\/\/photon\.komoot\.io\/api\//, (route) =>
+    route.fulfill({
+      headers: { "access-control-allow-origin": "*" },
+      json: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [92.9956211, 11.9651954] },
+            properties: {
+              name: "Havelock island",
+              county: "South Andaman",
+              state: "Andaman and Nicobar Islands",
+              country: "India",
+            },
+          },
+        ],
+      },
+    }),
+  );
+  const { pin } = await openLocation(page, unique("Search dive"));
+
+  await searchBox(pin).fill("havelock");
+  await expect(
+    pin.getByRole("button", { name: /Havelock island/ }),
+  ).toBeVisible();
+  // Enter takes the first place and stays on the step.
+  await searchBox(pin).press("Enter");
+
+  await expect(
+    pin.getByText("11.96519, 92.99562", { exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/step=location/);
+});
+
+test("Use my location puts the pin where the phone is", async ({
+  page,
+  context,
+}) => {
+  /*
+    The browser's own location, allowed for this origin by the
+    Permissions-Policy (`geolocation=(self)`); with `geolocation=()` this is
+    refused before the browser even asks.
+  */
+  await context.grantPermissions(["geolocation"]);
+  await context.setGeolocation({
+    latitude: 11.9695,
+    longitude: 92.9631,
+    accuracy: 10,
+  });
+  const { pin } = await openLocation(page, unique("Here dive"));
+
+  await pin.getByRole("button", { name: "Use my location" }).click();
+
+  await expect(
+    pin.getByText("11.96950, 92.96310", { exact: true }),
+  ).toBeVisible();
+});
+
+test("the Location step, pin and all, has no accessibility violations", async ({
+  page,
+}) => {
+  const { pin } = await openLocation(page, unique("Axe dive"));
+  await searchBox(pin).fill("11.9695, 92.9631");
+  await expect(
+    pin.getByRole("button", { name: /Put the pin at/ }),
+  ).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
 });
 
 test("the builder has no accessibility violations", async ({ page }) => {

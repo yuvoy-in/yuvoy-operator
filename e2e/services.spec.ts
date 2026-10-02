@@ -1,6 +1,18 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+/*
+  The meeting-point map's two outside hosts (yuvoy-operator#113), aborted:
+  the live edit and the Location step show the pin control, and this suite
+  must not load a third party's tiles. See e2e/builder.spec.ts.
+*/
+test.beforeEach(async ({ context }) => {
+  await context.route(
+    /^https:\/\/(tiles\.openfreemap\.org|photon\.komoot\.io)\//,
+    (route) => route.abort(),
+  );
+});
+
 /**
  * Manage services — what a business sells, and the footage that sells it.
  *
@@ -350,6 +362,14 @@ test("a change to a live listing says which half is live and which is with us", 
     keeps selling meanwhile. The row used to say "with us" to both.
   */
   await live.getByLabel("Where to meet").fill("Beach 3 dive hut, gate 2");
+  // And a pin, which a live listing can only get here (yuvoy-operator#113).
+  const pin = live.getByRole("group", { name: "Pin on the map" });
+  await pin
+    .getByRole("searchbox", {
+      name: "Search for a place, or paste a maps link",
+    })
+    .fill("11.9695, 92.9631");
+  await pin.getByRole("button", { name: /Put the pin at/ }).click();
   await live.getByLabel("One line about it").fill("Two tanks, one reef");
   await live.getByRole("button", { name: "Send it to us" }).click();
 
@@ -357,7 +377,7 @@ test("a change to a live listing says which half is live and which is with us", 
   await expect(answer).toContainText(
     "The first list is live now. We read the second",
   );
-  await expect(answer).toContainText("Live now: Where to meet");
+  await expect(answer).toContainText("Live now: Where to meet, Pin on the map");
   await expect(answer).toContainText("With us: One line about it");
   await expect(answer).not.toContainText(/saved/i);
 });

@@ -9,6 +9,7 @@ import { requireOperator } from "@/lib/auth/session";
 import { CATEGORIES, type Category } from "@/lib/services/vocabulary";
 import { suspendedMessage } from "@/lib/account/suspended";
 import { nextStep, type Step } from "@/lib/services/builder";
+import { readPinFields } from "@/lib/map/pin";
 
 /**
  * Saving one step of the listing builder — yuvoy-operator#58 item 7.
@@ -81,7 +82,33 @@ function saveFailure(err: unknown, id: string): StepState {
     }
     if (err.status === 400) {
       const details = err.details as
-        { unknownFields?: string[]; screenerKey?: string[] } | undefined;
+        | {
+            unknownFields?: string[];
+            screenerKey?: string[];
+            meetingLat?: string;
+            meetingLng?: string;
+          }
+        | undefined;
+      /*
+        The pin, refused. The API's sentence is "we could not read:
+        meetingLat", which names a field nobody sees; this screen checks the
+        numbers before sending, so this is rare and the plain version will do.
+      */
+      if (details?.meetingLat || details?.meetingLng) {
+        return {
+          message:
+            "That pin is not a place on the map. Set it again, or remove it.",
+        };
+      }
+      if (
+        details?.unknownFields?.some(
+          (f) => f === "meetingLat" || f === "meetingLng",
+        )
+      ) {
+        return {
+          message: "Pins are not switched on yet. Remove the pin to save.",
+        };
+      }
       /*
         `details.screenerKey` lists the keys that ARE current. A screener is a
         row added or retired on medical advice rather than by a release, so a
@@ -306,11 +333,23 @@ export async function saveLocation(
     return { message: issue.message, fields: [String(issue.path[0] ?? "")] };
   }
 
+  /*
+    The pin (yuvoy-operator#113): both numbers, or both null to clear, and
+    left out altogether when the form had no pin on it, which is what an API
+    from before yuvoy-api#249 needs (`pinsSupported`).
+  */
+  const pin = readPinFields(form);
+  if (pin.kind === "invalid") return { message: pin.message };
+
   const { token } = await requireOperator();
   try {
     const { error } = await operatorApi(token).PATCH("/experiences/{id}", {
       params: { path: { id: parsed.data.id } },
       body: {
+        ...(pin.kind === "set"
+          ? { meetingLat: pin.lat, meetingLng: pin.lng }
+          : {}),
+        ...(pin.kind === "clear" ? { meetingLat: null, meetingLng: null } : {}),
         /*
           `meetingPoint`, never `meetingPointText`. The deprecated spelling maps
           to the same field and sending both with different values is a 400 —

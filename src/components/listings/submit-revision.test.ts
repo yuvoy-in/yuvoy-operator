@@ -59,6 +59,42 @@ describe("submitRevision", () => {
     });
   });
 
+  it("sends a moved pin as both numbers, and a removed one as nulls", async () => {
+    post.mockResolvedValue({
+      data: { applied: ["meetingLat", "meetingLng"], inReview: [] },
+      error: undefined,
+    });
+
+    await submitRevision(
+      {},
+      form({ id: "exp_reef", meetingLat: "11.9695", meetingLng: "92.9631" }),
+    );
+    expect(post.mock.calls[0][1].body).toEqual({
+      meetingLat: 11.9695,
+      meetingLng: 92.9631,
+    });
+
+    await submitRevision(
+      {},
+      form({ id: "exp_reef", meetingLat: "", meetingLng: "" }),
+    );
+    expect(post.mock.calls[1][1].body).toEqual({
+      meetingLat: null,
+      meetingLng: null,
+    });
+  });
+
+  it("refuses half a pin before asking the API", async () => {
+    const state = await submitRevision(
+      {},
+      form({ id: "exp_reef", meetingLat: "11.9695" }),
+    );
+    expect(post).not.toHaveBeenCalled();
+    expect(state.message).toBe(
+      "That pin is not a place on the map. Set it again, or remove it.",
+    );
+  });
+
   it("sends nothing when nothing changed", async () => {
     const state = await submitRevision({}, form({ id: "exp_reef" }));
     expect(post).not.toHaveBeenCalled();

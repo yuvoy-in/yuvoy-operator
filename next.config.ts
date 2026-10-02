@@ -35,9 +35,14 @@ const securityHeaders = [
     is a real attack with a real cost.
   */
   { key: "X-Frame-Options", value: "DENY" },
+  /*
+    Geolocation for this origin only (yuvoy-operator#113): "Use my location"
+    puts the meeting-point pin where the operator is standing. Still nothing
+    for any frame or other origin, and the browser asks before it shares.
+  */
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=()",
+    value: "camera=(), microphone=(), geolocation=(self), payment=()",
   },
   /*
     Nothing here may be stored by a shared cache, on any route. Every page is
