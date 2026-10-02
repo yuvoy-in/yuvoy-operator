@@ -4699,6 +4699,49 @@ export const handlers = [
   }),
 
   /**
+   * Discard a draft nobody has seen (yuvoy-operator#112, yuvoy-api#249), as
+   * the contract has it: OWNER, ADMIN or MANAGER, "the same as `PATCH` on this
+   * listing"; `204` and it is gone, with the departures saved on it; `404` for
+   * one that is not here; and `409 conflict` "once a listing has been sent to
+   * us", which is a `review` on the row (`POST .../submit` writes one) or a
+   * listing that is past draft. The words are the handler's (`DeleteDraft` at
+   * fb9245e).
+   *
+   * Refused while suspended, like `PATCH`: it is not on the list of writes a
+   * suspended business may still make.
+   */
+  http.delete(url("/experiences/:id"), async ({ request, params }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+    const shut = requireWritable(request);
+    if (shut) return shut;
+    if (!canManage(sessionUser(request)!)) {
+      return envelope(
+        "forbidden",
+        "only an owner, admin or manager can delete a listing",
+        403,
+      );
+    }
+
+    const id = String(params.id);
+    const found = mockExperiences.find((e) => e.id === id);
+    if (!found) return envelope("not_found", "no such listing", 404);
+    if ((found.publicationState ?? found.status) !== "draft" || found.review) {
+      return envelope(
+        "conflict",
+        "only a draft can be deleted. This listing has already been sent to us",
+        409,
+      );
+    }
+
+    mockExperiences = mockExperiences.filter((e) => e.id !== id);
+    // `availability_slots` cascade from `experiences`, and so do its questions.
+    createdSlots = createdSlots.filter((slot) => slot.experienceId !== id);
+    delete listingQuestions[id];
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  /**
    * Send a listing to a person at Yuvoy — yuvoy-operator#58 items 4 and 7.
    *
    * The submit gate demands everything mandatory EXCEPT `activityType` and

@@ -245,6 +245,56 @@ test("Basics reads as labels and boxes, each reason one tap away", async ({
   await expect(reason).toBeVisible();
 });
 
+test("a draft nobody has seen can be discarded, and its tile goes with it", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#112. A draft exists from the moment step one is saved, so
+    one started by mistake had no way back. Its own fresh draft, so no other
+    test loses a fixture to it.
+  */
+  const title = unique("Throwaway");
+  await signIn(page);
+  const id = await startDraft(page, title);
+
+  await page.goto(`/account/listings/${id}`);
+  await page.getByRole("button", { name: "Discard this draft" }).click();
+  // The question takes focus, and the loud button is inside it.
+  await expect(page.getByText(`Discard “${title}”?`)).toBeFocused();
+  await page.getByRole("button", { name: "Discard the draft" }).click();
+
+  // Back on Business, which re-read without it.
+  await page.waitForURL(/\/account$/);
+  await expect(page.getByRole("link", { name: new RegExp(title) })).toHaveCount(
+    0,
+  );
+  // And it is gone, not hidden: its own address finds nothing.
+  await page.goto(`/account/listings/${id}`);
+  await expect(
+    page.getByRole("heading", { name: "There is nothing at that address" }),
+  ).toBeVisible();
+});
+
+test("a draft that was sent, or a staff login, is offered no discard", async ({
+  page,
+}) => {
+  // `exp_night` was sent and came back: a draft again, and a 409 to delete.
+  await signIn(page);
+  await page.goto("/account/listings/exp_night");
+  await expect(page.getByRole("link", { name: "Edit" }).first()).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Discard this draft" }),
+  ).toHaveCount(0);
+
+  // A staff login cannot change a draft, so it cannot discard one either.
+  await page.context().clearCookies();
+  await signIn(page, "+919000000103");
+  await page.goto("/account/listings/exp_boat");
+  await expect(
+    page.getByRole("button", { name: "Discard this draft" }),
+  ).toHaveCount(0);
+});
+
 test("a listing that is no longer a draft is not built, it is amended", async ({
   page,
 }) => {

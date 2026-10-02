@@ -220,6 +220,32 @@ export function isDraft(listing: {
 }
 
 /**
+ * Whether a draft can be discarded: one that has never been sent to us
+ * (yuvoy-operator#112).
+ *
+ * `DELETE /experiences/{id}` removes "a draft nobody has seen", and "once a
+ * listing has been sent to us (`POST /experiences/{id}/submit`), this answers
+ * `409`". Every sign of a send is read, so the control is never drawn over a
+ * refusal: `review` is "where the latest submission got to. Absent if nothing
+ * was ever sent", `sentBack` means a reviewer has had it, and `status` leaves
+ * `draft` on the first send. A draft that was sent back is still `isDraft`
+ * above, and is not this.
+ */
+export function isUnsentDraft(listing: {
+  publicationState?: string;
+  status?: string;
+  sentBack?: unknown;
+  review?: unknown;
+}): boolean {
+  return (
+    isDraft(listing) &&
+    listing.status === "draft" &&
+    !listing.review &&
+    !listing.sentBack
+  );
+}
+
+/**
  * The copy for a status, or an honest shrug for one this build has not met.
  *
  * An unknown status is shown as itself with no claim attached — the same rule
