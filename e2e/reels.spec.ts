@@ -88,7 +88,8 @@ function testInfoClip(megabytes: number, name: string) {
  */
 async function openUploader(page: Page) {
   await page.goto("/account");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  // Named for what is behind it, and reads "Add" (yuvoy-operator#109).
+  await page.getByRole("button", { name: "Add a listing or a reel" }).click();
   await page.getByRole("button", { name: "Add a reel" }).click();
   await expect(page.getByRole("dialog", { name: "Add a reel" })).toBeVisible();
 }

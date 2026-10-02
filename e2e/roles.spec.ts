@@ -87,6 +87,25 @@ test("a staff phone is offered the day and nothing else", async ({ page }) => {
   ]);
 });
 
+test("a staff phone's + adds a reel, and is named for it", async ({ page }) => {
+  /*
+    yuvoy-operator#109, and #58 item 8's rule: "STAFF see only Add a reel".
+    With one choice there is no menu: the + reads "Add", is named "Add a
+    reel", and opens the reel sheet. Nothing on it offers a listing.
+  */
+  await signIn(page, STAFF);
+  await page.goto("/account");
+
+  const add = page.getByRole("button", { name: "Add a reel" });
+  await expect(add).toHaveText("Add");
+  await expect(page.getByRole("button", { name: /Add a listing/ })).toHaveCount(
+    0,
+  );
+
+  await add.click();
+  await expect(page.getByRole("dialog", { name: "Add a reel" })).toBeVisible();
+});
+
 test("a manager is offered Money and the team, because the server allows them", async ({
   page,
 }) => {
