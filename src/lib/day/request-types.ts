@@ -1,4 +1,5 @@
 import type { components } from "@/lib/api/schema.gen";
+import DECLINE_COPY from "../../../contracts/decline-sentences.json";
 
 /**
  * Requests, and the pure things a screen needs to say about one.
@@ -71,3 +72,26 @@ export const DECLINE_REASONS = [
 ] as const;
 
 export type DeclineReason = (typeof DECLINE_REASONS)[number]["code"];
+
+/**
+ * The sentence the traveller reads for a decline, before it is sent.
+ *
+ * yuvoy-api writes it, not this portal: each code chooses "the sentence that
+ * traveller is sent, which always says nothing was charged" (the contract's
+ * `reasonCode`), from one table in `internal/booking/decline.go` that the
+ * notice to their phone and their booking page both use. So the operator is
+ * shown THAT sentence, word for word, while the reason can still be changed:
+ * "no seats left" and "the operator is full on that departure" are not the
+ * same thing to the person who reads it.
+ *
+ * Mirrored in `contracts/decline-sentences.json`, and `pnpm contract:check`
+ * fails when the pinned API's table says anything else, so the preview cannot
+ * drift from what is sent. A code the table does not know gets the API's own
+ * vague clause, as the API does ("a true vague sentence is a much smaller
+ * wrong than a code rendered at somebody").
+ */
+export function declineSentence(code: string): string {
+  const clauses: Record<string, string> = DECLINE_COPY.clauses;
+  const clause = clauses[code] ?? DECLINE_COPY.vague;
+  return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}. Nothing was charged.`;
+}

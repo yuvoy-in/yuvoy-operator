@@ -1,7 +1,8 @@
 import "server-only";
 import { cache } from "react";
 import { listThreads } from "@/lib/messages/fetch";
-import type { InboxCount } from "./inbox-count";
+import type { ThreadRow } from "@/lib/messages/thread";
+import { UNREAD_ROWS_KEPT, type InboxCount } from "./inbox-count";
 
 export type { InboxCount } from "./inbox-count";
 
@@ -39,6 +40,7 @@ export const readInbox = cache(
     try {
       let messages = 0;
       let conversations = 0;
+      const unreadRows: ThreadRow[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < MAX_PAGES; page += 1) {
         const { rows, complete, nextCursor } = await listThreads(
@@ -53,12 +55,17 @@ export const readInbox = cache(
               ? row.unreadCount
               : 0;
           messages += unread;
-          if (unread > 0) conversations += 1;
+          if (unread > 0) {
+            conversations += 1;
+            if (unreadRows.length < UNREAD_ROWS_KEPT && row.bookingId) {
+              unreadRows.push({ ...row, unreadCount: unread });
+            }
+          }
         }
         if (complete || !nextCursor) break;
         cursor = nextCursor;
       }
-      return { messages, conversations };
+      return { messages, conversations, unread: unreadRows };
     } catch {
       return null;
     }

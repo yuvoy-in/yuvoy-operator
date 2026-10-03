@@ -1,87 +1,105 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { Empty } from "@/components/ui/states";
-import type { OpenRequest } from "@/lib/day/request-types";
-import { GrantedReceipt, RequestRow, type Receipt } from "./request-row";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import type { RequestView } from "@/lib/day/request-view";
+import { sameOrder, stableOrder } from "@/lib/site/stable-order";
+import { AnswerAnnouncer } from "@/components/requests/answer-announcer";
+import type { AnswerKind } from "@/components/requests/answer-store";
+import { RequestItem } from "@/components/requests/request-item";
+import { useAnswers } from "@/components/requests/use-answers";
 
 /**
- * The queue, and the receipts that must outlive it.
+ * The queue, and the answers that must outlive it.
  *
- * The list is the server's: `/requests` is force-dynamic, and `RefreshOnFocus`
- * re-renders it on every focus and every minute so a request that expired or
- * was answered on another phone leaves the screen. That is right for the
- * queue and wrong for the one thing an accept produces — the receipt saying
- * the traveller now holds seats and **still has to pay**.
+ * The list is the server's: `/bookings` is force-dynamic, and
+ * `RefreshOnFocus` re-renders it on every focus and every minute so a request
+ * that expired or was answered on another phone leaves the screen. That is
+ * right for the queue and wrong for what an answer leaves behind: the five
+ * seconds an answer is held with its Undo, and the receipt saying the
+ * traveller now holds seats and **still has to pay**.
  *
- * That receipt used to live inside the row, and the row lives inside the
- * server-rendered list. Accept a request, flip to WhatsApp to tell the
- * traveller to pay, flip back: the focus refresh re-rendered the queue
- * without the accepted request, the row unmounted, and the receipt went with
- * it. The exact misunderstanding the screen exists to prevent — "accepted
- * means booked" — restored by the mechanism meant to keep the screen fresh.
- *
- * So receipts are held HERE, above the list, in client state a refresh cannot
- * reach. `router.refresh()` reconciles rather than remounts, so this component
- * keeps its state while the `requests` prop underneath it changes. A real
- * navigation clears it, which is correct: by then the queue is the truth.
+ * Accept a request, flip to WhatsApp to tell the traveller to pay, flip back:
+ * the focus refresh re-renders the queue without the accepted request. So the
+ * answers live HERE, above the list, in a store a refresh cannot reach, and
+ * each keeps the place its card had (`stableOrder`). The same card, store
+ * and receipts Home uses (`components/requests`), so the two screens answer
+ * a request the same way. A real navigation clears it, which is correct: by
+ * then the queue is the truth.
  */
 export function RequestQueue({
-  requests,
+  views,
+  empty,
   canAnswer,
   canAccept,
-  at,
-  today,
-  tomorrow,
 }: {
-  requests: OpenRequest[];
+  /** The requests, every word worked out on the server (`requestView`). */
+  views: RequestView[];
+  /** What an empty queue says, under the filters it was read with. */
+  empty: string;
   canAnswer: boolean;
   /** Accepting is refused while suspended; declining is not (#50). */
   canAccept: boolean;
-  /** When the page rendered, on the server's clock. Each row's age reads it. */
-  at: number;
-  today: string;
-  tomorrow: string;
 }) {
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const router = useRouter();
+  const refresh = useCallback(() => router.refresh(), [router]);
+  const { answers, store } = useAnswers(refresh);
+  const [restore, setRestore] = useState<Record<string, AnswerKind>>({});
 
-  const onGranted = useCallback((receipt: Receipt) => {
-    setReceipts((prev) =>
-      prev.some((r) => r.id === receipt.id) ? prev : [...prev, receipt],
-    );
+  /*
+    Pin the pill this queue is on. Bare `/bookings` opens on Requests only
+    while something is waiting, so answering the LAST request turned the next
+    re-read into Upcoming, and the queue, with that answer's receipt, went
+    with the pill. Writing `?view=requests` into the address (no navigation:
+    Next's router follows `replaceState`, and `null` is what lets it) makes
+    every re-read after it ask for this pill.
+  */
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("view")) return;
+    url.searchParams.set("view", "requests");
+    window.history.replaceState(null, "", url);
   }, []);
 
-  // A request with a receipt is answered, whatever the server's list still
-  // says for the next few seconds — showing both is showing a decision twice.
-  const waiting = requests.filter(
-    (request) => !receipts.some((r) => r.id === request.id),
-  );
+  const byId = new Map(views.map((view) => [view.id, view]));
+  const serverIds = views.map((view) => view.id);
+  const [order, setOrder] = useState<string[]>(serverIds);
+  const next = stableOrder(order, serverIds, new Set(Object.keys(answers)));
+  if (!sameOrder(next, order)) setOrder(next);
 
-  if (receipts.length === 0 && waiting.length === 0) {
-    return (
-      // The title is the whole of it: what a request looks like when one
-      // arrives explained the screen (yuvoy-operator#80 t4).
-      <Empty title="Nothing waiting" />
-    );
-  }
+  const rows = next.flatMap((id) => {
+    const answer = answers[id];
+    const view = byId.get(id) ?? answer?.view;
+    if (!view) return [];
+    return [
+      <RequestItem
+        key={id}
+        view={view}
+        answer={answer}
+        present={byId.has(id)}
+        canAnswer={canAnswer}
+        canAccept={canAccept}
+        focus={restore[id]}
+        onAccept={() => store.hold("accept", view)}
+        onDecline={(reason) => store.hold("decline", view, reason)}
+        onUndo={() => {
+          const kind = answer?.kind;
+          if (store.undo(id) && kind) {
+            setRestore((was) => ({ ...was, [id]: kind }));
+          }
+        }}
+      />,
+    ];
+  });
 
   return (
-    <ul className="space-y-3">
-      {receipts.map((receipt) => (
-        <GrantedReceipt key={`granted-${receipt.id}`} receipt={receipt} />
-      ))}
-      {waiting.map((request) => (
-        <RequestRow
-          key={request.id}
-          request={request}
-          canAnswer={canAnswer}
-          canAccept={canAccept}
-          onGranted={onGranted}
-          at={at}
-          today={today}
-          tomorrow={tomorrow}
-        />
-      ))}
-    </ul>
+    <>
+      <AnswerAnnouncer answers={answers} />
+      {rows.length === 0 ? (
+        <p className="text-forest/70 text-base">{empty}</p>
+      ) : (
+        <ul className="space-y-3">{rows}</ul>
+      )}
+    </>
   );
 }

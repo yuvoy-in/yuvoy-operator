@@ -192,3 +192,79 @@ if (localSha !== upstreamSha) {
 console.log(
   `✓ contract matches ${pinned.repo}@${pinned.ref.slice(0, 12)} — ${pinned.path} (${pinned.branch ?? "?"})`,
 );
+
+/*
+  3. The decline sentences must still be the API's.
+
+  Declining a request shows the operator the sentence the traveller will read
+  (`declineSentence` in `src/lib/day/request-types.ts`). The API writes that
+  sentence, from one table in Go that the contract does not carry, so the
+  portal mirrors it in `contracts/decline-sentences.json`, and this is what
+  keeps the mirror honest: a preview that says one thing while the traveller
+  is sent another is worse than no preview.
+
+  Read at the SAME pinned ref as the contract, which has just been read, so
+  the repository is known to be visible and a 404 here is about the file: the
+  table moved or was renamed, and the mirror's source is gone. That fails.
+*/
+const DECLINE_MIRROR = "contracts/decline-sentences.json";
+const mirror = JSON.parse(readFileSync(DECLINE_MIRROR, "utf8"));
+
+let goSource;
+try {
+  goSource = Buffer.from(
+    execFileSync(
+      "gh",
+      [
+        "api",
+        `repos/${pinned.repo}/contents/${mirror.source}?ref=${pinned.ref}`,
+        "--jq",
+        ".content",
+      ],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    ),
+    "base64",
+  ).toString("utf8");
+} catch (err) {
+  const said = `${err.stderr ?? ""}${err.stdout ?? ""}`;
+  if (/\(HTTP 404\)/.test(said)) {
+    fail(
+      `${pinned.repo} has no ${mirror.source} at ref ${pinned.ref.slice(0, 12)}.\n` +
+        `  ${DECLINE_MIRROR} mirrors that file's decline sentences. Find where the\n` +
+        `  table went, update "source" and the sentences, and commit both.`,
+    );
+  }
+  console.warn(
+    `\n⚠ decline sentences not verified: could not read ${mirror.source} this run.\n`,
+  );
+  process.exit(0);
+}
+
+const table = /declineClauses\s*=\s*map\[string\]string\{([\s\S]*?)\n\}/.exec(
+  goSource,
+)?.[1];
+const vague = /vagueClause\s*=\s*"([^"]*)"/.exec(goSource)?.[1];
+const clauses = Object.fromEntries(
+  [...(table ?? "").matchAll(/"([a-z_]+)":\s*"([^"]*)"/g)].map((m) => [
+    m[1],
+    m[2],
+  ]),
+);
+if (!table || Object.keys(clauses).length === 0 || vague === undefined) {
+  fail(
+    `${mirror.source}@${pinned.ref.slice(0, 12)} no longer reads as a declineClauses map and a vagueClause.\n` +
+      `  The table changed shape; read it, update ${DECLINE_MIRROR} and this parser.`,
+  );
+}
+// Compared as sorted pairs: the order of a Go map literal means nothing.
+const pairs = (o) => JSON.stringify(Object.entries(o).sort());
+const same = pairs(clauses) === pairs(mirror.clauses) && vague === mirror.vague;
+if (!same) {
+  fail(
+    `${DECLINE_MIRROR} differs from ${mirror.source}@${pinned.ref.slice(0, 12)}.\n` +
+      `  The operator is shown a sentence the traveller is no longer sent.\n` +
+      `  API:    ${JSON.stringify({ clauses, vague })}\n` +
+      `  Mirror: ${JSON.stringify({ clauses: mirror.clauses, vague: mirror.vague })}`,
+  );
+}
+console.log(`✓ decline sentences match ${mirror.source}`);

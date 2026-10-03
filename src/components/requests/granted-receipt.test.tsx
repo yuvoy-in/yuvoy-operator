@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-vi.mock("./actions", () => ({
+vi.mock("@/app/bookings/actions", () => ({
   acceptRequest: vi.fn(),
   declineRequest: vi.fn(),
 }));
 
-const { GrantedReceipt } = await import("./request-row");
+const { GrantedReceipt } = await import("./answer-rows");
 
 const BASE = { id: "req_1", contactName: "Ingrid", guests: 4 };
 

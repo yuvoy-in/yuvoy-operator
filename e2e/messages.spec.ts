@@ -30,8 +30,9 @@ const OWNER = "+919000000101";
 /** Asha's booking: the long conversation, for ordering, paging and the composer. */
 const LIVE = "bkg_1";
 /**
- * Sofia's: the ONLY conversation with anything unread, and the only one this
- * suite leaves alone until the strip test walks it.
+ * Sofia's: one of the two conversations with anything unread (Hana's, read
+ * from Home, is the other), and the one this suite leaves alone until the
+ * count test walks it.
  *
  * Separate from `LIVE` because reading is not reversible: the composer and
  * paging tests open that booking, which would clear a count they know nothing
@@ -295,76 +296,143 @@ test("a row opens that booking's conversation", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("Home counts unread, and opening the conversation clears it", async ({
-  page,
-}, testInfo) => {
-  /*
-    op#52 items 3 and 4, walked end to end, because neither half means anything
-    alone: a count that never goes down is a badge somebody learns to ignore, and
-    a mark-read nobody can see is unfalsifiable.
+/*
+  op#52 items 3 and 4, walked end to end, because neither half means anything
+  alone: a count that never goes down is a badge somebody learns to ignore, and
+  a mark-read nobody can see is unfalsifiable. Two ways to read: answering on
+  Home (operator experiment A), and opening the booking's conversation.
 
-    Single-tenant BY DESIGN. Reading a conversation is not reversible and the
-    mock's state lives in the Next server process both projects share, so the
-    second project would find the strip already cleared. Declared rather than
-    hidden, the same call the join and payout specs make.
-  */
-  test.skip(
-    testInfo.project.name !== "mobile",
-    "marking read is not reversible, and both projects share the mock's state",
-  );
+  Single-tenant BY DESIGN, and serial. Reading a conversation is not
+  reversible and the mock's state lives in the Next server process both
+  projects share, so the second project would find the count already cleared;
+  and the two tests here count each other's conversation, so they run in
+  order. Declared rather than hidden, the same call the join and payout specs
+  make.
+*/
+const SINGLE_TENANT =
+  "marking read is not reversible, and both projects share the mock's state";
 
-  await signIn(page);
-  await page.goto("/today");
+test.describe.serial("guests waiting on a reply", () => {
+  test("a guest is answered on Home, in place, and stops waiting", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", SINGLE_TENANT);
+    await signIn(page);
+    await page.goto("/today");
 
-  /*
-    A row in Home's "Needs you" since yuvoy-operator#96, counted in guests:
-    one conversation with two unread messages is one guest waiting on a
-    reply. The inbox on the stage says the same number.
-  */
-  const strip = page
-    .getByRole("region", { name: "Needs you" })
-    .getByRole("link", { name: /guests? wrote to you/ });
-  await expect(strip).toContainText("1 guest wrote to you");
-  await expect(
-    page.getByRole("link", {
+    // Two conversations unread: Sofia's, and Hana's on today's 20:30.
+    await expect(
+      page.getByRole("link", {
+        name: "Messages, 2 unread conversations",
+        exact: true,
+      }),
+    ).toBeVisible();
+    const needs = page.getByRole("region", { name: "Needs you" });
+    const card = needs
+      .getByRole("listitem", { name: "Message from a guest" })
+      .filter({ hasText: "YV-T0DAY4K5" });
+    await expect(card).toContainText("1 new");
+    // A summary carries no name and no words, by contract.
+    await expect(card).not.toContainText("Hana");
+
+    await card.getByRole("button", { name: "Read and reply" }).click();
+    const open = needs.getByRole("listitem", { name: "Message from Hana Ito" });
+    await expect(open).toContainText("Hana Ito wrote");
+    await expect(open).toContainText("Can I pay you in cash at the jetty?");
+
+    // A quick reply fills the box; only Send sends.
+    await open.getByRole("button", { name: "Yes, that is fine." }).click();
+    await expect(open.getByLabel("Reply to Hana")).toHaveValue(
+      "Yes, that is fine.",
+    );
+    await open.getByRole("button", { name: "Send" }).click();
+    await expect(open.getByRole("status")).toHaveText("Sent to Hana Ito.");
+    await expect(open).toContainText("Yes, that is fine.");
+
+    // Read, so one guest is left waiting, and Home no longer offers Hana.
+    await expect(async () => {
+      await page.goto("/today");
+      await expect(
+        page.getByRole("link", {
+          name: "Messages, 1 unread conversation",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "Needs you" })
+          .getByRole("listitem")
+          .filter({ hasText: "YV-T0DAY4K5" }),
+      ).toHaveCount(0);
+    }).toPass({ timeout: 10_000 });
+
+    // And the reply is on the booking, where the traveller's thread lives.
+    await page.goto("/bookings/bkg_cash_today");
+    await expect(
+      page.getByRole("region", { name: "Conversation" }),
+    ).toContainText("Yes, that is fine.");
+  });
+
+  test("Home counts unread, and opening the conversation clears it", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", SINGLE_TENANT);
+    await signIn(page);
+    await page.goto("/today");
+
+    /*
+      A card in Home's "Needs you", counted in messages on the card and in
+      guests on the stage: one conversation with two unread messages is one
+      guest waiting on a reply.
+    */
+    const card = page
+      .getByRole("region", { name: "Needs you" })
+      .getByRole("listitem", { name: "Message from a guest" })
+      .filter({ hasText: "YV-CARD6N7P" });
+    await expect(card).toContainText("2 new");
+    const inbox = page.getByRole("link", {
       name: "Messages, 1 unread conversation",
       exact: true,
-    }),
-  ).toBeVisible();
+    });
+    await expect(inbox).toBeVisible();
 
-  await strip.click();
-  await page.waitForURL("**/messages");
-  /*
-    The row carries the same two, which is what makes the list worth opening
-    rather than scanning every booking: a dot to the eye, and the count in the
-    row's name to a screen reader (yuvoy-operator#83 s6).
-  */
-  await expect(
-    page.getByRole("link", { name: /YV-CARD6N7P/ }),
-  ).toHaveAccessibleName(/2 unread messages/);
-
-  await page.locator("li").filter({ hasText: "YV-CARD6N7P" }).click();
-  await page.waitForURL(`**/bookings/${UNREAD}**`);
-  await expect(
-    page.getByRole("heading", { name: "Conversation" }),
-  ).toBeVisible();
-
-  /*
-    The marker moves on the client, after the page is drawn, so the assertion
-    waits on Home rather than on anything here. `toPass` because the write is a
-    Server Action fired from an effect: it has landed by the time Home is
-    re-requested, but not necessarily by the time the click happens.
-  */
-  await expect(async () => {
-    await page.goto("/today");
+    await inbox.click();
+    await page.waitForURL("**/messages");
+    /*
+      The row carries the same two, which is what makes the list worth opening
+      rather than scanning every booking: a dot to the eye, and the count in the
+      row's name to a screen reader (yuvoy-operator#83 s6).
+    */
     await expect(
-      page.getByRole("link", { name: /guests? wrote to you/ }),
-    ).toHaveCount(0);
-    // And the inbox carries no count.
+      page.getByRole("link", { name: /YV-CARD6N7P/ }),
+    ).toHaveAccessibleName(/2 unread messages/);
+
+    await page.locator("li").filter({ hasText: "YV-CARD6N7P" }).click();
+    await page.waitForURL(`**/bookings/${UNREAD}**`);
     await expect(
-      page.getByRole("link", { name: "Messages", exact: true }),
+      page.getByRole("heading", { name: "Conversation" }),
     ).toBeVisible();
-  }).toPass({ timeout: 10_000 });
+
+    /*
+      The marker moves on the client, after the page is drawn, so the assertion
+      waits on Home rather than on anything here. `toPass` because the write is a
+      Server Action fired from an effect: it has landed by the time Home is
+      re-requested, but not necessarily by the time the click happens.
+    */
+    await expect(async () => {
+      await page.goto("/today");
+      await expect(
+        page
+          .getByRole("region", { name: "Needs you" })
+          .getByRole("listitem")
+          .filter({ hasText: "YV-CARD6N7P" }),
+      ).toHaveCount(0);
+      // And the inbox carries no count.
+      await expect(
+        page.getByRole("link", { name: "Messages", exact: true }),
+      ).toBeVisible();
+    }).toPass({ timeout: 10_000 });
+  });
 });
 
 test("/messages has no accessibility violations", async ({ page }) => {

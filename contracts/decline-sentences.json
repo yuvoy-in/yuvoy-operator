@@ -1,0 +1,11 @@
+{
+  "source": "internal/booking/decline.go",
+  "clauses": {
+    "no_capacity": "the operator is full on that departure",
+    "weather": "the operator isn't running that date because of the conditions",
+    "not_operating": "the operator isn't running that departure after all",
+    "party_too_large": "the operator can't take a group that size on this one",
+    "unsafe_for_party": "the operator doesn't think this trip is right for your group"
+  },
+  "vague": "the operator couldn't take this one"
+}

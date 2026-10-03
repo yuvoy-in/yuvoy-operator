@@ -239,7 +239,7 @@ export function Conversation({
  * thing carrying it at all: the name is beside every message, and a screen
  * reader reads the name rather than inferring anything from a margin.
  */
-function Bubble({ message }: { message: ThreadMessage }) {
+export function Bubble({ message }: { message: ThreadMessage }) {
   const mine = message.from === "operator";
   const removed = textRemoved(message);
 

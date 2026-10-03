@@ -44,6 +44,7 @@ import { BookingList } from "@/app/bookings/booking-list";
 import { NothingBooked } from "@/app/bookings/nothing-booked";
 import { PillRow } from "@/app/bookings/pill-row";
 import { RequestQueue } from "@/app/bookings/request-queue";
+import { requestView } from "@/lib/day/request-view";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
 
@@ -260,18 +261,22 @@ export default async function BookingsPage({
               title="Requests did not load. Try again."
               body="Your bookings on the other pills are unaffected."
             />
-          ) : visibleRequests.length === 0 ? (
-            <p className="text-forest/70 text-base">
-              {emptyLine("requests", filtered)}
-            </p>
           ) : (
             /*
               The list and its receipts are one client component on purpose: the
               receipt an accept produces has to outlive the row the next refresh
               removes. See `RequestQueue`.
+
+              Rendered when the queue is EMPTY too, and it says so itself. The
+              page used to swap it for the empty line once the last request had
+              gone, which unmounted the queue and took the receipt for that last
+              request with it: "still has to pay", gone on the next refresh.
             */
             <RequestQueue
-              requests={visibleRequests}
+              views={visibleRequests.map((request) =>
+                requestView(request, { at, today, tomorrow }),
+              )}
+              empty={emptyLine("requests", filtered)}
               /*
                 Accepting is refused while suspended and declining is not (#50):
                 a suspended business can always let a traveller go and can never
@@ -281,9 +286,6 @@ export default async function BookingsPage({
               */
               canAnswer={me.canManage}
               canAccept={!me.suspension}
-              at={at}
-              today={today}
-              tomorrow={tomorrow}
             />
           )}
 

@@ -53,18 +53,26 @@ export function Screen({
   stageLabel?: string;
   /** Controls at the stage header's right edge, before the inbox. */
   stageActions?: ReactNode;
-  /** The sheet's measure: a form, a list, or a page with a wide table. */
-  width?: "sm" | "md" | "lg";
+  /**
+   * The sheet's measure: a form, a list, a page with a wide table, or a
+   * screen that puts two columns side by side on a desktop (Home's work
+   * beside its day, operator experiment A).
+   */
+  width?: "sm" | "md" | "lg" | "xl";
 }) {
   const back = typeof nav === "object" ? nav.back : null;
-  const measure =
-    width === "lg" ? "max-w-3xl" : width === "sm" ? "max-w-md" : "max-w-2xl";
-  const panel =
-    width === "lg"
-      ? "lg:max-w-3xl"
-      : width === "sm"
-        ? "lg:max-w-md"
-        : "lg:max-w-2xl";
+  const measure = {
+    sm: "max-w-md",
+    md: "max-w-2xl",
+    lg: "max-w-3xl",
+    xl: "max-w-5xl",
+  }[width];
+  const panel = {
+    sm: "lg:max-w-md",
+    md: "lg:max-w-2xl",
+    lg: "lg:max-w-3xl",
+    xl: "lg:max-w-5xl",
+  }[width];
 
   return (
     <div className="stage flex flex-1 flex-col lg:px-8 lg:py-8">

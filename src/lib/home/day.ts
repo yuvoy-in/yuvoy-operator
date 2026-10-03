@@ -4,6 +4,7 @@ import { marketTime } from "@/lib/format/market-time";
 import { formatPaise } from "@/lib/format/money";
 import { takesCash, toBookingCash } from "@/lib/money/bookings";
 import { neverPublished, type HomeListing } from "./listings";
+import type { CashParty } from "./needs";
 import { count, dayWords } from "./words";
 
 /**
@@ -203,6 +204,33 @@ export function cashToCollect(manifest: Manifest): DepartureCash {
 }
 
 /**
+ * The parties on a departure with cash still to take, as Home's cash card
+ * takes it party by party (operator experiment A).
+ *
+ * The same rule as `cashToCollect`, so the card and the sum above it are the
+ * same parties: a booking the manifest can take money from, not yet taken.
+ * Only what the card draws crosses to the client; the screener, which the
+ * manifest's contract keeps off any page, is never among it.
+ */
+export function cashParties(manifest: Manifest): CashParty[] {
+  const out: CashParty[] = [];
+  for (const party of manifest.parties ?? []) {
+    if (!party.bookingId || !takesCash(party.state)) continue;
+    const cash = toBookingCash(party.cash);
+    if (!cash || cash.collected) continue;
+    out.push({
+      bookingId: party.bookingId,
+      name: party.name?.trim() || "A guest",
+      reference: party.reference ?? "",
+      guests: party.guests ?? 0,
+      state: party.state ?? "",
+      cash,
+    });
+  }
+  return out;
+}
+
+/**
  * "2 of 5 checked in", in guests, or nothing worth saying yet.
  *
  * The manifest's own `totals` when it sent them: "computed server-side so
@@ -352,4 +380,27 @@ export function emptyToday(
   const day = marketDayOf(next.startsAt, next.timezone);
   if (!day) return "Nothing running today.";
   return `Nothing running today. Next: ${dayWords(day, today)} ${marketTime(next.startsAt, next.timezone)}.`;
+}
+
+/**
+ * What an empty "Needs you" says next: the departure everybody is getting
+ * ready for. "Next: 11:30 Try-dive at Nemo Reef, 5 of 8 booked."
+ *
+ * Said as what is coming, never as a promise that nothing else will: a new
+ * request can arrive at any minute, and "clear until 11:30" would be a claim
+ * about somebody else's phone (operator experiment A's end state, reworded).
+ */
+export function nextUpLine(
+  next: OperatorSlot | null,
+  today: string,
+): string | null {
+  if (!next) return null;
+  const day = marketDayOf(next.startsAt, next.timezone);
+  if (!day) return null;
+  const when = dayWords(day, today);
+  const time = marketTime(next.startsAt, next.timezone);
+  const people = peopleOn(next);
+  const booked =
+    next.seats > 0 ? `${people} of ${next.seats} booked` : `${people} booked`;
+  return `Next: ${when === "today" ? "" : `${when} `}${time} ${next.title}, ${booked}.`;
 }
