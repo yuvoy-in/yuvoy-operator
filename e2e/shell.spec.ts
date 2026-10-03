@@ -436,7 +436,12 @@ for (const [old, moved, heading] of [
   test(`${old} still lands on ${moved}`, async ({ page }) => {
     await signIn(page);
     await page.goto(old);
-    await page.waitForURL(`**${moved}`);
+    /*
+      The path, not the whole address: Bookings writes the pill it opened on
+      into the query once it is drawn (`?view=requests`), and a wait for the
+      bare URL raced that and lost on a slow run.
+    */
+    await page.waitForURL((url) => url.pathname === moved);
     await expect(
       page.getByRole("heading", { name: heading, exact: true }),
     ).toBeVisible();

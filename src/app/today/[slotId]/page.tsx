@@ -12,9 +12,12 @@ import { OperatorApiError } from "@/lib/api/errors";
 import {
   hasDeparted,
   marketDay,
+  marketDays,
   marketTime,
   now,
 } from "@/lib/format/market-time";
+import { marketDayOf } from "@/lib/day/calendar";
+import { dayWords } from "@/lib/home/words";
 import { Problem } from "@/components/ui/states";
 import { PartyRow } from "./party-row";
 import { RelayPanel } from "./relay-panel";
@@ -191,7 +194,8 @@ export default async function ManifestPage({
   // is impure and the React compiler refuses it — and a "has it departed yet"
   // that flips between two renders is a set of buttons appearing and vanishing
   // under a wet thumb.
-  const departed = startsAt ? hasDeparted(startsAt, await now()) : false;
+  const [at, { today }] = await Promise.all([now(), marketDays()]);
+  const departed = startsAt ? hasDeparted(startsAt, at) : false;
 
   // Back goes where the operator came from (audit 5.8), the day by default.
   const back = backFrom(query.from, { href: "/today", label: "the day" });
@@ -480,6 +484,12 @@ export default async function ManifestPage({
         alreadyCalledOff={Boolean(manifest.calledOff)}
         canManage={me.canManage}
         time={startsAt ? marketTime(startsAt, timezone) : undefined}
+        title={manifest.experience}
+        day={
+          startsAt
+            ? dayWords(marketDayOf(startsAt, timezone) ?? "", today)
+            : undefined
+        }
       />
     </Screen>
   );

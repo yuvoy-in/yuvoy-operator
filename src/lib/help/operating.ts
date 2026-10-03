@@ -60,7 +60,7 @@ export const OPERATING_HELP: readonly HelpTopic[] = [
     answer: [
       "Every booking on it is cancelled, and everything the travellers paid online is refunded in full, whatever the cancellation terms. Seats being held are released, and we message everyone booked.",
       "Anyone who paid you in cash gets it back from you, because none of it reached us. The departure lists who, and you record each one once you have handed the money back.",
-      "It cannot be undone, which is why you type the departure's id to confirm it rather than ticking a box. To stop new bookings and keep the people already booked, stop selling the departure instead.",
+      "It cannot be undone, so before anything happens the confirm names the departure and its day, and says what happens to everyone on it. To stop new bookings and keep the people already booked, stop selling the departure instead.",
     ],
   },
   {

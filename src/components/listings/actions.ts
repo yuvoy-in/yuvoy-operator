@@ -343,7 +343,7 @@ export interface PauseState {
    * What was typed, handed back so a refusal does not empty the form. See the
    * note in `pauseListing`.
    */
-  typed?: { reasonCode?: string; confirmExperienceId?: string };
+  typed?: { reasonCode?: string };
   /** Bumped per attempt, so the form remounts and re-reads its defaults. */
   attempt?: number;
   /** Set on success, so the row can say exactly what did and did not happen. */
@@ -395,12 +395,15 @@ const pauseSchema = z.object({
  * lifted and the sentence is printed verbatim, like `note` beside it. Raised
  * and closed on yuvoy-operator#44.
  *
- * ## Confirmed by typing the id, not by a checkbox
+ * ## Confirmed by name, not by a checkbox
  *
  * The contract's reason, and it is the same call the departure call-off makes:
  * "a checkbox is one mis-tap on a wet phone away from taking a live listing off
- * sale". The comparison happens here as well as at the API, because a Server
- * Action is a public POST endpoint whatever the form does.
+ * sale". The question names the listing, and the form fills
+ * `confirmExperienceId` with the listing it was opened on (owner ruling, 3 Oct
+ * 2026: a named confirm everywhere, replacing the id typed back;
+ * yuvoy-api#261). The comparison happens here as well as at the API, because a
+ * Server Action is a public POST endpoint whatever the form does.
  */
 export async function pauseListing(
   _prev: PauseState,
@@ -416,16 +419,14 @@ export async function pauseListing(
     A refusal must not empty the form.
 
     React resets a form when its action completes and these inputs are
-    uncontrolled, so a mistyped id used to clear the chosen REASON as well —
-    and the next attempt then failed validation for a different reason than the
+    uncontrolled, so a refusal used to clear the chosen REASON as well, and
+    the next attempt then failed validation for a different reason than the
     one on screen. Found by an e2e walkthrough that typed a wrong id first,
-    which is exactly what a person does. The same defect shipped on `/sign-in`
-    and `/signup` and is fixed there the same way.
+    back when the id was typed. The same defect shipped on `/sign-in` and
+    `/signup` and is fixed there the same way.
   */
   const typed = {
     reasonCode: String(form.get("reasonCode") ?? "") || undefined,
-    confirmExperienceId:
-      String(form.get("confirmExperienceId") ?? "") || undefined,
   };
   const again = (message: string): PauseState => ({
     message,
@@ -434,14 +435,15 @@ export async function pauseListing(
   });
 
   if (!parsed.success) {
-    return again("Pick a reason, and type the listing's id to confirm.");
+    return again("Pick a reason for pausing it. Nothing changed.");
   }
 
   const { id, reasonCode, note, confirmExperienceId } = parsed.data;
   if (confirmExperienceId !== id) {
     // Said here rather than forwarded, because the API's 400 for this is not a
-    // sentence an operator can act on and the mismatch is knowable on screen.
-    return again("That id does not match this listing. Nothing changed.");
+    // sentence an operator can act on. The form sends its own listing, so this
+    // is a forged or stale POST.
+    return again("That confirm was for another listing. Nothing changed.");
   }
 
   const { token, me } = await requireOperator();

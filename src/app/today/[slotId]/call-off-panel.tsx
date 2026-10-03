@@ -6,7 +6,7 @@ import { CALL_OFF_REASONS } from "@/lib/day/relay-types";
 import { formatPaise } from "@/lib/format/money";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
-import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
+import { choiceClass, textareaClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
 
@@ -24,8 +24,11 @@ import { cn } from "@/lib/cn";
  *
  * Two things about the design are not decoration:
  *
- * **The confirmation is the departure's own id, typed.** Not a checkbox. "A
- * checkbox is one mis-tap on a wet phone away from cancelling a full boat."
+ * **The confirmation is named, not ticked.** "A checkbox is one mis-tap on a
+ * wet phone away from cancelling a full boat." The question names the boat,
+ * its day and what happens to everyone on it, over the one loud button, and
+ * the id it sends is the departure's own (owner ruling, 3 Oct 2026: a named
+ * confirm everywhere, replacing the id typed back; yuvoy-api#261).
  *
  * **The numbers come back.** Somebody who has just cancelled fourteen people's
  * day should see that it happened, and how much money went back — otherwise
@@ -41,6 +44,8 @@ export function CallOffPanel({
   alreadyCalledOff,
   canManage,
   time,
+  title,
+  day,
   startOpen = false,
   onKeep,
   onBusyChange,
@@ -51,6 +56,10 @@ export function CallOffPanel({
   canManage: boolean;
   /** The departure's own start time, "09:00", which the confirm names. */
   time?: string;
+  /** The trip, "Try-dive at Nemo Reef", so the confirm names the boat. */
+  title?: string;
+  /** Its day as said: "today", "tomorrow", "Sat 10 Oct". */
+  day?: string;
   /**
    * Opens on the confirm, for a screen that already asked (the listing hub's
    * Manage row), so nobody taps "call off" twice to reach it.
@@ -136,9 +145,9 @@ export function CallOffPanel({
   if (alreadyCalledOff) return null;
 
   /*
-    STAFF cannot call this off. Saying so up front beats letting somebody type
-    a departure id and then read a 403 — the contract refuses the write, and
-    the person needs to go and find an owner, not retry.
+    STAFF cannot call this off. Saying so up front beats letting somebody pick
+    a reason and then read a 403: the contract refuses the write, and the
+    person needs to go and find an owner, not retry.
   */
   if (!canManage) {
     return (
@@ -175,7 +184,12 @@ export function CallOffPanel({
         tabIndex={-1}
         className="text-base font-bold outline-none"
       >
-        {time ? `Call off ${time}?` : "Call off this departure?"}
+        {/*
+          Named, all of it (owner ruling, 3 Oct 2026: a named confirm
+          everywhere): which boat, which day, so the one tap below is made
+          knowing exactly what it calls off.
+        */}
+        {calledOffQuestion(time, title, day)}
       </h2>
       {/*
         The whole consequence, named before the tap (op#81 t5), including the
@@ -231,29 +245,16 @@ export function CallOffPanel({
         </p>
       </div>
 
-      <div className="mt-4">
-        <label
-          htmlFor={`confirm-slot-${slotId}`}
-          className="label text-forest/75"
-        >
-          Type the departure id to confirm
-        </label>
-        {/*
-          The id, because nobody has it memorised. Why it is typed rather than
-          ticked is the design's reason, not the operator's, and it went.
-        */}
-        <p className="text-forest/70 mt-1 text-xs">
-          It is <code className="font-mono font-bold">{slotId}</code>.
-        </p>
-        <input
-          id={`confirm-slot-${slotId}`}
-          name="confirmSlotId"
-          type="text"
-          autoComplete="off"
-          required
-          className={inputClass("mt-2 font-mono")}
-        />
-      </div>
+      {/*
+        No id to type. It used to ask for this departure's id, typed on a wet
+        phone, because the API requires `confirmSlotId` ("not a boolean: a
+        checkbox is one mis-tap on a wet phone away from cancelling a full
+        boat"). The question above names the departure and what happens, the
+        danger button below is the one deliberate tap, and the id is the one
+        this panel was opened on, filled here (yuvoy-api#261). The action
+        still refuses an id that is not this departure's.
+      */}
+      <input type="hidden" name="confirmSlotId" value={slotId} />
 
       {state.message ? (
         <p role="alert" className="text-terra-deep mt-3 text-sm font-bold">
@@ -292,4 +293,15 @@ function Figure({ label, value }: { label: string; value: string }) {
       <dd className="font-display mt-1 text-2xl leading-none">{value}</dd>
     </div>
   );
+}
+
+/** "Call off the 11:30 Try-dive at Nemo Reef, today?", as much as is known. */
+export function calledOffQuestion(
+  time?: string,
+  title?: string,
+  day?: string,
+): string {
+  const what = [time, title].filter(Boolean).join(" ");
+  if (!what) return "Call off this departure?";
+  return `Call off the ${what}${day ? `, ${day}` : ""}?`;
 }

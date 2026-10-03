@@ -30,9 +30,6 @@ afterEach(() => {
 async function cancelIt() {
   fireEvent.click(screen.getByRole("button", { name: "Cancel this booking" }));
   fireEvent.click(screen.getByRole("radio", { name: "Weather" }));
-  fireEvent.change(screen.getByLabelText(/^Type/), {
-    target: { value: "YV-TEST0001" },
-  });
   fireEvent.click(screen.getByRole("button", { name: "Cancel the booking" }));
   await screen.findByText("This booking is cancelled");
 }
@@ -46,6 +43,10 @@ describe("after a cancel", () => {
 
     await cancelIt();
 
+    // The booking's own reference, filled by the form: nothing was typed.
+    const sent = cancelBooking.mock.calls[0][1] as FormData;
+    expect(sent.get("bookingId")).toBe("bkg_1");
+    expect(sent.get("confirmReference")).toBe("YV-TEST0001");
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     // Nothing left to press: the page behind is already current.
     expect(
@@ -123,11 +124,17 @@ describe("before a cancel", () => {
     expect(screen.queryByRole("heading")).toBeNull();
   });
 
-  it("names the booking and the money before the loud button", () => {
+  /*
+    Named, not typed (owner ruling, 3 Oct 2026). The reference used to be
+    typed back; the question says whose booking it is now, and that it
+    cannot be undone, over the one loud button.
+  */
+  it("names whose booking it is and the money, before the loud button", () => {
     render(
       <CancelBooking
         bookingId="bkg_1"
         reference="YV-TEST0001"
+        who="Asha Menon"
         isCash={false}
       />,
     );
@@ -135,13 +142,29 @@ describe("before a cancel", () => {
       screen.getByRole("button", { name: "Cancel this booking" }),
     );
 
-    expect(screen.getByText("Cancel YV-TEST0001?")).toBeInTheDocument();
+    expect(
+      screen.getByText("Cancel Asha Menon's booking, YV-TEST0001?"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("This cannot be undone.")).toBeInTheDocument();
     expect(
       screen.getByText(/Everything they paid online is refunded in full/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Cancel the booking" }),
     ).toHaveClass("border-2", "border-terra-deep");
+    // Nothing to type: the only field to write in is the note.
+    expect(screen.getAllByRole("textbox")).toEqual([
+      screen.getByLabelText(/A note/),
+    ]);
+  });
+
+  it("names the reference alone when there is no name to give", () => {
+    render(<CancelBooking bookingId="bkg_1" reference="YV-TEST0001" isCash />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel this booking" }),
+    );
+    expect(screen.getByText("Cancel YV-TEST0001?")).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is refunded online/)).toBeInTheDocument();
   });
 });
 
@@ -166,7 +189,7 @@ describe("focus in the cancel confirm", () => {
 
   it("gives two open on one manifest their own fields", async () => {
     const user = userEvent.setup();
-    render(
+    const { container } = render(
       <>
         <CancelBooking bookingId="bkg_1" reference="YV-ONE" isCash />
         <CancelBooking bookingId="bkg_2" reference="YV-TWO" isCash />
@@ -181,8 +204,13 @@ describe("focus in the cancel confirm", () => {
     const notes = screen.getAllByLabelText(/A note/);
     expect(notes).toHaveLength(2);
     expect(notes[0].id).not.toBe(notes[1].id);
-    expect(screen.getByLabelText("Type YV-ONE to confirm")).not.toBe(
-      screen.getByLabelText("Type YV-TWO to confirm"),
-    );
+    // And each confirms its own booking, not the other's.
+    expect(
+      [
+        ...container.querySelectorAll<HTMLInputElement>(
+          "[name=confirmReference]",
+        ),
+      ].map((input) => input.value),
+    ).toEqual(["YV-ONE", "YV-TWO"]);
   });
 });

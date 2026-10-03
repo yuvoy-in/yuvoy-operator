@@ -157,6 +157,8 @@ export function DepartureInspector({
         alreadyCalledOff={calledOff}
         canManage={canManage}
         time={time}
+        title={slot.title}
+        day={shortDate(day)}
         className="mt-8"
       />
     </InspectorSheet>

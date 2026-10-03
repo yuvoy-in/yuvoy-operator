@@ -292,8 +292,9 @@ const callOffSchema = z.object({
   /*
     Not a boolean. The contract is explicit: "a checkbox is one mis-tap on a
     wet phone away from cancelling a full boat, and this is the only action in
-    the portal that cannot be undone." The operator types the departure's own
-    id back.
+    the portal that cannot be undone." The panel fills it with the departure
+    it was opened on, under a question that names that departure (owner
+    ruling, 3 Oct 2026; yuvoy-api#261).
   */
   confirmSlotId: z.string().min(1),
 });
@@ -323,17 +324,19 @@ export async function callOffDeparture(
     confirmSlotId: form.get("confirmSlotId") ?? "",
   });
   if (!parsed.success) {
-    return { message: "Pick a reason and confirm the departure id." };
+    return {
+      message: "Pick a reason for calling it off. Nothing was cancelled.",
+    };
   }
 
   const { slotId, reasonCode, note, confirmSlotId } = parsed.data;
 
-  // Checked here before the round trip, and again by the API. A mis-typed
-  // confirmation should not cost a request, and it must never be skipped.
+  // Checked here before the round trip, and again by the API. The panel sends
+  // its own departure, so a confirm for another one is a forged or stale POST:
+  // it should not cost a request, and the check must never be skipped.
   if (confirmSlotId.trim() !== slotId) {
     return {
-      message:
-        "That is not this departure's id. Nothing was cancelled. Check it and try again.",
+      message: "That confirm was for another departure. Nothing was cancelled.",
     };
   }
 

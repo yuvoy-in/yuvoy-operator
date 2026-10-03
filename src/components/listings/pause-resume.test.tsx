@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const pauseListing = vi.fn();
@@ -67,10 +67,11 @@ describe("the control that takes a listing off sale", () => {
       "border-2",
       "border-terra-deep",
     );
-    // The id is typed, not ticked: one mis-tap on a wet phone is not enough.
-    expect(
-      screen.getByLabelText(/Type this listing’s id to confirm/),
-    ).toBeInTheDocument();
+    // Named, not typed (owner ruling, 3 Oct 2026): the only field to write
+    // in is the note.
+    expect(screen.getAllByRole("textbox")).toEqual([
+      screen.getByLabelText("Anything to add"),
+    ]);
   });
 
   it("puts the control back when the question goes unanswered", () => {
@@ -82,7 +83,7 @@ describe("the control that takes a listing off sale", () => {
     expect(screen.getByRole("button", { name: "Pause" })).toBeVisible();
   });
 
-  it("sends the reason, the note and the typed id", () => {
+  it("sends the reason, the note and the listing's own id", () => {
     control();
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
     fireEvent.click(
@@ -90,9 +91,6 @@ describe("the control that takes a listing off sale", () => {
     );
     fireEvent.change(screen.getByLabelText("Anything to add"), {
       target: { value: "Engine out until October." },
-    });
-    fireEvent.change(screen.getByLabelText(/Type this listing’s id/), {
-      target: { value: "exp_snorkel" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Pause it" }));
 
@@ -188,11 +186,11 @@ describe("the receipt after pausing", () => {
   with what was typed rather than empty.
 */
 describe("a pause the API refuses", () => {
-  it("names the wait and keeps what was typed", async () => {
+  it("names the wait and keeps the reason given", async () => {
     pauseListing.mockResolvedValue({
       message:
         "Somebody holds unpaid seats on this listing until 14:41. You can pause it after that. Nothing changed.",
-      typed: { reasonCode: "price_wrong", confirmExperienceId: "exp_snorkel" },
+      typed: { reasonCode: "price_wrong" },
       attempt: 1,
     });
     control();
@@ -202,13 +200,15 @@ describe("a pause the API refuses", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Somebody holds unpaid seats on this listing until 14:41. You can pause it after that. Nothing changed.",
     );
-    // The form is still open, with the answers the operator already gave.
+    // The form is still open, with the answer the operator already gave, and
+    // the next tap still confirms this listing.
     expect(
       screen.getByRole("radio", { name: "The price is wrong" }),
     ).toBeChecked();
-    expect(screen.getByLabelText(/Type this listing’s id/)).toHaveValue(
-      "exp_snorkel",
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Pause it" }));
+    await waitFor(() => expect(pauseListing).toHaveBeenCalledTimes(2));
+    const again = pauseListing.mock.calls[1][1] as FormData;
+    expect(again.get("confirmExperienceId")).toBe("exp_snorkel");
   });
 });
 

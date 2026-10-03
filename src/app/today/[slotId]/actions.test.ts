@@ -118,12 +118,16 @@ describe("telling a departure: yuvoy-operator#89, #90", () => {
   });
 });
 
-function callOffForm(): FormData {
+function callOffForm(over: Record<string, string> = {}): FormData {
   const f = new FormData();
-  f.set("slotId", "slot_1");
-  f.set("reasonCode", "weather");
-  f.set("note", "");
-  f.set("confirmSlotId", "slot_1");
+  const values = {
+    slotId: "slot_1",
+    reasonCode: "weather",
+    note: "",
+    confirmSlotId: "slot_1",
+    ...over,
+  };
+  for (const [k, v] of Object.entries(values)) f.set(k, v);
   return f;
 }
 
@@ -191,5 +195,53 @@ describe("calling a departure off: yuvoy-operator#95", () => {
     const state = await callOffDeparture({}, callOffForm());
 
     expect(state.message).toBe("This departure is already called off.");
+  });
+});
+
+/*
+  The confirm is named, not typed (owner ruling, 3 Oct 2026): the panel fills
+  `confirmSlotId` with its own departure. A Server Action is a public POST
+  endpoint, so another id is still refused here, and nothing is asked of the
+  API.
+*/
+describe("the call-off's confirm", () => {
+  it("sends the departure's own id with the reason", async () => {
+    post.mockResolvedValue({
+      data: {
+        bookingsCancelled: 0,
+        guestsAffected: 0,
+        refundedPaise: 0,
+        holdsReleased: 0,
+      },
+      error: undefined,
+    });
+
+    await callOffDeparture({}, callOffForm());
+
+    expect(post.mock.calls[0][1]).toEqual({
+      params: { path: { id: "slot_1" } },
+      body: { reasonCode: "weather", confirmSlotId: "slot_1" },
+    });
+  });
+
+  it("refuses a confirm for another departure, without asking the API", async () => {
+    const state = await callOffDeparture(
+      {},
+      callOffForm({ confirmSlotId: "slot_2" }),
+    );
+
+    expect(state.message).toBe(
+      "That confirm was for another departure. Nothing was cancelled.",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("asks for a reason when none was picked", async () => {
+    const state = await callOffDeparture({}, callOffForm({ reasonCode: "" }));
+
+    expect(state.message).toBe(
+      "Pick a reason for calling it off. Nothing was cancelled.",
+    );
+    expect(post).not.toHaveBeenCalled();
   });
 });
