@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * Home and the listing hub: yuvoy-operator#96 and #82 for Home, #56 for the
@@ -181,6 +182,11 @@ test("a request accepted on Home keeps its receipt through a refresh", async ({
       .getByRole("listitem")
       .filter({ hasText: `Accepting ${who}, 2 people` }),
   ).toBeVisible();
+  /*
+    The held card, audited here rather than on req_urgent: it sends at five
+    seconds whatever axe takes, and this fixture is meant to be sent.
+  */
+  await expectAccessible(page, "Home, an answer held with its Undo");
 
   // Sent once the five seconds are up, and then said in the API's words.
   const receipt = needsYou(page)
@@ -188,6 +194,7 @@ test("a request accepted on Home keeps its receipt through a refresh", async ({
     .filter({ hasText: `Seats granted to ${who}` });
   await expect(receipt).toBeVisible({ timeout: 15_000 });
   await expect(receipt).toContainText("still have to pay");
+  await expectAccessible(page, "Home, the receipt of an accepted request");
 
   // The page re-reads on focus; the request is gone from it, the receipt is not.
   const refreshed = page.waitForResponse((r) => r.url().includes("_rsc"));
@@ -224,6 +231,7 @@ test("cash to take today is on Home twice: taken party by party, and on its depa
   await expect(
     card.getByRole("button", { name: "They paid a different amount" }),
   ).toBeVisible();
+  await expectAccessible(page, "Home, the cash card open party by party");
 
   await expect(
     today(page)
