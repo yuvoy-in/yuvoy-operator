@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /*
   The meeting-point map's two outside hosts (yuvoy-operator#113), aborted:
@@ -1071,6 +1072,7 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
   await expect(
     row.getByText(/does not cancel the ones you have/i),
   ).toBeVisible();
+  await expectAccessible(page, "the listing hub, its pause confirm open");
 
   await row.getByRole("radio", { name: /Not running this/ }).check();
   await row.getByRole("button", { name: "Pause it" }).click();

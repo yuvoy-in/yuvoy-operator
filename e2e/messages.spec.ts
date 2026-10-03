@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * Conversations — yuvoy-operator#52.
@@ -339,6 +340,7 @@ test.describe.serial("guests waiting on a reply", () => {
     const open = needs.getByRole("listitem", { name: "Message from Hana Ito" });
     await expect(open).toContainText("Hana Ito wrote");
     await expect(open).toContainText("Can I pay you in cash at the jetty?");
+    await expectAccessible(page, "Home, a conversation open to reply");
 
     // A quick reply fills the box; only Send sends.
     await open.getByRole("button", { name: "Yes, that is fine." }).click();

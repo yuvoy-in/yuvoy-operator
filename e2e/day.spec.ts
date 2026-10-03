@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * O10 end to end, through the real architecture.
@@ -632,6 +633,7 @@ test("declining takes a second tap and asks why", async ({
   await expect(row).toContainText(
     "The operator isn't running that departure after all. Nothing was charged.",
   );
+  await expectAccessible(page, "Bookings, a decline open on its reasons");
   await row.getByRole("button", { name: "Decline" }).click();
 
   // Held, then sent, then said: and the request has left the queue.
@@ -642,6 +644,7 @@ test("declining takes a second tap and asks why", async ({
   await expect(receipt).toContainText(
     "They read: The operator isn't running that departure after all.",
   );
+  await expectAccessible(page, "Bookings, the receipt of a decline");
   await page.reload();
   await expect(page.getByText(who)).toHaveCount(0);
 });
@@ -763,6 +766,7 @@ test("calling off names the boat and its day, and Keep it changes nothing", asyn
   // Nothing to type: the only field to write in is the note.
   await expect(confirm.getByRole("textbox")).toHaveCount(1);
   await expect(confirm.getByLabel("Anything to add (optional)")).toBeVisible();
+  await expectAccessible(page, "the departure, its call-off confirm open");
 
   await page.getByRole("radio", { name: "Weather" }).check();
   await confirm.getByRole("button", { name: "Keep it" }).click();

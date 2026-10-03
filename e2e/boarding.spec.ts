@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * Boarding mode: the manifest built for the jetty at 06:00 (operator
@@ -74,6 +75,7 @@ test("Aboard sinks the party at once, waits five seconds with an Undo, then send
   await expect(
     aboard(page).getByRole("button", { name: "Undo" }),
   ).toBeVisible();
+  await expectAccessible(page, "boarding, a check-in held with its Undo");
 
   // Sent once the five seconds are up: a fresh read still has them aboard.
   await expect(aboard(page).getByRole("button", { name: "Undo" })).toHaveCount(
@@ -132,6 +134,7 @@ test("a party opens onto everything else about them", async ({ page }) => {
     "href",
     /^\/bookings\/bkg_cash_owed\?from=%2Ftoday%2Fslot_cash%2Fboarding/,
   );
+  await expectAccessible(page, "boarding, a party's sheet open");
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
 });
