@@ -59,7 +59,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("pausing a listing", () => {
-  it("sends the reason and the typed id, and revalidates the hub", async () => {
+  it("sends the reason and the listing's own id, and revalidates the hub", async () => {
     post.mockResolvedValue({
       data: {
         upcomingDepartures: 4,
@@ -82,14 +82,28 @@ describe("pausing a listing", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/today/listing/exp_snorkel");
   });
 
-  it("refuses an id that does not match, without asking the API", async () => {
+  /*
+    The form fills the id with its own listing (a named confirm, 3 Oct 2026),
+    so another one is a forged or stale POST. A Server Action is a public
+    endpoint, so it is still refused here, before the API is asked.
+  */
+  it("refuses a confirm for another listing, without asking the API", async () => {
     const state = await pauseListing(
       {},
       form({ confirmExperienceId: "exp_x" }),
     );
 
     expect(state.message).toBe(
-      "That id does not match this listing. Nothing changed.",
+      "That confirm was for another listing. Nothing changed.",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("asks for a reason when none was picked", async () => {
+    const state = await pauseListing({}, form({ reasonCode: "" }));
+
+    expect(state.message).toBe(
+      "Pick a reason for pausing it. Nothing changed.",
     );
     expect(post).not.toHaveBeenCalled();
   });
@@ -136,17 +150,14 @@ describe("a pause refused because the listing is selling", () => {
     reason would fail the next attempt for a different reason than the one on
     screen.
   */
-  it("hands back what was typed, and counts the attempt", async () => {
+  it("hands back the reason given, and counts the attempt", async () => {
     refuses("sale_in_progress", "somebody holds unpaid seats", {
       openRequests: 1,
     });
 
     const state = await pauseListing({ attempt: 1 }, form());
 
-    expect(state.typed).toEqual({
-      reasonCode: "not_running",
-      confirmExperienceId: "exp_snorkel",
-    });
+    expect(state.typed).toEqual({ reasonCode: "not_running" });
     expect(state.attempt).toBe(2);
   });
 });

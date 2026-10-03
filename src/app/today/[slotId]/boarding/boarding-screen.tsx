@@ -258,7 +258,6 @@ export function BoardingScreen({
           </h2>
           <ul className="mt-2 space-y-2">
             {toCome.filter(shown).map((party) => {
-              const row = byId.get(party.bookingId)!;
               const failed = checkIns[party.bookingId];
               const flags = boardingFlags(party);
               const spoken = [

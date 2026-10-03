@@ -672,7 +672,7 @@ test("the manifest offers to cancel one booking", async ({ page }) => {
   /*
     op#56 item 10, and the same component the booking's own screen uses (#43):
     the act is the same, and a second confirmation written for the manifest
-    would be a second chance to get the typed reference wrong.
+    would be a second chance to get the confirm wrong.
   */
   await signIn(page);
   await page.goto("/today/slot_cash");
@@ -684,6 +684,14 @@ test("the manifest offers to cancel one booking", async ({ page }) => {
     race with whichever suite ran first.
   */
   const row = page.locator("li").filter({ hasText: "Sofia Alves" });
+  await row.getByRole("button", { name: "Cancel this booking" }).click();
+
+  // Named, so the one tap is made on the right party of eleven (a named
+  // confirm, owner ruling 3 Oct 2026). Kept, so nothing is cancelled.
+  await expect(
+    row.getByText("Cancel Sofia Alves's booking, YV-CARD6N7P?"),
+  ).toBeVisible();
+  await row.getByRole("button", { name: "Keep it" }).click();
   await expect(
     row.getByRole("button", { name: "Cancel this booking" }),
   ).toBeVisible();

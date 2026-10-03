@@ -736,31 +736,39 @@ test("a relay names the people it could not reach", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("calling off needs the departure's own id typed, not a checkbox", async ({
+test("calling off names the boat and its day, and Keep it changes nothing", async ({
   page,
 }) => {
   await signIn(page);
-  // A wrong id changes nothing, so this can share a departure — but only one
-  // that nothing else cancels.
+  // Kept, never sent, so this can share a departure, but only one that
+  // nothing else cancels.
   await page.goto("/today/slot_late_morning");
 
   /*
     "Call this departure off", the product's own words (yuvoy-operator#88 s3),
-    and a confirm that names the time before anything is typed (#81 t5).
+    and a named confirm (owner ruling, 3 Oct 2026): the time, the trip and the
+    day, over the one loud button. The departure's id used to be typed back.
+    Today or tomorrow, because the fixture's day is fixed when the mock
+    starts and the suite can run across midnight.
   */
   await page.getByRole("button", { name: "Call this departure off" }).click();
+  const confirm = page.locator("form", {
+    has: page.getByRole("button", { name: "Call it off" }),
+  });
   await expect(
-    page.getByRole("heading", { name: /^Call off \d\d:\d\d\?$/ }),
+    confirm.getByRole("heading", {
+      name: /^Call off the 09:00 Snorkel trip to Elephant Beach, (today|tomorrow)\?$/,
+    }),
   ).toBeVisible();
-  await page.getByRole("radio", { name: "Weather" }).check();
-  await page.getByLabel("Type the departure id to confirm").fill("wrong-id");
-  await page.getByRole("button", { name: "Call it off" }).click();
+  // Nothing to type: the only field to write in is the note.
+  await expect(confirm.getByRole("textbox")).toHaveCount(1);
+  await expect(confirm.getByLabel("Anything to add (optional)")).toBeVisible();
 
-  // "A checkbox is one mis-tap on a wet phone away from cancelling a full
-  // boat, and this is the only action in the portal that cannot be undone."
-  await expect(page.locator("form").getByRole("alert")).toContainText(
-    "Nothing was cancelled",
-  );
+  await page.getByRole("radio", { name: "Weather" }).check();
+  await confirm.getByRole("button", { name: "Keep it" }).click();
+  await expect(
+    page.getByRole("button", { name: "Call this departure off" }),
+  ).toBeVisible();
 
   // The departure is still open.
   await page.reload();
@@ -780,7 +788,6 @@ test("a call-off shows back exactly what it did", async ({
 
   await page.getByRole("button", { name: "Call this departure off" }).click();
   await page.getByRole("radio", { name: "Weather" }).check();
-  await page.getByLabel("Type the departure id to confirm").fill(slot);
   await page.getByRole("button", { name: "Call it off" }).click();
 
   /*

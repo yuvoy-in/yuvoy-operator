@@ -8,6 +8,8 @@ import { CloseDeparture } from "@/app/calendar/close-departure";
 import type { OperatorSlot } from "@/lib/day/types";
 import { saleChip } from "@/lib/day/off-sale";
 import { marketTime } from "@/lib/format/market-time";
+import { marketDayOf } from "@/lib/day/calendar";
+import { shortDate } from "@/lib/home/words";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { ChevronRightIcon } from "@/components/ui/icons";
@@ -246,6 +248,8 @@ export function DepartureRow({
           alreadyCalledOff={calledOff}
           canManage={canManage}
           time={time}
+          title={slot.title}
+          day={shortDate(marketDayOf(slot.startsAt, slot.timezone) ?? "")}
           startOpen
           onKeep={() => setOpen(null)}
           onBusyChange={setBusy}

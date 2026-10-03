@@ -371,6 +371,7 @@ export default async function BookingPage({
         <CancelBooking
           bookingId={booking.id || id}
           reference={booking.reference}
+          {...(booking.name ? { who: booking.name } : {})}
           isCash={Boolean(booking.cash)}
           available={canCancelBooking(booking.state, booking.startsAt, at)}
           className="mt-8"

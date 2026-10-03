@@ -399,6 +399,7 @@ export function PartyRow({
         <CancelBooking
           bookingId={party.bookingId}
           reference={party.reference ?? ""}
+          {...(party.name ? { who: party.name } : {})}
           isCash={Boolean(cash)}
           context="manifest"
           onDone={() => setCancelledHere(true)}

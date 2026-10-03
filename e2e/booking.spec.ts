@@ -12,9 +12,11 @@ import AxeBuilder from "@axe-core/playwright";
  *     assumes we did it. The most common truth is that the traveller did it
  *     themselves, and the difference turns a routine cancellation into a
  *     support message or an accusation.
- *   - **Cancelling cannot be done by accident.** The reference is typed back
- *     because "this cannot be undone, and a checkbox is one mis-tap away from
- *     the wrong party" — on a manifest of eleven names with wet hands.
+ *   - **Cancelling cannot be done by accident.** "This cannot be undone, and
+ *     a checkbox is one mis-tap away from the wrong party", on a manifest of
+ *     eleven names with wet hands. So the confirm names whose booking it is
+ *     and its reference, over one loud button (a named confirm, owner ruling
+ *     3 Oct 2026; the reference used to be typed back).
  *
  * ## State this suite shares
  *
@@ -191,14 +193,24 @@ test("a booking leads with the trip and its time, and the traveller under it", a
   await expect(page.getByText("Booking", { exact: true })).toHaveCount(0);
 });
 
-test("cancelling asks for the reference, and another one changes nothing", async ({
+test("cancelling names whose booking it is, and Keep it changes nothing", async ({
   page,
-}, testInfo) => {
+}) => {
   /*
-    op#43 item 4's own acceptance. `confirmReference` is "not a boolean: this
+    op#43 item 4's own acceptance: `confirmReference` is "not a boolean: this
     cannot be undone, and a checkbox is one mis-tap away from the wrong party."
+    It used to be typed back. The confirm names the party and the reference
+    now, and the form fills it (owner ruling, 3 Oct 2026; yuvoy-api#261).
+
+    Anil's cash booking, which nothing cancels, rather than this project's
+    `cancellable` one: the next test cancels that, and the suite runs fully
+    parallel, so sharing it would race.
   */
-  const who = cancellable(testInfo);
+  const who = {
+    id: "bkg_cash_owed",
+    reference: "YV-0WED9K3L",
+    name: "Anil Kumar",
+  };
   await signIn(page);
   await page.goto(`/bookings/${who.id}`);
 
@@ -211,24 +223,22 @@ test("cancelling asks for the reference, and another one changes nothing", async
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Cancel this booking" }).click();
 
+  await expect(
+    page.getByText(`Cancel ${who.name}'s booking, ${who.reference}?`),
+  ).toBeVisible();
+  await expect(page.getByText("This cannot be undone.")).toBeVisible();
   // A cash booking refunds nothing, because nothing reached us. Saying
   // "refunded in full" here would promise money that was never taken.
   await expect(page.getByText("Nothing is refunded online.")).toBeVisible();
 
-  await page.getByRole("radio", { name: "Weather" }).check();
-  await page.getByLabel(/^Type/).fill("YV-SOMEONE-ELSE");
-  await page.getByRole("button", { name: "Cancel the booking" }).click();
-
-  /*
-    Scoped to the form. Next renders its own `role="alert"` route announcer on
-    every page, so an unscoped alert query resolves to two elements, always.
-  */
-  await expect(page.locator("form").getByRole("alert")).toContainText(
-    "That is not this booking's reference.",
-  );
-  // And nothing happened: the form is still open, on the same booking.
+  // Kept, and nothing happened: the control is back, on the same booking.
+  await page.getByRole("button", { name: "Keep it" }).click();
   await expect(
-    page.getByRole("button", { name: "Cancel the booking" }),
+    page.getByRole("button", { name: "Cancel this booking" }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Cancel this booking" }),
   ).toBeVisible();
 });
 
@@ -241,14 +251,8 @@ test("cancelling works, reports what it cost, and a second press is not an error
 
   await page.getByRole("button", { name: "Cancel this booking" }).click();
   await page.getByRole("radio", { name: "Not enough people" }).check();
-  await page.getByLabel(/^Type/).fill(who.reference.toLowerCase());
   await page.getByRole("button", { name: "Cancel the booking" }).click();
 
-  /*
-    Typed in lower case on purpose: "letter case and surrounding spaces are
-    ignored", and a portal that uppercased to be safe would hide the day the API
-    stopped ignoring it.
-  */
   await expect(page.getByText("This booking is cancelled")).toBeVisible();
   await expect(page.getByText(/seats are back on the departure/)).toBeVisible();
 
@@ -383,7 +387,9 @@ test("the cancel form has no accessibility violations", async ({ page }) => {
   await signIn(page);
   await page.goto("/bookings/bkg_cash_owed");
   await page.getByRole("button", { name: "Cancel this booking" }).click();
-  await expect(page.getByLabel(/^Type/)).toBeVisible();
+  await expect(
+    page.getByText("Cancel Anil Kumar's booking, YV-0WED9K3L?"),
+  ).toBeVisible();
 
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])

@@ -156,13 +156,15 @@ describe("a departure on the listing hub", () => {
     expect(screen.queryByText(/Anybody already on it stays booked/)).toBeNull();
   });
 
-  it("opens calling off on its own question, naming the time and the money", () => {
+  it("opens calling off on its own question, naming the departure and the money", () => {
     row();
     fireEvent.click(screen.getByRole("button", { name: /^Manage/ }));
     fireEvent.click(screen.getByRole("button", { name: "Call off" }));
 
     expect(
-      screen.getByRole("heading", { name: "Call off 09:00?" }),
+      screen.getByRole("heading", {
+        name: "Call off the 09:00 Snorkel trip at Coral Bay, Thu 24 Sep?",
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Everyone booked is cancelled/)).toHaveTextContent(
       "everything paid online is refunded in full",
@@ -190,7 +192,9 @@ describe("a departure on the listing hub", () => {
     fireEvent.click(screen.getByRole("button", { name: "Call off" }));
     expect(screen.queryByLabelText("New time")).toBeNull();
     expect(
-      screen.getByRole("heading", { name: "Call off 09:00?" }),
+      screen.getByRole("heading", {
+        name: "Call off the 09:00 Snorkel trip at Coral Bay, Thu 24 Sep?",
+      }),
     ).toBeInTheDocument();
   });
 
@@ -304,8 +308,11 @@ describe("an act opened from Manage", () => {
     row();
     await user.click(screen.getByRole("button", { name: "Manage 09:00" }));
     await user.click(screen.getByRole("button", { name: "Call off" }));
+    // Named in full (a named confirm, 3 Oct 2026): the time, the trip, the day.
     expect(
-      screen.getByRole("heading", { name: "Call off 09:00?" }),
+      screen.getByRole("heading", {
+        name: "Call off the 09:00 Snorkel trip at Coral Bay, Thu 24 Sep?",
+      }),
     ).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "Keep it" }));
     expect(screen.getByRole("button", { name: "Call off" })).toHaveFocus();
@@ -321,11 +328,10 @@ describe("an act opened from Manage", () => {
     await user.click(screen.getByRole("button", { name: "Manage 09:00" }));
     await user.click(screen.getByRole("button", { name: "Call off" }));
     await user.click(screen.getAllByRole("radio")[0]);
-    await user.type(
-      screen.getByLabelText("Type the departure id to confirm"),
-      "slot_1",
-    );
     await user.click(screen.getByRole("button", { name: "Call it off" }));
+    expect(
+      (callOffDeparture.mock.calls[0][1] as FormData).get("confirmSlotId"),
+    ).toBe("slot_1");
 
     // Nothing on the row can take the panel away while it runs.
     for (const name of ["Seats", "Stop selling", "Call off", "Keep it"]) {
