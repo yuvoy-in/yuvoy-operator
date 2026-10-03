@@ -22,6 +22,8 @@ import { CallOffPanel } from "./call-off-panel";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { readInbox } from "@/lib/site/inbox";
+import { backFrom, hereWith, withFrom } from "@/lib/site/back-to";
 
 /**
  * The departure, not the word "Manifest" — yuvoy-operator#21.
@@ -88,11 +90,20 @@ export const dynamic = "force-dynamic";
  */
 export default async function ManifestPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slotId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { slotId } = await params;
+  const [{ slotId }, query] = await Promise.all([params, searchParams]);
   const { token, me } = await requireOperator();
+  /*
+    Who wrote, by booking, so a party's row can say "2 new messages" at the
+    jetty (audit 5.2). The walk the root layout already made for the inbox
+    (`cache`d for the request), so it costs nothing here; `null` draws no
+    flag rather than a zero nobody measured.
+  */
+  const inbox = readInbox(token);
 
   let manifest;
   try {
@@ -181,8 +192,20 @@ export default async function ManifestPage({
   // under a wet thumb.
   const departed = startsAt ? hasDeparted(startsAt, await now()) : false;
 
+  // Back goes where the operator came from (audit 5.8), the day by default.
+  const back = backFrom(query.from, { href: "/today", label: "the day" });
+  const here = hereWith(`/today/${slotId}`, query);
+  const unread = (await inbox)?.unreadByBooking ?? null;
+  const bookingOf = (party: PartyForClient) =>
+    party.bookingId
+      ? {
+          bookingHref: withFrom(`/bookings/${party.bookingId}`, here),
+          ...(unread ? { unread: unread[party.bookingId] ?? 0 } : {}),
+        }
+      : {};
+
   return (
-    <Screen nav={{ back: { href: "/today", label: "the day" } }}>
+    <Screen nav={{ back }}>
       <RefreshOnFocus />
 
       <h1 className="font-display tracking-display text-4xl leading-[1.05]">
@@ -397,6 +420,7 @@ export default async function ManifestPage({
                   cash={cashOf(party)}
                   timezone={timezone}
                   canManage={me.canManage}
+                  {...bookingOf(party)}
                 />
               ))}
             </ul>

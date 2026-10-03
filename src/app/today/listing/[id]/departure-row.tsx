@@ -13,6 +13,7 @@ import { Chip } from "@/components/ui/chip";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { Panel } from "@/components/ui/panel";
 import { inputClass } from "@/components/ui/input";
+import { withFrom } from "@/lib/site/back-to";
 
 type Act = "time" | "seats" | "stop" | "off";
 
@@ -102,7 +103,14 @@ export function DepartureRow({
           they get here.
         */}
         <ButtonLink
-          href={`/today/${slot.id}`}
+          href={
+            slot.experienceId
+              ? withFrom(
+                  `/today/${slot.id}`,
+                  `/today/listing/${slot.experienceId}`,
+                )
+              : `/today/${slot.id}`
+          }
           variant="secondary"
           size="md"
           block={false}

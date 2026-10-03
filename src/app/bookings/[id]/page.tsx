@@ -24,6 +24,11 @@ import {
 } from "@/lib/bookings/ending";
 import { now } from "@/lib/format/market-time";
 import { getBookingThread } from "@/lib/messages/fetch";
+import { listSlots } from "@/lib/day/manifest";
+import { departureDayOf, departureOf } from "@/lib/bookings/departure-of";
+import { backFrom, hereWith, withFrom } from "@/lib/site/back-to";
+import { panelClass } from "@/components/ui/panel";
+import { ChevronRightIcon } from "@/components/ui/icons";
 import { Conversation } from "./conversation";
 
 export const metadata: Metadata = { title: "Booking" };
@@ -64,10 +69,12 @@ export const dynamic = "force-dynamic";
  */
 export default async function BookingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { id } = await params;
+  const [{ id }, query] = await Promise.all([params, searchParams]);
   const { token, me } = await requireOperator();
 
   let booking;
@@ -95,7 +102,7 @@ export default async function BookingPage({
   const time = booking.startsAt
     ? marketTime(booking.startsAt, booking.timezone)
     : null;
-  const day = booking.startsAt
+  const dayLabel = booking.startsAt
     ? marketDay(booking.startsAt, booking.timezone)
     : null;
   const trip = booking.experience || "Booking";
@@ -112,15 +119,29 @@ export default async function BookingPage({
     the departure time and the guest count down with it. `null` is "we could not
     load it", which is a different sentence from "nothing has been said".
   */
-  let thread = null;
-  try {
-    thread = await getBookingThread(token, id);
-  } catch {
-    thread = null;
-  }
+  /*
+    The departure this booking is on, so the booking opens it (audit 5.2):
+    read from the booking's own market day, with the conversation, and
+    soft-failing like it. No link is drawn rather than a wrong one; see
+    `departureOf`. Until yuvoy-api#259 sends the departure's id.
+  */
+  const day = departureDayOf(booking);
+  const [thread, slotId] = await Promise.all([
+    getBookingThread(token, id).catch(() => null),
+    day
+      ? listSlots(token, day, day).then(
+          (slots) => departureOf(booking, slots),
+          () => null,
+        )
+      : Promise.resolve(null),
+  ]);
+
+  // Back goes where the operator came from (audit 5.8), the list by default.
+  const back = backFrom(query.from, { href: "/bookings", label: "bookings" });
+  const here = hereWith(`/bookings/${id}`, query);
 
   return (
-    <Screen nav={{ back: { href: "/bookings", label: "bookings" } }}>
+    <Screen nav={{ back }}>
       <h1 className="font-display tracking-display text-4xl leading-[1.05]">
         {time ? (
           <>
@@ -131,7 +152,9 @@ export default async function BookingPage({
           trip
         )}
       </h1>
-      {day ? <p className="text-forest/80 mt-2 text-base">{day}</p> : null}
+      {dayLabel ? (
+        <p className="text-forest/80 mt-2 text-base">{dayLabel}</p>
+      ) : null}
 
       <div className="mt-5 flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -270,6 +293,29 @@ export default async function BookingPage({
           No money has moved on this one yet.
         </p>
       )}
+
+      {/*
+        Everyone else on the boat, the check-in and a message to all of them
+        live on the departure: one tap from here, and the departure's own Back
+        returns to this booking.
+      */}
+      {slotId ? (
+        <Link
+          href={withFrom(`/today/${slotId}`, here)}
+          className={panelClass(
+            "raised",
+            "ease-interaction hover:bg-paper mt-4 flex items-center gap-3 px-4 py-3 transition-colors duration-200",
+          )}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-bold">The departure</span>
+            <span className="text-forest/70 block text-sm">
+              Everyone on it, check-in, and a message to them all
+            </span>
+          </span>
+          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+        </Link>
+      ) : null}
 
       {/*
         What the listing asked, and what this party said. In the order sent, and

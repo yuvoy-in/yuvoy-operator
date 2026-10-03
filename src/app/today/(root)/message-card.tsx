@@ -19,6 +19,7 @@ import { Chip } from "@/components/ui/chip";
 import { InboxIcon } from "@/components/ui/icons";
 import { textareaClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
+import { withFrom } from "@/lib/site/back-to";
 
 /**
  * A guest who wrote, answered on Home (operator experiment A).
@@ -185,7 +186,10 @@ export function MessageCard({
             </ol>
           )}
           <Link
-            href={`/bookings/${need.bookingId}#conversation`}
+            href={withFrom(
+              `/bookings/${need.bookingId}#conversation`,
+              "/today",
+            )}
             className="text-forest tap-target mt-2 text-sm font-bold underline underline-offset-4"
           >
             The whole conversation and the booking

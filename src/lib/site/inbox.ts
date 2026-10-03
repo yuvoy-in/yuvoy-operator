@@ -41,6 +41,7 @@ export const readInbox = cache(
       let messages = 0;
       let conversations = 0;
       const unreadRows: ThreadRow[] = [];
+      const unreadByBooking: Record<string, number> = {};
       let cursor: string | undefined;
       for (let page = 0; page < MAX_PAGES; page += 1) {
         const { rows, complete, nextCursor } = await listThreads(
@@ -57,15 +58,18 @@ export const readInbox = cache(
           messages += unread;
           if (unread > 0) {
             conversations += 1;
-            if (unreadRows.length < UNREAD_ROWS_KEPT && row.bookingId) {
-              unreadRows.push({ ...row, unreadCount: unread });
+            if (row.bookingId) {
+              unreadByBooking[row.bookingId] = unread;
+              if (unreadRows.length < UNREAD_ROWS_KEPT) {
+                unreadRows.push({ ...row, unreadCount: unread });
+              }
             }
           }
         }
         if (complete || !nextCursor) break;
         cursor = nextCursor;
       }
-      return { messages, conversations, unread: unreadRows };
+      return { messages, conversations, unread: unreadRows, unreadByBooking };
     } catch {
       return null;
     }
