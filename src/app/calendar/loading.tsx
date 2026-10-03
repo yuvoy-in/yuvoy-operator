@@ -1,5 +1,5 @@
 import { SheetSkeleton } from "@/components/states/route-skeletons";
 
 export default function Loading() {
-  return <SheetSkeleton width="lg" rows={2} />;
+  return <SheetSkeleton width="xl" rows={3} />;
 }
