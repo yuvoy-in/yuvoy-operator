@@ -55,7 +55,7 @@ export function SheetSkeleton({
   rows = 3,
 }: {
   nav?: ScreenNav;
-  width?: "sm" | "md" | "lg";
+  width?: "sm" | "md" | "lg" | "xl";
   /** How many content blocks to stand in for. */
   rows?: number;
 }) {

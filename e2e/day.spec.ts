@@ -33,7 +33,18 @@ test("an operator signs in and lands on Home", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: /^Today · \d+ departures?/ }),
   ).toBeVisible();
-  await expect(page.getByText("Try-dive at Nemo Reef").first()).toBeVisible();
+  /*
+    In the day itself. A bare text search across Home also finds the status
+    line's folded reasons, and after the dive's only departure has sailed
+    (late in the day on the wall clock) "Try-dive at Nemo Reef has no dates"
+    is the first match, and it is hidden until the line is opened.
+  */
+  await expect(
+    page
+      .getByRole("region", { name: /^Today · \d+ departures?/ })
+      .getByText("Try-dive at Nemo Reef")
+      .first(),
+  ).toBeVisible();
 });
 
 test("the session token never reaches JavaScript", async ({ page }) => {
@@ -500,7 +511,7 @@ test("the day surfaces requests, because a request nobody sees expires", async (
     .getByRole("listitem")
     .first();
   await expect(first).toBeVisible();
-  await expect(first).toContainText("answer within 24 min");
+  await expect(first).toContainText("24 min left");
 });
 
 test("requests arrive soonest-to-expire, and that order is not ours to change", async ({
@@ -514,14 +525,18 @@ test("requests arrive soonest-to-expire, and that order is not ours to change", 
   //
   // Asserted as RELATIVE position of two requests nothing answers, rather than
   // as the whole list — the list legitimately shrinks as the other tests run.
-  const rows = page.locator("li").filter({ hasText: /min left|h left|d left/ });
+  const rows = page.getByRole("listitem", { name: /^Seat request from / });
   // The queue has arrived before it is read: a bare read can land on the
   // loading skeleton and find nothing.
   await expect(rows.first()).toBeVisible();
-  const names = await rows.locator("p.text-lg").allTextContents();
+  const names = await rows.evaluateAll((items) =>
+    items.map((item) => item.getAttribute("aria-label")),
+  );
 
-  const urgentAt = names.indexOf(NEVER_ANSWERED.urgent);
-  const ceilingAt = names.indexOf(NEVER_ANSWERED.overCeiling);
+  const urgentAt = names.indexOf(`Seat request from ${NEVER_ANSWERED.urgent}`);
+  const ceilingAt = names.indexOf(
+    `Seat request from ${NEVER_ANSWERED.overCeiling}`,
+  );
   expect(
     urgentAt,
     "the urgent request should be listed",
@@ -555,17 +570,21 @@ test("accepting says what the traveller actually has now", async ({
   await page.goto("/bookings");
 
   const who = mine(testInfo).accept;
-  const row = page.locator("li").filter({ hasText: who });
+  const row = page.getByRole("listitem", { name: `Seat request from ${who}` });
   await row.getByRole("button", { name: "Accept" }).click();
+
+  // Held five seconds with an Undo before anything is sent (experiment A).
+  await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
 
   // Accepting is not the end: they hold seats with a clock and must still pay.
   // An operator who reads "accepted" as "booked" will not chase it.
-  await expect(page.getByText(`Seats granted to ${who}`)).toBeVisible();
-  await expect(page.getByText("still have to pay")).toBeVisible();
+  const receipt = page
+    .getByRole("listitem")
+    .filter({ hasText: `Seats granted to ${who}` });
+  await expect(receipt).toBeVisible({ timeout: 15_000 });
+  await expect(receipt).toContainText("still have to pay");
   // The deadline is the number an operator chases a traveller against.
-  await expect(
-    page.getByText(/If they have not paid by \d\d:\d\d/),
-  ).toBeVisible();
+  await expect(receipt).toContainText(/If they have not paid by \d\d:\d\d/);
 
   /*
     The receipt must survive the page's own refresh. `RefreshOnFocus` calls
@@ -577,10 +596,10 @@ test("accepting says what the traveller actually has now", async ({
   const refreshed = page.waitForResponse((r) => r.url().includes("_rsc"));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await refreshed;
-  await expect(page.getByText(`Seats granted to ${who}`)).toBeVisible();
-  await expect(page.getByText("still have to pay")).toBeVisible();
+  await expect(receipt).toBeVisible();
+  await expect(receipt).toContainText("still have to pay");
   // The row itself is gone — the receipt is not a second copy of it.
-  await expect(row.getByRole("button", { name: "Accept" })).toHaveCount(0);
+  await expect(row).toHaveCount(0);
 
   // And it leaves the queue on a real navigation.
   await page.reload();
@@ -594,17 +613,36 @@ test("declining takes a second tap and asks why", async ({
   await page.goto("/bookings");
 
   const who = mine(testInfo).decline;
-  const row = page.locator("li").filter({ hasText: who });
+  const row = page.getByRole("listitem", { name: `Seat request from ${who}` });
   await row.getByRole("button", { name: "Decline" }).click();
 
   // A decline is cheap for the operator and final for the traveller, which is
   // the asymmetry that earns a confirming step.
   await expect(row.getByRole("group", { name: "Why?" })).toBeVisible();
-  await expect(row.getByText("nothing was charged")).toBeVisible();
+  await expect(row.getByRole("button", { name: "Decline" })).toBeDisabled();
 
-  await row.getByRole("radio", { name: "Not running that day" }).check();
+  // The reason is a chip: its words are what a thumb presses.
+  await row.getByText("Not running that day", { exact: true }).click();
+  await expect(
+    row.getByRole("radio", { name: "Not running that day" }),
+  ).toBeChecked();
+  // The sentence the traveller will read, the API's own, before it is sent.
+  const first = who.split(" ")[0];
+  await expect(row).toContainText(`${first} reads`);
+  await expect(row).toContainText(
+    "The operator isn't running that departure after all. Nothing was charged.",
+  );
   await row.getByRole("button", { name: "Decline" }).click();
 
+  // Held, then sent, then said: and the request has left the queue.
+  const receipt = page
+    .getByRole("listitem")
+    .filter({ hasText: `Declined ${who}` });
+  await expect(receipt).toBeVisible({ timeout: 15_000 });
+  await expect(receipt).toContainText(
+    "They read: The operator isn't running that departure after all.",
+  );
+  await page.reload();
   await expect(page.getByText(who)).toHaveCount(0);
 });
 
@@ -924,9 +962,14 @@ test("a request says when the trip is, and how long ago they asked", async ({
   await signIn(page);
   await page.goto("/bookings");
 
-  const row = page.locator("li").filter({ hasText: NEVER_ANSWERED.urgent });
+  const row = page.getByRole("listitem", {
+    name: `Seat request from ${NEVER_ANSWERED.urgent}`,
+  });
   await expect(row).toContainText(
     /(Today|Tomorrow|[A-Z][a-z]+day,? \d+ [A-Z][a-z]+) at \d\d:\d\d/,
   );
-  await expect(row).toContainText(/asked (just now|\d+ (min|h|d) ago)/);
+  // How long they have waited, beside when the answer is due.
+  await expect(row).toContainText(
+    /Asked (just now|\d+ (min|h|d) ago) · Answer by \d\d:\d\d/,
+  );
 });

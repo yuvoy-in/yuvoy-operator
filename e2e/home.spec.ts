@@ -85,16 +85,32 @@ test("Needs you leads with the requests, each with its clock", async ({
   /*
     #82 s2: "requests waiting first, then messages, then anything else, and
     each labelled with the time pressure". `req_urgent` is never answered and
-    has 24 minutes on it, so it is always the first row.
+    has 24 minutes on it, so it is always the first card.
+
+    The card is the one Bookings draws (operator experiment A, audit 5.3):
+    the traveller and the party first, then the trip, the countdown with the
+    time it runs out (one phrasing on both screens, 5.13), the seats left to
+    give, and 56px answers.
   */
   await signIn(page);
   const first = needsYou(page).getByRole("listitem").first();
-  await expect(first).toContainText("Snorkel trip to Elephant Beach");
+  await expect(first).toHaveAccessibleName("Seat request from Reuben Mathai");
+  await expect(first).toContainText("Reuben Mathai, 2 people");
   await expect(first).toContainText(
-    /2 people · (today|tomorrow|[A-Z][a-z]{2}( \d+ [A-Z][a-z]{2})?) \d\d:\d\d · answer within 24 min/,
+    /Snorkel trip to Elephant Beach · (Today|Tomorrow|[A-Z][a-z]{2} \d+ [A-Z][a-z]{2,3}) at \d\d:\d\d/,
   );
-  await expect(first.getByRole("button", { name: "Accept" })).toBeEnabled();
-  await expect(first.getByRole("button", { name: "Decline" })).toBeEnabled();
+  await expect(first).toContainText("24 min left");
+  await expect(first).toContainText(/Answer by \d\d:\d\d/);
+  await expect(first).toContainText("6 seats you can still give");
+  for (const name of ["Accept", "Decline"]) {
+    const button = first.getByRole("button", { name });
+    await expect(button).toBeEnabled();
+    const box = await button.boundingBox();
+    expect(
+      box!.height,
+      `${name} is a wet thumb's height`,
+    ).toBeGreaterThanOrEqual(56);
+  }
 
   /*
     No more than three requests on Home, the rest one row that opens
@@ -112,6 +128,37 @@ test("Needs you leads with the requests, each with its clock", async ({
   }
 });
 
+test("an answer on Home waits five seconds with an Undo, and Undo sends nothing", async ({
+  page,
+}) => {
+  /*
+    `req_urgent` is never answered by any test, and Undo is what makes that
+    still true here: nothing leaves the phone until the five seconds are up.
+  */
+  await signIn(page);
+  const card = needsYou(page).getByRole("listitem", {
+    name: "Seat request from Reuben Mathai",
+  });
+  await card.getByRole("button", { name: "Accept" }).click();
+
+  const held = needsYou(page)
+    .getByRole("listitem")
+    .filter({ hasText: "Accepting Reuben Mathai, 2 people" });
+  await expect(held).toContainText(/Sending in \d seconds?/);
+  await held.getByRole("button", { name: "Undo" }).click();
+
+  // The card is back, with focus on the button that was pressed.
+  await expect(card.getByRole("button", { name: "Accept" })).toBeFocused();
+  // Past the five seconds, and after a fresh read, it is still waiting.
+  await page.waitForTimeout(6_000);
+  await page.reload();
+  await expect(
+    needsYou(page).getByRole("listitem", {
+      name: "Seat request from Reuben Mathai",
+    }),
+  ).toBeVisible();
+});
+
 test("a request accepted on Home keeps its receipt through a refresh", async ({
   page,
 }, testInfo) => {
@@ -121,21 +168,25 @@ test("a request accepted on Home keeps its receipt through a refresh", async ({
     accepted, and the list re-reads on every focus, so the receipt must live
     above the rows. One fixture per project: accepting is one-way.
   */
-  const mine =
-    testInfo.project.name === "mobile"
-      ? { clock: "answer within 1h 30m", who: "Meenakshi Rao" }
-      : { clock: "answer within 1h 35m", who: "Tobias Klein" };
+  const who =
+    testInfo.project.name === "mobile" ? "Meenakshi Rao" : "Tobias Klein";
   await signIn(page);
 
-  const row = needsYou(page)
-    .getByRole("listitem")
-    .filter({ hasText: mine.clock });
-  await row.getByRole("button", { name: "Accept" }).click();
+  const card = needsYou(page).getByRole("listitem", {
+    name: `Seat request from ${who}`,
+  });
+  await card.getByRole("button", { name: "Accept" }).click();
+  await expect(
+    needsYou(page)
+      .getByRole("listitem")
+      .filter({ hasText: `Accepting ${who}, 2 people` }),
+  ).toBeVisible();
 
+  // Sent once the five seconds are up, and then said in the API's words.
   const receipt = needsYou(page)
     .getByRole("listitem")
-    .filter({ hasText: `Seats granted to ${mine.who}` });
-  await expect(receipt).toBeVisible();
+    .filter({ hasText: `Seats granted to ${who}` });
+  await expect(receipt).toBeVisible({ timeout: 15_000 });
   await expect(receipt).toContainText("still have to pay");
 
   // The page re-reads on focus; the request is gone from it, the receipt is not.
@@ -144,28 +195,54 @@ test("a request accepted on Home keeps its receipt through a refresh", async ({
   await refreshed;
   await expect(receipt).toBeVisible();
   await expect(
-    needsYou(page).getByRole("listitem").filter({ hasText: mine.clock }),
+    needsYou(page).getByRole("listitem", { name: `Seat request from ${who}` }),
   ).toHaveCount(0);
 });
 
-test("cash to take today is on Home twice: what needs doing, and its departure", async ({
+test("cash to take today is on Home twice: taken party by party, and on its departure", async ({
   page,
 }) => {
   /*
-    #96 block 2d and block 3. `slot_cash_today` carries one party paying at
-    the counter whom no test records, so both projects read the same.
+    #96 block 2d and block 3, finished in place (experiment A).
+    `slot_cash_today` carries one party paying at the counter whom no test
+    records, so both projects read the same: the card opens onto Hana's Take
+    button, and nothing here presses it.
   */
   await signIn(page);
+  const card = needsYou(page)
+    .getByRole("listitem", { name: "Cash to take" })
+    .filter({ hasText: "Collect ₹4,500 on the 20:30" });
+  await expect(card).toContainText("Reef dive (cash today fixture) · 1 party");
   await expect(
-    needsYou(page).getByRole("link", {
-      name: /^Collect ₹4,500 from 1 party on the 20:30/,
-    }),
+    card.getByRole("link", { name: "Open the departure" }),
   ).toHaveAttribute("href", "/today/slot_cash_today");
+
+  await card.getByRole("button", { name: "Take it party by party" }).click();
+  await expect(card).toContainText("Hana Ito");
+  await expect(card).toContainText("YV-T0DAY4K5");
+  await expect(card.getByRole("button", { name: "Take ₹4,500" })).toBeVisible();
+  await expect(
+    card.getByRole("button", { name: "They paid a different amount" }),
+  ).toBeVisible();
+
   await expect(
     today(page)
       .getByRole("link")
       .filter({ hasText: "Reef dive (cash today fixture)" }),
   ).toContainText("₹4,500 to collect");
+});
+
+test("on a desktop the work and the day sit side by side", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "a desktop layout");
+  await signIn(page);
+  const work = await needsYou(page).boundingBox();
+  const day = await today(page).boundingBox();
+  expect(work && day, "both are drawn").toBeTruthy();
+  // The day is to the right of the work, not under it.
+  expect(day!.x).toBeGreaterThan(work!.x + work!.width - 1);
+  expect(day!.y).toBeLessThan(work!.y + work!.height);
 });
 
 test("the day leaves out what nobody can be on, and says each state in words", async ({
@@ -268,7 +345,16 @@ test("a staff phone gets the day, the queue as one row, and nothing it would be 
   */
   await signIn(page, STAFF);
   await expect(page.getByRole("region", { name: "Money" })).toHaveCount(0);
-  await expect(needsYou(page).getByRole("button")).toHaveCount(0);
+  /*
+    Nothing it would be refused. A guest's message and the cash at the
+    gangway are anybody's to answer and take ("whoever is holding the phone"),
+    so those cards stay; answering a request and confirming seats do not.
+  */
+  await expect(
+    needsYou(page).getByRole("button", {
+      name: /^(Accept|Decline|Confirm all)$/,
+    }),
+  ).toHaveCount(0);
   await expect(
     needsYou(page).getByRole("link", {
       name: /requests? (is|are) waiting on an answer/,

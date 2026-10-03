@@ -2,29 +2,37 @@ import {
   blockerAction,
   blockerText,
   byGatingFirst,
+  expiringDocuments,
   stopsSelling,
   type Blocker,
   type Standing,
 } from "@/lib/account/standing";
 import { marketDayOf } from "@/lib/day/calendar";
 import type { OpenRequest } from "@/lib/day/request-types";
-import { canGrant, urgencyOf } from "@/lib/day/request-types";
-import { marketTime } from "@/lib/format/market-time";
+import { requestView, type RequestView } from "@/lib/day/request-view";
+import { timeToAnswer, urgencyOf } from "@/lib/day/request-types";
+import { dayCaption, marketTime } from "@/lib/format/market-time";
 import { formatPaise } from "@/lib/format/money";
+import type { BookingCash } from "@/lib/money/bookings";
 import { SUPPORT_PHONE_HREF } from "@/lib/site/contact";
 import type { InboxCount } from "@/lib/site/inbox-count";
 import { liveWithNoDates, type HomeListing } from "./listings";
 import { mayActOn } from "./status";
-import { answerWithin, count, dayWords } from "./words";
+import { count } from "./words";
 
 /**
- * "Needs you": one list, sorted by deadline, one action per row
- * (yuvoy-operator#96 block 2, #82 s2).
+ * "Needs you": one list, sorted by deadline, and every row finished where it
+ * stands (yuvoy-operator#96 block 2, #82 s2; operator experiment A, approved
+ * 3 Oct 2026).
  *
  * #82: "Messages are not the most urgent thing an operator has; a request
  * expiring in an hour is ... One strip, ranked: requests waiting first, then
  * messages, then anything else, and each labelled with the time pressure."
- * When nothing is waiting, the list draws nothing at all.
+ *
+ * Experiment A's change is that Home stops linking to the work and becomes
+ * it: a request is accepted or declined on its card, a guest is answered on
+ * theirs, the cash is taken party by party on its own. The rows that are a
+ * place to go (an account gap, a listing with no dates) still go there.
  *
  * ## The order
  *
@@ -33,13 +41,14 @@ import { answerWithin, count, dayWords } from "./words";
  *   2. Seat requests, soonest to expire first, each with its clock. At most
  *      three here; the rest are one row that opens Bookings.
  *   3. Anything else with a clock, by that clock: departures going off sale,
- *      and cash to take on today's departures by the time each leaves.
- *   4. Guests who wrote.
+ *      cash to take and guests writing about today's departures by the time
+ *      each leaves, and documents by the day they run out.
+ *   4. Guests who wrote about any other day.
  *   5. Chores with no clock: live listings with nothing to sell, past cash
  *      trips nobody recorded, and what is still owed on the account.
  *
  * Every row is plain data, worked out here on the server, so the client list
- * that holds an accept's receipt formats nothing (and so cannot disagree with
+ * that holds an answer's Undo formats nothing (and so cannot disagree with
  * the server about a day or a clock).
  */
 
@@ -48,19 +57,53 @@ export type NeedTone = "alert" | "plain";
 export interface RequestNeed {
   kind: "request";
   key: string;
-  id: string;
-  /** The listing. */
-  title: string;
-  /** "3 people · Sat 09:00 · answer within 1h 20m". */
-  detail: string;
-  /** Under an hour to answer. */
-  urgent: boolean;
-  contactName: string;
+  view: RequestView;
+}
+
+/** A guest who wrote, to be answered on Home (experiment A). */
+export interface MessageNeed {
+  kind: "message";
+  key: string;
+  bookingId: string;
+  reference: string;
+  /** "2 new". */
+  unread: string;
+  /** "Snorkel trip to Elephant Beach · Today at 23:30". */
+  trip: string;
+}
+
+/** One party's cash on today's departure, as the card takes it. */
+export interface CashParty {
+  bookingId: string;
+  name: string;
+  reference: string;
   guests: number;
-  /** The departure's zone, for a pay-by time the API does not write. */
+  /** The booking's state, which decides whether it can still take money. */
+  state: string;
+  cash: BookingCash;
+}
+
+export interface CashNeed {
+  kind: "cash";
+  key: string;
+  slotId: string;
+  /** "Collect ₹10,000 on the 09:00". */
+  text: string;
+  /** "Reef dive · 2 parties". */
+  detail: string;
   timezone: string;
-  /** Set when the party is bigger than the departure has room for. */
-  short?: string;
+  parties: CashParty[];
+}
+
+/** A document about to take listings down (audit 5.7). */
+export interface DocumentNeed {
+  kind: "document";
+  key: string;
+  /** "Insurance expires 30 November 2026. Listings that need it come down that day." */
+  text: string;
+  /** "21 days left", "Tomorrow", "Today". */
+  chip: string;
+  action: { href: string; label: string } | null;
 }
 
 export interface ConfirmSeatsNeed {
@@ -81,10 +124,19 @@ export interface LinkNeed {
   tone: NeedTone;
 }
 
-export type Need = RequestNeed | ConfirmSeatsNeed | LinkNeed;
+export type Need =
+  | RequestNeed
+  | MessageNeed
+  | CashNeed
+  | DocumentNeed
+  | ConfirmSeatsNeed
+  | LinkNeed;
 
 /** How many requests Home draws before handing the rest to Bookings. */
 export const REQUEST_ROWS = 3;
+
+/** How many guests Home offers to answer before handing the rest to Messages. */
+export const MESSAGE_ROWS = 3;
 
 const REQUESTS_HREF = "/bookings?view=requests";
 
@@ -94,49 +146,8 @@ export interface TodayCash {
   startsAt: string;
   timezone: string;
   title: string;
-  parties: number;
-  collectPaise: number | null;
-}
-
-/** One request, as its row on Home says it. */
-export function requestNeed(request: OpenRequest, today: string): RequestNeed {
-  const timezone = request.timezone ?? "Asia/Kolkata";
-  const guests = request.guests ?? 0;
-  const parts = [count(guests, "person", "people")];
-  const day = request.startsAt ? marketDayOf(request.startsAt, timezone) : null;
-  if (day && request.startsAt) {
-    parts.push(
-      `${dayWords(day, today)} ${marketTime(request.startsAt, timezone)}`,
-    );
-  }
-  parts.push(answerWithin(request.minutesToAnswer));
-
-  const need: RequestNeed = {
-    kind: "request",
-    key: `request-${request.id ?? ""}`,
-    id: request.id ?? "",
-    title: request.experience?.trim() || "A departure",
-    detail: parts.join(" · "),
-    urgent: urgencyOf(request.minutesToAnswer) === "critical",
-    contactName: request.contactName?.trim() || "The traveller",
-    guests,
-    timezone,
-  };
-  /*
-    Accepting past the ceiling answers 409, so the row says it before the tap
-    rather than after it: "accept with no sense of what is left is a decision
-    made blind".
-
-    Decided by `canGrant`, the helper the Bookings queue disables its own
-    Accept with, rather than by a second copy of the comparison here. The two
-    screens answer the same request, and a row Home offers while Bookings
-    refuses it is a 409 an operator meets on whichever one they opened.
-  */
-  if (!canGrant(request)) {
-    const grantable = request.seatsGrantable ?? 0;
-    need.short = `Only ${count(grantable, "seat", "seats")} left, not enough for this party`;
-  }
-  return need;
+  /** The parties with cash still to take. */
+  parties: CashParty[];
 }
 
 /** A blocker as a row, or `null` when this login has nothing it can do about it. */
@@ -162,6 +173,39 @@ function blockerNeed(
   };
 }
 
+/** "Collect ₹10,000 on the 09:00", from the parties that still owe it. */
+export function cashNeed(cash: TodayCash): CashNeed | null {
+  const parties = cash.parties.filter((p) => !p.cash.collected);
+  if (parties.length === 0) return null;
+  const time = marketTime(cash.startsAt, cash.timezone);
+  const total = parties.reduce<number | null>(
+    (sum, p) =>
+      sum === null || p.cash.collectPaise === null
+        ? null
+        : sum + p.cash.collectPaise,
+    0,
+  );
+  return {
+    kind: "cash",
+    key: `cash-${cash.slotId}`,
+    slotId: cash.slotId,
+    text:
+      total === null
+        ? `Collect cash on the ${time}`
+        : `Collect ${formatPaise(total)} on the ${time}`,
+    detail: `${cash.title} · ${count(parties.length, "party", "parties")}`,
+    timezone: cash.timezone,
+    parties,
+  };
+}
+
+/** "21 days left", for a document's chip. */
+function daysLeft(days: number): string {
+  if (days <= 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  return `${days} days left`;
+}
+
 export function needsYou(input: {
   standing: Standing | null;
   suspended: boolean;
@@ -175,11 +219,13 @@ export function needsYou(input: {
   /** Past cash trips with nothing recorded; `null` when unknown or not asked. */
   unrecorded: number | null;
   inbox: InboxCount | null;
-  /** The market's today, `YYYY-MM-DD`. */
+  /** The market's today and tomorrow, `YYYY-MM-DD`. */
   today: string;
+  tomorrow: string;
   now: number;
 }): Need[] {
   const { standing, suspended, canManage } = input;
+  const days = { at: input.now, today: input.today, tomorrow: input.tomorrow };
 
   /* 1. what stops the business selling ---------------------------------- */
   const lead: Need[] = [];
@@ -230,7 +276,8 @@ export function needsYou(input: {
       kind: "link",
       key: "requests-staff",
       text: `${count(input.requests.length, "request is", "requests are")} waiting on an answer`,
-      detail: `Soonest: ${answerWithin(first.minutesToAnswer)}`,
+      // The one phrasing the request cards use too (audit 5.13).
+      detail: `Soonest: ${timeToAnswer(first.minutesToAnswer)}`,
       action: "Open Bookings",
       href: REQUESTS_HREF,
       tone: input.requests.some(
@@ -241,7 +288,11 @@ export function needsYou(input: {
     });
   } else {
     for (const request of input.requests.slice(0, REQUEST_ROWS)) {
-      requests.push(requestNeed(request, input.today));
+      requests.push({
+        kind: "request",
+        key: `request-${request.id ?? ""}`,
+        view: requestView(request, days),
+      });
     }
     const rest = input.requests.length - REQUEST_ROWS;
     if (rest > 0) {
@@ -290,27 +341,26 @@ export function needsYou(input: {
     });
   }
   for (const cash of input.cash) {
-    if (cash.parties <= 0) continue;
+    const need = cashNeed(cash);
+    if (!need) continue;
     const at = Date.parse(cash.startsAt);
-    const parties = count(cash.parties, "party", "parties");
-    const time = marketTime(cash.startsAt, cash.timezone);
-    timed.push({
-      at: Number.isNaN(at) ? input.now : at,
-      need: {
-        kind: "link",
-        key: `cash-${cash.slotId}`,
-        text:
-          cash.collectPaise === null
-            ? `Collect cash from ${parties} on the ${time}`
-            : `Collect ${formatPaise(cash.collectPaise)} from ${parties} on the ${time}`,
-        detail: cash.title,
-        action: "Open the departure",
-        href: `/today/${cash.slotId}`,
-        tone: "plain",
-      },
+    timed.push({ at: Number.isNaN(at) ? input.now : at, need });
+  }
+  // Renewing is refused while on hold, and documents are a manager's job.
+  if (canManage && !suspended && standing) {
+    expiringDocuments(standing.credentials, input.now).forEach((doc, i) => {
+      timed.push({
+        at: input.now + doc.days * 24 * 60 * 60 * 1000,
+        need: {
+          kind: "document",
+          key: `document-${i}-${doc.name}`,
+          text: doc.sentence,
+          chip: daysLeft(doc.days),
+          action: doc.action,
+        },
+      });
     });
   }
-  timed.sort((a, b) => a.at - b.at);
 
   /* 4. guests who wrote ---------------------------------------------------- */
   const messages: Need[] = [];
@@ -329,15 +379,48 @@ export function needsYou(input: {
       tone: "plain",
     });
   } else if (input.inbox.conversations > 0) {
-    messages.push({
-      kind: "link",
-      key: "messages",
-      text: `${count(input.inbox.conversations, "guest wrote", "guests wrote")} to you`,
-      action: "Reply",
-      href: "/messages",
-      tone: "plain",
-    });
+    const shown = input.inbox.unread.slice(0, MESSAGE_ROWS);
+    for (const row of shown) {
+      const day = row.startsAt ? marketDayOf(row.startsAt, row.timezone) : null;
+      const trip = [row.experience.trim() || "A trip"];
+      if (day && row.startsAt) {
+        trip.push(
+          `${dayCaption(day, input.today, input.tomorrow, row.timezone)} at ${marketTime(row.startsAt, row.timezone)}`,
+        );
+      }
+      const need: MessageNeed = {
+        kind: "message",
+        key: `message-${row.bookingId}`,
+        bookingId: row.bookingId,
+        reference: row.reference,
+        unread: `${row.unreadCount} new`,
+        trip: trip.join(" · "),
+      };
+      /*
+        A guest writing about a boat that leaves later today ("I am running
+        ten minutes behind") is on that departure's clock, not at the back
+        of the queue.
+      */
+      const at = row.startsAt ? Date.parse(row.startsAt) : Number.NaN;
+      if (day === input.today && !Number.isNaN(at) && at > input.now) {
+        timed.push({ at, need });
+      } else {
+        messages.push(need);
+      }
+    }
+    const rest = input.inbox.conversations - shown.length;
+    if (rest > 0) {
+      messages.push({
+        kind: "link",
+        key: "messages-more",
+        text: `${count(rest, "more guest wrote", "more guests wrote")} to you`,
+        action: "Open Messages",
+        href: "/messages",
+        tone: "plain",
+      });
+    }
   }
+  timed.sort((a, b) => a.at - b.at);
 
   /* 5. chores with no clock ------------------------------------------------ */
   const chores: Need[] = [];

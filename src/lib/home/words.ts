@@ -61,21 +61,3 @@ export function dayWords(date: string, today: string): string {
   if (ahead !== null && ahead > 1 && ahead < 7) return full.split(" ")[0];
   return full;
 }
-
-/**
- * How long is left to answer a request, from the server's own
- * `minutesToAnswer`: "answer within 24 min", "answer within 1h 20m",
- * "answer within 2 days". Never re-derived from `expiresAt` on this side, so
- * every screen says the same clock.
- */
-export function answerWithin(minutes: number | undefined): string {
-  const m = Math.floor(minutes ?? 0);
-  if (m <= 0) return "out of time to answer";
-  if (m < 60) return `answer within ${m} min`;
-  if (m < 24 * 60) {
-    const hours = Math.floor(m / 60);
-    const rest = m % 60;
-    return `answer within ${hours}h${rest ? ` ${rest}m` : ""}`;
-  }
-  return `answer within ${count(Math.floor(m / (24 * 60)), "day", "days")}`;
-}
