@@ -190,14 +190,6 @@ export default async function BookingsPage({
         Bookings
       </h1>
 
-      <BookingFilters
-        filters={filters}
-        view={view}
-        today={today}
-        tomorrow={tomorrow}
-        listings={listingOptions}
-      />
-
       {/*
         The pills. Links rather than buttons: the URL holds the place, so back
         and refresh restore the pill somebody was on, and a pill can be opened
@@ -227,6 +219,19 @@ export default async function BookingsPage({
           );
         })}
       </PillRow>
+
+      {/*
+        The search and the filters, under the pills rather than above them
+        (operator experiment A): which bookings comes before which of them,
+        and on a phone the pills are the first thing a thumb reaches.
+      */}
+      <BookingFilters
+        filters={filters}
+        view={view}
+        today={today}
+        tomorrow={tomorrow}
+        listings={listingOptions}
+      />
 
       {page === null ? (
         /*
