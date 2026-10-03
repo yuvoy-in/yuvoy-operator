@@ -1,5 +1,6 @@
 "use client";
 
+import { SUPPORT_PHONE } from "@/lib/site/contact";
 import { useActionState, useState } from "react";
 import { submitRevision, type RevisionState } from "./actions";
 import {
@@ -207,7 +208,7 @@ export function ListingRow({
           <p className="text-terra-deep text-sm font-bold">
             {rejection ??
               listing.review.rejectionNote ??
-              "We came back to you on this one. Message us and we will say why."}
+              `We came back to you on this one. Call us on ${SUPPORT_PHONE} and we will say why.`}
           </p>
           {rejection && listing.review.rejectionNote ? (
             <p className="text-forest/80 mt-1.5 text-sm">

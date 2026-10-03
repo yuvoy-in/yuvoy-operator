@@ -23,7 +23,7 @@ import { listListings } from "@/lib/day/manifest";
 import { searchBookings } from "@/lib/money/fetch";
 import {
   PILL_LABEL,
-  VIEWS,
+  viewsFor,
   anyFilter,
   countFor,
   defaultView,
@@ -79,6 +79,9 @@ export const dynamic = "force-dynamic";
  * still comes first, and a season that is over opens on Past rather than on
  * "Upcoming 0" and a blank screen.
  *
+ * A staff login gets the last three. It can never answer a request, so the
+ * pill and its count were a door that only said "not you" (#117 item 1).
+ *
  * ## Requests are not bookings
  *
  * They come from `GET /requests`, they are in no view, and a request that was
@@ -97,7 +100,9 @@ export default async function BookingsPage({
   const one = (key: string) =>
     Array.isArray(raw[key]) ? raw[key][0] : (raw[key] as string | undefined);
 
-  const asked = readView(one("view"));
+  // Requests only for a login that can answer them (yuvoy-operator#117).
+  const views = viewsFor(me.canManage);
+  const asked = readView(one("view"), views);
   const filters = readFilters({
     q: one("q"),
     experienceId: one("experienceId"),
@@ -118,7 +123,8 @@ export default async function BookingsPage({
     Requests are read when the Requests pill is selected or the URL names no
     pill, because the default depends on whether any are waiting.
   */
-  const wantsRequests = asked === "requests" || asked === null;
+  const wantsRequests =
+    views.includes("requests") && (asked === "requests" || asked === null);
   const listView: "upcoming" | "past" | "cancelled" =
     asked === "past" || asked === "cancelled" ? asked : "upcoming";
 
@@ -134,7 +140,8 @@ export default async function BookingsPage({
 
   // `null` when the read failed or carried none: unknown, never zeroes (O6).
   const counts = first?.counts ?? null;
-  const view: View = asked ?? defaultView(counts, requests?.length ?? null);
+  const view: View =
+    asked ?? defaultView(counts, requests?.length ?? null, views);
   const filtered = anyFilter(filters);
 
   /*
@@ -162,7 +169,7 @@ export default async function BookingsPage({
     !filtered &&
     view !== "requests" &&
     counts !== null &&
-    nothingBooked(counts) &&
+    nothingBooked(counts, views) &&
     page.items.length === 0;
 
   const listingOptions = [...(listings ?? [])]
@@ -199,7 +206,7 @@ export default async function BookingsPage({
         one an operator would plan against.
       */}
       <PillRow label="Which bookings" selected={view}>
-        {VIEWS.map((pill) => {
+        {views.map((pill) => {
           const selected = pill === view;
           return (
             <ButtonLink
@@ -248,18 +255,6 @@ export default async function BookingsPage({
         </div>
       ) : view === "requests" ? (
         <div className="mt-6">
-          {/*
-            STAFF, on this pill only, in one line. It replaced a `Problem` panel
-            at the top of the whole screen, which told somebody who had come to
-            read their bookings that they could not do something they had not
-            tried.
-          */}
-          {!me.canManage ? (
-            <p className="text-forest/80 text-base font-bold">
-              Only owners, admins and managers can answer requests
-            </p>
-          ) : null}
-
           {requests === null ? (
             <Problem
               title="Requests did not load. Try again."

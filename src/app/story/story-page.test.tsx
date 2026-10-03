@@ -82,10 +82,19 @@ describe("Your story", () => {
     expect(
       screen.getByText("The boat, the shop, the crew. Not the trip itself."),
     ).toBeInTheDocument();
-    // And the checked facts keep the way to change them, not the rest.
+    // And the checked facts keep the way to change them, not the rest: a
+    // number to call, since the portal has no message channel to us (#117).
     expect(
-      screen.getByText("To change either, message us."),
+      screen.getByText((_, el) =>
+        el?.tagName === "P" &&
+        el.textContent === "To change either, call us on +91 81216 57657."
+          ? true
+          : false,
+      ),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "+91 81216 57657" }),
+    ).toHaveAttribute("href", "tel:+918121657657");
   });
 
   it("opens the preview from the top, as a button and not a mid-page link", async () => {

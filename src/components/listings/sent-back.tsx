@@ -1,3 +1,4 @@
+import { SUPPORT_PHONE } from "@/lib/site/contact";
 import { describeRejection } from "@/lib/services/listings";
 
 /**
@@ -20,7 +21,9 @@ export function SentBack({
     <div className="border-terra-deep/30 mt-3 border-t pt-3">
       <p className="text-terra-deep text-sm font-bold">
         We sent this back to you.{" "}
-        {reason ?? sentBack.rejectionNote ?? "Message us and we will say why."}
+        {reason ??
+          sentBack.rejectionNote ??
+          `Call us on ${SUPPORT_PHONE} and we will say why.`}
       </p>
       {/*
         The reviewer's own words, when there are any. Empty when they wrote

@@ -1,3 +1,4 @@
+import { SUPPORT_PHONE, SUPPORT_PHONE_HREF } from "@/lib/site/contact";
 import type { Metadata } from "next";
 import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
@@ -231,8 +232,19 @@ export default async function StoryPage() {
               input: that is what keeps it reading as deliberate rather than as
               a disabled field. Who checks it, and when, is in Help.
             */}
+            {/*
+              A number to call: there is no message channel to us in the
+              portal, so "message us" pointed nowhere (yuvoy-operator#117).
+            */}
             <p className="text-forest/70 mt-4 text-sm">
-              To change either, message us.
+              To change either, call us on{" "}
+              <a
+                href={SUPPORT_PHONE_HREF}
+                className="text-forest font-bold whitespace-nowrap underline underline-offset-2"
+              >
+                {SUPPORT_PHONE}
+              </a>
+              .
             </p>
           </section>
         </>

@@ -1,3 +1,4 @@
+import { SUPPORT_PHONE } from "@/lib/site/contact";
 import { BANK_CHANGE, type ChangeRequest } from "./change-kind";
 
 /**
@@ -72,7 +73,7 @@ export function describeChange(state: ChangeState): {
     case "rejected":
       return {
         title: "Rejected",
-        body: "We did not make this change. If you were expecting it to go through, message us.",
+        body: `We did not make this change. If you were expecting it to go through, call us on ${SUPPORT_PHONE}.`,
         stoppable: false,
       };
     case "withdrawn":

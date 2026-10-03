@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { addDepartures, type DepartureState } from "./actions";
 import type { OperatorListing } from "@/lib/day/types";
 import {
@@ -108,7 +109,8 @@ function DepartureRound({
   const problem = departureProblem(plan, today);
 
   if (state.result) {
-    const { created, asked, note, onSale, notOnSaleDetail } = state.result;
+    const { created, asked, note, onSale, notOnSaleDetail, experienceId } =
+      state.result;
     return (
       <Panel tone={created > 0 ? "done" : "raised"}>
         {created > 0 ? (
@@ -142,13 +144,27 @@ function DepartureRound({
                 the reason set is open enough that a client mapping it would
                 have an unhandled arm the first time one is added. The reason
                 code is deliberately not read here at all.
+
+                Not on sale, it links to the listing, where what is missing is
+                said. The fallback said "Check it on Listings", a tab that went
+                in #96 (yuvoy-operator#117 item 2).
               */
               <p className="text-forest/80 mt-2 text-sm">
                 {onSale === false
-                  ? (notOnSaleDetail ??
-                    "They are not on sale yet. Check it on Listings.")
+                  ? (notOnSaleDetail ?? "They are not on sale yet.")
                   : "They are on sale from now."}{" "}
                 You can change the seats on each one below.
+                {onSale === false ? (
+                  <>
+                    {" "}
+                    <Link
+                      href={`/account/listings/${encodeURIComponent(experienceId)}`}
+                      className="text-forest font-bold underline underline-offset-2"
+                    >
+                      Open the listing
+                    </Link>
+                  </>
+                ) : null}
               </p>
             )}
           </>

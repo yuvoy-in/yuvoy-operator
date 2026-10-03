@@ -1966,6 +1966,27 @@ for (const f of files) {
 */
 for (const p of vendorProblems()) problems.push(p);
 
+/* ------------------------------------------------ nothing to message -- */
+
+/*
+  "Message us" in anything an operator reads (yuvoy-operator#117 item 3). The
+  portal has no message channel to Yuvoy: support is a phone call, and the
+  support WhatsApp is not set in production. Six screens still said it, each
+  a promise of a conversation nobody could start. Say the number instead
+  (`SUPPORT_PHONE` in src/lib/site/contact.ts). Comments are stripped first,
+  so the reason can still be written down; when a message channel exists,
+  delete this check.
+*/
+for (const f of files) {
+  if (/\.test\.tsx?$/.test(f)) continue;
+  if (/\bmessage us\b/i.test(code(f))) {
+    problems.push(
+      `${rel(f)}: says "message us", and there is no message channel to us. ` +
+        `Give the support number (SUPPORT_PHONE) or a link to Help.`,
+    );
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);

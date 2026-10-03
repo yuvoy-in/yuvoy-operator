@@ -8,9 +8,10 @@ import type { NavBadges } from "./nav";
  * Each is the number of rows under "Waiting on you" on the screen its stop
  * opens, computed the same way that screen computes them:
  *
- *   - **Bookings** — every open seat request. `/bookings` renders the whole
- *     `GET /requests` list as its queue, STAFF included: they cannot answer
- *     one, but "a request nobody sees is a request that expires".
+ *   - **Bookings**: every open seat request, for a login that can answer
+ *     one. STAFF are not offered the Requests pill since yuvoy-operator#117
+ *     (they can never answer a request), so a count on their Bookings stop
+ *     would send them to a screen with no request on it.
  *   - **Business** — what stops the business selling that this login can act
  *     on (`stoppingSales`), the rows Home's "Needs you" leads with. It counted
  *     every item waiting on the operator, and yuvoy-operator#96 item 6 named
@@ -31,7 +32,7 @@ export function countBadges(from: {
   requests: readonly unknown[] | undefined;
 }): NavBadges {
   const counts: NavBadges = {};
-  if (from.requests) counts.bookings = from.requests.length;
+  if (from.requests && from.canManage) counts.bookings = from.requests.length;
   if (from.account) {
     counts.business = stoppingSales(from.account, from.canManage).length;
   }

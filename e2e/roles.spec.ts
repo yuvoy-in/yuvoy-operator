@@ -125,8 +125,16 @@ test("a manager is offered Money and the team, because the server allows them", 
     page.getByRole("link", { name: /^Payout details/ }).last(),
   ).toBeVisible();
 
+  /*
+    Not Team access since yuvoy-operator#117 item 4: every change on /team is
+    owner or admin only, and a manager opened it to be told so. The settings
+    screen itself is still theirs.
+  */
   await page.goto("/account/settings");
-  await expect(page.getByRole("link", { name: /Team access/ })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Notifications", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: /Team access/ })).toHaveCount(0);
 
   // And the Money stop, which a manager may open (yuvoy-operator#96).
   await page.goto("/today");
@@ -138,81 +146,37 @@ test("a manager is offered Money and the team, because the server allows them", 
   ).toBeVisible();
 });
 
-test("a staff login sees the queue and cannot answer it — including the buttons", async ({
+test("a staff login is not offered the request queue, or its count", async ({
   page,
 }) => {
+  /*
+    yuvoy-operator#117 item 1. It used to be shown the queue with one line
+    saying it could not answer, and every button disabled. A door that only
+    says "not you" is not worth the row: requests now reach the people who
+    can answer them, and the Bookings stop counts none for a staff login.
+
+    That the action itself still refuses a staff phone (a Server Action is a
+    public endpoint) is proved in src/app/bookings/accept-request.test.ts; the
+    e2e test that forced a disabled Accept had no button left to force.
+  */
   await signIn(page, STAFF);
   await page.goto("/bookings");
 
-  /*
-    The contract refuses the WRITE, not the read: `GET /requests` has no role
-    gate, `POST /requests/{id}/accept` is 403 "STAFF cannot commit seats".
-    So the queue is visible — a request nobody sees is a request that expires.
-  */
-  /*
-    ONE line, on the Requests pill only, since yuvoy-operator#57 item 9. It was
-    a `Problem` panel at the top of the whole screen, which told somebody who
-    had come to read their bookings that they could not do something they had
-    not tried.
-  */
   await expect(
-    page.getByText("Only owners, admins and managers can answer requests"),
-  ).toBeVisible();
-  await expect(
-    page.getByText("You can see these, but not answer them"),
+    page
+      .getByRole("navigation", { name: "Which bookings" })
+      .getByRole("link", { name: /^Requests/ }),
   ).toHaveCount(0);
-
-  /*
-    And the controls are disabled, not merely explained. A banner and a working
-    button disagree, and the one that gets believed is the button.
-  */
-  const accept = page.getByRole("button", { name: "Accept" }).first();
-  await expect(accept).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: "Decline" }).first(),
-  ).toBeDisabled();
-});
-
-test("a staff phone that forces the button through is refused by the action itself", async ({
-  page,
-}) => {
-  await signIn(page, STAFF);
-  await page.goto("/bookings");
-
-  /*
-    `disabled` is a courtesy. A Server Action is a public POST endpoint, and
-    for a month the only thing between a STAFF phone and a granted request
-    was the attribute this test removes — the mock refused nothing by role,
-    so the 403 branch in the action had never once run. The action now
-    re-reads the role at the moment of the tap, and the mock refuses like
-    the contract does; either alone would render this line.
-  */
-  const accept = page.getByRole("button", { name: "Accept" }).first();
-  await accept.evaluate((button) => button.removeAttribute("disabled"));
-  await accept.click();
-
-  /*
-    Reworded on 15 September (yuvoy-operator#43 item 6). It read "Your role
-    cannot answer requests. An owner, admin or manager has to." — two sentences
-    to say one thing, and the first of them addresses somebody by their role
-    rather than saying who to ask.
-  */
-  await expect(
-    page.getByRole("alert").filter({ hasText: "can answer requests" }),
-  ).toHaveText("Only owners, admins and managers can answer requests.");
-
-  // And nothing was granted: the request is still in the queue.
-  await expect(
-    page.getByRole("button", { name: "Accept" }).first(),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Accept" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Decline" })).toHaveCount(0);
 });
 
 test("an owner can still answer the queue", async ({ page }) => {
   await signIn(page, OWNER);
   await page.goto("/bookings");
 
-  // The control for the test above: the buttons are disabled by ROLE, not by
-  // something that had quietly disabled them for everybody.
+  // The control for the test above: the queue is withheld by ROLE, not by
+  // something that had quietly withheld it from everybody.
   await expect(
     page.getByText("You can see these, but not answer them"),
   ).toHaveCount(0);

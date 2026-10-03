@@ -40,6 +40,15 @@ describe("the counts on the bar: yuvoy-operator#42, #96", () => {
     ).toBe(3);
   });
 
+  it("counts no request for a staff login, which is not offered them", () => {
+    // yuvoy-operator#117: the Requests pill is not drawn for STAFF, so a
+    // count on their Bookings stop would point at nothing.
+    expect(
+      "bookings" in
+        countBadges({ account: null, canManage: false, requests: [{}, {}] }),
+    ).toBe(false);
+  });
+
   it("counts only what stops the business selling, and is the operator's", () => {
     /*
       #96 item 6: "The Business badge reads '2' (two non-blocking
