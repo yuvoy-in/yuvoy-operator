@@ -118,7 +118,7 @@ export function BookingList({
                     )}
                   >
                     <span className="flex min-w-0 items-baseline gap-3">
-                      <span className="shrink-0 font-mono text-sm tabular-nums">
+                      <span className="shrink-0 text-sm tabular-nums">
                         {booking.startsAt
                           ? marketTime(booking.startsAt, booking.timezone)
                           : "--:--"}

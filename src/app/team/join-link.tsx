@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { CheckIcon } from "@/components/ui/icons";
 
 /**
  * The business's join link, to hand over by hand.
@@ -79,7 +80,14 @@ export function JoinLink({
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Button onClick={copy} variant="secondary" block={false}>
-          {state === "copied" ? "Copied ✓" : "Copy invite link"}
+          {state === "copied" ? (
+            <>
+              <CheckIcon className="size-4" />
+              Copied
+            </>
+          ) : (
+            "Copy invite link"
+          )}
         </Button>
         {state === "failed" ? (
           <p role="status" className="text-forest/80 text-sm">
@@ -110,7 +118,14 @@ export function JoinLink({
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button onClick={copy} variant="secondary" block={false}>
-          {state === "copied" ? "Copied ✓" : "Copy the link"}
+          {state === "copied" ? (
+            <>
+              <CheckIcon className="size-4" />
+              Copied
+            </>
+          ) : (
+            "Copy the link"
+          )}
         </Button>
         {state === "failed" ? (
           /*

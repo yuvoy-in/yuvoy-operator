@@ -170,7 +170,7 @@ function ThreadRowLink({ row, now }: { row: ThreadRow; now: number }) {
           {last ? ` ${last}` : ""}
         </span>
         {reference ? (
-          <span className="text-forest/70 mt-1 block font-mono text-xs tracking-wider">
+          <span className="text-forest/70 mt-1 block text-xs tracking-wider slashed-zero tabular-nums">
             {reference}
           </span>
         ) : null}

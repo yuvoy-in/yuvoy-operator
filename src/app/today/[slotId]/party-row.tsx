@@ -140,7 +140,7 @@ export function PartyRow({
         </p>
       </div>
 
-      <p className="text-forest/70 mt-1 font-mono text-sm tracking-wider">
+      <p className="text-forest/70 mt-1 text-sm tracking-wider slashed-zero tabular-nums">
         {party.reference}
       </p>
 

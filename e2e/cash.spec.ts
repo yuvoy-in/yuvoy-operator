@@ -111,7 +111,9 @@ test("every trip behind the number is listed and checkable", async ({
 
   // Most recent first, so two loads do not disagree about the top row. A
   // waiting assertion: a bare read can land on the loading skeleton.
-  await expect(owed.locator("li p.font-mono")).toHaveText([
+  // The references are found by what they are, not by a styling class: the
+  // class they used to be found by went with the v3.0 type change.
+  await expect(owed.locator("li p").filter({ hasText: /^YV-/ })).toHaveText([
     "YV-8F3K2A",
     "YV-2M9QX1",
     "YV-7T4WPZ",
@@ -132,7 +134,7 @@ test("cash taken for trips still to run is shown apart from what is owed", async
   const held = page.getByRole("region", { name: "Held, trip still to run" });
   // Waiting, not a bare read: a bare read landed on the loading skeleton and
   // found nothing.
-  await expect(held.locator("li p.font-mono")).toHaveText([
+  await expect(held.locator("li p").filter({ hasText: /^YV-/ })).toHaveText([
     "YV-H3LD0A1",
     "YV-H3LD0B2",
   ]);

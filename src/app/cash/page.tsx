@@ -307,7 +307,7 @@ function guestsLabel(guests: number): string {
 function TripHead({ line }: { line: CommissionLine }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <p className="font-mono text-base font-bold">
+      <p className="text-base font-bold slashed-zero tabular-nums">
         {line.bookingReference || "-"}
       </p>
       <p className="text-forest/70 shrink-0 text-sm">

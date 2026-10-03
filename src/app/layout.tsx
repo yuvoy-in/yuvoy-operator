@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { fraunces, satoshi } from "@/lib/fonts";
+import { anek, anekDisplay } from "@/lib/fonts";
 import { AppShell } from "@/components/chrome/app-shell";
 import { chromeData } from "@/lib/site/nav-badges";
 import { gateSession } from "@/lib/auth/session";
@@ -59,7 +59,7 @@ export default async function RootLayout({
     await chromeData();
 
   return (
-    <html lang="en" className={`${fraunces.variable} ${satoshi.variable}`}>
+    <html lang="en" className={`${anekDisplay.variable} ${anek.variable}`}>
       <body className="bg-forest text-paper">
         <a
           href="#main"
