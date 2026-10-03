@@ -42,12 +42,18 @@ export function DepartureControls({
   slot,
   canManage,
   canSellAtCounter,
+  from = "/calendar",
 }: {
   slot: OperatorSlot;
   /** OWNER, ADMIN or MANAGER, on a business that is not suspended. */
   canManage: boolean;
   /** Anybody signed in, on a business that is not suspended. */
   canSellAtCounter: boolean;
+  /**
+   * The board's address with this departure open, so Back from "Who is
+   * booked" lands on the inspector it was opened from.
+   */
+  from?: string;
 }) {
   /*
     The counter-sale form is remounted for each sale: `useActionState` keeps
@@ -99,7 +105,7 @@ export function DepartureControls({
         calling it off" (yuvoy-operator#96 item 6): a label that scans.
       */}
       <Link
-        href={withFrom(`/today/${slot.id}`, "/calendar")}
+        href={withFrom(`/today/${slot.id}`, from)}
         className="text-forest decoration-forest/40 inline-flex min-h-11 items-center text-sm font-bold underline underline-offset-4"
       >
         Who is booked

@@ -32,6 +32,7 @@ export function RequestQueue({
   empty,
   canAnswer,
   canAccept,
+  pinPill = true,
 }: {
   /** The requests, every word worked out on the server (`requestView`). */
   views: RequestView[];
@@ -40,6 +41,12 @@ export function RequestQueue({
   canAnswer: boolean;
   /** Accepting is refused while suspended; declining is not (#50). */
   canAccept: boolean;
+  /**
+   * Write `?view=requests` into the address (see below). Only Bookings has
+   * pills; a queue shown elsewhere (the board's inspector) leaves the
+   * address alone.
+   */
+  pinPill?: boolean;
 }) {
   const router = useRouter();
   const refresh = useCallback(() => router.refresh(), [router]);
@@ -55,11 +62,12 @@ export function RequestQueue({
     every re-read after it ask for this pill.
   */
   useEffect(() => {
+    if (!pinPill) return;
     const url = new URL(window.location.href);
     if (url.searchParams.has("view")) return;
     url.searchParams.set("view", "requests");
     window.history.replaceState(null, "", url);
-  }, []);
+  }, [pinPill]);
 
   const byId = new Map(views.map((view) => [view.id, view]));
   const serverIds = views.map((view) => view.id);

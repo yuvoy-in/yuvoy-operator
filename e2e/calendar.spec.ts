@@ -57,35 +57,105 @@ function dayLabel(offset: number): string {
  */
 function mySlot(name: string) {
   return name === "mobile"
-    ? { title: "Try-dive at Nemo Reef", day: "Today" }
-    : { title: "Snorkel trip to Elephant Beach", day: "Tomorrow" };
+    ? { title: "Try-dive at Nemo Reef", day: 0 }
+    : { title: "Snorkel trip to Elephant Beach", day: 1 };
 }
 
+const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/** "Thu 8 Oct": a day as the board's grid names it, from fixed tables. */
+function shortDay(offset: number): string {
+  const [y, m, d] = marketDay(offset).split("-").map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${WEEKDAY[weekday]} ${d} ${MONTH[m - 1]}`;
+}
+
+/** What the open day's region is called: Today, Tomorrow, or the date. */
+function dayName(offset: number): string {
+  return offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : dayLabel(offset);
+}
+
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
- * One day of the fortnight, opened. Each day is one row until it is opened
- * (yuvoy-operator#84 s7), a native disclosure, so a test opens it the way a
- * thumb does: by its summary. Opening one that is already open would close
- * it, so it is only clicked when shut.
+ * One day on the board, opened by its address: the board's whole state is
+ * the URL (week, day, open departure), so a test goes where a pasted link
+ * goes. Returns the day's region: what is on it, its closures and its own
+ * actions (and, on a phone, its departures).
  */
-async function openDay(page: Page, name: string | RegExp): Promise<Locator> {
-  const day = page.getByRole("region", { name, exact: true });
-  const details = day.locator(":scope > details");
-  if (!(await details.evaluate((d) => (d as HTMLDetailsElement).open))) {
-    await day.locator(":scope > details > summary").click();
-  }
-  await expect(details).toHaveJSProperty("open", true);
+async function openDay(page: Page, offset: number): Promise<Locator> {
+  await page.goto(`/calendar?day=${marketDay(offset)}`);
+  const day = page.getByRole("region", { name: dayName(offset), exact: true });
+  await expect(day).toBeVisible();
   return day;
 }
 
-/** A departure inside an opened day, opened too. The first one by that title. */
-async function openDeparture(day: Locator, title: string): Promise<Locator> {
-  const row = day.locator("li").filter({ hasText: title }).first();
-  const details = row.locator(":scope > details");
-  if (!(await details.evaluate((d) => (d as HTMLDetailsElement).open))) {
-    await row.locator(":scope > details > summary").click();
-  }
-  await expect(details).toHaveJSProperty("open", true);
-  return row;
+/**
+ * A departure on a day, by its accessible name: the grid's cell on a desktop
+ * ("Thu 8 Oct, 09:00 Try-dive, 5 of 8 sold"), the day's row on a phone
+ * ("09:00 Try-dive, 5 of 8 sold"). Only the one drawn for the viewport is in
+ * the accessibility tree, so one locator serves both projects.
+ */
+function departureOn(
+  page: Page,
+  offset: number,
+  title: string,
+  time?: string,
+): Locator {
+  const at = time ? escape(time) : "\\d\\d:\\d\\d";
+  return page.getByRole("link", {
+    name: new RegExp(
+      `^(${escape(shortDay(offset))}, )?${at} ${escape(title)},`,
+    ),
+  });
+}
+
+/**
+ * A departure opened into the inspector (the first by that title on that
+ * day, which is the earliest: the day is in time order), and the inspector
+ * returned: its seats, sales, counter sale, stopping it, and who is on it.
+ */
+async function openDeparture(
+  page: Page,
+  offset: number,
+  title: string,
+  time?: string,
+): Promise<Locator> {
+  await openDay(page, offset);
+  await departureOn(page, offset, title, time).first().click();
+  const inspector = page.getByRole("dialog");
+  await expect(inspector).toBeVisible();
+  return inspector;
+}
+
+/**
+ * The day's own marks, under its name: what is on it, "N not on sale",
+ * "Closed". Not the departures' chips: on a phone the day also lists them,
+ * and a stopped departure says Closed too.
+ */
+function dayMarks(day: Locator): Locator {
+  return day.locator(":scope > p").first();
+}
+
+/** Puts the inspector away, the way a thumb does: its Close. */
+async function closeInspector(page: Page) {
+  const inspector = page.getByRole("dialog");
+  await inspector.getByRole("button", { name: "Close" }).click();
+  await expect(inspector).toHaveCount(0);
 }
 
 /**
@@ -139,7 +209,7 @@ async function openAddDepartures(page: Page): Promise<string> {
   return (await first.inputValue()) || "";
 }
 
-test("the bar links to capacity, and capacity lists the fortnight", async ({
+test("the bar links to the Calendar, and the board opens on this week", async ({
   page,
 }) => {
   await signIn(page);
@@ -153,11 +223,18 @@ test("the bar links to capacity, and capacity lists the fortnight", async ({
   /*
     `.first()`, because a departure is no longer a fixture-only thing. The
     create test below adds one to this same listing, and the mock's state is
-    shared across projects, so "the fortnight lists this trip" is what this
-    asserts, not "exactly once". Inside its day, which is opened first.
+    shared across projects, so "the board shows this trip" is what this
+    asserts, not "exactly once". Today is open by default.
   */
-  const today = await openDay(page, "Today");
-  await expect(today.getByText("Try-dive at Nemo Reef").first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "This week", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Today", exact: true }),
+  ).toBeVisible();
+  await expect(
+    departureOn(page, 0, "Try-dive at Nemo Reef").first(),
+  ).toBeVisible();
 });
 
 test("seats cannot go below what is already sold", async ({
@@ -172,7 +249,7 @@ test("seats cannot go below what is already sold", async ({
     than the fixtures. Opened, because its seat box is inside it.
   */
   const mine = mySlot(testInfo.project.name);
-  const row = await openDeparture(await openDay(page, mine.day), mine.title);
+  const row = await openDeparture(page, mine.day, mine.title);
   const field = row.getByLabel("Seats offered");
 
   // slot_dawn has 5 sold of 8; slot_late_morning has 1 of 12.
@@ -196,7 +273,7 @@ test("reducing to exactly what is sold is allowed", async ({
   await page.goto("/calendar");
 
   const mine = mySlot(testInfo.project.name);
-  const row = await openDeparture(await openDay(page, mine.day), mine.title);
+  const row = await openDeparture(page, mine.day, mine.title);
   const sold = testInfo.project.name === "mobile" ? "5" : "1";
 
   await row.getByLabel("Seats offered").fill(sold);
@@ -208,10 +285,10 @@ test("reducing to exactly what is sold is allowed", async ({
   await expect(row.getByRole("alert")).toHaveCount(0);
 
   /*
-    And the row itself now says so, with the day and the departure still open:
-    the action revalidates the page, and the receipt is read inside the day it
-    was made in (yuvoy-operator#84 s7). For a month the mock's reads ignored
-    its writes, and "Now offering 5." rendered beside "5 of 8 sold · 3 left".
+    And the departure itself now says so, with the inspector still open: the
+    action revalidates the board, and the receipt is read where it was made.
+    For a month the mock's reads ignored its writes, and "Now offering 5."
+    rendered beside "5 of 8 sold · 3 left".
   */
   await expect(
     row.getByText(new RegExp(`${sold} of ${sold} sold`)),
@@ -258,7 +335,7 @@ test("an oversell is never rendered as a success", async ({
   await page.goto("/calendar");
 
   const mine = mySlot(testInfo.project.name);
-  const row = await openDeparture(await openDay(page, mine.day), mine.title);
+  const row = await openDeparture(page, mine.day, mine.title);
   await row.getByRole("button", { name: "I sold seats at my counter" }).click();
 
   // Far more than the boat holds, on purpose.
@@ -343,15 +420,7 @@ test("a counter sale is named on its departure, and a mistake is taken back", as
     page.getByText(/1 departure added|Nothing to add/).first(),
   ).toBeVisible();
 
-  await page.goto("/calendar");
-  const dayRegion = await openDay(page, dayLabel(offset));
-  const row = dayRegion
-    .locator("li")
-    .filter({ hasText: title })
-    .filter({ hasText: time })
-    .first();
-  await row.locator(":scope > details > summary").click();
-  await expect(row.locator(":scope > details")).toHaveJSProperty("open", true);
+  const row = await openDeparture(page, offset, title, time);
   const line = row.getByText(/ sold · \d+ left/).first();
   await expect(line).not.toContainText("sold at your counter");
 
@@ -525,10 +594,12 @@ test("a departure is created, appears in the list, and is not created twice", as
   await page.getByRole("button", { name: "Add 1 departure" }).click();
   await expect(page.getByText("1 departure added")).toBeVisible();
 
-  // It is on the list, read back from the server rather than assumed.
-  await page.goto("/calendar");
-  const row = page.locator("li").filter({ hasText: mine.title });
-  await expect(row.filter({ hasText: mine.time })).toHaveCount(1);
+  // It is on the board, read back from the server rather than assumed: on
+  // its own day, in whichever week that is.
+  await openDay(page, mine.offsetDays);
+  await expect(
+    departureOn(page, mine.offsetDays, mine.title, mine.time),
+  ).toHaveCount(1);
 
   /*
     And asking again does not sell the same boat twice. "Dates that already
@@ -546,13 +617,10 @@ test("a departure is created, appears in the list, and is not created twice", as
 
   await expect(page.getByText("Nothing to add")).toBeVisible();
   await expect(page.getByText(/never sells the same boat twice/)).toBeVisible();
-  // Still one row, not two.
-  await page.goto("/calendar");
+  // Still one, not two.
+  await openDay(page, mine.offsetDays);
   await expect(
-    page
-      .locator("li")
-      .filter({ hasText: mine.title })
-      .filter({ hasText: mine.time }),
+    departureOn(page, mine.offsetDays, mine.title, mine.time),
   ).toHaveCount(1);
 });
 
@@ -567,23 +635,18 @@ test("a departure says whether its seats are held, and says nothing when it does
     `allotment` would promise held seats on a departure holding none.
   */
   await signIn(page);
-  await page.goto("/calendar");
 
   // Said as a fact inside the opened departure, not as a paragraph on every one.
-  const today = await openDay(page, "Today");
-  const held = await openDeparture(today, "Try-dive at Nemo Reef");
+  const held = await openDeparture(page, 0, "Try-dive at Nemo Reef");
   await expect(held).toContainText("Instant booking");
 
-  const tomorrow = await openDay(page, "Tomorrow");
-  const asked = await openDeparture(tomorrow, "Snorkel trip to Elephant Beach");
+  const asked = await openDeparture(page, 1, "Snorkel trip to Elephant Beach");
   await expect(asked).toContainText("You answer each request");
 
-  // The charter fixture carries no mode. The row says nothing either way.
-  const silent = today
-    .locator("li")
-    .filter({ hasText: "Private boat charter" });
-  await expect(silent).toHaveCount(1);
-  await openDeparture(today, "Private boat charter");
+  // The charter fixture carries no mode. The departure says nothing either way.
+  await openDay(page, 0);
+  await expect(departureOn(page, 0, "Private boat charter")).toHaveCount(1);
+  const silent = await openDeparture(page, 0, "Private boat charter");
   await expect(silent).not.toContainText("Instant booking");
   await expect(silent).not.toContainText("You answer each request");
 });
@@ -606,11 +669,9 @@ test("a failed listing read costs the picker, not the screen", async ({
 
   // The screen is intact: the departures are there and still editable.
   await expect(page.getByRole("heading", { name: "Calendar" })).toBeVisible();
-  const row = await openDeparture(
-    await openDay(page, "Today"),
-    "Try-dive at Nemo Reef",
-  );
+  const row = await openDeparture(page, 0, "Try-dive at Nemo Reef");
   await expect(row.getByLabel("Seats offered")).toBeVisible();
+  await closeInspector(page);
 
   // Only the picker is gone, and it says which of the two absences this is.
   await expect(
@@ -629,63 +690,74 @@ test("a failed listing read costs the picker, not the screen", async ({
 });
 
 /*
-  Fourteen days, one row each: yuvoy-operator#45, laid out by #84 s7.
+  Any week, as a board (operator experiment B; audit 5.1). The fortnight this
+  replaced had no way past today plus thirteen days, so yesterday could not
+  be closed out and a departure three weeks away could not be changed.
 
   "Calendar controls sellable capacity; Bookings owns customer obligation
   resolution." The assertions that matter most are the two sentences a closure
-  must say before it happens, word for word, and that a fortnight is a few
-  phone screens rather than thirty.
+  must say before it happens, word for word, and that a week is a few phone
+  screens rather than thirty.
 */
-test("fourteen days, each one row saying what is on it", async ({ page }) => {
+test("a week, any week, each day saying what is on it", async ({
+  page,
+}, testInfo) => {
   await signIn(page);
   await page.goto("/calendar");
 
-  const days = page
-    .getByRole("region", { name: "The next fourteen days" })
-    .getByRole("region");
-  await expect(days).toHaveCount(14);
-  await expect(
-    days.first().getByRole("heading", { name: "Today" }),
-  ).toBeVisible();
-  await expect(
-    days.nth(1).getByRole("heading", { name: "Tomorrow" }),
-  ).toBeVisible();
+  // Seven days: the strip on a phone, the grid's columns on a desktop.
+  if (testInfo.project.name === "mobile") {
+    await expect(
+      page.getByRole("navigation", { name: "Days" }).getByRole("link"),
+    ).toHaveCount(7);
+  } else {
+    await expect(page.getByRole("columnheader")).toHaveCount(8);
+  }
 
   // A day with boats says how many times they leave, and what is sold.
-  await expect(days.nth(1)).toContainText(/\d+ start times? · \d+ sold/);
-  // A day with none says so, rather than leaving a gap in the list.
-  await expect(days.nth(3)).toContainText("No departures scheduled");
+  const tomorrow = await openDay(page, 1);
+  await expect(tomorrow).toContainText(/\d+ start times? · \d+ sold/);
+  // A day with none says so, rather than leaving a gap.
+  const empty = await openDay(page, 3);
+  await expect(empty).toContainText("No departures scheduled");
 
-  // Every day is shut until it is opened, so no departure is on screen yet.
-  for (let i = 0; i < 14; i += 1) {
-    await expect(days.nth(i).locator(":scope > details")).toHaveJSProperty(
-      "open",
-      false,
-    );
-  }
-  // Their controls are in the page and hidden: none of them is on screen.
+  // Later and earlier are a tap away, and This week always comes back.
+  await page.goto("/calendar");
+  const weeks = page.getByRole("navigation", { name: "Weeks" });
+  await weeks.getByRole("link", { name: "Later" }).click();
+  await expect(page.getByRole("heading", { name: /^Week of / })).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Weeks" })
+    .getByRole("link", { name: "This week" })
+    .click();
   await expect(
-    page.getByLabel("Seats offered").filter({ visible: true }),
-  ).toHaveCount(0);
+    page.getByRole("heading", { name: "This week", exact: true }),
+  ).toBeVisible();
+  // Last week too: yesterday's departures can be closed out.
+  await page
+    .getByRole("navigation", { name: "Weeks" })
+    .getByRole("link", { name: "Earlier" })
+    .click();
+  await expect(page.getByRole("heading", { name: /^Week of / })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("week")).toMatch(
+    /^\d{4}-\d{2}-\d{2}$/,
+  );
 });
 
-test("a fortnight fits a few phone screens, not thirty", async ({ page }) => {
+test("a week fits a few phone screens, not thirty", async ({ page }) => {
   /*
     yuvoy-operator#84 s7: "fourteen days is a 26,000-pixel page", because every
-    departure was an open form. Collapsed, the fortnight is fourteen rows.
+    departure was an open form. The board is a week, and on a phone one day
+    under its strip.
   */
   await signIn(page);
   await page.goto("/calendar");
 
-  const fortnight = page.getByRole("region", {
-    name: "The next fourteen days",
-  });
-  await expect(fortnight).toBeVisible();
-  const box = await fortnight.boundingBox();
+  const board = page.getByRole("region", { name: "This week", exact: true });
+  await expect(board).toBeVisible();
+  const box = await board.boundingBox();
   const screen = page.viewportSize()!.height;
-  expect(box!.height, "the fortnight's height in screens").toBeLessThan(
-    3 * screen,
-  );
+  expect(box!.height, "the week's height in screens").toBeLessThan(3 * screen);
 });
 
 test("an opened departure holds its controls, and 'Who is booked' is the way in", async ({
@@ -697,16 +769,15 @@ test("an opened departure holds its controls, and 'Who is booked' is the way in"
     that scans (#96 item 6).
   */
   await signIn(page);
-  await page.goto("/calendar");
 
-  const row = await openDeparture(
-    await openDay(page, "Today"),
-    "Try-dive at Nemo Reef",
-  );
-  // With the calendar as its way back (audit 5.8).
+  const row = await openDeparture(page, 0, "Try-dive at Nemo Reef");
+  // With the board, this departure open, as its way back (audit 5.8).
   await expect(
     row.getByRole("link", { name: "Who is booked" }),
-  ).toHaveAttribute("href", "/today/slot_dawn?from=%2Fcalendar");
+  ).toHaveAttribute(
+    "href",
+    "/today/slot_dawn?from=%2Fcalendar%3Fdep%3Dslot_dawn",
+  );
   await expect(row.getByText(/calling it off/)).toHaveCount(0);
   await expect(row.getByLabel("Seats offered")).toBeVisible();
   await expect(
@@ -731,37 +802,36 @@ test("a day marks what is off sale under it, and only that", async ({
     on the day must say exactly what is under it, and nothing once it sells.
   */
   await signIn(page);
-  await page.goto("/calendar");
 
-  const day = await openDay(page, dayLabel(10));
-  const summary = day.locator(":scope > details > summary");
-  const rows = day.locator("li");
-  let offSale = 0;
-  for (let i = 0, n = await rows.count(); i < n; i++) {
-    offSale += await rows
-      .nth(i)
-      .locator(":scope > details > summary")
-      .getByText("Not on sale", { exact: true })
-      .count();
-  }
+  const day = await openDay(page, 10);
+  const names = await page
+    .getByRole("link", {
+      name: new RegExp(`^(${escape(shortDay(10))}, )?\\d\\d:\\d\\d `),
+    })
+    .evaluateAll((links) =>
+      links.map((link) => link.getAttribute("aria-label") ?? ""),
+    );
+  const offSale = names.filter((name) =>
+    /, Not on sale(,|$)/.test(name),
+  ).length;
 
   if (offSale > 0) {
-    await expect(summary).toContainText(`${offSale} not on sale`);
+    await expect(day).toContainText(`${offSale} not on sale`);
   } else {
-    await expect(summary).not.toContainText("not on sale");
+    await expect(day).not.toContainText("not on sale");
   }
 
   // Blue lagoon's own departure, while it is off sale: one tap to confirm,
   // and the reason one link away.
-  const lagoon = rows
-    .filter({ hasText: "Blue lagoon (no footage fixture)" })
-    .first();
-  const lagoonOffSale = await lagoon
-    .locator(":scope > details > summary")
-    .getByText("Not on sale", { exact: true })
-    .count();
-  if (lagoonOffSale > 0) {
-    const opened = await openDeparture(day, "Blue lagoon (no footage fixture)");
+  const lagoon = names.find((name) =>
+    name.includes("Blue lagoon (no footage fixture)"),
+  );
+  if (lagoon && /, Not on sale(,|$)/.test(lagoon)) {
+    const opened = await openDeparture(
+      page,
+      10,
+      "Blue lagoon (no footage fixture)",
+    );
     await expect(
       opened.getByRole("button", { name: /^Confirm \d+ seats?$/ }),
     ).toBeVisible();
@@ -778,10 +848,9 @@ test("closing a day says what closing does not do, before anything is closed", a
   page,
 }) => {
   await signIn(page);
-  await page.goto("/calendar");
 
   // Tomorrow: never closed by any test, and it has people confirmed on it.
-  const tomorrow = await openDay(page, "Tomorrow");
+  const tomorrow = await openDay(page, 1);
   // Quiet text until asked for (#81), naming the day to a screen reader.
   await tomorrow.getByRole("button", { name: /^Close this day/ }).click();
 
@@ -813,9 +882,8 @@ test("closing one day closes it, and says who is still owed", async ({
     "closes a shared fixture day, single-tenant by design, so it runs on the primary project only",
   );
   await signIn(page);
-  await page.goto("/calendar");
 
-  const day = await openDay(page, dayLabel(13));
+  const day = await openDay(page, 13);
   await day.getByRole("button", { name: /^Close this day/ }).click();
 
   await expect(
@@ -832,13 +900,12 @@ test("closing one day closes it, and says who is still owed", async ({
   await expect(day.getByText(/is closed to new bookings$/)).toBeVisible();
   await expect(day.getByText(/You still owe 1 booking\./)).toBeVisible();
   await expect(
-    day
-      .locator(":scope > details > summary")
-      .getByText("Closed", { exact: true }),
+    dayMarks(day).getByText("Closed", { exact: true }),
   ).toBeVisible();
   // The departure says why it is not selling, in the API's own sentence.
   const departure = await openDeparture(
-    day,
+    page,
+    13,
     "Lagoon kayak (closing fixture B)",
   );
   await expect(
@@ -872,20 +939,21 @@ test("a closed day with nothing on it still says Closed, and why", async ({
   */
   const offset = testInfo.project.name === "mobile" ? 5 : 6;
   await signIn(page);
-  await page.goto("/calendar");
 
-  const region = page.getByRole("region", { name: dayLabel(offset) });
-  const summary = region.locator(":scope > details > summary");
-  await expect(summary).toContainText("No departures scheduled");
-  await expect(summary.getByText("Closed", { exact: true })).toHaveCount(0);
+  const region = await openDay(page, offset);
+  await expect(region).toContainText("No departures scheduled");
+  await expect(
+    dayMarks(region).getByText("Closed", { exact: true }),
+  ).toHaveCount(0);
 
-  await openDay(page, dayLabel(offset));
   await region.getByRole("button", { name: /^Close this day/ }).click();
   await region.getByRole("radio", { name: "Maintenance" }).check();
   await region.getByRole("button", { name: /^Close / }).click();
 
   // Closed, with its reason, on a day that has no departures at all.
-  await expect(summary.getByText("Closed", { exact: true })).toBeVisible();
+  await expect(
+    dayMarks(region).getByText("Closed", { exact: true }),
+  ).toBeVisible();
   /*
     `.first()` because the reason is deliberately in two places: at the top of
     the opened day, where somebody reading why reads it, and beside the Reopen
@@ -897,9 +965,8 @@ test("a closed day with nothing on it still says Closed, and why", async ({
 
   /*
     And the way back, which did not exist either: a closed empty day could be
-    closed and never reopened. The day is still open from the close above: the
-    close revalidates the calendar, and React never touches a disclosure's
-    `open`, so what the operator opened stays open.
+    closed and never reopened. The day is still the open one: it is in the
+    address, and the close only re-reads the board.
   */
   await expect(
     region.getByText("The whole day", { exact: true }),
@@ -911,14 +978,15 @@ test("a closed day with nothing on it still says Closed, and why", async ({
     re-reading, and the day re-reads at once (op#89 f16).
   */
   await expect(region.getByText(/back on sale/)).toBeVisible();
-  await expect(summary.getByText("Closed", { exact: true })).toHaveCount(0);
+  await expect(
+    dayMarks(region).getByText("Closed", { exact: true }),
+  ).toHaveCount(0);
 
   await page.reload();
   await expect(
-    page
-      .getByRole("region", { name: dayLabel(offset) })
-      .locator(":scope > details > summary")
-      .getByText("Closed", { exact: true }),
+    dayMarks(
+      page.getByRole("region", { name: dayName(offset), exact: true }),
+    ).getByText("Closed", { exact: true }),
   ).toHaveCount(0);
 });
 
@@ -933,14 +1001,10 @@ test("stopping one departure leaves the rest of the day selling, and reopens", a
   */
   const offset = testInfo.project.name === "mobile" ? 7 : 8;
   const letter = testInfo.project.name === "mobile" ? "A" : "B";
+  const kayak = `Lagoon kayak (stop fixture ${letter})`;
   await signIn(page);
-  await page.goto("/calendar");
 
-  const region = await openDay(page, dayLabel(offset));
-  const stopping = await openDeparture(
-    region,
-    `Lagoon kayak (stop fixture ${letter})`,
-  );
+  const stopping = await openDeparture(page, offset, kayak);
   await stopping.getByRole("button", { name: "Stop selling" }).click();
   /*
     "Staff" is this list's label: closing takes `BLACKOUT_REASONS` (Weather,
@@ -958,36 +1022,37 @@ test("stopping one departure leaves the rest of the day selling, and reopens", a
     stopping.getByText(/The bookings already on this departure still stand/),
   ).toBeVisible();
   /*
-    And the day re-reads underneath it, with no tap (op#89 f16): the
+    And the board re-reads underneath it, with no tap (op#89 f16): the
     departure now says why it is not selling, in the API's sentence, and the
-    departure and its day are still open.
+    inspector is still open.
   */
   await expect(
     stopping.getByText(/^This departure is closed to new bookings\./),
   ).toBeVisible();
 
+  // A reload lands on the same departure: the inspector is in the address.
   await page.reload();
-  const after = await openDay(page, dayLabel(offset));
-
-  // The departure says why, in the API's sentence. The other one still sells.
-  const closedRow = await openDeparture(
-    after,
-    `Lagoon kayak (stop fixture ${letter})`,
-  );
-  await expect(closedRow).toContainText(
+  await expect(page.getByRole("dialog")).toContainText(
     "This departure is closed to new bookings.",
   );
-  const stillSelling = after
-    .locator("li")
-    .filter({ hasText: `Sunset paddle (stop fixture ${letter})` })
-    .first();
-  await expect(stillSelling).not.toContainText("closed to new bookings");
+  await closeInspector(page);
+  const after = page.getByRole("region", {
+    name: dayName(offset),
+    exact: true,
+  });
+
+  // The other one on the day still sells.
+  const other = await openDeparture(
+    page,
+    offset,
+    `Sunset paddle (stop fixture ${letter})`,
+  );
+  await expect(other).not.toContainText("closed to new bookings");
+  await closeInspector(page);
 
   // And the DAY is not closed: only one departure was.
   await expect(
-    after
-      .locator(":scope > details > summary")
-      .getByText("Closed", { exact: true }),
+    dayMarks(after).getByText("Closed", { exact: true }),
   ).toHaveCount(0);
 
   /*
@@ -997,20 +1062,15 @@ test("stopping one departure leaves the rest of the day selling, and reopens", a
   await expect(after.getByText("One departure", { exact: true })).toBeVisible();
   await after.getByRole("button", { name: "Reopen" }).click();
   await expect(after.getByText("1 departure is back on sale.")).toBeVisible();
-  // Without a reload, too: the day re-reads as soon as it is reopened, and
-  // no departure on it says it is closed any more.
+  // Without a reload, too: the board re-reads as soon as it is reopened, and
+  // the departure no longer says Closed.
   await expect(
-    after.getByText(/^This departure is closed to new bookings\./),
-  ).toHaveCount(0);
+    departureOn(page, offset, kayak).first(),
+  ).not.toHaveAccessibleName(/, Closed(,|$)/);
 
   await page.reload();
-  await expect(
-    page
-      .getByRole("region", { name: dayLabel(offset) })
-      .locator("li")
-      .filter({ hasText: `Lagoon kayak (stop fixture ${letter})` })
-      .first(),
-  ).not.toContainText("closed to new bookings");
+  const reopened = await openDeparture(page, offset, kayak);
+  await expect(reopened).not.toContainText("closed to new bookings");
 });
 
 test("a called-off departure says what the API says, not what we used to", async ({
@@ -1027,16 +1087,13 @@ test("a called-off departure says what the API says, not what we used to", async
     never reached us, and the operator is the one holding it.
   */
   await signIn(page);
-  await page.goto("/calendar");
 
-  const today = await openDay(page, "Today");
-  const row = today
-    .locator("li")
-    .filter({ hasText: "Private boat charter, whole day" })
-    .first();
-  // The chip, exactly: the API's sentence inside it also contains the words.
-  await expect(row.getByText("Called off", { exact: true })).toBeVisible();
-  await openDeparture(today, "Private boat charter, whole day");
+  await openDay(page, 0);
+  // The calendar's word on the board, exactly, in the departure's name.
+  await expect(
+    departureOn(page, 0, "Private boat charter, whole day").first(),
+  ).toHaveAccessibleName(/, Called off(,|$)/);
+  const row = await openDeparture(page, 0, "Private boat charter, whole day");
   await expect(row).toContainText("This departure was called off.");
   await expect(row).toContainText("anything paid in cash is with the operator");
   await expect(row).not.toContainText("Everyone booked on it was cancelled");
@@ -1067,10 +1124,9 @@ test("a staff login is told who can change this, in one sentence, and offered no
   await expect(
     page.getByRole("button", { name: "Add departures" }),
   ).toHaveCount(0);
-  const row = await openDeparture(
-    await openDay(page, "Today"),
-    "Try-dive at Nemo Reef",
-  );
+  const inspector = await openDeparture(page, 0, "Try-dive at Nemo Reef");
+  // The departure's own controls, apart from the inspector's frame.
+  const row = inspector.getByRole("region", { name: "Seats and sales" });
   await expect(row.getByRole("link", { name: "Who is booked" })).toBeVisible();
   await expect(row.getByLabel("Seats offered")).toHaveCount(0);
   /*
@@ -1086,15 +1142,23 @@ test("a staff login is told who can change this, in one sentence, and offered no
 
 test("/calendar has no accessibility violations", async ({ page }) => {
   await signIn(page);
-  await page.goto("/calendar");
-  // Every form open, or the audit only ever sees collapsed rows.
+  // Every form open, or the audit only ever sees collapsed ones.
+  const tomorrow = await openDay(page, 1);
   await page.getByRole("button", { name: "Add departures" }).click();
   await page
     .getByRole("button", { name: "Close dates to new bookings" })
     .click();
-  const tomorrow = await openDay(page, "Tomorrow");
-  await openDeparture(tomorrow, "Snorkel trip to Elephant Beach");
   await tomorrow.getByRole("button", { name: /^Close this day/ }).click();
+  await page.waitForLoadState("networkidle");
+
+  const board = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(board.violations).toEqual([]);
+
+  // And the inspector, open over the board.
+  await departureOn(page, 1, "Snorkel trip to Elephant Beach").first().click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForLoadState("networkidle");
 
   const results = await new AxeBuilder({ page })
@@ -1102,4 +1166,124 @@ test("/calendar has no accessibility violations", async ({ page }) => {
     .analyze();
 
   expect(results.violations).toEqual([]);
+});
+
+/*
+  The board's reach and its inspector (operator experiment B; audit 5.1).
+*/
+test("a departure past the old fortnight is on the board, and changes there", async ({
+  page,
+}, testInfo) => {
+  /*
+    The fortnight stopped at today plus thirteen, so a departure three weeks
+    out could not have its seats changed. Made here, on a day per project far
+    past anything else in the suite, and found on its own week.
+  */
+  test.setTimeout(60_000);
+  await signIn(page);
+  const mobile = testInfo.project.name === "mobile";
+  const offset = mobile ? 20 : 23;
+  const time = mobile ? "06:10" : "06:40";
+  const title = mobile
+    ? "Try-dive at Nemo Reef"
+    : "Snorkel trip to Elephant Beach";
+
+  const today = await openAddDepartures(page);
+  const day = dayAfter(today, offset);
+  await page.getByLabel("Which listing").selectOption({ label: title });
+  await page.getByLabel("First day").fill(day);
+  await page.getByLabel("Last day").fill(day);
+  await page.getByRole("textbox", { name: "Departure time 1" }).fill(time);
+  await page.getByLabel("Seats on each departure").fill("6");
+  await page.getByRole("button", { name: "Add 1 departure" }).click();
+  await expect(
+    page.getByText(/1 departure added|Nothing to add/).first(),
+  ).toBeVisible();
+
+  const inspector = await openDeparture(page, offset, title, time);
+  await expect(page.getByRole("heading", { name: /^Week of / })).toBeVisible();
+  await inspector.getByLabel("Seats offered").fill("7");
+  await inspector.getByRole("button", { name: "Set seats" }).click();
+  await expect(inspector.getByText("Now offering 7.")).toBeVisible();
+});
+
+test("the inspector closes with Escape, back onto the departure that opened it", async ({
+  page,
+}) => {
+  await signIn(page);
+  await openDay(page, 0);
+  const link = departureOn(page, 0, "Try-dive at Nemo Reef").first();
+  await link.click();
+  const inspector = page.getByRole("dialog");
+  await expect(inspector).toBeVisible();
+  // The address says which departure is open, so a reload or a pasted link
+  // lands on it.
+  expect(new URL(page.url()).searchParams.get("dep")).toBe("slot_dawn");
+
+  await page.keyboard.press("Escape");
+  await expect(inspector).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get("dep")).toBeNull();
+  await expect(link).toBeFocused();
+});
+
+test("on a desktop the arrow keys move along the board", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "the grid is a desktop's");
+  await signIn(page);
+  await page.goto("/calendar");
+
+  /*
+    Where each departure sits, as the grid itself says (`data-row`,
+    `data-col`), and a direction from today's dive that has a departure in
+    it: today may be the week's last day, or its listing's only one.
+  */
+  const cells = await page
+    .locator("[data-row][data-col]")
+    .evaluateAll((links) =>
+      links.map((link) => ({
+        row: Number((link as HTMLElement).dataset.row),
+        col: Number((link as HTMLElement).dataset.col),
+        name: link.getAttribute("aria-label") ?? "",
+      })),
+    );
+  const start = cells.find(
+    (c) =>
+      c.name.startsWith(`${shortDay(0)}, `) &&
+      c.name.includes("Try-dive at Nemo Reef"),
+  )!;
+  const ways: [string, string, (c: (typeof cells)[number]) => boolean][] = [
+    [
+      "ArrowRight",
+      "ArrowLeft",
+      (c) => c.row === start.row && c.col > start.col,
+    ],
+    [
+      "ArrowLeft",
+      "ArrowRight",
+      (c) => c.row === start.row && c.col < start.col,
+    ],
+    ["ArrowDown", "ArrowUp", (c) => c.row > start.row],
+    ["ArrowUp", "ArrowDown", (c) => c.row < start.row],
+  ];
+  const way = ways.find(([, , has]) => cells.some(has));
+  expect(way, "a departure next to today's on the board").toBeTruthy();
+  const [go, back] = way!;
+
+  const from = departureOn(page, 0, "Try-dive at Nemo Reef").first();
+  await from.focus();
+  await page.keyboard.press(go);
+  // Somewhere else on the board, by the keys alone.
+  await expect(page.locator(":focus")).not.toHaveAccessibleName(start.name);
+  await expect(page.locator(":focus")).toHaveAttribute("data-row", /\d+/);
+  // And back to today's cell the other way.
+  await page.keyboard.press(back);
+  await expect(page.locator(":focus")).toHaveAttribute(
+    "data-col",
+    String(start.col),
+  );
+  await expect(page.locator(":focus")).toHaveAttribute(
+    "data-row",
+    String(start.row),
+  );
 });
