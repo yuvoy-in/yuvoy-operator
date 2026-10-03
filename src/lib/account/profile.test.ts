@@ -11,6 +11,7 @@ import {
   sinceLine,
   situationBadge,
   tagLine,
+  tileFacts,
 } from "./profile";
 
 describe("which tab the URL asks for", () => {
@@ -121,6 +122,172 @@ describe("the order the Listings grid uses", () => {
         { title: "Sent back", status: "changes_rejected" },
       ]).map((l) => l.title),
     ).toEqual(["Sent back", "Anchor", "Zebra"]);
+  });
+});
+
+/*
+  Operator A, approved 3 Oct 2026: "Listings come first, each with its state,
+  and a draft says in words what is still missing."
+*/
+describe("what a listing's tile says", () => {
+  it("gives a live listing its state, quietly, and its price", () => {
+    expect(
+      tileFacts({
+        status: "live",
+        publicationState: "published",
+        unitPricePaise: 450_000,
+        pricingUnit: "per_person",
+        publishBlockers: [],
+        bookableDatesNext30Days: 12,
+      }),
+    ).toEqual({ state: "Live", attention: false, line: "₹4,500 per person" });
+  });
+
+  it("says a group price is for the group", () => {
+    expect(
+      tileFacts({
+        status: "live",
+        unitPricePaise: 1_200_000,
+        pricingUnit: "per_group",
+      }).line,
+    ).toBe("₹12,000 for the group");
+  });
+
+  it("never prints a basis nobody stated", () => {
+    // `pricingUnit` is NOT NULL, so the value is there whether or not anybody
+    // chose it: the blocker is the answer, and the figure stands alone.
+    expect(
+      tileFacts({
+        status: "live",
+        unitPricePaise: 1_200_000,
+        pricingUnit: "per_person",
+        publishBlockers: ["pricingUnit"],
+      }).line,
+    ).toBe("₹12,000");
+  });
+
+  it("names a live listing with nothing to sell, and asks for attention", () => {
+    expect(
+      tileFacts({
+        status: "live",
+        unitPricePaise: 400_000,
+        pricingUnit: "per_person",
+        bookableDatesNext30Days: 0,
+      }),
+    ).toEqual({
+      state: "No dates in 30 days",
+      attention: true,
+      line: "₹4,000 per person",
+    });
+  });
+
+  it("says in words everything a draft is still missing", () => {
+    expect(
+      tileFacts({
+        status: "draft",
+        publicationState: "draft",
+        publishBlockers: [
+          "summary",
+          "activityType",
+          "unitPricePaise",
+          "pricingUnit",
+        ],
+        sellable: false,
+      }),
+    ).toEqual({
+      state: "Draft",
+      attention: true,
+      line: "Still missing: a short summary, what kind of activity it is, a price, whether that price is per person or for the group",
+    });
+  });
+
+  it("says a draft with nothing missing is ready to send", () => {
+    expect(
+      tileFacts({
+        status: "draft",
+        publicationState: "draft",
+        publishBlockers: [],
+      }).line,
+    ).toBe("Ready to send for review");
+  });
+
+  it("claims neither when an older API sent no list", () => {
+    expect(tileFacts({ status: "draft" }).line).toBeNull();
+    // `sellable` is the one thing it can still say.
+    expect(tileFacts({ status: "draft", sellable: false }).line).toBe(
+      "Still missing: a price",
+    );
+  });
+
+  it("says why a first listing was sent back, in the closed set's words", () => {
+    expect(
+      tileFacts({
+        status: "changes_rejected",
+        publicationState: "draft",
+        unitPricePaise: 340_000,
+        sentBack: {
+          rejectionCode: "meeting_point_unclear",
+          rejectionNote: "Which jetty gate?",
+        },
+      }),
+    ).toEqual({
+      state: "Sent back",
+      attention: true,
+      line: "A traveller could not find the meeting point from this.",
+    });
+  });
+
+  it("falls back to the reviewer's own note, long dashes out", () => {
+    expect(
+      tileFacts({
+        status: "changes_rejected",
+        sentBack: {
+          rejectionCode: "a_code_this_build_never_met",
+          rejectionNote: " Which gate \u2014 the north one? ",
+        },
+      }).line,
+    ).toBe("Which gate. The north one?");
+    expect(
+      tileFacts({ status: "changes_rejected", sentBack: { rejectionNote: "" } })
+        .line,
+    ).toBeNull();
+  });
+
+  it("keeps the price on a listing whose edit was declined: it still sells", () => {
+    expect(
+      tileFacts({
+        status: "changes_rejected",
+        publicationState: "published",
+        unitPricePaise: 220_000,
+        pricingUnit: "per_person",
+      }),
+    ).toEqual({
+      state: "Changes declined",
+      attention: true,
+      line: "₹2,200 per person",
+    });
+  });
+
+  it("says nothing more about a listing that is with us", () => {
+    expect(
+      tileFacts({
+        status: "in_review",
+        publicationState: "in_review",
+        unitPricePaise: 300_000,
+        publishBlockers: [],
+      }),
+    ).toEqual({ state: "In review", attention: false, line: null });
+  });
+
+  it("asks for attention on a listing that is not selling, and not on a paused one", () => {
+    expect(tileFacts({ status: "not_selling" }).attention).toBe(true);
+    expect(tileFacts({ status: "withdrawn", unitPricePaise: 110_000 })).toEqual(
+      {
+        state: "Paused",
+        attention: false,
+        line: "₹1,100",
+      },
+    );
   });
 });
 

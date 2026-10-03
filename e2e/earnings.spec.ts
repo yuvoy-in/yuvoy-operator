@@ -90,6 +90,20 @@ test("the next settlement shows the week and the arithmetic", async ({
   */
   await expect(nextWeek.getByText("Corrections")).toBeVisible();
 
+  /*
+    And where it goes, inside the payout (operator A, approved 3 Oct 2026):
+    the account on file, or, while a bank change is in flight, that it waits.
+    Either, because `payouts.spec.ts` raises and stops a change on this same
+    owner, and the mock's state is shared.
+  */
+  await expect(
+    nextWeek
+      .locator("dl > div")
+      .filter({ has: page.locator("dt", { hasText: /^To your bank$/ }) }),
+  ).toContainText(
+    /HDFC0001234 · account ending 4412|On hold until your bank change settles/,
+  );
+
   // Both hedges. Without them this reads as a promise of a date.
   await expect(page.getByText(/at the earliest/)).toBeVisible();
   await expect(page.getByText(/can still change/)).toBeVisible();
