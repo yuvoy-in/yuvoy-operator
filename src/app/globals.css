@@ -333,3 +333,51 @@
     padding-bottom: 2rem;
   }
 }
+
+/* --------------------------------------------------------------- sun mode */
+
+/**
+ * Sun mode, on boarding (operator experiment D): the screen read at arm's
+ * length on a jetty in direct sunlight.
+ *
+ * Only weights, sizes, hairline widths and the opacity rungs move. Every
+ * muted rung of the ink lifts to 80 per cent, labels go bold, small text goes
+ * one size up and hairlines double. The palette itself never changes: no new
+ * colour, no yellow, no pure black. Unlayered, so it outranks the utilities
+ * it lifts without fighting their specificity.
+ */
+[data-sun="on"] :is(.text-forest\/70, .text-forest\/75) {
+  color: color-mix(in oklab, var(--color-forest) 80%, transparent);
+}
+
+[data-sun="on"] .label {
+  font-weight: 700;
+}
+
+[data-sun="on"] .text-xs {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+[data-sun="on"] .text-sm {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+
+[data-sun="on"] .text-base {
+  font-size: 1.125rem;
+  line-height: 1.6rem;
+}
+
+/* Each hairline doubles on its own side only. */
+[data-sun="on"] .border {
+  border-width: 2px;
+}
+
+[data-sun="on"] .border-t {
+  border-top-width: 2px;
+}
+
+[data-sun="on"] .border-b {
+  border-bottom-width: 2px;
+}

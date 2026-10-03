@@ -22,6 +22,7 @@ import { CallOffPanel } from "./call-off-panel";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { ButtonLink } from "@/components/ui/button";
 import { readInbox } from "@/lib/site/inbox";
 import { backFrom, hereWith, withFrom } from "@/lib/site/back-to";
 
@@ -337,6 +338,19 @@ export default async function ManifestPage({
             ? "1 more seat sold at your counter is not on this list."
             : `${totals.seatsSoldOffline} more seats sold at your counter are not on this list.`}
         </p>
+      ) : null}
+
+      {/*
+        Boarding mode (operator experiment D): this manifest built for the
+        jetty, one hand and bright sun. The one primary action here, because
+        at the boat it is the thing the screen is for.
+      */}
+      {!manifest.calledOff && confirmedRows.length > 0 ? (
+        <div className="mt-6">
+          <ButtonLink href={withFrom(`/today/${slotId}/boarding`, here)}>
+            {departed ? "Close out the boat" : "Start boarding"}
+          </ButtonLink>
+        </div>
       ) : null}
 
       {/*
