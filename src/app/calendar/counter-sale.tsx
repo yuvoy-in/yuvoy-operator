@@ -135,7 +135,10 @@ export function CounterSale({
             <p className="label text-forest/75 mt-3">Bookings affected</p>
             <ul className="mt-1.5 space-y-1">
               {oversold.bookings.map((ref) => (
-                <li key={ref} className="font-mono text-sm tracking-wider">
+                <li
+                  key={ref}
+                  className="text-sm tracking-wider slashed-zero tabular-nums"
+                >
                   {ref}
                 </li>
               ))}

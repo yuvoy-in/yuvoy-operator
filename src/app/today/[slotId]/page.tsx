@@ -247,7 +247,7 @@ export default async function ManifestPage({
                   className="border-paper-line border-t pt-3"
                 >
                   <div className="flex items-baseline justify-between gap-3">
-                    <p className="font-mono text-base font-bold">
+                    <p className="text-base font-bold slashed-zero tabular-nums">
                       {party.reference || "-"}
                     </p>
                     <p className="shrink-0 text-base font-bold tabular-nums">

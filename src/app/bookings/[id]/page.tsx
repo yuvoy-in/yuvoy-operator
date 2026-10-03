@@ -146,7 +146,7 @@ export default async function BookingPage({
             {booking.name && booking.reference ? (
               <>
                 {" · "}
-                <span className="font-mono tracking-wider">
+                <span className="tracking-wider slashed-zero tabular-nums">
                   {booking.reference}
                 </span>
               </>
