@@ -469,6 +469,8 @@ export interface DepartureState {
     onSale?: boolean;
     /** A sentence to render VERBATIM. Present only when `onSale` is false. */
     notOnSaleDetail?: string;
+    /** The listing they were added to, for the receipt's way to it. */
+    experienceId: string;
   };
 }
 
@@ -598,6 +600,7 @@ export async function addDepartures(
         note: dedashText(data.note),
         onSale: data.onSale,
         notOnSaleDetail: dedashText(data.notOnSaleDetail),
+        experienceId,
       },
     };
   } catch (err) {

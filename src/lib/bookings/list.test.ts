@@ -15,6 +15,7 @@ import {
   readFilters,
   readSearch,
   readView,
+  viewsFor,
   rowName,
   toCounts,
   type Filters,
@@ -54,6 +55,54 @@ describe("which pill the URL asks for", () => {
     expect(readView("REQUESTS")).toBeNull();
     expect(readView("everything")).toBeNull();
     expect(readView(undefined)).toBeNull();
+  });
+});
+
+/*
+  yuvoy-operator#117 item 1. A staff login can never answer a request, so it
+  is not offered the pill, a kept link to it, or a default that lands on it.
+*/
+describe("the pills a staff login is offered", () => {
+  const staff = viewsFor(false);
+
+  it("are the last three, and everybody else gets all four", () => {
+    expect(staff).toEqual(["upcoming", "past", "cancelled"]);
+    expect(viewsFor(true)).toEqual([
+      "requests",
+      "upcoming",
+      "past",
+      "cancelled",
+    ]);
+  });
+
+  it("read a link to Requests as no pill at all", () => {
+    expect(readView("requests", staff)).toBeNull();
+    expect(readView("past", staff)).toBe("past");
+    expect(readView("requests")).toBe("requests");
+  });
+
+  it("never open on Requests, however many are waiting", () => {
+    expect(
+      defaultView(
+        { requests: 4, upcoming: 2, past: 9, cancelled: 0 },
+        4,
+        staff,
+      ),
+    ).toBe("upcoming");
+    expect(
+      defaultView(
+        { requests: 4, upcoming: 0, past: 9, cancelled: 0 },
+        4,
+        staff,
+      ),
+    ).toBe("past");
+    expect(defaultView(null, 4, staff)).toBe("upcoming");
+  });
+
+  it("call a business with only requests nothing booked yet", () => {
+    expect(
+      nothingBooked({ requests: 2, upcoming: 0, past: 0, cancelled: 0 }, staff),
+    ).toBe(true);
   });
 });
 

@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
 import { requireOperator } from "@/lib/auth/session";
 import { SUPPORT_PHONE, SUPPORT_PHONE_HREF } from "@/lib/site/contact";
+import { canManageAccess } from "@/lib/team/access";
 import { Screen } from "@/components/chrome/screen";
 import { SignOutButton } from "@/components/chrome/sign-out-button";
 import {
@@ -70,11 +71,12 @@ export default async function SettingsPage() {
         />
         <Row href="/notifications" icon={BellIcon} label="Notifications" />
         {/*
-          OWNER, ADMIN or MANAGER, as it was. A staff login is not offered the
-          team's controls; the screen would only tell them they cannot change
-          it.
+          OWNER or ADMIN, the gate every write on /team has. It was
+          `canManage`, which includes MANAGER, so a manager opened a screen
+          that told them they could change nothing (yuvoy-operator#117 item 4,
+          owner's call: hide it). Staff were already not offered it.
         */}
-        {me.canManage ? (
+        {canManageAccess(me.roles) ? (
           <Row href="/team" icon={UsersIcon} label="Team access" />
         ) : null}
       </div>

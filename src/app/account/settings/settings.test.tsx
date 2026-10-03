@@ -10,7 +10,7 @@ import { render, screen, within } from "@testing-library/react";
   the one thing replaced; the rows and headings are the real ones.
 */
 
-const me = { canManage: true };
+const me = { canManage: true, roles: ["OWNER"] as string[] };
 
 vi.mock("@/lib/auth/session", () => ({
   requireOperator: async () => ({ token: "tok", me }),
@@ -20,8 +20,9 @@ vi.mock("@/app/sign-in/actions", () => ({ signOut: vi.fn() }));
 
 const { default: SettingsPage } = await import("./page");
 
-async function renderSettings(canManage: boolean) {
+async function renderSettings(canManage: boolean, roles?: string[]) {
   me.canManage = canManage;
+  me.roles = roles ?? (canManage ? ["OWNER"] : ["STAFF"]);
   render(await SettingsPage());
 }
 
@@ -72,6 +73,20 @@ describe("Settings", () => {
     ).toBeNull();
     expect(
       screen.getByRole("button", { name: "Sign out" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers a manager no team row, because every change there is owner or admin only", async () => {
+    // yuvoy-operator#117 item 4: a manager opened Team to be told they
+    // could change nothing on it.
+    await renderSettings(true, ["MANAGER"]);
+    expect(screen.queryByRole("link", { name: "Team access" })).toBeNull();
+  });
+
+  it("offers the team row to an admin as well as an owner", async () => {
+    await renderSettings(true, ["ADMIN"]);
+    expect(
+      screen.getByRole("link", { name: "Team access" }),
     ).toBeInTheDocument();
   });
 
