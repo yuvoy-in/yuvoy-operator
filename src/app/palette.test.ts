@@ -64,16 +64,28 @@ describe("palette", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("never uses font-semibold — Satoshi ships no 600", () => {
+  it("never uses font-semibold: the type system has three weights", () => {
+    // 400, 500 and 700, and nothing between (yuvoy-app docs/DESIGN_SYSTEM.md v3.0).
     const offenders = FILES.filter((f) => /font-semibold/.test(read(f))).map(
       rel,
     );
     expect(offenders).toEqual([]);
   });
 
-  it("never puts a display face at a weight other than 400", () => {
+  it("never puts the display face at a weight other than its own", () => {
+    // One baked condensed-bold cut, registered at 400 (src/lib/fonts.ts): a
+    // heavier class would make the browser synthesise a bolder copy.
     const offenders = FILES.filter((f) =>
-      /font-display[^"'`]*font-(medium|bold|black)/.test(read(f)),
+      /*
+        Within ONE declaration, not across the file (the fix yuvoy-app made to
+        its own copy of this rule). `[^"'`]*` spans a single class string in a
+        `.tsx`, but in `globals.css` it ran from `--font-display` to the next
+        quote, dozens of lines on, and matched a `font-bold` in an unrelated
+        utility. Excluding `;` and the braces bounds it to one declaration; a
+        real offender (`font-display font-bold` in one string or one `@apply`)
+        still has nothing between them to stop it.
+      */
+      /font-display[^"'`;{}]*font-(medium|bold|black)/.test(read(f)),
     ).map(rel);
     expect(offenders).toEqual([]);
   });

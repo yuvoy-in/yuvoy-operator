@@ -171,7 +171,7 @@ export default async function SettlementPage({
               <li key={line.bookingId}>
                 <Panel tone="outline">
                   <div className="flex items-baseline justify-between gap-4">
-                    <p className="font-mono text-sm tracking-wider">
+                    <p className="text-sm tracking-wider slashed-zero tabular-nums">
                       {line.reference}
                     </p>
                     <p
