@@ -8,7 +8,11 @@ import {
   listSettlements,
   readCommissionOwed,
 } from "@/lib/money/fetch";
-import { payoutHold, type ChangeRequest } from "@/lib/money/earnings";
+import {
+  payoutDestination,
+  payoutHold,
+  type ChangeRequest,
+} from "@/lib/money/earnings";
 import { accountOnFile } from "@/lib/account/bank";
 import { canManageAccess } from "@/lib/team/access";
 import {
@@ -171,7 +175,14 @@ export default async function MoneyPage({
               </Panel>
             );
           case "payout":
-            return <NextPayout key={block} week={nextSettlement} />;
+            return (
+              <NextPayout
+                key={block}
+                week={nextSettlement}
+                to={onFile?.line ?? null}
+                held={Boolean(hold)}
+              />
+            );
           case "booked":
             return <BookedNotRun key={block} pipeline={pipeline} />;
           case "cash":
@@ -335,9 +346,23 @@ function HoldWarning({
   );
 }
 
-/** What Yuvoy will pay for the week, with the arithmetic behind it. */
-function NextPayout({ week }: { week: SettlementWeek }) {
+/**
+ * What Yuvoy will pay for the week, with the arithmetic behind it, and where
+ * it goes: the bank inside the payout (operator A, approved 3 Oct 2026).
+ */
+function NextPayout({
+  week,
+  to,
+  held,
+}: {
+  week: SettlementWeek;
+  /** The account on file, as Payout details says it. `null`: none on file. */
+  to: string | null;
+  /** A bank change is in flight, so nothing is paid out until it settles. */
+  held: boolean;
+}) {
   const owedBack = isOwedBack(week.netPaise);
+  const destination = payoutDestination(week.netPaise, to, held);
   return (
     <Panel className="mt-6" role="region" aria-labelledby="next-payout">
       <h2 id="next-payout" className="label text-forest/75">
@@ -381,6 +406,26 @@ function NextPayout({ week }: { week: SettlementWeek }) {
           <Row label="Corrections" value={formatPaise(week.adjustmentsPaise)} />
         ) : null}
         <Row label="Bookings" value={String(week.bookings)} plain />
+        {/* Where it goes, or that it waits: see `payoutDestination`. */}
+        {destination ? (
+          <div className="border-paper-line flex items-baseline justify-between gap-4 border-t pt-3">
+            <dt className="text-forest/75 shrink-0">To your bank</dt>
+            <dd className="min-w-0 text-right font-bold">
+              {destination.kind === "held" ? (
+                <span className="text-terra-deep">
+                  On hold until your bank change settles
+                </span>
+              ) : (
+                <Link
+                  href="/payouts"
+                  className="decoration-forest/40 underline underline-offset-4"
+                >
+                  {destination.line}
+                </Link>
+              )}
+            </dd>
+          </div>
+        ) : null}
       </dl>
 
       {/* Both hedges: without them this reads as a promise of a date. */}

@@ -190,6 +190,57 @@ test("the profile's three numbers are numbers, and say what they count", async (
   await expect(page.getByText("No reviews yet")).toHaveCount(0);
 });
 
+test("listings come first, each with its state, and a draft says what is missing", async ({
+  page,
+}) => {
+  /*
+    Operator A, approved 3 Oct 2026: "Listings come first, each with its
+    state, and a draft says in words what is still missing." The page
+    travellers read, and the ways to edit and share it, follow the listings.
+
+    Only fixtures nothing writes to: `exp_boat` (four blockers), `exp_night`
+    (sent back) and the snorkel trip (live, with dates to sell at any hour).
+    Not the try-dive: its one departure has always left, so its tile says
+    "No dates in 30 days", correctly, until another suite adds some.
+  */
+  await signIn(page, OWNER);
+  await page.waitForURL("**/today");
+  await page.goto("/account");
+
+  const tile = (title: string) =>
+    page.getByRole("link", { name: new RegExp(`^${title},`) });
+
+  const draft = tile("Island boat day");
+  await expect(draft).toContainText("Draft");
+  await expect(draft).toContainText(
+    "Still missing: a short summary, what kind of activity it is, a price, whether that price is per person or for the group",
+  );
+  // Named in real words, title first: no run-on "DraftIsland boat day".
+  await expect(draft).toHaveAccessibleName(
+    "Island boat day, Draft, Still missing: a short summary, what kind of activity it is, a price, whether that price is per person or for the group",
+  );
+
+  const sentBack = tile("Night fishing");
+  await expect(sentBack).toContainText("Sent back");
+  await expect(sentBack).toContainText(
+    "A traveller could not find the meeting point from this.",
+  );
+
+  const live = tile("Snorkel trip to Elephant Beach");
+  await expect(live).toContainText("Live");
+  await expect(live).toContainText("₹3,200 per person");
+
+  // Listings first: the grid sits above the page travellers read.
+  const yourPage = page.getByRole("heading", { name: "Your page" });
+  await expect(yourPage).toBeVisible();
+  const tileBox = await draft.boundingBox();
+  const pageBox = await yourPage.boundingBox();
+  expect(tileBox!.y, "the listings sit above Your page").toBeLessThan(
+    pageBox!.y,
+  );
+  await expect(page.getByRole("link", { name: "Edit profile" })).toBeVisible();
+});
+
 test("the profile names what is waiting, and each opens where it is fixed", async ({
   page,
 }) => {

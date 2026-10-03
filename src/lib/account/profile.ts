@@ -1,3 +1,17 @@
+import { formatPaise } from "@/lib/format/money";
+import { dedash } from "@/lib/format/dedash";
+import {
+  NO_DATES_BADGE,
+  listingLabel,
+  liveWithNothingToSell,
+} from "@/lib/services/home";
+import {
+  describeBlockers,
+  describePricingUnit,
+  describeRejection,
+  isDraft,
+} from "@/lib/services/listings";
+
 /**
  * The business profile's own rules — yuvoy-operator#58 items 2, 3, 5 and 11.
  *
@@ -128,6 +142,108 @@ export function orderForProfile<T extends { status?: string; title?: string }>(
     if (group !== 0) return group;
     return (a.title ?? "").localeCompare(b.title ?? "");
   });
+}
+
+/** What a listing's tile reads from it. Every field as `listListings` carries it. */
+export interface TileListing {
+  status?: string;
+  sentBack?: unknown;
+  bookableDatesNext30Days?: number;
+  publicationState?: string;
+  publishBlockers?: string[];
+  sellable?: boolean;
+  unitPricePaise?: number;
+  pricingUnit?: string;
+}
+
+export interface TileFacts {
+  /** The state, on every tile: "Live", "Draft", "Sent back", "Paused". */
+  state: string;
+  /** Whether the state waits on the operator, which is what the eye finds. */
+  attention: boolean;
+  /** The one line under the title, or nothing to say. */
+  line: string | null;
+}
+
+/**
+ * What a listing's tile on Business says (operator A, approved 3 Oct 2026:
+ * "Listings come first, each with its state, and a draft says in words what is
+ * still missing").
+ *
+ * **Every tile has its state now, Live included.** #58 item 3 drew no badge
+ * on a live tile, so that the tiles needing something did not disappear into
+ * the pattern. That reason is kept another way: only a state that waits on the
+ * operator is `attention` (sent back, an edit declined, a draft, not selling,
+ * live with nothing to sell), and the rest are drawn quietly.
+ *
+ * **The line:**
+ *   - sent back: why, in the closed set's words or the reviewer's own;
+ *   - a draft: "Still missing: ...", the sentence every other screen uses for
+ *     `publishBlockers`, all of them, or "Ready to send for review" when the
+ *     API says nothing is outstanding. A list the API did not send is not an
+ *     empty one, so it claims neither;
+ *   - anything that sells or sold: its price, with its basis only when
+ *     somebody stated it (an unstated basis is a blocker, and printing "per
+ *     person" beside it is the guessed phrase the contract forbids);
+ *   - in review: nothing. It is with us, and the state says so.
+ */
+export function tileFacts(listing: TileListing): TileFacts {
+  const noDates = liveWithNothingToSell(listing);
+  const status = listing.status ?? "";
+  const state = noDates ? NO_DATES_BADGE : listingLabel(listing);
+  const attention =
+    noDates ||
+    status === "changes_rejected" ||
+    status === "not_selling" ||
+    isDraft(listing);
+  return { state, attention, line: tileLine(listing) };
+}
+
+function tileLine(listing: TileListing): string | null {
+  if (listing.sentBack) return sentBackReason(listing.sentBack);
+  if (isDraft(listing)) {
+    const blockers = listing.publishBlockers;
+    if (blockers === undefined) {
+      // An older API: `sellable` is the one thing it can still say.
+      return listing.sellable === false ? "Still missing: a price" : null;
+    }
+    return blockers.length > 0
+      ? `Still missing: ${describeBlockers(blockers).join(", ")}`
+      : "Ready to send for review";
+  }
+  if (listing.status === "in_review") return null;
+  return priceOf(listing);
+}
+
+/** "₹4,500 per person", "₹12,000 for the group", or the figure alone. */
+function priceOf(listing: TileListing): string | null {
+  const paise = listing.unitPricePaise;
+  if (paise === undefined) return null;
+  const stated = !(listing.publishBlockers ?? []).includes("pricingUnit");
+  const unit = stated ? describePricingUnit(listing.pricingUnit) : null;
+  return unit
+    ? `${formatPaise(paise)} ${unit.toLowerCase()}`
+    : formatPaise(paise);
+}
+
+/**
+ * Why a reviewer sent it back: the closed set's sentence, else the
+ * reviewer's own note, long dashes out (the reviewer's text comes from
+ * another team's database). Nothing when there is neither: the listing's own
+ * screen then says to call us, which a tile has no room to.
+ */
+function sentBackReason(sentBack: unknown): string | null {
+  if (typeof sentBack !== "object" || sentBack === null) return null;
+  const { rejectionCode, rejectionNote } = sentBack as {
+    rejectionCode?: unknown;
+    rejectionNote?: unknown;
+  };
+  const reason =
+    typeof rejectionCode === "string" ? describeRejection(rejectionCode) : null;
+  if (reason) return reason;
+  const note =
+    typeof rejectionNote === "string" ? dedash(rejectionNote.trim()) : "";
+  return note || null;
 }
 
 /**

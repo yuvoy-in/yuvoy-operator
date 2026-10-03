@@ -29,3 +29,29 @@ export function payoutHold(requests: ChangeRequest[]): ChangeRequest | null {
     ) ?? null
   );
 }
+
+/** Where the next payout goes. See `payoutDestination`. */
+export type PayoutDestination =
+  { kind: "held" } | { kind: "account"; line: string };
+
+/**
+ * Where the next payout goes, said inside it (operator A, approved 3 Oct
+ * 2026: "the bank the payout goes to shown inside the payout").
+ *
+ *   held     a bank change is in flight. Nothing moves until it settles, and
+ *            which account it then goes to is the change's to decide, so no
+ *            account is named.
+ *   account  the account on file, in the words Payout details uses.
+ *   null     nothing is sent (a week that pays nothing, or one owed back), or
+ *            no account is on file (one set up by hand before any change was
+ *            made here). The screen then claims nothing either way.
+ */
+export function payoutDestination(
+  netPaise: number,
+  onFileLine: string | null,
+  held: boolean,
+): PayoutDestination | null {
+  if (!(netPaise > 0)) return null;
+  if (held) return { kind: "held" };
+  return onFileLine ? { kind: "account", line: onFileLine } : null;
+}

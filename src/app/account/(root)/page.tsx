@@ -32,13 +32,10 @@ import {
   ratingLine,
   readTab,
   sinceLine,
+  tileFacts,
+  type TileListing,
 } from "@/lib/account/profile";
-import {
-  NO_DATES_BADGE,
-  listingLabel,
-  liveWithNothingToSell,
-  posterFor,
-} from "@/lib/services/home";
+import { posterFor } from "@/lib/services/home";
 import { listListings, listMedia } from "@/lib/day/manifest";
 import { readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
 import { operatorPageUrl } from "@/lib/site/traveller-app";
@@ -46,6 +43,7 @@ import { Screen } from "@/components/chrome/screen";
 import { SignOutButton } from "@/components/chrome/sign-out-button";
 import { ButtonLink } from "@/components/ui/button";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { Chip } from "@/components/ui/chip";
 import { SettingsIcon } from "@/components/ui/icons";
 import { ProfileActions } from "@/app/account/profile-actions";
 import { AddSheet } from "@/app/account/add-sheet";
@@ -256,10 +254,6 @@ export default async function AccountPage({
             <p className="text-forest/70 mt-3 text-sm">{since}</p>
           ) : null}
 
-          {story?.about ? <About text={story.about} /> : null}
-
-          <ProfileActions url={publicUrl} />
-
           {/*
             What is waiting on them, each thing named (op#86 s9). The same
             list the Business tab's badge counts; see `WaitingStrip`.
@@ -298,6 +292,23 @@ export default async function AccountPage({
           ) : (
             <ReviewsTab />
           )}
+
+          {/*
+            Listings come first (operator A, approved 3 Oct 2026). The page
+            travellers read, and the ways to edit, share and see it, follow
+            what the business sells instead of standing between the operator
+            and it.
+          */}
+          <section aria-labelledby="your-page" className="mt-10">
+            <h2
+              id="your-page"
+              className="font-display tracking-display text-2xl leading-tight"
+            >
+              Your page
+            </h2>
+            {story?.about ? <About text={story.about} /> : null}
+            <ProfileActions url={publicUrl} />
+          </section>
         </>
       ) : (
         <>
@@ -361,9 +372,14 @@ function Stat({ value, label }: { value: string; label: string }) {
 /**
  * Every listing, in the order they need attention — #58 item 3.
  *
- * Three columns of posters. A `live` listing carries NO badge: it is the state
- * that needs nothing, and a chip on every tile makes the ones that do need
- * something disappear into the pattern.
+ * Two to a row on a phone, three from 40rem: a third of a phone has no room
+ * for the words a draft now says (operator A, approved 3 Oct 2026: "Listings
+ * come first, each with its state, and a draft says in words what is still
+ * missing"). What each tile says is `tileFacts`.
+ *
+ * The link is named title first, then the state and the line, in real
+ * words: its children would otherwise join with no spaces between them, and
+ * a screen reader would read "DraftIsland boat dayStill missing".
  */
 function ListingsGrid({
   listings,
@@ -372,15 +388,7 @@ function ListingsGrid({
   suspended,
 }: {
   /** `null` when the read failed, which is not the same as having none. */
-  listings:
-    | {
-        id?: string;
-        title?: string;
-        status?: string;
-        sentBack?: unknown;
-        bookableDatesNext30Days?: number;
-      }[]
-    | null;
+  listings: (TileListing & { id?: string; title?: string })[] | null;
   media: {
     listing?: { experienceId?: string };
     posterUrl?: string;
@@ -416,44 +424,52 @@ function ListingsGrid({
   }
 
   return (
-    <ul className="mt-6 grid grid-cols-3 gap-2">
+    <ul className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
       {orderForProfile(listings).map((listing) => {
         const id = listing.id ?? "";
         const poster = posterFor(media, id);
-        /*
-          Live with nothing to sell gets a badge although live gets none: it is
-          on the traveller app and cannot be booked, which is lost money the
-          operator can fix by adding departures (op#95 item 3).
-        */
-        const badge = liveWithNothingToSell(listing)
-          ? NO_DATES_BADGE
-          : listing.status === "live"
-            ? null
-            : listingLabel(listing);
+        const { state, attention, line } = tileFacts(listing);
+        const name = [listing.title, state, line].filter(Boolean).join(", ");
         return (
-          <li key={id}>
-            <Link href={`/account/listings/${id}`} className="block">
+          <li key={id} className="flex">
+            <Link
+              href={`/account/listings/${id}`}
+              aria-label={name}
+              className={panelClass(
+                "raised",
+                "ease-interaction hover:border-forest/40 flex w-full flex-col overflow-hidden p-0 transition-colors duration-200",
+              )}
+            >
               {poster ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={poster}
                   alt=""
-                  className="rounded-card aspect-square w-full object-cover"
+                  className="aspect-[4/3] w-full object-cover"
                 />
               ) : (
                 <span
                   aria-hidden
-                  className="rounded-card bg-paper-deep block aspect-square w-full"
+                  className="bg-paper-line block aspect-[4/3] w-full"
                 />
               )}
-              <span className="mt-1 block truncate text-sm font-bold">
-                {listing.title}
-              </span>
-              {badge ? (
-                <span className="label text-terra-deep mt-0.5 block truncate">
-                  {badge}
+              <span className="flex flex-col items-start gap-1.5 p-3">
+                <Chip tone={attention ? "accent" : "neutral"}>{state}</Chip>
+                <span className="text-sm leading-snug font-bold">
+                  {listing.title}
                 </span>
-              ) : null}
+                {line ? (
+                  <span
+                    className={
+                      attention
+                        ? "text-terra-deep text-xs"
+                        : "text-forest/70 text-xs"
+                    }
+                  >
+                    {line}
+                  </span>
+                ) : null}
+              </span>
             </Link>
           </li>
         );

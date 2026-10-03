@@ -319,6 +319,22 @@ export async function listListings(
       (e.bookableDatesNext30Days as number) >= 0
         ? { bookableDatesNext30Days: e.bookableDatesNext30Days }
         : {}),
+      ...(e.publicationState ? { publicationState: e.publicationState } : {}),
+      /*
+        For Business's tiles: a draft says what is missing, a listing that
+        sells says its price. Each carried only when the API sent the shape
+        it promises, so a tile never says "nothing missing" or "₹0" about a
+        field that simply did not arrive.
+      */
+      ...(Array.isArray(e.publishBlockers) &&
+      e.publishBlockers.every((b) => typeof b === "string")
+        ? { publishBlockers: e.publishBlockers }
+        : {}),
+      ...(Number.isInteger(e.unitPricePaise) &&
+      (e.unitPricePaise as number) >= 0
+        ? { unitPricePaise: e.unitPricePaise as number }
+        : {}),
+      ...(e.pricingUnit ? { pricingUnit: e.pricingUnit } : {}),
     }))
     .sort((a, b) => a.title.localeCompare(b.title, "en"));
 }
