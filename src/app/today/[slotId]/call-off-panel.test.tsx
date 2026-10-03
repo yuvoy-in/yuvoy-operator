@@ -18,6 +18,10 @@ afterEach(() => callOffDeparture.mockReset());
   departure cannot run" and sat alone at the foot of the manifest in the same
   shape as every other control. It is quiet text now, in the product's own
   words, and the confirm names the time and what happens to the people on it.
+
+  Named, not typed (owner ruling, 3 Oct 2026): the departure's id used to be
+  typed back. The question names the boat and its day now, and the panel
+  sends its own departure with the one loud tap.
 */
 describe("calling a departure off", () => {
   it("is quiet text in the product's words until it is asked for", () => {
@@ -32,13 +36,15 @@ describe("calling a departure off", () => {
     expect(screen.queryByText(/cannot run/)).toBeNull();
   });
 
-  it("names the time and what happens, over the loud button", () => {
+  it("names the boat, its day and what happens, over the loud button", () => {
     render(
       <CallOffPanel
         slotId="slot_dawn"
         alreadyCalledOff={false}
         canManage
         time="09:00"
+        title="Try-dive at Nemo Reef"
+        day="today"
       />,
     );
     fireEvent.click(
@@ -46,7 +52,9 @@ describe("calling a departure off", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Call off 09:00?" }),
+      screen.getByRole("heading", {
+        name: "Call off the 09:00 Try-dive at Nemo Reef, today?",
+      }),
     ).toBeInTheDocument();
     // True to what the API does (#97): online money back, cash from the till.
     expect(screen.getByText(/Everyone booked is cancelled/)).toHaveTextContent(
@@ -59,6 +67,25 @@ describe("calling a departure off", () => {
       "border-2",
       "border-terra-deep",
     );
+    // Nothing to type: the only field to write in is the note.
+    expect(screen.getAllByRole("textbox")).toEqual([
+      screen.getByLabelText("Anything to add (optional)"),
+    ]);
+  });
+
+  it("names as much of the departure as it knows", () => {
+    render(
+      <CallOffPanel
+        slotId="slot_dawn"
+        alreadyCalledOff={false}
+        canManage
+        time="09:00"
+        startOpen
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Call off the 09:00?" }),
+    ).toBeInTheDocument();
   });
 
   it("asks without a time when the departure has none to name", () => {
@@ -88,14 +115,14 @@ describe("calling a departure off", () => {
       />,
     );
     expect(
-      screen.getByLabelText("Type the departure id to confirm"),
+      screen.getByRole("heading", { name: "Call off the 09:00?" }),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
     expect(onKeep).toHaveBeenCalledTimes(1);
   });
 
   it("keeps its fields apart when two departures are asked about at once", () => {
-    render(
+    const { container } = render(
       <>
         <CallOffPanel
           slotId="slot_a"
@@ -111,9 +138,15 @@ describe("calling a departure off", () => {
         />
       </>,
     );
-    const boxes = screen.getAllByLabelText("Type the departure id to confirm");
-    expect(boxes).toHaveLength(2);
-    expect(new Set(boxes.map((box) => box.id)).size).toBe(2);
+    const notes = screen.getAllByLabelText("Anything to add (optional)");
+    expect(notes).toHaveLength(2);
+    expect(new Set(notes.map((note) => note.id)).size).toBe(2);
+    // And each confirms its own departure, not the other's.
+    expect(
+      [
+        ...container.querySelectorAll<HTMLInputElement>("[name=confirmSlotId]"),
+      ].map((input) => input.value),
+    ).toEqual(["slot_a", "slot_b"]);
   });
 
   it("tells a staff login who can, rather than offering it", () => {
@@ -151,7 +184,7 @@ describe("focus in the call-off confirm", () => {
       screen.getByRole("button", { name: "Call this departure off" }),
     );
     expect(
-      screen.getByRole("heading", { name: "Call off 09:00?" }),
+      screen.getByRole("heading", { name: "Call off the 09:00?" }),
     ).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "Keep it" }));
     expect(
@@ -166,7 +199,7 @@ describe("focus in the call-off confirm", () => {
   and its receipt (the refund, the cash to hand back) was never seen.
 */
 describe("while the call-off runs", () => {
-  it("cannot be kept, and tells the screen that opened it to hold it", async () => {
+  it("sends its own departure, cannot be kept, and tells the screen that opened it to hold it", async () => {
     let finish: (value: unknown) => void = () => {};
     callOffDeparture.mockImplementation(
       () => new Promise((resolve) => (finish = resolve)),
@@ -184,13 +217,12 @@ describe("while the call-off runs", () => {
         onBusyChange={(b) => busy.push(b)}
       />,
     );
-    await user.type(
-      screen.getByLabelText("Type the departure id to confirm"),
-      "slot_dawn",
-    );
     await user.click(screen.getAllByRole("radio")[0]);
     await user.click(screen.getByRole("button", { name: "Call it off" }));
 
+    const sent = callOffDeparture.mock.calls[0][1] as FormData;
+    expect(sent.get("slotId")).toBe("slot_dawn");
+    expect(sent.get("confirmSlotId")).toBe("slot_dawn");
     expect(screen.getByRole("button", { name: "Keep it" })).toBeDisabled();
     expect(busy.at(-1)).toBe(true);
     finish({});

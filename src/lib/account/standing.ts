@@ -521,6 +521,49 @@ export function expirySentences(
   return out;
 }
 
+/** A held document inside its renewal window, as Home's card says it. */
+export interface ExpiringDocument {
+  /** "Insurance". */
+  name: string;
+  /** Whole market days left: 0 is today. */
+  days: number;
+  /** `expirySentence`, word for word (yuvoy-operator#46). */
+  sentence: string;
+  /** Where its replacement is sent, when the API will take one now. */
+  action: { href: string; label: string } | null;
+}
+
+/**
+ * The documents about to take listings down, soonest first.
+ *
+ * The same rows `expirySentences` reads, one per type from its best verified
+ * copy, so Home and Verification name the same documents (audit 5.7: an
+ * expiry used to reach nowhere but Verification). An expired one is not
+ * here: it is already a blocker, and Home leads with it.
+ */
+export function expiringDocuments(
+  credentials: readonly OperatorCredential[],
+  now: number,
+): ExpiringDocument[] {
+  const out: ExpiringDocument[] = [];
+  for (const rows of byDocumentType(credentials).values()) {
+    const best = bestVerified(rows);
+    const sentence = best ? expirySentence(best, now) : null;
+    const days =
+      best?.expiresOn !== undefined
+        ? daysUntilMarketDate(best.expiresOn, now)
+        : null;
+    if (!best || !sentence || days === null) continue;
+    out.push({
+      name: credentialName(best),
+      days,
+      sentence,
+      action: documentAction(rows, now),
+    });
+  }
+  return out.sort((a, b) => a.days - b.days);
+}
+
 /**
  * What to do about one document type, as the API will accept it.
  *

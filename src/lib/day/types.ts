@@ -189,4 +189,20 @@ export interface OperatorListing {
    * older API reads as unknown rather than as a listing with nothing to sell.
    */
   bookableDatesNext30Days?: number;
+  /**
+   * What the listing IS (`draft`, `published`, `withdrawn`), apart from where
+   * its latest revision got to. Carried so a sent-back first listing reads
+   * as the draft it is again (`isDraft`).
+   */
+  publicationState?: string;
+  /**
+   * The mandatory fields still empty, in the API's own spelling. A draft's
+   * tile on Business says them in words. Carried only when the API sent an
+   * array, so an older API reads as unknown rather than as nothing missing.
+   */
+  publishBlockers?: string[];
+  /** The price in paise. Absent when there is none. */
+  unitPricePaise?: number;
+  /** `per_person` or `per_group`. Read with `publishBlockers`: see the tile. */
+  pricingUnit?: string;
 }

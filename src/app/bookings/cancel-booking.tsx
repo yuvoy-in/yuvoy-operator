@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { Panel } from "@/components/ui/panel";
-import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
+import { choiceClass, textareaClass } from "@/components/ui/input";
 
 /**
  * Cancelling one booking — yuvoy-operator#43 item 4.
@@ -18,13 +18,16 @@ import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
  * row (#56), because the act is the same and the confirmation must not differ
  * between the two places somebody can reach it from.
  *
- * ## Why the reference is typed back
+ * ## Why the confirm names the booking
  *
  * The contract says it and gives the reason: `confirmReference` is "not a
  * boolean: this cannot be undone, and a checkbox is one mis-tap away from the
- * wrong party." On a manifest of eleven names, a confirm dialog with a button
- * is one wet thumb from cancelling somebody else's holiday and refunding it in
- * full. Typing `YV-4K2M9P7Q` cannot be done by accident.
+ * wrong party." On a manifest of eleven names, a bare "Are you sure?" is one
+ * wet thumb from cancelling somebody else's holiday and refunding it in full.
+ * So the question says whose booking it is and its reference, over the one
+ * loud button, and the form fills `confirmReference` with that booking's own
+ * (owner ruling, 3 Oct 2026: a named confirm everywhere, replacing the
+ * reference typed back; yuvoy-api#261).
  *
  * ## What the confirmation must say about money
  *
@@ -44,6 +47,7 @@ import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
 export function CancelBooking({
   bookingId,
   reference,
+  who,
   isCash,
   available = true,
   context = "booking",
@@ -52,6 +56,8 @@ export function CancelBooking({
 }: {
   bookingId: string;
   reference: string;
+  /** Whose booking, so the confirm names them: "Cancel Asha Menon's booking". */
+  who?: string;
   /** A booking the traveller pays at the counter. Decides the money sentence. */
   isCash: boolean;
   /**
@@ -186,8 +192,11 @@ export function CancelBooking({
         tabIndex={-1}
         className="text-base font-bold outline-none"
       >
-        Cancel {reference}?
+        {who
+          ? `Cancel ${who}'s booking, ${reference}?`
+          : `Cancel ${reference}?`}
       </p>
+      <p className="text-forest/80 mt-1.5 text-sm">This cannot be undone.</p>
       <p className="text-forest/80 mt-1.5 text-sm">
         {/*
           Opposite facts, so they are not merged. A cash booking refunds nothing
@@ -240,24 +249,15 @@ export function CancelBooking({
         </p>
       </div>
 
-      <div className="mt-4">
-        <label htmlFor={`${ids}-reference`} className="label text-forest/75">
-          Type {reference} to confirm
-        </label>
-        <input
-          id={`${ids}-reference`}
-          name="confirmReference"
-          type="text"
-          autoComplete="off"
-          autoCapitalize="characters"
-          required
-          aria-invalid={state.field === "confirmReference" || undefined}
-          className={inputClass("mt-2 font-mono")}
-        />
-        <p className="text-forest/70 mt-1.5 text-xs">
-          Letter case and spaces do not matter. This cannot be undone.
-        </p>
-      </div>
+      {/*
+        No reference to type. It used to ask for the booking's reference,
+        typed, because the API requires `confirmReference`. The question above
+        names whose booking it is and what happens to the money, "Cancel the
+        booking" is the one deliberate tap, and the reference is this
+        booking's own, filled here (owner ruling, 3 Oct 2026: a named confirm
+        everywhere; yuvoy-api#261).
+      */}
+      <input type="hidden" name="confirmReference" value={reference} />
 
       {state.message ? (
         <p role="alert" className="text-terra-deep mt-3 text-sm font-bold">

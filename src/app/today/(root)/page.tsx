@@ -27,10 +27,11 @@ import { marketDays, now } from "@/lib/format/market-time";
 import { readInbox } from "@/lib/site/inbox";
 import { isNewOperator, startSelling, stepsLeft } from "@/lib/home/checklist";
 import {
-  cashToCollect,
+  cashParties,
   emptyToday,
   NEXT_WITHIN_DAYS,
   nextRunning,
+  nextUpLine,
   peopleOn,
   runDay,
 } from "@/lib/home/day";
@@ -149,16 +150,15 @@ export default async function HomePage() {
   const cash: TodayCash[] = todaySlots.flatMap((slot) => {
     const manifest = dayManifests.get(slot.id);
     if (!manifest || !shownToday.has(slot.id)) return [];
-    const owed = cashToCollect(manifest);
-    return owed.parties > 0
+    const parties = cashParties(manifest);
+    return parties.length > 0
       ? [
           {
             slotId: slot.id,
             startsAt: slot.startsAt,
             timezone: slot.timezone,
             title: slot.title,
-            parties: owed.parties,
-            collectPaise: owed.collectPaise,
+            parties,
           },
         ]
       : [];
@@ -181,8 +181,20 @@ export default async function HomePage() {
     unrecorded: money?.unrecorded ?? null,
     inbox,
     today,
+    tomorrow,
     now: at,
   });
+
+  /*
+    What an empty "Needs you" names: the next departure somebody is on its
+    way to, from the two days already read.
+  */
+  const nextUp = days
+    ? nextUpLine(
+        nextRunning([...todaySlots, ...tomorrowSlots], listings, at),
+        today,
+      )
+    : null;
 
   /*
     A business that has never been booked gets the checklist in place of the
@@ -233,7 +245,7 @@ export default async function HomePage() {
   }
 
   return (
-    <Screen>
+    <Screen width="xl">
       <RefreshOnFocus />
 
       {/*
@@ -244,48 +256,66 @@ export default async function HomePage() {
       */}
       <h1 className="sr-only">Today</h1>
 
-      <StatusLine status={status} />
-
       {/*
-        Always rendered, and it draws nothing when nothing is waiting: it holds
-        the receipts of what was just done, which must outlive the rows they
-        came from. See `needs-you.tsx`.
+        One column on a phone; on a desktop the work and the day side by side
+        (experiment A), the day held in view while the queue scrolls.
       */}
-      <NeedsYou needs={needs} canAccept={me.canManage && !suspended} />
+      <div className="lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:items-start lg:gap-10">
+        <div>
+          <StatusLine status={status} />
 
-      {steps ? (
-        <StartSelling steps={steps} />
-      ) : (
-        <>
-          <DaySheet
-            today={todaySheet}
-            tomorrow={tomorrowSheet}
-            emptyToday={emptyToday(next, today)}
+          {/*
+            Always rendered: it holds the receipts and the Undo of what was
+            just done, which must outlive the rows they came from, and says
+            what is next when nothing is waiting. See `needs-you.tsx`.
+          */}
+          <NeedsYou
+            needs={needs}
+            canAnswer={me.canManage}
+            canAccept={me.canManage && !suspended}
+            nextUp={steps ? null : nextUp}
           />
+        </div>
 
-          {me.canManage ? (
-            <MoneyGlance
-              line={
-                money
-                  ? moneyLine({
-                      week: money.week,
-                      owedPaise: money.owedPaise,
-                      today,
-                    })
-                  : null
-              }
-            />
-          ) : null}
+        {/* Level with the status line on a desktop: no first block's margin. */}
+        <div className="lg:sticky lg:top-6 lg:[&>:first-child]:mt-0">
+          {steps ? (
+            <StartSelling steps={steps} />
+          ) : (
+            <>
+              <DaySheet
+                today={todaySheet}
+                tomorrow={tomorrowSheet}
+                emptyToday={emptyToday(next, today)}
+              />
 
-          <Glance
-            id="home-listings"
-            heading="Listings"
-            href="/account"
-            text={listings ? listingsGlance(listings) : "Listings did not load"}
-            tone={listings ? "plain" : "alert"}
-          />
-        </>
-      )}
+              {me.canManage ? (
+                <MoneyGlance
+                  line={
+                    money
+                      ? moneyLine({
+                          week: money.week,
+                          owedPaise: money.owedPaise,
+                          today,
+                        })
+                      : null
+                  }
+                />
+              ) : null}
+
+              <Glance
+                id="home-listings"
+                heading="Listings"
+                href="/account"
+                text={
+                  listings ? listingsGlance(listings) : "Listings did not load"
+                }
+                tone={listings ? "plain" : "alert"}
+              />
+            </>
+          )}
+        </div>
+      </div>
     </Screen>
   );
 }

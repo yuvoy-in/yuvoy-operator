@@ -19,9 +19,11 @@ import { dedash } from "@/lib/format/dedash";
  * rather than refunding twice. Recording the cash back "cannot be undone, and
  * it is recorded once".
  *
- * So neither is a button: cancelling asks for the reference typed back, because
- * "this cannot be undone, and a checkbox is one mis-tap away from the wrong
- * party", and the cash one asks for a second tap.
+ * So neither is a button: cancelling asks a question that names whose booking
+ * it is, because "this cannot be undone, and a checkbox is one mis-tap away
+ * from the wrong party", and fills `confirmReference` with that booking's own
+ * (owner ruling, 3 Oct 2026; yuvoy-api#261). The cash one asks for a second
+ * tap.
  *
  * ## Both stay available while the business is suspended
  *
@@ -39,8 +41,8 @@ const cancelSchema = z.object({
   /*
     500 is the contract's own limit and it is checked here as well as there.
     Not to save a round trip: a note over the limit is refused with nothing
-    cancelled, and the operator has by then typed a reference and chosen a
-    reason. Failing on the length before any of that is sent is kinder than
+    cancelled, and the operator has by then chosen a reason and written the
+    note. Failing on the length before any of that is sent is kinder than
     failing after.
   */
   note: z.string().trim().max(500, "That note is longer than 500 characters."),
@@ -83,10 +85,19 @@ export async function cancelBooking(
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const field = String(issue.path[0] ?? "");
-    return {
-      field: field === "note" ? "note" : "reasonCode",
-      message: field === "note" ? issue.message : "Choose why they cannot go.",
-    };
+    if (field === "note") return { field: "note", message: issue.message };
+    /*
+      The form fills the reference itself, so an empty one is a page that
+      lost it, not a person who skipped it: asking them to choose a reason
+      would point at the wrong thing.
+    */
+    if (field === "confirmReference") {
+      return {
+        message:
+          "This booking's reference did not reach us. Nothing was cancelled. Reload the page and try again.",
+      };
+    }
+    return { field: "reasonCode", message: "Choose why they cannot go." };
   }
 
   const { token } = await requireOperator();
@@ -152,9 +163,14 @@ export async function cancelBooking(
         return { alreadyCancelled: true };
       }
       if (err.code === "confirmation_required") {
+        /*
+          The form sends this booking's own reference, so a mismatch means the
+          page is not showing the booking the API has. Reloading reads it again.
+        */
         return {
           field: "confirmReference",
-          message: "That is not this booking's reference.",
+          message:
+            "That confirm did not match this booking. Nothing was cancelled. Reload the page and try again.",
         };
       }
       if (err.code === "invalid_reason_code") {

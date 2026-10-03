@@ -665,7 +665,17 @@ test("the Reels tab and its sheet have no accessibility violations", async ({
     And the sheet, which is the new thing axe has to be happy about: a dialog
     that claims `aria-modal` over a page it does not remove from the tree.
   */
-  await page.getByRole("button").filter({ hasText: /\w/ }).last().click();
+  /*
+    A reel's own tile, by its name ("Reel, Live", "Photograph, In review").
+    It was "the last button with text on the page", which stopped being a
+    reel once the page's own section (Your page: Edit profile, Share) moved
+    below the tabs. And this file is serial, so the miss retried the whole
+    file and attached a second clip that services.spec counts on.
+  */
+  await page
+    .getByRole("button", { name: /^(Reel|Photograph), / })
+    .last()
+    .click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForLoadState("networkidle");
 

@@ -77,6 +77,12 @@ export interface BookingLine {
   name: string;
   guests: number;
   experience: string;
+  /**
+   * The listing's id, which with `startsAt` finds the booking's departure
+   * until the API sends that departure's id (yuvoy-api#259). Absent when the
+   * API did not send it, never an empty stand-in.
+   */
+  experienceId?: string;
   startsAt?: string;
   timezone: string;
   /** Free text in the contract — no enum — so it is shown, never branched on. */
@@ -185,6 +191,7 @@ export function toBookingLine(raw: OperatorBooking): BookingLine {
     name: raw.contact?.name ?? "",
     guests: raw.guests ?? 0,
     experience: raw.experience ?? "",
+    ...(raw.experienceId ? { experienceId: raw.experienceId } : {}),
     startsAt: raw.slot?.startsAt,
     timezone: raw.slot?.timezone ?? "Asia/Kolkata",
     state: raw.state ?? "",

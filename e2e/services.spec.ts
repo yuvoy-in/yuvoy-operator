@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /*
   The meeting-point map's two outside hosts (yuvoy-operator#113), aborted:
@@ -1063,19 +1064,17 @@ test("a listing can be paused and resumed, and pausing says what it did NOT do",
   );
   await row.getByRole("button", { name: "Pause", exact: true }).click();
 
-  // Warned BEFORE the decision, too.
+  // Warned BEFORE the decision, too, in a question that names the listing
+  // (a named confirm, owner ruling 3 Oct 2026; its id used to be typed back).
+  await expect(
+    row.getByText(/^Pause Sunrise paddle\? It stops new bookings\./),
+  ).toBeVisible();
   await expect(
     row.getByText(/does not cancel the ones you have/i),
   ).toBeVisible();
+  await expectAccessible(page, "the listing hub, its pause confirm open");
 
   await row.getByRole("radio", { name: /Not running this/ }).check();
-
-  // A wrong id is refused, and nothing changes.
-  await row.getByLabel(/Type this listing/).fill("exp_wrong");
-  await row.getByRole("button", { name: "Pause it" }).click();
-  await expect(row.getByText(/does not match this listing/)).toBeVisible();
-
-  await row.getByLabel(/Type this listing/).fill("exp_offsale");
   await row.getByRole("button", { name: "Pause it" }).click();
 
   await expect(row.getByText("Paused", { exact: true }).first()).toBeVisible();

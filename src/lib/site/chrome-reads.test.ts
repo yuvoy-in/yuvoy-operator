@@ -19,8 +19,8 @@ vi.mock("@/lib/api/server-client", () => ({
 const { readInbox } = await import("./inbox");
 const { readBusinessName } = await import("./business-name");
 
-const row = (unreadCount: number) => ({
-  bookingId: "b",
+const row = (unreadCount: number, bookingId = "b") => ({
+  bookingId,
   reference: "YV-1",
   experience: "Dive",
   timezone: "Asia/Kolkata",
@@ -35,12 +35,16 @@ beforeEach(() => {
 describe("the inbox count", () => {
   it("counts conversations with something unread, and the messages in them", async () => {
     listThreads.mockResolvedValue({
-      rows: [row(2), row(0), row(1)],
+      rows: [row(2, "b1"), row(0, "b2"), row(1, "b3")],
       complete: true,
     });
     expect(await readInbox("tok-a")).toEqual({
       messages: 3,
       conversations: 2,
+      // The unread ones, in the API's order, for Home to answer in place.
+      unread: [row(2, "b1"), row(1, "b3")],
+      // And by booking, for the manifest's rows.
+      unreadByBooking: { b1: 2, b3: 1 },
     });
   });
 
@@ -52,7 +56,7 @@ describe("the inbox count", () => {
         nextCursor: "c2",
       })
       .mockResolvedValueOnce({ rows: [row(4)], complete: true });
-    expect(await readInbox("tok-b")).toEqual({
+    expect(await readInbox("tok-b")).toMatchObject({
       messages: 5,
       conversations: 2,
     });
@@ -71,11 +75,24 @@ describe("the inbox count", () => {
       complete: false,
       nextCursor: "again",
     });
-    expect(await readInbox("tok-d")).toEqual({
+    expect(await readInbox("tok-d")).toMatchObject({
       messages: 10,
       conversations: 10,
     });
     expect(listThreads).toHaveBeenCalledTimes(10);
+  });
+
+  it("keeps rows for at most twenty unread conversations, and counts them all", async () => {
+    listThreads.mockResolvedValue({
+      rows: Array.from({ length: 25 }, (_, i) => row(1, `b${i}`)),
+      complete: true,
+    });
+    const inbox = await readInbox("tok-e");
+    expect(inbox?.conversations).toBe(25);
+    expect(inbox?.unread).toHaveLength(20);
+    expect(inbox?.unread[0].bookingId).toBe("b0");
+    // The count by booking is not capped: a manifest's party may be the 25th.
+    expect(Object.keys(inbox?.unreadByBooking ?? {})).toHaveLength(25);
   });
 });
 

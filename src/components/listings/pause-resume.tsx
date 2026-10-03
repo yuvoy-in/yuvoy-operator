@@ -264,33 +264,16 @@ export function PauseResume({
         <p className="text-forest/70 mt-1.5 text-xs">Optional. We read it.</p>
       </div>
 
-      <div>
-        <label
-          htmlFor={`pause-confirm-${experienceId}`}
-          className="label text-forest/75"
-        >
-          Type this listing&rsquo;s id to confirm
-        </label>
-        {/*
-          Not a checkbox. "A checkbox is one mis-tap on a wet phone away from
-          taking a live listing off sale" — the same reason calling off a
-          departure asks for the departure's own id.
-
-          The id is shown right here because it is not something anybody has
-          memorised, and hiding it would turn a confirmation into a puzzle.
-        */}
-        <p className="text-forest/70 mt-1.5 text-xs">
-          <span className="font-mono">{experienceId}</span> · for {title}
-        </p>
-        <input
-          id={`pause-confirm-${experienceId}`}
-          name="confirmExperienceId"
-          defaultValue={paused.typed?.confirmExperienceId ?? ""}
-          autoComplete="off"
-          spellCheck={false}
-          className={inputClass("mt-2 font-mono")}
-        />
-      </div>
+      {/*
+        No id to type. It used to ask for this listing's id, typed in
+        monospace, because the API requires `confirmExperienceId` ("not a
+        boolean: a checkbox is one mis-tap on a wet phone away from taking a
+        live listing off sale"). The question above names the listing and what
+        pausing does, "Pause it" is the one deliberate tap, and the id is this
+        listing's own, filled here (owner ruling, 3 Oct 2026: a named confirm
+        everywhere; yuvoy-api#261). The action still refuses any other id.
+      */}
+      <input type="hidden" name="confirmExperienceId" value={experienceId} />
 
       {paused.message ? (
         <p role="alert" className="text-terra-deep text-sm font-bold">
@@ -324,8 +307,8 @@ export function PauseResume({
 /**
  * Resume, armed by one tap and sent by a second.
  *
- * Not typed like a pause, because it is not destructive — pausing again is
- * one form away. But it puts a listing in front of travellers straight away,
+ * Lighter than a pause, with no reason to give, because it is not
+ * destructive: pausing again is one form away. But it puts a listing in front of travellers straight away,
  * and a mis-tap on a wet phone should not open bookings for a boat that is
  * out of the water, so the second tap says what the first one will do.
  */

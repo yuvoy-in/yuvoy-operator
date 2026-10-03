@@ -379,3 +379,57 @@ describe("PartyRow: where the cancel sits", () => {
     ).toBeTruthy();
   });
 });
+
+/*
+  Audit 5.2: a manifest row never opened its booking, and a traveller who
+  wrote "we are running late" was only visible in the inbox.
+*/
+describe("PartyRow — its booking and its messages", () => {
+  const HREF = "/bookings/bk_1?from=%2Ftoday%2Fslot_dawn";
+
+  function row(extra: { bookingHref?: string; unread?: number }) {
+    return render(
+      <ul>
+        <PartyRow
+          party={party}
+          slotId="slot_dawn"
+          departed={false}
+          screening={null}
+          cash={null}
+          timezone={TZ}
+          canManage
+          {...extra}
+        />
+      </ul>,
+    );
+  }
+
+  it("opens its booking, with the departure as the way back", () => {
+    row({ bookingHref: HREF });
+    expect(screen.getByRole("link", { name: "Booking" })).toHaveAttribute(
+      "href",
+      HREF,
+    );
+  });
+
+  it("says a traveller wrote, and opens the conversation", () => {
+    row({ bookingHref: HREF, unread: 2 });
+    expect(
+      screen.getByRole("link", { name: "2 new messages" }),
+    ).toHaveAttribute("href", `${HREF}#conversation`);
+  });
+
+  it("speaks one message in the singular, and says nothing at none", () => {
+    const { unmount } = row({ bookingHref: HREF, unread: 1 });
+    expect(screen.getByRole("link", { name: "1 new message" })).toBeVisible();
+    unmount();
+    row({ bookingHref: HREF, unread: 0 });
+    expect(screen.queryByRole("link", { name: /new message/ })).toBeNull();
+  });
+
+  it("draws neither for a party with no booking to open", () => {
+    row({ unread: 3 });
+    expect(screen.queryByRole("link", { name: "Booking" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /new message/ })).toBeNull();
+  });
+});

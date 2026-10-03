@@ -8,11 +8,14 @@ import { CloseDeparture } from "@/app/calendar/close-departure";
 import type { OperatorSlot } from "@/lib/day/types";
 import { saleChip } from "@/lib/day/off-sale";
 import { marketTime } from "@/lib/format/market-time";
+import { marketDayOf } from "@/lib/day/calendar";
+import { shortDate } from "@/lib/home/words";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { Panel } from "@/components/ui/panel";
 import { inputClass } from "@/components/ui/input";
+import { withFrom } from "@/lib/site/back-to";
 
 type Act = "time" | "seats" | "stop" | "off";
 
@@ -102,7 +105,14 @@ export function DepartureRow({
           they get here.
         */}
         <ButtonLink
-          href={`/today/${slot.id}`}
+          href={
+            slot.experienceId
+              ? withFrom(
+                  `/today/${slot.id}`,
+                  `/today/listing/${slot.experienceId}`,
+                )
+              : `/today/${slot.id}`
+          }
           variant="secondary"
           size="md"
           block={false}
@@ -238,6 +248,8 @@ export function DepartureRow({
           alreadyCalledOff={calledOff}
           canManage={canManage}
           time={time}
+          title={slot.title}
+          day={shortDate(marketDayOf(slot.startsAt, slot.timezone) ?? "")}
           startOpen
           onKeep={() => setOpen(null)}
           onBusyChange={setBusy}

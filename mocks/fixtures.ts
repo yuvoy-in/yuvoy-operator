@@ -2170,8 +2170,9 @@ export const MESSAGE_THREADS: MockThread[] = [
   },
   {
     /*
-      The only conversation with anything UNREAD, and the only one the Home strip
-      and the unread chip are asserted against.
+      One of the two conversations with anything UNREAD (Hana's, below, is the
+      other, answered from Home), and the one the unread chip is asserted
+      against.
 
       Two messages, both from the traveller, both after the last thing the
       business said: `unreadCount` is "the traveller's messages nobody at the
@@ -2201,6 +2202,29 @@ export const MESSAGE_THREADS: MockThread[] = [
         senderName: "Sofia Alves",
         text: "I am running about ten minutes behind.",
         sentAt: todayAt("06:20"),
+      },
+    ],
+  },
+  {
+    /*
+      The conversation answered from HOME (operator experiment A): one
+      message, unread, from the traveller paying at the counter on the 20:30.
+      Hana's booking because no other test writes to it or reads it.
+
+      Reading it is not reversible, and the mock's state is shared by both
+      Playwright projects, so ONE test reads it: the mobile project's, in the
+      same serial block as the strip test that reads Sofia's, which is what
+      lets that block count both.
+    */
+    bookingId: "bkg_cash_today",
+    unread: 1,
+    messages: [
+      {
+        id: "msg_today_01",
+        from: "traveller",
+        senderName: "Hana Ito",
+        text: "Can I pay you in cash at the jetty?",
+        sentAt: todayAt("05:30"),
       },
     ],
   },

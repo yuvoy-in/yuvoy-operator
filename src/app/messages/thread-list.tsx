@@ -14,6 +14,7 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { panelClass } from "@/components/ui/panel";
 import { ChevronRightIcon } from "@/components/ui/icons";
+import { withFrom } from "@/lib/site/back-to";
 
 /**
  * The conversations list — yuvoy-operator#52 item 5.
@@ -131,7 +132,7 @@ function ThreadRowLink({ row, now }: { row: ThreadRow; now: number }) {
       conversation they are answering.
     */
     <Link
-      href={`/bookings/${row.bookingId}#conversation`}
+      href={withFrom(`/bookings/${row.bookingId}#conversation`, "/messages")}
       className={panelClass(
         "raised",
         "ease-interaction hover:bg-paper flex items-center gap-3 px-4 py-4 transition-colors duration-200",

@@ -6,6 +6,7 @@ import { Problem } from "@/components/ui/states";
 import { ButtonLink } from "@/components/ui/button";
 import { now } from "@/lib/format/market-time";
 import { ThreadList } from "./thread-list";
+import { SUPPORT_PHONE } from "@/lib/site/contact";
 
 export const metadata: Metadata = { title: "Conversations" };
 export const dynamic = "force-dynamic";
@@ -54,7 +55,7 @@ export default async function MessagesPage() {
         <div className="mt-8">
           <Problem
             title="Conversations did not load."
-            body="Nothing is lost. Try again, and tell us if it keeps happening."
+            body={`Nothing is lost. Try again, and if it keeps happening call us on ${SUPPORT_PHONE}.`}
           />
           {/*
             A link rather than a client button with a refresh in it. This route

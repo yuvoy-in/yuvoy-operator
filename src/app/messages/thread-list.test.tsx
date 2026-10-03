@@ -75,7 +75,7 @@ describe("a conversation row", () => {
     list([row()]);
     expect(screen.getByRole("link")).toHaveAttribute(
       "href",
-      "/bookings/bkg_card#conversation",
+      "/bookings/bkg_card?from=%2Fmessages#conversation",
     );
   });
 

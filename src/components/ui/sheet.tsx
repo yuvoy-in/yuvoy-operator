@@ -33,13 +33,21 @@ export function Sheet({
   onClose,
   children,
   className,
+  layout = "bottom",
 }: {
   /** Named for a screen reader, and drawn as the sheet's heading. */
   title: string;
   onClose: () => void;
   children: ReactNode;
   className?: string;
+  /**
+   * `inspector` is the board's: a sheet from the bottom on a phone, and on a
+   * desktop a panel down the right edge, so the week it was opened from stays
+   * in view beside it (operator experiment B).
+   */
+  layout?: "bottom" | "inspector";
 }) {
+  const inspector = layout === "inspector";
   const headingId = useId();
   const panel = useRef<HTMLDivElement>(null);
 
@@ -63,7 +71,12 @@ export function Sheet({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex items-end justify-center",
+        inspector && "lg:items-stretch lg:justify-end",
+      )}
+    >
       {/*
         The backdrop is a button so a tap outside closes the sheet, which is
         the second gesture everybody tries. Hidden from the accessibility tree:
@@ -85,6 +98,8 @@ export function Sheet({
         tabIndex={-1}
         className={cn(
           "rounded-t-card border-paper-line bg-paper text-forest relative max-h-[88vh] w-full max-w-xl overflow-y-auto border p-5 pb-8 outline-none",
+          inspector &&
+            "lg:rounded-l-card lg:h-full lg:max-h-none lg:max-w-md lg:rounded-tr-none",
           className,
         )}
       >

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerWithin, count, dayWords, daysBetween, shortDate } from "./words";
+import { count, dayWords, daysBetween, shortDate } from "./words";
 
 describe("the words Home is written in", () => {
   it("counts in the singular and the plural", () => {
@@ -26,16 +26,5 @@ describe("the words Home is written in", () => {
     // A week out, the weekday alone would be ambiguous.
     expect(dayWords("2026-09-29", today)).toBe("Tue 29 Sep");
     expect(daysBetween("2026-09-22", "2026-10-01")).toBe(9);
-  });
-
-  it("says the clock on a request from the server's own minutes", () => {
-    expect(answerWithin(24)).toBe("answer within 24 min");
-    expect(answerWithin(80)).toBe("answer within 1h 20m");
-    expect(answerWithin(120)).toBe("answer within 2h");
-    expect(answerWithin(1_805)).toBe("answer within 1 day");
-    expect(answerWithin(3 * 24 * 60)).toBe("answer within 3 days");
-    // Never negative on the wire, and never a negative clock on screen.
-    expect(answerWithin(0)).toBe("out of time to answer");
-    expect(answerWithin(undefined)).toBe("out of time to answer");
   });
 });

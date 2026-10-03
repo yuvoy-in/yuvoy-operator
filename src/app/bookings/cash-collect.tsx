@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   recordCashCollected,
   type CashState,
@@ -68,6 +68,7 @@ export function CashCollect({
   cash,
   timezone,
   emphasis = "secondary",
+  onRecorded,
 }: {
   bookingId: string;
   /** The departure this row sits on, so its manifest re-reads. Empty on a booking's own page. */
@@ -82,6 +83,11 @@ export function CashCollect({
    * in, which is what a row there is mostly for.
    */
   emphasis?: "primary" | "secondary";
+  /**
+   * Told once the API holds the cash, for a list that must keep this row
+   * after the server re-render drops the party (Home's cash card).
+   */
+  onRecorded?: () => void;
 }) {
   const [result, record, pending] = useActionState<CashState, FormData>(
     recordCashCollected,
@@ -91,6 +97,10 @@ export function CashCollect({
   const [typed, setTyped] = useState("");
 
   const recorded = result.recorded;
+  useEffect(() => {
+    if (recorded) onRecorded?.();
+  }, [recorded, onRecorded]);
+
   if (recorded || cash.collected) {
     const shown: BookingCash = recorded
       ? {

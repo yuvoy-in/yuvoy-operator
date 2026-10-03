@@ -60,7 +60,7 @@ describe("an opened departure", () => {
     // yuvoy-operator#96 item 6: a label that scans.
     expect(screen.getByRole("link", { name: "Who is booked" })).toHaveAttribute(
       "href",
-      "/today/slot_1",
+      "/today/slot_1?from=%2Fcalendar",
     );
     expect(screen.queryByText(/calling it off/)).toBeNull();
   });

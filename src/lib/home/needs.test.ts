@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { Standing } from "@/lib/account/standing";
 import type { OpenRequest } from "@/lib/day/request-types";
 import type { HomeListing } from "./listings";
-import { needsYou, requestNeed, type TodayCash } from "./needs";
+import type { ThreadRow } from "@/lib/messages/thread";
+import { needsYou, type CashParty, type TodayCash } from "./needs";
 
 const TODAY = "2026-09-22"; // a Tuesday
+const TOMORROW = "2026-09-23";
 const NOW = Date.parse("2026-09-22T00:30:00Z"); // 06:00 in the market
 
 const standing = (over: Partial<Standing> = {}): Standing => ({
@@ -43,6 +45,34 @@ const listing = (over: Partial<HomeListing> = {}): HomeListing => ({
   ...over,
 });
 
+const party = (over: Partial<CashParty> = {}): CashParty => ({
+  bookingId: "bkg_1",
+  name: "Asha Menon",
+  reference: "YV-4K2M9P7Q",
+  guests: 2,
+  state: "confirmed",
+  cash: { collectPaise: 500_000, collected: false },
+  ...over,
+});
+
+const thread = (over: Partial<ThreadRow> = {}): ThreadRow => ({
+  bookingId: "bkg_card",
+  reference: "YV-CARD6N7P",
+  experience: "Reef dive",
+  // 11:30 today in the market, after NOW.
+  startsAt: "2026-09-22T06:00:00Z",
+  timezone: "Asia/Kolkata",
+  unreadCount: 2,
+  ...over,
+});
+
+const NO_INBOX = {
+  messages: 0,
+  conversations: 0,
+  unread: [] as ThreadRow[],
+  unreadByBooking: {},
+};
+
 const base = {
   standing: standing(),
   suspended: false,
@@ -51,8 +81,9 @@ const base = {
   listings: [listing()],
   cash: [] as TodayCash[],
   unrecorded: 0,
-  inbox: { messages: 0, conversations: 0 },
+  inbox: NO_INBOX,
   today: TODAY,
+  tomorrow: TOMORROW,
   now: NOW,
 };
 
@@ -61,56 +92,8 @@ const keys = (needs: ReturnType<typeof needsYou>) => needs.map((n) => n.key);
 /*
   yuvoy-operator#96 block 2, and #82 s2: "requests waiting first, then
   messages, then anything else, and each labelled with the time pressure".
+  The request card's own words are `request-view.test.ts`.
 */
-describe("a request, as its row says it", () => {
-  it("says how many, which departure, and the clock", () => {
-    expect(requestNeed(request(), TODAY)).toMatchObject({
-      kind: "request",
-      id: "req_1",
-      title: "Snorkel trip",
-      detail: "3 people · Sat 09:00 · answer within 1h 20m",
-      urgent: false,
-    });
-  });
-
-  it("marks the ones inside the hour", () => {
-    expect(requestNeed(request({ minutesToAnswer: 24 }), TODAY).urgent).toBe(
-      true,
-    );
-  });
-
-  it("says today and tomorrow as words, and one person in the singular", () => {
-    expect(
-      requestNeed(
-        request({ guests: 1, startsAt: "2026-09-22T18:00:00Z" }),
-        TODAY,
-      ).detail,
-    ).toBe("1 person · today 23:30 · answer within 1h 20m");
-  });
-
-  it("says before the tap when the party will not fit", () => {
-    expect(
-      requestNeed(request({ guests: 5, seatsGrantable: 3 }), TODAY).short,
-    ).toBe("Only 3 seats left, not enough for this party");
-    expect(requestNeed(request(), TODAY).short).toBeUndefined();
-  });
-
-  it("answers the ceiling exactly as the Bookings queue does", () => {
-    /*
-      `canGrant` decides it on both screens. The boundary is where a second
-      copy of the comparison would drift: a party that exactly fills what is
-      left CAN be accepted, and Home saying otherwise would refuse a sale the
-      API would have taken.
-    */
-    expect(
-      requestNeed(request({ guests: 4, seatsGrantable: 4 }), TODAY).short,
-    ).toBeUndefined();
-    expect(
-      requestNeed(request({ guests: 4, seatsGrantable: 3 }), TODAY).short,
-    ).toBe("Only 3 seats left, not enough for this party");
-  });
-});
-
 describe("what needs the operator", () => {
   it("draws nothing when nothing is waiting", () => {
     expect(needsYou(base)).toEqual([]);
@@ -137,12 +120,26 @@ describe("what needs the operator", () => {
           startsAt: "2026-09-22T03:30:00Z",
           timezone: "Asia/Kolkata",
           title: "Reef dive",
-          parties: 2,
-          collectPaise: 1_000_000,
+          parties: [party(), party({ bookingId: "bkg_2", name: "Kavya Iyer" })],
         },
       ],
       unrecorded: 7,
-      inbox: { messages: 3, conversations: 2 },
+      inbox: {
+        messages: 3,
+        conversations: 2,
+        unreadByBooking: {},
+        unread: [
+          // About a departure later today: on that departure's clock.
+          thread(),
+          // About another day: after everything with a clock.
+          thread({
+            bookingId: "bkg_old",
+            reference: "YV-OLD12345",
+            startsAt: "2026-09-26T03:30:00Z",
+            unreadCount: 1,
+          }),
+        ],
+      },
       standing: standing({
         blocking: [
           {
@@ -158,22 +155,33 @@ describe("what needs the operator", () => {
     expect(keys(needs)).toEqual([
       "request-r1",
       "request-r2",
-      // Off sale already costs sales now; the cash is due at 09:00.
+      // Off sale already costs sales now; the cash is due at 09:00, and the
+      // guest writing about the 11:30 is on that departure's clock.
       "confirm-seats",
       "cash-slot_9",
-      "messages",
+      "message-bkg_card",
+      "message-bkg_old",
       "no-dates",
       "unrecorded",
       "account-LOGO_MISSING-0",
     ]);
     expect(needs.find((n) => n.key === "cash-slot_9")).toMatchObject({
-      text: "Collect ₹10,000 from 2 parties on the 09:00",
-      detail: "Reef dive",
-      href: "/today/slot_9",
+      kind: "cash",
+      text: "Collect ₹10,000 on the 09:00",
+      detail: "Reef dive · 2 parties",
+      slotId: "slot_9",
     });
-    expect(needs.find((n) => n.key === "messages")).toMatchObject({
-      text: "2 guests wrote to you",
-      href: "/messages",
+    expect(needs.find((n) => n.key === "message-bkg_card")).toEqual({
+      kind: "message",
+      key: "message-bkg_card",
+      bookingId: "bkg_card",
+      reference: "YV-CARD6N7P",
+      unread: "2 new",
+      trip: "Reef dive · Today at 11:30",
+    });
+    expect(needs.find((n) => n.key === "request-r1")).toMatchObject({
+      kind: "request",
+      view: { title: "Reuben Mathai, 3 people", clock: "24 min left" },
     });
     expect(needs.find((n) => n.key === "no-dates")).toMatchObject({
       text: "test2Activity has no dates in the next 30 days",
@@ -208,6 +216,80 @@ describe("what needs the operator", () => {
       text: "2 more requests waiting",
       href: "/bookings?view=requests",
     });
+  });
+
+  it("offers three guests to answer and hands the rest to Messages", () => {
+    const unread = ["a", "b", "c", "d"].map((id) =>
+      thread({ bookingId: id, startsAt: "2026-09-26T03:30:00Z" }),
+    );
+    const needs = needsYou({
+      ...base,
+      inbox: { messages: 9, conversations: 5, unread, unreadByBooking: {} },
+    });
+    expect(keys(needs)).toEqual([
+      "message-a",
+      "message-b",
+      "message-c",
+      "messages-more",
+    ]);
+    // Five conversations are unread, whatever the walk kept rows for.
+    expect(needs[3]).toMatchObject({
+      text: "2 more guests wrote to you",
+      href: "/messages",
+    });
+  });
+
+  it("names a document about to take listings down, by the day it runs out", () => {
+    const insured = standing({
+      credentials: [
+        {
+          id: "c1",
+          type: "insurance",
+          state: "verified",
+          hasFile: true,
+          mandatory: true,
+          // 21 market days after TODAY.
+          expiresOn: "2026-10-13",
+        },
+      ],
+    });
+    const needs = needsYou({ ...base, standing: insured });
+    expect(needs).toEqual([
+      {
+        kind: "document",
+        key: "document-0-Insurance",
+        text: "Insurance expires 13 October 2026. Listings that need it come down that day.",
+        chip: "21 days left",
+        action: { href: "/profile#documents", label: "Replace it" },
+      },
+    ]);
+    // A staff phone is not who renews it, and an account on hold cannot.
+    expect(needsYou({ ...base, standing: insured, canManage: false })).toEqual(
+      [],
+    );
+    expect(
+      needsYou({ ...base, standing: insured, suspended: true }).map(
+        (n) => n.key,
+      ),
+    ).toEqual(["suspended"]);
+    // Outside the renewal window it is not news yet.
+    expect(
+      needsYou({
+        ...base,
+        standing: standing({
+          credentials: [
+            {
+              id: "c1",
+              type: "insurance",
+              state: "verified",
+              hasFile: true,
+              mandatory: true,
+              expiresOn: "2027-03-01",
+            },
+          ],
+        }),
+      }),
+    ).toEqual([]);
   });
 
   it("says the messages did not load, rather than drawing nothing", () => {
@@ -262,7 +344,7 @@ describe("what needs the operator", () => {
         kind: "link",
         key: "requests-staff",
         text: "2 requests are waiting on an answer",
-        detail: "Soonest: answer within 24 min",
+        detail: "Soonest: 24 min left",
         action: "Open Bookings",
         href: "/bookings?view=requests",
         tone: "alert",
@@ -370,13 +452,13 @@ describe("what needs the operator", () => {
           startsAt: "2026-09-22T11:30:00Z",
           timezone: "Asia/Kolkata",
           title: "Sunset cruise",
-          parties: 1,
-          collectPaise: null,
+          parties: [party({ cash: { collectPaise: null, collected: false } })],
         },
       ],
     });
     expect(needs[0]).toMatchObject({
-      text: "Collect cash from 1 party on the 17:00",
+      text: "Collect cash on the 17:00",
+      detail: "Sunset cruise · 1 party",
     });
   });
 });

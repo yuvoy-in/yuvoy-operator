@@ -12,9 +12,12 @@ import { OperatorApiError } from "@/lib/api/errors";
 import {
   hasDeparted,
   marketDay,
+  marketDays,
   marketTime,
   now,
 } from "@/lib/format/market-time";
+import { marketDayOf } from "@/lib/day/calendar";
+import { dayWords } from "@/lib/home/words";
 import { Problem } from "@/components/ui/states";
 import { PartyRow } from "./party-row";
 import { RelayPanel } from "./relay-panel";
@@ -22,6 +25,9 @@ import { CallOffPanel } from "./call-off-panel";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { ButtonLink } from "@/components/ui/button";
+import { readInbox } from "@/lib/site/inbox";
+import { backFrom, hereWith, withFrom } from "@/lib/site/back-to";
 
 /**
  * The departure, not the word "Manifest" — yuvoy-operator#21.
@@ -88,11 +94,20 @@ export const dynamic = "force-dynamic";
  */
 export default async function ManifestPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slotId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { slotId } = await params;
+  const [{ slotId }, query] = await Promise.all([params, searchParams]);
   const { token, me } = await requireOperator();
+  /*
+    Who wrote, by booking, so a party's row can say "2 new messages" at the
+    jetty (audit 5.2). The walk the root layout already made for the inbox
+    (`cache`d for the request), so it costs nothing here; `null` draws no
+    flag rather than a zero nobody measured.
+  */
+  const inbox = readInbox(token);
 
   let manifest;
   try {
@@ -179,10 +194,23 @@ export default async function ManifestPage({
   // is impure and the React compiler refuses it — and a "has it departed yet"
   // that flips between two renders is a set of buttons appearing and vanishing
   // under a wet thumb.
-  const departed = startsAt ? hasDeparted(startsAt, await now()) : false;
+  const [at, { today }] = await Promise.all([now(), marketDays()]);
+  const departed = startsAt ? hasDeparted(startsAt, at) : false;
+
+  // Back goes where the operator came from (audit 5.8), the day by default.
+  const back = backFrom(query.from, { href: "/today", label: "the day" });
+  const here = hereWith(`/today/${slotId}`, query);
+  const unread = (await inbox)?.unreadByBooking ?? null;
+  const bookingOf = (party: PartyForClient) =>
+    party.bookingId
+      ? {
+          bookingHref: withFrom(`/bookings/${party.bookingId}`, here),
+          ...(unread ? { unread: unread[party.bookingId] ?? 0 } : {}),
+        }
+      : {};
 
   return (
-    <Screen nav={{ back: { href: "/today", label: "the day" } }}>
+    <Screen nav={{ back }}>
       <RefreshOnFocus />
 
       <h1 className="font-display tracking-display text-4xl leading-[1.05]">
@@ -317,6 +345,19 @@ export default async function ManifestPage({
       ) : null}
 
       {/*
+        Boarding mode (operator experiment D): this manifest built for the
+        jetty, one hand and bright sun. The one primary action here, because
+        at the boat it is the thing the screen is for.
+      */}
+      {!manifest.calledOff && confirmedRows.length > 0 ? (
+        <div className="mt-6">
+          <ButtonLink href={withFrom(`/today/${slotId}/boarding`, here)}>
+            {departed ? "Close out the boat" : "Start boarding"}
+          </ButtonLink>
+        </div>
+      ) : null}
+
+      {/*
         Telling the whole departure something. Above the list rather than
         below it: at 6am the thing an operator most often needs is to move a
         time or a meeting point for everybody, not to tick one person off.
@@ -397,6 +438,7 @@ export default async function ManifestPage({
                   cash={cashOf(party)}
                   timezone={timezone}
                   canManage={me.canManage}
+                  {...bookingOf(party)}
                 />
               ))}
             </ul>
@@ -442,6 +484,12 @@ export default async function ManifestPage({
         alreadyCalledOff={Boolean(manifest.calledOff)}
         canManage={me.canManage}
         time={startsAt ? marketTime(startsAt, timezone) : undefined}
+        title={manifest.experience}
+        day={
+          startsAt
+            ? dayWords(marketDayOf(startsAt, timezone) ?? "", today)
+            : undefined
+        }
       />
     </Screen>
   );

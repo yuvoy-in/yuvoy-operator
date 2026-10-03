@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { markAttendance, type AttendanceState } from "./actions";
 import { isHolding, type PartyForClient } from "@/lib/day/types";
@@ -31,6 +32,8 @@ export function PartyRow({
   cash,
   timezone,
   canManage,
+  bookingHref,
+  unread,
 }: {
   /**
    * The screener is NOT on this type. It is decided on the server and arrives
@@ -76,6 +79,16 @@ export function PartyRow({
    * which can still stop the trips it has already sold (#50).
    */
   canManage: boolean;
+  /**
+   * The party's booking, with this departure as its way back (audit 5.2: a
+   * manifest row never opened its booking). Absent on a hold, which has none.
+   */
+  bookingHref?: string;
+  /**
+   * Their unread messages, from the conversations list until the manifest
+   * carries it (yuvoy-api#260). Absent when that list could not be read.
+   */
+  unread?: number;
 }) {
   const [state, act, pending] = useActionState<AttendanceState, FormData>(
     markAttendance,
@@ -140,9 +153,33 @@ export function PartyRow({
         </p>
       </div>
 
-      <p className="text-forest/70 mt-1 text-sm tracking-wider slashed-zero tabular-nums">
-        {party.reference}
-      </p>
+      <div className="mt-1 flex items-center justify-between gap-3">
+        <p className="text-forest/70 text-sm tracking-wider slashed-zero tabular-nums">
+          {party.reference}
+        </p>
+        {bookingHref ? (
+          <Link
+            href={bookingHref}
+            className="text-forest tap-target shrink-0 text-sm font-bold underline underline-offset-4"
+          >
+            Booking
+          </Link>
+        ) : null}
+      </div>
+
+      {/*
+        A traveller who wrote ("we are running ten minutes late") is said on
+        their row, so it is read at the jetty rather than found in the inbox
+        afterwards. Opens their conversation, on the booking.
+      */}
+      {bookingHref && unread !== undefined && unread > 0 ? (
+        <Link
+          href={`${bookingHref}#conversation`}
+          className="text-terra-deep tap-target mt-1 text-sm font-bold underline underline-offset-4"
+        >
+          {unread === 1 ? "1 new message" : `${unread} new messages`}
+        </Link>
+      ) : null}
 
       {/*
         The screener. Above the buttons, because it changes whether somebody
@@ -362,6 +399,7 @@ export function PartyRow({
         <CancelBooking
           bookingId={party.bookingId}
           reference={party.reference ?? ""}
+          {...(party.name ? { who: party.name } : {})}
           isCash={Boolean(cash)}
           context="manifest"
           onDone={() => setCancelledHere(true)}

@@ -4,6 +4,7 @@ import { requireOperator } from "@/lib/auth/session";
 import { getSettlement } from "@/lib/money/fetch";
 import { fetchStatement } from "@/lib/money/statement";
 import { hasStatement } from "@/lib/money/settlements";
+import { SUPPORT_PHONE } from "@/lib/site/contact";
 
 /**
  * Handing a payout statement to the browser (yuvoy-operator#47 item 7).
@@ -81,8 +82,7 @@ export async function downloadStatement(id: string): Promise<DownloadResult> {
         "This payout has not been sent yet, so it has no statement. Reload the page.",
       not_found:
         "We could not find that payout. Reload the page and try again.",
-      corrupt:
-        "The statement did not arrive whole, so we have not saved it. Try again, and tell us if it keeps happening.",
+      corrupt: `The statement did not arrive whole, so we have not saved it. Try again, and if it keeps happening call us on ${SUPPORT_PHONE}.`,
       failed: "The statement did not download. Try again in a moment.",
     }[result.reason];
     return { ok: false, message };
