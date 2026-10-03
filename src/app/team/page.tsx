@@ -1,3 +1,4 @@
+import { SUPPORT_PHONE } from "@/lib/site/contact";
 import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
 import { listTeam } from "@/lib/team/fetch";
@@ -118,7 +119,7 @@ export default async function TeamPage() {
           <div className="mt-3">
             <Empty
               title="Nobody is listed"
-              body="That should not be possible. An account always has an owner. Message us before you rely on this screen."
+              body={`That should not be possible. An account always has an owner. Call us on ${SUPPORT_PHONE} before you rely on this screen.`}
             />
           </div>
         ) : (

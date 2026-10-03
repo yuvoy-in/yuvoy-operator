@@ -7,12 +7,13 @@ import { OperatorApiError } from "@/lib/api/errors";
 */
 
 const post = vi.fn();
+let canManage = true;
 
 vi.mock("@/lib/api/server-client", () => ({
   operatorApi: () => ({ POST: post }),
 }));
 vi.mock("@/lib/auth/session", () => ({
-  requireOperator: async () => ({ token: "tok", me: { canManage: true } }),
+  requireOperator: async () => ({ token: "tok", me: { canManage } }),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/format/market-time", async (original) => ({
@@ -21,7 +22,7 @@ vi.mock("@/lib/format/market-time", async (original) => ({
   now: async () => Date.parse("2026-09-21T14:30:00Z"),
 }));
 
-const { acceptRequest } = await import("./actions");
+const { acceptRequest, declineRequest } = await import("./actions");
 
 function form(timezone = "Asia/Kolkata"): FormData {
   const f = new FormData();
@@ -34,7 +35,32 @@ function answered(data: Record<string, unknown>) {
   post.mockResolvedValue({ data, error: undefined });
 }
 
-beforeEach(() => post.mockReset());
+beforeEach(() => {
+  post.mockReset();
+  canManage = true;
+});
+
+/*
+  The action checks the role itself at the moment of the tap. A Server Action
+  is a public POST endpoint, so this holds even for a staff phone that is no
+  longer shown the queue (yuvoy-operator#117 item 1); it was proved only by an
+  e2e test that forced a disabled Accept, which has no button to force now.
+*/
+describe("a staff login, at the action", () => {
+  it("is refused before anything reaches the API", async () => {
+    canManage = false;
+    expect(await acceptRequest({}, form())).toEqual({
+      requestId: "req_1",
+      message: "Only owners, admins and managers can answer requests.",
+    });
+    const decline = form();
+    decline.set("reasonCode", "weather");
+    expect(await declineRequest({}, decline)).toMatchObject({
+      message: "Only owners, admins and managers can answer requests.",
+    });
+    expect(post).not.toHaveBeenCalled();
+  });
+});
 
 describe("accepting a request: yuvoy-operator#95", () => {
   it("carries the API's own sentence, capitalised and dedashed", async () => {

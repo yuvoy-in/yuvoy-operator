@@ -1,5 +1,6 @@
 "use server";
 
+import { SUPPORT_PHONE } from "@/lib/site/contact";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
@@ -270,8 +271,7 @@ export async function fileCredential(
     if (err instanceof OperatorApiError) {
       if (err.status === 409) {
         return {
-          message:
-            "We already hold a verified copy of that one. Message us if it needs replacing.",
+          message: `We already hold a verified copy of that one. Call us on ${SUPPORT_PHONE} if it needs replacing.`,
         };
       }
       if (err.status === 400 && err.message) return { message: err.message };

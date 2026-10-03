@@ -21,14 +21,32 @@ export const VIEWS = ["requests", "upcoming", "past", "cancelled"] as const;
 export type View = (typeof VIEWS)[number];
 
 /**
+ * The pills this login is offered.
+ *
+ * STAFF are not offered Requests (yuvoy-operator#117 item 1). They can never
+ * answer one (`POST /requests/{id}/accept` is 403 for STAFF), so the pill was a
+ * door that only said "not you", with a count that asked them to do something
+ * they could not. Requests reach the people who can answer them, here and on
+ * Home; the Bookings badge follows the same rule (`countBadges`).
+ */
+export function viewsFor(canAnswerRequests: boolean): readonly View[] {
+  return canAnswerRequests ? VIEWS : VIEWS.filter((v) => v !== "requests");
+}
+
+/**
  * The pill a URL asks for, or `null` for "decide from the counts".
  *
  * "Any other value is treated as absent" rather than refused: this arrives in a
  * URL somebody may have edited or a link somebody kept, and a 400 screen for a
  * typo in a query string is worse than the default pill.
  */
-export function readView(raw: string | undefined): View | null {
-  return (VIEWS as readonly string[]).includes(raw ?? "")
+export function readView(
+  raw: string | undefined,
+  views: readonly View[] = VIEWS,
+): View | null {
+  // A pill this login is not offered reads as absent too: a kept link to
+  // Requests opens a staff phone on its default pill, not on a door.
+  return (views as readonly string[]).includes(raw ?? "")
     ? (raw as View)
     : null;
 }
@@ -209,17 +227,24 @@ export function toCounts(raw: unknown): Counts | null {
 export function defaultView(
   counts: Counts | null,
   waiting: number | null = null,
+  views: readonly View[] = VIEWS,
 ): View {
-  if (!counts) return (waiting ?? 0) > 0 ? "requests" : "upcoming";
-  return VIEWS.find((view) => counts[view] > 0) ?? "upcoming";
+  const offersRequests = views.includes("requests");
+  if (!counts) {
+    return offersRequests && (waiting ?? 0) > 0 ? "requests" : "upcoming";
+  }
+  return views.find((view) => counts[view] > 0) ?? "upcoming";
 }
 
 /**
  * Whether the business has no bookings and no requests at all, under no
  * filter. The one empty state that needs a way forward rather than a shrug.
  */
-export function nothingBooked(counts: Counts): boolean {
-  return VIEWS.every((view) => counts[view] === 0);
+export function nothingBooked(
+  counts: Counts,
+  views: readonly View[] = VIEWS,
+): boolean {
+  return views.every((view) => counts[view] === 0);
 }
 
 /**

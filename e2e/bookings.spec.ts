@@ -312,20 +312,23 @@ test("the Cancelled pill holds bookings, never a declined request", async ({
   await expect(page.locator("main")).not.toContainText("Reuben Mathai");
 });
 
-test("a staff login is told who can answer, on the Requests pill only", async ({
+test("a staff login is not offered the Requests pill, even from a kept link", async ({
   page,
 }) => {
+  /*
+    yuvoy-operator#117 item 1. Staff can never answer a request, and the pill
+    was a door that only said "not you". They get the other three, and a link
+    to Requests somebody kept opens on the default pill rather than on it.
+  */
   await signIn(page, STAFF);
-  await page.goto("/bookings?view=requests");
-  await expect(
-    page.getByText("Only owners, admins and managers can answer requests"),
-  ).toBeVisible();
+  await page.goto("/bookings");
+  await expect(pill(page, "Upcoming")).toBeVisible();
+  await expect(pill(page, "Requests")).toHaveCount(0);
 
-  // Not on the others: it is an answer to a question nobody asked there.
-  await page.goto("/bookings?view=upcoming");
-  await expect(
-    page.getByText("Only owners, admins and managers can answer requests"),
-  ).toHaveCount(0);
+  await page.goto("/bookings?view=requests");
+  await expect(pill(page, "Upcoming")).toHaveAttribute("aria-current", "page");
+  await expect(pill(page, "Requests")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Accept" })).toHaveCount(0);
 });
 
 test("/bookings has no accessibility violations", async ({ page }) => {
