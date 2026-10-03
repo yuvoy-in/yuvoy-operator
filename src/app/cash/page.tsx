@@ -14,6 +14,7 @@ import { helpHref } from "@/lib/help";
 import { Empty, Problem } from "@/components/ui/states";
 import { Screen } from "@/components/chrome/screen";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { SUPPORT_PHONE } from "@/lib/site/contact";
 
 export const metadata: Metadata = { title: "Cash you've collected" };
 
@@ -238,7 +239,7 @@ export default async function CashPage() {
                   <div className="mt-4">
                     <Problem
                       title="These lines do not add up to the total"
-                      body="The trips listed below do not account for the share shown above. Do not settle against this. Send us the dates and we will find it."
+                      body={`The trips listed below do not account for the share shown above. Do not settle against this. Call us on ${SUPPORT_PHONE} with the dates and we will find it.`}
                     />
                   </div>
                 ) : null}
@@ -257,7 +258,7 @@ export default async function CashPage() {
                 <div className="mt-4">
                   <Problem
                     title="These lines do not add up to the total"
-                    body="The trips listed below do not account for the share shown above. Send us the dates and we will find it."
+                    body={`The trips listed below do not account for the share shown above. Call us on ${SUPPORT_PHONE} with the dates and we will find it.`}
                   />
                 </div>
               ) : null}
