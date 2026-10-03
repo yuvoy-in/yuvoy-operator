@@ -19,7 +19,6 @@ import {
   departureProblem,
 } from "@/lib/day/departures";
 import { marketDays } from "@/lib/format/market-time";
-import { shiftDay } from "@/lib/day/calendar";
 import { dedash, dedashText } from "@/lib/format/dedash";
 import { sentence } from "@/lib/format/sentence";
 import { suspendedMessage } from "@/lib/account/suspended";
@@ -839,8 +838,9 @@ export interface ConfirmSeatsState {
  * sent, `{}` from Home and only `experienceId` from a listing's hub, and what
  * it confirms is exactly what the row counted.
  *
- * An API from before #244 refuses that body, and only then does the old
- * sweep run (`confirmSeatsByWindows`, below, with when to delete it).
+ * The year-long sweep that stood in for this while nobody could say whether
+ * api.yuvoy.in ran #244 is gone: it has since 29 Sep 2026, confirmed on
+ * yuvoy-operator#112 and checked from here on 3 Oct.
  *
  * Safe to send twice ("confirming twice leaves the departures as confirming
  * once did"), so a double tap on one bar of signal costs nothing. Seat counts
@@ -855,11 +855,13 @@ export async function confirmSeats(
   const { token, me } = await requireOperator();
   if (!me.canManage) return { message: ROLE_REFUSAL };
 
-  const api = operatorApi(token);
   try {
-    const { data, error } = await api.POST("/slots/confirm-seats", {
-      body: experienceId ? { experienceId } : {},
-    });
+    const { data, error } = await operatorApi(token).POST(
+      "/slots/confirm-seats",
+      {
+        body: experienceId ? { experienceId } : {},
+      },
+    );
     if (error) throw error;
 
     revalidateConfirmed(experienceId);
@@ -867,106 +869,8 @@ export async function confirmSeats(
       confirmed: Number.isInteger(data.confirmed) ? data.confirmed : 0,
     };
   } catch (err) {
-    if (refusesNoDates(err)) return confirmSeatsByWindows(api, experienceId);
     return confirmFailure(err);
   }
-}
-
-/*
-  THE FALLBACK FOR AN API FROM BEFORE yuvoy-api#244 (yuvoy-api#241).
-
-  Delete `refusesNoDates`, `confirmSeatsByWindows` and the two constants once
-  production is confirmed on yuvoy-api #244 or later. Merged is not deployed:
-  on 2 Oct 2026 #244 was on master, the API's deploy workflow had failed on
-  every push since 24 Sep and deploys were run by hand, so nobody could say
-  whether api.yuvoy.in answers the call above.
-
-  Before #244 the body had to carry `from` and `to`, and `{}` reaches a date
-  parse of an empty string: `400 invalid_input`, "dates look like
-  2006-01-02", with `details.from`. That refusal, and only that one, is read
-  as an older API. Every other answer is a real one, and is reported as one
-  rather than retried as a range.
-*/
-
-/** Days one ranged confirm covers: "both included, at most 31 days". */
-const CONFIRM_WINDOW_DAYS = 31;
-/** Windows swept per tap: twelve of 31 days, a year of departures. */
-const CONFIRM_WINDOWS = 12;
-
-/** The answer an API from before #244 gives a confirm with no dates. */
-function refusesNoDates(err: unknown): boolean {
-  return (
-    err instanceof OperatorApiError &&
-    err.status === 400 &&
-    err.code === "invalid_input"
-  );
-}
-
-/**
- * The old way: a year, in windows of 31 days.
- *
- * One ranged call covers "a market day from `from` to `to` (both included, at
- * most 31 days)", and confirming only the next 31 days left a departure 45
- * days out off sale, the row that counted it back on every load. So a year is
- * swept, in windows laid end to end from the market's today, and their
- * answers added up. The windows are decided here on the server, never taken
- * from the form, so a stale page cannot send one the API refuses.
- *
- * The windows go at once, not one after another: they touch different dates,
- * the route has no rate limit, and a tap on a phone waits for one round trip
- * instead of twelve. A sweep cut short is finished by trying again.
- */
-async function confirmSeatsByWindows(
-  api: ReturnType<typeof operatorApi>,
-  experienceId: string,
-): Promise<ConfirmSeatsState> {
-  const { today } = await marketDays();
-
-  const answers = await Promise.allSettled(
-    Array.from({ length: CONFIRM_WINDOWS }, async (_, i) => {
-      const from = shiftDay(today, i * CONFIRM_WINDOW_DAYS);
-      const { data, error } = await api.POST("/slots/confirm-seats", {
-        body: {
-          from,
-          to: shiftDay(from, CONFIRM_WINDOW_DAYS - 1),
-          ...(experienceId ? { experienceId } : {}),
-        },
-      });
-      if (error) throw error;
-      return Number.isInteger(data.confirmed) ? data.confirmed : 0;
-    }),
-  );
-
-  let confirmed = 0;
-  let failure: unknown = null;
-  let answered = 0;
-  for (const answer of answers) {
-    if (answer.status === "fulfilled") {
-      confirmed += answer.value;
-      answered += 1;
-    } else {
-      failure ??= answer.reason;
-    }
-  }
-
-  // Nothing answered: the tap failed, and says why.
-  if (answered === 0) return confirmFailure(failure);
-
-  revalidateConfirmed(experienceId);
-  if (failure === null) return { confirmed };
-
-  /*
-    Some dates answered and some did not. What was confirmed is said, with the
-    way to finish: trying again re-sweeps, and repeats nothing.
-  */
-  return {
-    message:
-      confirmed === 0
-        ? "Some dates did not answer. Try again."
-        : confirmed === 1
-          ? "Seats confirmed on 1 departure. Some dates did not answer. Try again."
-          : `Seats confirmed on ${confirmed} departures. Some dates did not answer. Try again.`,
-  };
 }
 
 /**
