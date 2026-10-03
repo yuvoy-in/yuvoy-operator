@@ -43,6 +43,8 @@ describe("the inbox count", () => {
       conversations: 2,
       // The unread ones, in the API's order, for Home to answer in place.
       unread: [row(2, "b1"), row(1, "b3")],
+      // And by booking, for the manifest's rows.
+      unreadByBooking: { b1: 2, b3: 1 },
     });
   });
 
@@ -89,6 +91,8 @@ describe("the inbox count", () => {
     expect(inbox?.conversations).toBe(25);
     expect(inbox?.unread).toHaveLength(20);
     expect(inbox?.unread[0].bookingId).toBe("b0");
+    // The count by booking is not capped: a manifest's party may be the 25th.
+    expect(Object.keys(inbox?.unreadByBooking ?? {})).toHaveLength(25);
   });
 });
 

@@ -15,6 +15,12 @@ export interface InboxCount {
    * place. At most `UNREAD_ROWS_KEPT`; `conversations` is still the count.
    */
   unread: ThreadRow[];
+  /**
+   * Unread messages by booking, for EVERY unread conversation the walk saw
+   * (not capped like `unread`): what a manifest row says beside a party
+   * ("2 new messages") until the manifest carries it (yuvoy-api#260).
+   */
+  unreadByBooking: Record<string, number>;
 }
 
 /** How many unread conversations the walk keeps rows for. Home draws three. */

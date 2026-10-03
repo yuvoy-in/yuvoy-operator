@@ -6684,6 +6684,13 @@ export const handlers = [
           state: bookingStateOf(party),
           guests: party.guests,
           experience: slot.title,
+          /*
+            The contract sends the listing's id on a booking, and the portal
+            finds the booking's departure by it (until yuvoy-api#259). Left
+            off, the booking would simply never link to its departure here,
+            green in every test and broken against the API.
+          */
+          experienceId: slot.experienceId,
           slot: { startsAt: slot.startsAt, timezone: slot.timezone },
           contact: { name: party.name },
           createdAt: new Date(
@@ -6711,6 +6718,7 @@ export const handlers = [
         state: "pending_request",
         guests: req.guests,
         experience: req.experience,
+        experienceId: req.experienceId,
         slot: { startsAt: req.startsAt, timezone: req.timezone },
         contact: { name: req.contactName },
         createdAt: req.requestedAt,

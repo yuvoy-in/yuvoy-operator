@@ -6,6 +6,7 @@ import { loadMoreBookings } from "./list-actions";
 import {
   dayTotals,
   emptyLine,
+  pillHref,
   rowName,
   type Filters,
   type View,
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { panelClass } from "@/components/ui/panel";
+import { withFrom } from "@/lib/site/back-to";
 
 /**
  * The rows under Upcoming, Past and Cancelled — yuvoy-operator#57 item 8.
@@ -111,7 +113,10 @@ export function BookingList({
               return (
                 <li key={booking.id || booking.reference}>
                   <Link
-                    href={`/bookings/${booking.id}`}
+                    href={withFrom(
+                      `/bookings/${booking.id}`,
+                      pillHref(view, filters),
+                    )}
                     className={panelClass(
                       "raised",
                       "ease-interaction hover:bg-paper flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",

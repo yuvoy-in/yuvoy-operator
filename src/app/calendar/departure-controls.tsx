@@ -11,6 +11,7 @@ import { marketTime } from "@/lib/format/market-time";
 import { helpHref } from "@/lib/help/types";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
+import { withFrom } from "@/lib/site/back-to";
 
 /**
  * Everything inside an opened departure on the calendar (yuvoy-operator#84
@@ -98,7 +99,7 @@ export function DepartureControls({
         calling it off" (yuvoy-operator#96 item 6): a label that scans.
       */}
       <Link
-        href={`/today/${slot.id}`}
+        href={withFrom(`/today/${slot.id}`, "/calendar")}
         className="text-forest decoration-forest/40 inline-flex min-h-11 items-center text-sm font-bold underline underline-offset-4"
       >
         Who is booked

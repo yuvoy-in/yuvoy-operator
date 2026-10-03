@@ -703,9 +703,10 @@ test("an opened departure holds its controls, and 'Who is booked' is the way in"
     await openDay(page, "Today"),
     "Try-dive at Nemo Reef",
   );
+  // With the calendar as its way back (audit 5.8).
   await expect(
     row.getByRole("link", { name: "Who is booked" }),
-  ).toHaveAttribute("href", "/today/slot_dawn");
+  ).toHaveAttribute("href", "/today/slot_dawn?from=%2Fcalendar");
   await expect(row.getByText(/calling it off/)).toHaveCount(0);
   await expect(row.getByLabel("Seats offered")).toBeVisible();
   await expect(

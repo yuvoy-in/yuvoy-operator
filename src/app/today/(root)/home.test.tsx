@@ -440,7 +440,7 @@ describe("a guest, answered on Home", () => {
       screen.getByRole("link", {
         name: "The whole conversation and the booking",
       }),
-    ).toHaveAttribute("href", "/bookings/bkg_card#conversation");
+    ).toHaveAttribute("href", "/bookings/bkg_card?from=%2Ftoday#conversation");
   });
 
   it("fills the box from a quick reply, sends only on Send, and says so", async () => {

@@ -66,7 +66,12 @@ const thread = (over: Partial<ThreadRow> = {}): ThreadRow => ({
   ...over,
 });
 
-const NO_INBOX = { messages: 0, conversations: 0, unread: [] as ThreadRow[] };
+const NO_INBOX = {
+  messages: 0,
+  conversations: 0,
+  unread: [] as ThreadRow[],
+  unreadByBooking: {},
+};
 
 const base = {
   standing: standing(),
@@ -122,6 +127,7 @@ describe("what needs the operator", () => {
       inbox: {
         messages: 3,
         conversations: 2,
+        unreadByBooking: {},
         unread: [
           // About a departure later today: on that departure's clock.
           thread(),
@@ -218,7 +224,7 @@ describe("what needs the operator", () => {
     );
     const needs = needsYou({
       ...base,
-      inbox: { messages: 9, conversations: 5, unread },
+      inbox: { messages: 9, conversations: 5, unread, unreadByBooking: {} },
     });
     expect(keys(needs)).toEqual([
       "message-a",

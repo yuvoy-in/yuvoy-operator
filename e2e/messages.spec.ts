@@ -407,7 +407,20 @@ test.describe.serial("guests waiting on a reply", () => {
       page.getByRole("link", { name: /YV-CARD6N7P/ }),
     ).toHaveAccessibleName(/2 unread messages/);
 
-    await page.locator("li").filter({ hasText: "YV-CARD6N7P" }).click();
+    /*
+      And on the manifest, at the jetty: Sofia's row on her departure says
+      she wrote, and opens her conversation (audit 5.2). Read here, in this
+      serial block, because reading clears it.
+    */
+    await page.goto("/today/slot_cash");
+    const row = page.getByRole("listitem").filter({ hasText: "YV-CARD6N7P" });
+    const wrote = row.getByRole("link", { name: "2 new messages" });
+    await expect(wrote).toHaveAttribute(
+      "href",
+      /^\/bookings\/bkg_card\?from=%2Ftoday%2Fslot_cash#conversation$/,
+    );
+
+    await wrote.click();
     await page.waitForURL(`**/bookings/${UNREAD}**`);
     await expect(
       page.getByRole("heading", { name: "Conversation" }),
