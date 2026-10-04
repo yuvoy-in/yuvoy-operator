@@ -174,7 +174,9 @@ export function GrantedReceipt({
     >
       <p className="flex items-center gap-2 text-base font-bold">
         {/* The tick draws itself as the receipt arrives (O02 A). */}
-        {receipt.untold ? null : <DrawnCheckIcon className="size-4 shrink-0" />}
+        {receipt.untold ? null : (
+          <DrawnCheckIcon after="receipt" className="size-4 shrink-0" />
+        )}
         Seats granted to {receipt.contactName}
       </p>
       <p className="text-forest/80 mt-2 text-sm">
@@ -210,7 +212,7 @@ export function DeclinedReceipt({
   return (
     <li ref={attach} tabIndex={-1} className={panelClass("done")}>
       <p className="flex items-center gap-2 text-base font-bold">
-        <DrawnCheckIcon className="size-4 shrink-0" />
+        <DrawnCheckIcon after="receipt" className="size-4 shrink-0" />
         Declined {answer.view.name}
       </p>
       {answer.reasonCode ? (

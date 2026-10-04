@@ -227,5 +227,9 @@ describe("the receipt", () => {
       "pathLength",
       "1",
     );
+    // O02's own breath before the tick draws: an answer's receipt, 80ms.
+    expect(container.querySelector("svg.motion-tick")).toHaveClass(
+      "motion-tick-receipt",
+    );
   });
 });

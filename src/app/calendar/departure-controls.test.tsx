@@ -296,6 +296,10 @@ describe("setting the seats", () => {
     // It rises in, and its tick draws; both ship their own reduced version.
     expect(status).toHaveClass("motion-rise-in");
     expect(status).toHaveAttribute("data-motion");
+    // O04's own breath before the tick draws: a form's answer line, 60ms.
+    expect(status.querySelector("svg.motion-tick")).toHaveClass(
+      "motion-tick-line",
+    );
     expect(status.querySelector("svg.motion-tick path")).toHaveAttribute(
       "pathLength",
       "1",

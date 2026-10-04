@@ -348,7 +348,7 @@ export function SeatsForm({ slot }: { slot: OperatorSlot }) {
             data-motion=""
             className="motion-rise-in text-forest/80 mt-2 flex items-center gap-1.5 text-sm font-bold"
           >
-            <DrawnCheckIcon className="size-4" />
+            <DrawnCheckIcon after="line" className="size-4" />
             Now offering {state.seats}.
           </p>
         ) : null}

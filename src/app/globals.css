@@ -555,11 +555,22 @@
   /*
     A tick that draws itself (O02's receipt, O04's "Now offering 10."), on a
     path given `pathLength="1"`: 200ms, the portal's ceiling, a breath after
-    the line it sits in has arrived.
+    the line it sits in has arrived. The breath is each experiment's own
+    (yuvoy/motion-lab): 80ms in an answer's receipt (O02,
+    `motion-tick-receipt`), 60ms in a form's answer line (O04,
+    `motion-tick-line`). `DrawnCheckIcon` always wears one of the two.
   */
   .motion-tick path {
     stroke-dasharray: 1;
-    animation: motion-tick 200ms var(--ease-interaction) 80ms backwards;
+    animation: motion-tick 200ms var(--ease-interaction) backwards;
+  }
+
+  .motion-tick-receipt path {
+    animation-delay: 80ms;
+  }
+
+  .motion-tick-line path {
+    animation-delay: 60ms;
   }
 
   /*

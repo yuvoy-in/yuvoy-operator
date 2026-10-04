@@ -33,6 +33,27 @@ describe("the motion tokens", () => {
     },
   );
 
+  it("draws each tick after its own experiment's breath, in 200ms", () => {
+    /*
+      One 80ms everywhere was O02's value worn by O04 too. Each is the
+      lab's own (yuvoy/motion-lab): O02's receipt tick waits 80ms
+      (o02-answer-undo.js), O04's "Now offering" tick 60ms (o04-forms.js),
+      and both draw in 200ms, the portal's ceiling.
+    */
+    const rule = (selector: string) => {
+      const at = css.indexOf(`${selector} {`);
+      expect(at, `${selector} is missing from globals.css`).toBeGreaterThan(-1);
+      return css.slice(at, css.indexOf("}", at));
+    };
+    expect(rule(".motion-tick path")).toMatch(
+      /animation:\s*motion-tick 200ms var\(--ease-interaction\) backwards;/,
+    );
+    expect(rule(".motion-tick-receipt path")).toMatch(
+      /animation-delay:\s*80ms;/,
+    );
+    expect(rule(".motion-tick-line path")).toMatch(/animation-delay:\s*60ms;/);
+  });
+
   it("keeps every duration inside the portal's ceiling, but the mark", () => {
     /*
       200ms is the ceiling for anything but progress (motion-system.md,
