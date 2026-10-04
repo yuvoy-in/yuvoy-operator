@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { setCapacity, type CapacityState } from "./actions";
 import { CloseDeparture } from "./close-departure";
@@ -14,6 +14,8 @@ import { DrawnCheckIcon } from "@/components/ui/icons";
 import { inputClass } from "@/components/ui/input";
 import { followersOf, slideFrom, topsOf } from "@/lib/motion/flip";
 import { MeasureBefore } from "@/lib/motion/measure-before";
+import { cn } from "@/lib/cn";
+import { useNoteSeatsSaved } from "./inspector-sheet";
 import { withFrom } from "@/lib/site/back-to";
 
 /**
@@ -67,10 +69,27 @@ export function DepartureControls({
   const calledOff = slot.status === "cancelled";
   const time = marketTime(slot.startsAt, slot.timezone);
 
+  /*
+    What is sold, faded in when a save changes it under the operator (O08 A:
+    the sheet's own line arrives with the receipt), and simply there when
+    the inspector opens.
+  */
+  const line = `${slot.sold} of ${slot.seats} sold`;
+  const [drawnLine, setDrawnLine] = useState(line);
+  const [lineChanges, setLineChanges] = useState(0);
+  if (line !== drawnLine) {
+    setDrawnLine(line);
+    setLineChanges((n) => n + 1);
+  }
+
   return (
     <div className="space-y-4">
       <div className="space-y-1.5 text-sm">
-        <p className="text-forest/80">
+        <p
+          key={lineChanges}
+          data-motion={lineChanges > 0 ? "" : undefined}
+          className={cn("text-forest/80", lineChanges > 0 && "motion-in")}
+        >
           {slot.sold} of {slot.seats} sold · {slot.remaining} left
           {/*
             Why six seats read as four (yuvoy-api#226). The count is already
@@ -225,6 +244,13 @@ export function SeatsForm({ slot }: { slot: OperatorSlot }) {
     {},
   );
   const form = useRef<HTMLFormElement>(null);
+
+  // Saved in the calendar's inspector: its row is marked as the sheet goes.
+  const noteSaved = useNoteSeatsSaved();
+  const saved = state.seats !== undefined && !state.message;
+  useEffect(() => {
+    if (saved) noteSaved(slot.id);
+  }, [saved, state, noteSaved, slot.id]);
 
   return (
     <MeasureBefore

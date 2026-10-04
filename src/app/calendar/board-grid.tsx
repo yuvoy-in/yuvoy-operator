@@ -143,6 +143,7 @@ export function BoardGrid({
                                 scroll={false}
                                 data-row={r}
                                 data-col={c}
+                                data-departure={dep.id}
                                 aria-label={departureName(
                                   dep,
                                   shortDate(cell.day),
