@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import Link from "next/link";
 import { loadMoreBookings } from "./list-actions";
 import {
@@ -15,11 +21,28 @@ import { byMarketDay } from "@/lib/day/booking-days";
 import { describeBookingState } from "@/lib/day/booking-state";
 import type { BookingLine } from "@/lib/money/bookings";
 import { dayCaption, marketTime } from "@/lib/format/market-time";
+import { markChange } from "@/lib/motion/mark";
+import { Announcer } from "@/components/ui/announcer";
 import { Button } from "@/components/ui/button";
-import { Chip } from "@/components/ui/chip";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { panelClass } from "@/components/ui/panel";
+import { StatusChip } from "@/components/ui/status-chip";
 import { withFrom } from "@/lib/site/back-to";
+
+/**
+ * The chip each booking was last drawn with, by booking, for as long as the
+ * portal is open (O03 A, approved 4 Oct 2026; the named integration change
+ * "the list remembers the chips it last drew"). A module's memory outlives
+ * a client navigation, so coming back from a booking finds the row whose
+ * state changed while the operator was on it (the cash just taken there,
+ * a party checked in on another phone) and marks it.
+ */
+const drawnChips = new Map<string, string>();
+
+/** What a row's chip says, or nothing. */
+function chipOf(booking: BookingLine): string {
+  return describeBookingState(booking.state, booking.cash)?.label ?? "";
+}
 
 /**
  * The rows under Upcoming, Past and Cancelled — yuvoy-operator#57 item 8.
@@ -41,6 +64,18 @@ import { withFrom } from "@/lib/site/back-to";
  *
  * "It stays on `/bookings/{id}`." A row is scanned at a jetty for a name and a
  * time; the reference is what somebody reads out once they have found them.
+ *
+ * ## A state that changes is seen to change (O03 A, approved 4 Oct 2026)
+ *
+ * A re-read (focus, every minute) brings the server's latest state for the
+ * rows already drawn, and they take it in place: the chip's words
+ * cross-fade (`StatusChip`), the row carries the forest mark that fades
+ * over 1.2s, and the change is said once ("Daniel Okafor: Checked in.").
+ * Only the state and its cash are taken: which rows, how many and in what
+ * order still change only when the list is drawn afresh, because rows that
+ * come and go under a thumb are what this screen must not do. Drawn afresh
+ * (back from a booking), a row whose chip is not the one this list last
+ * drew is marked, and not said: it is usually the operator's own change.
  */
 export function BookingList({
   view,
@@ -58,6 +93,84 @@ export function BookingList({
   const [page, setPage] = useState(initial);
   const [failure, setFailure] = useState<string | null>(null);
   const [loading, start] = useTransition();
+
+  /*
+    The server's latest answer for the rows drawn, taken in place (see
+    above). Worked out while rendering, React's "storing information from
+    previous renders"; the marks are drawn after the commit.
+  */
+  const [read, setRead] = useState(initial);
+  const [said, setSaid] = useState({ text: "", n: 0 });
+  const [changed, setChanged] = useState<{ ids: string[]; n: number }>({
+    ids: [],
+    n: 0,
+  });
+  if (initial !== read) {
+    setRead(initial);
+    const latest = new Map(initial.items.map((b) => [b.id, b]));
+    const items = page.items.map((booking) => {
+      const now = latest.get(booking.id);
+      if (!now) return booking;
+      const sameCash =
+        JSON.stringify(now.cash) === JSON.stringify(booking.cash);
+      return now.state === booking.state && sameCash
+        ? booking
+        : { ...booking, state: now.state, cash: now.cash };
+    });
+    const ids: string[] = [];
+    const lines: string[] = [];
+    items.forEach((next, i) => {
+      const label = chipOf(next);
+      if (next === page.items[i] || !label) return;
+      if (label === chipOf(page.items[i])) return;
+      ids.push(next.id);
+      lines.push(`${rowName(next)}: ${label}.`);
+    });
+    if (items.some((next, i) => next !== page.items[i])) {
+      setPage({ ...page, items });
+    }
+    if (ids.length > 0) {
+      setChanged((was) => ({ ids, n: was.n + 1 }));
+      setSaid((was) => ({ text: lines.join(" "), n: was.n + 1 }));
+    }
+  }
+
+  const rows = useRef<HTMLDivElement>(null);
+  const rowOf = useCallback(
+    (id: string) =>
+      Array.from(
+        rows.current?.querySelectorAll<HTMLElement>("[data-booking]") ?? [],
+      ).find((el) => el.dataset.booking === id) ?? null,
+    [],
+  );
+
+  /*
+    Drawn afresh: mark what is not as this list last drew it. Once, as the
+    list is drawn; a re-read is marked as it lands, below.
+  */
+  const compared = useRef(false);
+  useLayoutEffect(() => {
+    if (compared.current) return;
+    compared.current = true;
+    for (const booking of page.items) {
+      const before = drawnChips.get(booking.id);
+      if (before !== undefined && before !== chipOf(booking)) {
+        markChange(rowOf(booking.id));
+      }
+    }
+  }, [page.items, rowOf]);
+
+  // Changed under the operator's eyes: marked as it lands.
+  useLayoutEffect(() => {
+    for (const id of changed.ids) markChange(rowOf(id));
+  }, [changed, rowOf]);
+
+  // And remembered, every time, for the next time this list is drawn.
+  useLayoutEffect(() => {
+    for (const booking of page.items) {
+      drawnChips.set(booking.id, chipOf(booking));
+    }
+  }, [page]);
 
   function more() {
     const cursor = page.nextCursor;
@@ -99,7 +212,8 @@ export function BookingList({
   const ordered = view === "upcoming" ? days : [...days].reverse();
 
   return (
-    <div className="mt-6 space-y-6">
+    <div ref={rows} className="mt-6 space-y-6">
+      <Announcer said={said} />
       {ordered.map((day) => (
         <section key={day.day || "undated"}>
           <h2 className="label text-forest/75">
@@ -113,6 +227,7 @@ export function BookingList({
               return (
                 <li key={booking.id || booking.reference}>
                   <Link
+                    data-booking={booking.id}
                     href={withFrom(
                       `/bookings/${booking.id}`,
                       pillHref(view, filters),
@@ -141,9 +256,10 @@ export function BookingList({
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5">
                       {chip ? (
-                        <Chip tone={chip.live ? "accent" : "neutral"}>
-                          {chip.label}
-                        </Chip>
+                        <StatusChip
+                          label={chip.label}
+                          tone={chip.live ? "accent" : "neutral"}
+                        />
                       ) : null}
                       <ChevronRightIcon className="text-terra-deep size-5" />
                     </span>

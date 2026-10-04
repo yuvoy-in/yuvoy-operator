@@ -10,6 +10,7 @@ import { describeBookingState } from "@/lib/day/booking-state";
 import { marketDay, marketTime } from "@/lib/format/market-time";
 import { formatPaise } from "@/lib/format/money";
 import { Chip } from "@/components/ui/chip";
+import { StatusChip } from "@/components/ui/status-chip";
 import { Panel } from "@/components/ui/panel";
 import { Screen } from "@/components/chrome/screen";
 import { CashCollect } from "@/app/bookings/cash-collect";
@@ -177,8 +178,15 @@ export default async function BookingPage({
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+          {/*
+            Seen to change when it does (O03 A): taking the cash below turns
+            "Collect ₹9,000" into "Confirmed" as a cross-fade, not a cut.
+          */}
           {state ? (
-            <Chip tone={state.live ? "accent" : "neutral"}>{state.label}</Chip>
+            <StatusChip
+              label={state.label}
+              tone={state.live ? "accent" : "neutral"}
+            />
           ) : null}
           {/*
             The server's flag, and nothing else from screening ever. It means

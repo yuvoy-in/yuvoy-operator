@@ -156,6 +156,24 @@ export function CashCollect({
     if (recorded) onRecorded?.();
   }, [recorded, onRecorded]);
 
+  /*
+    The receipt arrives where the button was (O03 A, approved 4 Oct 2026):
+    faded in, 150ms (120ms reduced), when it replaces the button while the
+    operator watches; simply there for a collection recorded before the
+    page opened.
+  */
+  const look =
+    recorded || cash.collected ? "taken" : keptHere ? "kept" : "owed";
+  const [drawn, setDrawn] = useState(look);
+  const [arrived, setArrived] = useState(false);
+  if (look !== drawn) {
+    setDrawn(look);
+    setArrived(look !== "owed");
+  }
+  const arrive = arrived
+    ? { "data-motion": "", className: "motion-in" }
+    : { className: undefined };
+
   if (recorded || cash.collected) {
     const shown: BookingCash = recorded
       ? {
@@ -166,7 +184,10 @@ export function CashCollect({
         }
       : cash;
     return (
-      <div className="border-paper-line mt-4 border-t pt-3">
+      <div
+        data-motion={arrive["data-motion"]}
+        className={cn("border-paper-line mt-4 border-t pt-3", arrive.className)}
+      >
         <p role="status" className="text-sm font-bold">
           {describeCash(shown, timezone)}
         </p>
@@ -184,7 +205,10 @@ export function CashCollect({
 
   if (keptHere) {
     return (
-      <div className="border-paper-line mt-4 border-t pt-3">
+      <div
+        data-motion={arrive["data-motion"]}
+        className={cn("border-paper-line mt-4 border-t pt-3", arrive.className)}
+      >
         <p role="status" className="text-sm font-bold">
           {keptHere.kind === "cash" && keptHere.amountPaise !== null
             ? `${formatPaise(keptHere.amountPaise)} taken, saved on this phone.`

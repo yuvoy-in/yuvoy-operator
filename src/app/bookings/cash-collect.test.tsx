@@ -334,3 +334,43 @@ describe("CashCollect with no signal", () => {
     expect(screen.getByRole("status")).toHaveTextContent("saved on this phone");
   });
 });
+
+/*
+  O03 A (approved 4 Oct 2026): taking the cash is seen to happen. The button
+  keeps its colour while it records (O04), and the receipt arrives where it
+  was rather than cutting in; one recorded before the page opened is simply
+  there.
+*/
+describe("the receipt, arriving", () => {
+  it("fades in where the button was once the cash is recorded", async () => {
+    record.mockImplementation(async () => ({
+      recorded: {
+        collectedPaise: 1_350_000,
+        shortfallPaise: 0,
+        collectedAt: "2026-09-14T03:34:00Z",
+        alreadyRecorded: false,
+      },
+    }));
+    const user = userEvent.setup();
+    row();
+    await user.click(screen.getByRole("button", { name: "Take ₹13,500" }));
+    const receipt = (await screen.findByRole("status")).parentElement!;
+    expect(receipt).toHaveClass("motion-in");
+    expect(receipt).toHaveAttribute("data-motion");
+  });
+
+  it("is simply there for a collection recorded before the page opened", () => {
+    row({
+      state: "confirmed",
+      cash: {
+        collectPaise: 900_000,
+        collected: true,
+        collectedAt: "2026-09-14T02:40:00Z",
+        collectedPaise: 900_000,
+      },
+    });
+    expect(screen.getByRole("status").parentElement).not.toHaveClass(
+      "motion-in",
+    );
+  });
+});
