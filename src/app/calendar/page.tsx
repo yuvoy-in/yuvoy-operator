@@ -30,6 +30,8 @@ import { Screen } from "@/components/chrome/screen";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Problem } from "@/components/ui/states";
 import { ButtonLink } from "@/components/ui/button";
+import { OnlineOnly } from "@/components/ui/online-only";
+import { ReadOnlyWhenOffline } from "@/components/chrome/read-only-when-offline";
 import { BlackoutForm } from "./blackout-form";
 import { BoardGrid } from "./board-grid";
 import { DaySection } from "./day-section";
@@ -186,108 +188,119 @@ export default async function CalendarPage({
         </p>
       ) : null}
 
-      {canWrite ? (
-        <div className="mt-6">
-          <ConfirmSeats notOnSale={unconfirmed} goingOffSoon={0} />
-        </div>
-      ) : null}
-
       {/*
+        Readable with no signal, and says so; nothing that changes something
+        can be pressed until it is back (operator experiment B's offline
+        state). See `ReadOnlyWhenOffline` and `OnlineOnly`.
+      */}
+      <ReadOnlyWhenOffline what="The calendar">
+        <OnlineOnly>
+          {canWrite ? (
+            <div className="mt-6">
+              <ConfirmSeats notOnSale={unconfirmed} goingOffSoon={0} />
+            </div>
+          ) : null}
+
+          {/*
         Adding comes before closing, and both before the board: is there a
         departure for Saturday, is the week off, and what does the week look
         like. Both are collapsed until pressed, and closing is the quiet one,
         because it stops sales (#81).
       */}
-      {canWrite ? (
-        <div className="mt-6 space-y-3">
-          <DepartureForm listings={listings} today={today} />
-          <BlackoutForm today={today} />
-        </div>
-      ) : null}
+          {canWrite ? (
+            <div className="mt-6 space-y-3">
+              <DepartureForm listings={listings} today={today} />
+              <BlackoutForm today={today} />
+            </div>
+          ) : null}
+        </OnlineOnly>
 
-      <section className="mt-10" aria-labelledby="board-week">
-        <WeekNav
-          week={week}
-          days={days}
-          today={today}
-          summary={slots ? weekLine(slots) : null}
-        />
+        <section className="mt-10" aria-labelledby="board-week">
+          <WeekNav
+            week={week}
+            days={days}
+            today={today}
+            summary={slots ? weekLine(slots) : null}
+          />
 
-        {slots === null ? (
-          <div className="mt-5">
-            {/*
+          {slots === null ? (
+            <div className="mt-5">
+              {/*
               The week did not load; everything else on the page did, and the
               way to the weeks either side still works.
             */}
-            <Problem
-              title="That week did not load"
-              body="Nothing has changed. Try again in a moment."
-            />
-            <div className="mt-4">
-              <ButtonLink
-                href={boardHref({ week, day }, today)}
-                variant="secondary"
-                block={false}
-              >
-                Try again
-              </ButtonLink>
+              <Problem
+                title="That week did not load"
+                body="Nothing has changed. Try again in a moment."
+              />
+              <div className="mt-4">
+                <ButtonLink
+                  href={boardHref({ week, day }, today)}
+                  variant="secondary"
+                  block={false}
+                >
+                  Try again
+                </ButtonLink>
+              </div>
             </div>
-          </div>
-        ) : (
-          <>
-            <WeekStrip
-              week={week}
-              days={days}
-              day={day}
-              today={today}
-              rows={rows}
-            />
-
-            {rows.length === 0 ? (
-              <p className="text-forest/80 mt-5 text-base">
-                Nothing scheduled this week
-              </p>
-            ) : (
-              <BoardGrid
+          ) : (
+            <>
+              <WeekStrip
                 week={week}
                 days={days}
                 day={day}
                 today={today}
                 rows={rows}
-                closedDays={closedDays}
               />
-            )}
 
-            <DaySection
-              week={week}
-              day={day}
-              today={today}
-              label={dayCaption(day, today, tomorrow)}
-              departures={dayDepartures}
-              cells={dayCells}
-              guests={guests ? (guests.get(day) ?? 0) : null}
-              closures={closures}
-              canManage={canWrite}
-            />
-          </>
-        )}
-      </section>
+              {rows.length === 0 ? (
+                <p className="text-forest/80 mt-5 text-base">
+                  Nothing scheduled this week
+                </p>
+              ) : (
+                <BoardGrid
+                  week={week}
+                  days={days}
+                  day={day}
+                  today={today}
+                  rows={rows}
+                  closedDays={closedDays}
+                />
+              )}
 
-      {opened ? (
-        <DepartureInspector
-          slot={opened}
-          day={openedDay}
-          manifest={manifest}
-          requests={(requests ?? [])
-            .filter((r) => r.slotId === opened.id)
-            .map((r) => requestView(r, { at, today, tomorrow }))}
-          here={here}
-          closeHref={closeHref}
-          canManage={me.canManage}
-          canWrite={canWrite}
-          canSellAtCounter={canSellAtCounter}
-        />
-      ) : null}
+              <OnlineOnly>
+                <DaySection
+                  week={week}
+                  day={day}
+                  today={today}
+                  label={dayCaption(day, today, tomorrow)}
+                  departures={dayDepartures}
+                  cells={dayCells}
+                  guests={guests ? (guests.get(day) ?? 0) : null}
+                  closures={closures}
+                  canManage={canWrite}
+                />
+              </OnlineOnly>
+            </>
+          )}
+        </section>
+
+        {opened ? (
+          <DepartureInspector
+            slot={opened}
+            day={openedDay}
+            manifest={manifest}
+            requests={(requests ?? [])
+              .filter((r) => r.slotId === opened.id)
+              .map((r) => requestView(r, { at, today, tomorrow }))}
+            here={here}
+            closeHref={closeHref}
+            canManage={me.canManage}
+            canWrite={canWrite}
+            canSellAtCounter={canSellAtCounter}
+          />
+        ) : null}
+      </ReadOnlyWhenOffline>
     </Screen>
   );
 }

@@ -19,6 +19,12 @@ import { useRouter } from "next/navigation";
  *
  * `router.refresh()` re-runs the server render and reconciles — it does not
  * remount, so a half-typed state or a pending action is not thrown away.
+ *
+ * **Never with no signal.** A refresh that cannot reach the server makes Next
+ * fall back to a full browser navigation, and with no network that is the
+ * browser's own "no internet" page in place of the screen the operator was
+ * reading. So it waits while the phone says it is offline, and re-reads once
+ * the moment the signal comes back.
  */
 const INTERVAL_MS = 60_000;
 
@@ -27,15 +33,19 @@ export function RefreshOnFocus() {
 
   useEffect(() => {
     const refresh = () => {
-      if (document.visibilityState === "visible") router.refresh();
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        router.refresh();
+      }
     };
 
     window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
     document.addEventListener("visibilitychange", refresh);
     const timer = setInterval(refresh, INTERVAL_MS);
 
     return () => {
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
       document.removeEventListener("visibilitychange", refresh);
       clearInterval(timer);
     };
