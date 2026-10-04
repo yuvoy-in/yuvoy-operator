@@ -549,8 +549,9 @@ The portal's half of the motion system the owner approved on 4 Oct 2026
   into Aboard (FLIP, measured before the commit by `MeasureBefore`).
 - **Reduced motion swaps travel for a fade.** The global rule makes everything
   instant except elements marked `data-motion`, which ship their own reduced
-  version; script motion branches inside `lib/motion`. No component writes its
-  own reduced branch.
+  version. Script motion reads the setting through `lib/motion`
+  (`prefersReducedMotion`, or a helper that branches itself, like `fadeIn`),
+  never through a media query of its own.
 - **Presses animate `scale`** (`motion-control`, `motion-disc`, `motion-press`).
 
 `palette.test.ts` holds the ceiling (component classes, inline styles,

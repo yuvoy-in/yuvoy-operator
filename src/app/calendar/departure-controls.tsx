@@ -16,6 +16,7 @@ import { followersOf, slideFrom, topsOf } from "@/lib/motion/flip";
 import { MeasureBefore } from "@/lib/motion/measure-before";
 import { cn } from "@/lib/cn";
 import { useNoteSeatsSaved } from "./inspector-sheet";
+import { forgetSeatsSent, noteSeatsSent } from "./seats-sent";
 import { withFrom } from "@/lib/site/back-to";
 
 /**
@@ -237,10 +238,18 @@ export function ConfirmDepartureSeats({ slot }: { slot: OperatorSlot }) {
  * one frame. The room is measured before the commit that draws the line, so
  * it is shown, not guessed. Under reduced motion the line fades in 120ms,
  * nothing slides and the tick is simply there.
+ *
+ * The count is noted before it is sent (`noteSeatsSent`), so the desktop
+ * board's fill bar grows when the board it re-reads draws it (O08 A), and
+ * only then.
  */
 export function SeatsForm({ slot }: { slot: OperatorSlot }) {
   const [state, act, saving] = useActionState<CapacityState, FormData>(
-    setCapacity,
+    async (prev, form) => {
+      const seats = Number(form.get("seats"));
+      if (Number.isInteger(seats)) noteSeatsSent(slot.id, seats);
+      return setCapacity(prev, form);
+    },
     {},
   );
   const form = useRef<HTMLFormElement>(null);
@@ -251,6 +260,10 @@ export function SeatsForm({ slot }: { slot: OperatorSlot }) {
   useEffect(() => {
     if (saved) noteSaved(slot.id);
   }, [saved, state, noteSaved, slot.id]);
+  // Refused: the board will not draw what was sent.
+  useEffect(() => {
+    if (state.message) forgetSeatsSent(slot.id);
+  }, [state, slot.id]);
 
   return (
     <MeasureBefore
