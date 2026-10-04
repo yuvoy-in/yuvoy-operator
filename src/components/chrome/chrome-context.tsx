@@ -26,6 +26,11 @@ export interface ChromeIdentity {
    * failed: unknown, never zero.
    */
   unread?: number;
+  /**
+   * The signed-in person, so writes kept on this phone offline are only sent
+   * as them (`lib/site/offline-writes.ts`). Absent signed out.
+   */
+  userId?: string;
 }
 
 const UNKNOWN: ChromeIdentity = { businessName: null, canManage: false };

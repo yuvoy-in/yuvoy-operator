@@ -1,0 +1,210 @@
+import { act } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+
+const refresh = vi.fn();
+const replace = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh, replace }),
+}));
+
+const { OnlineOnly } = await import("@/components/ui/online-only");
+const { ReadOnlyWhenOffline } = await import("./read-only-when-offline");
+const { RefreshOnFocus } = await import("./refresh-on-focus");
+const { InspectorSheet } = await import("@/app/calendar/inspector-sheet");
+
+let online = true;
+
+beforeEach(() => {
+  online = true;
+  vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  refresh.mockReset();
+  replace.mockReset();
+  window.history.replaceState(null, "", "/");
+});
+
+/** The phone loses or finds its signal, the way a browser says so. */
+function goOffline() {
+  online = false;
+  act(() => {
+    window.dispatchEvent(new Event("offline"));
+  });
+}
+function goOnline() {
+  online = true;
+  act(() => {
+    window.dispatchEvent(new Event("online"));
+  });
+}
+
+/*
+  The Calendar with no signal (operator experiment B's offline state): it
+  stays readable, nothing that changes something can be pressed, a link that
+  needs the server is held with the reason, and it re-reads itself when the
+  signal comes back.
+*/
+describe("controls that change something", () => {
+  it("are switched off while there is no signal, and back on after", () => {
+    render(
+      <OnlineOnly>
+        <button type="button">Close this day</button>
+        <input aria-label="Seats" />
+      </OnlineOnly>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Close this day" }),
+    ).toBeEnabled();
+
+    goOffline();
+    expect(
+      screen.getByRole("button", { name: "Close this day" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Seats" })).toBeDisabled();
+
+    goOnline();
+    expect(
+      screen.getByRole("button", { name: "Close this day" }),
+    ).toBeEnabled();
+  });
+
+  it("are not announced as a group of their own", () => {
+    const { container } = render(
+      <OnlineOnly>
+        <button type="button">Add departures</button>
+      </OnlineOnly>,
+    );
+    expect(container.querySelector("fieldset")).toHaveAttribute("role", "none");
+  });
+});
+
+describe("a screen that is read-only with no signal", () => {
+  function board() {
+    return render(
+      <ReadOnlyWhenOffline what="The calendar">
+        <a href="/calendar?week=2026-10-12">Next week</a>
+        <a href="tel:+918121657657">Call Yuvoy</a>
+        <a href="#board-week">Skip to the week</a>
+        <a href="https://example.com/help" target="_blank" rel="noreferrer">
+          Help
+        </a>
+      </ReadOnlyWhenOffline>,
+    );
+  }
+
+  it("says nothing while there is a signal, and lets every link go", () => {
+    board();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    const next = screen.getByRole("link", { name: "Next week" });
+    expect(fireEvent.click(next)).toBe(true);
+  });
+
+  it("says it is read-only, and holds a link that needs the server", () => {
+    board();
+    goOffline();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No signal The calendar is read-only until you are back online. What it shows may be out of date.",
+    );
+
+    const next = screen.getByRole("link", { name: "Next week" });
+    // `false` is a click whose default was prevented.
+    expect(fireEvent.click(next)).toBe(false);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "That opens once you are back online.",
+    );
+  });
+
+  it("still lets a phone call, a spot on this page and a new tab through", () => {
+    board();
+    goOffline();
+    for (const name of ["Call Yuvoy", "Skip to the week", "Help"]) {
+      expect(fireEvent.click(screen.getByRole("link", { name }))).toBe(true);
+    }
+  });
+
+  it("starts plain again the next time the signal drops", () => {
+    board();
+    goOffline();
+    fireEvent.click(screen.getByRole("link", { name: "Next week" }));
+    goOnline();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    goOffline();
+    expect(screen.getByRole("status")).not.toHaveTextContent(
+      "That opens once you are back online.",
+    );
+  });
+});
+
+describe("re-reading the screen", () => {
+  it("never refreshes with no signal, and re-reads once it is back", () => {
+    render(<RefreshOnFocus />);
+    goOffline();
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(refresh).not.toHaveBeenCalled();
+
+    goOnline();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes on focus with a signal, as before", () => {
+    render(<RefreshOnFocus />);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the inspector with no signal", () => {
+  function inspector(title = "07:00 Try-dive at Nemo Reef") {
+    return (
+      <InspectorSheet title={title} closeHref="/calendar?day=2026-10-15">
+        <button type="button">Stop selling it</button>
+      </InspectorSheet>
+    );
+  }
+
+  it("closes on the phone, with the same address in the bar", () => {
+    render(inspector());
+    goOffline();
+    expect(
+      screen.getByRole("button", { name: "Stop selling it" }),
+    ).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+    expect(window.location.pathname + window.location.search).toBe(
+      "/calendar?day=2026-10-15",
+    );
+  });
+
+  it("closes by navigating, as before, with a signal", () => {
+    render(inspector());
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(replace).toHaveBeenCalledWith("/calendar?day=2026-10-15", {
+      scroll: false,
+    });
+  });
+
+  it("shows a different departure opened where one was closed offline", () => {
+    const { rerender } = render(inspector());
+    goOffline();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    goOnline();
+    rerender(inspector("09:00 Snorkel trip to Elephant Beach"));
+    expect(
+      screen.getByRole("dialog", {
+        name: "09:00 Snorkel trip to Elephant Beach",
+      }),
+    ).toBeInTheDocument();
+  });
+});

@@ -32,6 +32,16 @@ export interface AttendanceState {
   message?: string;
   /** Which row failed, so the error lands on the right person. */
   bookingId?: string;
+  /**
+   * We could not reach the API, so nothing was recorded and sending it again
+   * is safe (arriving is idempotent). What boarding mode keeps on the phone.
+   */
+  retryable?: true;
+  /**
+   * The arrival time the API holds. On a second check-in it is the FIRST
+   * one's, which is how a check-in sent late learns somebody else was first.
+   */
+  arrivedAt?: string;
 }
 
 const schema = z.object({
@@ -62,15 +72,21 @@ export async function markAttendance(
   const { bookingId, slotId, outcome } = parsed.data;
   const { token } = await requireOperator();
 
+  let arrivedAt: string | undefined;
   try {
-    const { error } = await operatorApi(token).POST(
+    const { data, error } = await operatorApi(token).POST(
       "/bookings/{id}/attendance",
       { params: { path: { id: bookingId } }, body: { outcome } },
     );
     if (error) throw error;
+    arrivedAt = data?.arrivedAt;
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return { bookingId, message: "No signal. Nothing was recorded." };
+      return {
+        bookingId,
+        message: "No signal. Nothing was recorded.",
+        retryable: true,
+      };
     }
     if (err instanceof OperatorApiError) {
       /*
@@ -106,7 +122,7 @@ export async function markAttendance(
   // locally. Totals are computed server-side precisely so three clients cannot
   // disagree about them on a dock.
   revalidatePath(`/today/${slotId}`);
-  return {};
+  return arrivedAt ? { arrivedAt } : {};
 }
 
 /* ------------------------------------------------------------------ relay */

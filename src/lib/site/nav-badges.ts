@@ -56,6 +56,12 @@ export interface ChromeData {
    * "Needs you" says. Absent when the read failed: unknown, never zero.
    */
   unread?: number;
+  /**
+   * Who is signed in, so what this phone keeps to send offline is only ever
+   * sent as the person who made it (`lib/site/offline-writes.ts`). `null`
+   * signed out, or when `/me` did not answer: then nothing is sent.
+   */
+  userId: string | null;
 }
 
 const SIGNED_OUT: ChromeData = {
@@ -63,6 +69,7 @@ const SIGNED_OUT: ChromeData = {
   suspension: null,
   businessName: null,
   canManage: false,
+  userId: null,
 };
 
 /**
@@ -118,5 +125,6 @@ export async function chromeData(): Promise<ChromeData> {
       businessName.status === "fulfilled" ? businessName.value : null,
     canManage,
     ...(unread !== undefined ? { unread } : {}),
+    userId: me.status === "fulfilled" && me.value.id ? me.value.id : null,
   };
 }

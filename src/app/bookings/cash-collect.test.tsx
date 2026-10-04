@@ -238,3 +238,99 @@ describe("CashCollect, how loud it is", () => {
     expect(record.mock.calls[0][1].get("mode")).toBe("fare");
   });
 });
+
+/*
+  With no signal (operator experiment D; owner go-ahead and storage ruling,
+  4 Oct 2026). A collection is recorded once and a repeat answers the first,
+  so it is kept on the phone and sent when the signal is back.
+*/
+describe("CashCollect with no signal", () => {
+  async function offline(
+    over: Partial<Parameters<typeof CashCollect>[0]> = {},
+  ) {
+    const { ChromeProvider } =
+      await import("@/components/chrome/chrome-context");
+    const { offlineWrites } = await import("@/lib/site/offline-writes");
+    offlineWrites.forget();
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    render(
+      <ChromeProvider
+        identity={{ businessName: null, canManage: true, userId: "usr_owner" }}
+      >
+        <CashCollect
+          bookingId="bkg_1"
+          slotId="slot_1"
+          state="paid_pending_ops"
+          cash={owed}
+          timezone="Asia/Kolkata"
+          {...over}
+        />
+      </ChromeProvider>,
+    );
+    return offlineWrites;
+  }
+
+  it("keeps the whole fare on the phone, and says what is kept", async () => {
+    const offlineWrites = await offline();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Take ₹13,500/ }));
+
+    expect(record).not.toHaveBeenCalled();
+    expect(offlineWrites.list()).toMatchObject([
+      {
+        kind: "cash",
+        bookingId: "bkg_1",
+        slotId: "slot_1",
+        mode: "fare",
+        amount: "",
+        amountPaise: 1_350_000,
+      },
+    ]);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "₹13,500 taken, saved on this phone. It sends when the signal is back.",
+    );
+    vi.restoreAllMocks();
+  });
+
+  it("keeps an amount other than the fare as typed", async () => {
+    const offlineWrites = await offline();
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "They paid a different amount" }),
+    );
+    await user.type(screen.getByLabelText("What you took, in rupees"), "9000");
+    await user.click(screen.getByRole("button", { name: "Record ₹9,000" }));
+
+    expect(offlineWrites.list()).toMatchObject([
+      { kind: "cash", mode: "less", amount: "9000", amountPaise: 900_000 },
+    ]);
+    vi.restoreAllMocks();
+  });
+
+  it("keeps it too when the send never came back", async () => {
+    const { ChromeProvider } =
+      await import("@/components/chrome/chrome-context");
+    const { offlineWrites } = await import("@/lib/site/offline-writes");
+    offlineWrites.forget();
+    record.mockImplementation(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    render(
+      <ChromeProvider
+        identity={{ businessName: null, canManage: true, userId: "usr_owner" }}
+      >
+        <CashCollect
+          bookingId="bkg_1"
+          slotId="slot_1"
+          state="paid_pending_ops"
+          cash={owed}
+          timezone="Asia/Kolkata"
+        />
+      </ChromeProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Take ₹13,500/ }));
+    expect(offlineWrites.list()).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("saved on this phone");
+  });
+});

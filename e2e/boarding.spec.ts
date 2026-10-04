@@ -173,3 +173,77 @@ test("boarding has no accessibility violations, in sun mode and out of it", asyn
   const shade = await new AxeBuilder({ page }).withTags(tags).analyze();
   expect(shade.violations).toEqual([]);
 });
+
+/*
+  With no signal (operator experiment D; owner go-ahead and storage ruling,
+  4 Oct 2026): a check-in is kept on the phone, survives the app closing, and
+  goes when the signal is back. One party per project, because arriving is
+  one-way and both projects share the mock's state. Kavya, Tom, Lena and Omar
+  are the cash suite's, which reads their cash and never their arrival.
+*/
+test("with no signal a check-in is kept on the phone, and sent when the signal is back", async ({
+  page,
+  context,
+}, testInfo) => {
+  const who = testInfo.project.name === "mobile" ? "Kavya Iyer" : "Tom Becker";
+  await signIn(page);
+  await page.goto(`/today/${BOAT}/boarding`);
+
+  await context.setOffline(true);
+  const strip = page.getByRole("status").filter({ hasText: "No signal" });
+  await expect(strip).toContainText(
+    "Check-ins and cash you take are kept on this phone and sent when the signal is back.",
+  );
+
+  await page
+    .getByRole("button", { name: `Aboard: check in ${who}`, exact: true })
+    .click();
+  // Past its five seconds, kept on the phone rather than sent.
+  await expect(aboard(page)).toContainText("Saved on this phone", {
+    timeout: 15_000,
+  });
+  await expect(strip).toContainText(
+    "1 check-in is saved on this phone. They send when the signal is back.",
+  );
+  await expectAccessible(page, "boarding, a check-in kept with no signal");
+
+  // Back online: it goes on its own, and says when.
+  await context.setOffline(false);
+  await expect(
+    page.getByRole("status").filter({ hasText: /was sent at \d\d:\d\d/ }),
+  ).toBeVisible({ timeout: 30_000 });
+  await page.reload();
+  await expect(aboard(page)).toContainText(who);
+  await expect(toCome(page)).not.toContainText(who);
+});
+
+test("a check-in kept with no signal survives the app closing, and goes from another screen", async ({
+  page,
+  context,
+}, testInfo) => {
+  const who = testInfo.project.name === "mobile" ? "Lena Park" : "Omar Haddad";
+  await signIn(page);
+  await page.goto(`/today/${BOAT}/boarding`);
+
+  await context.setOffline(true);
+  await page
+    .getByRole("button", { name: `Aboard: check in ${who}`, exact: true })
+    .click();
+  await expect(aboard(page)).toContainText("Saved on this phone", {
+    timeout: 15_000,
+  });
+
+  // The phone closes the app at the jetty; the signal comes back later.
+  await page.close();
+  await context.setOffline(false);
+  const later = await context.newPage();
+  await later.goto("/today");
+  await expect(later.getByRole("heading", { level: 1 }).first()).toBeVisible();
+
+  // Sent from Today, with nobody back on boarding to do it.
+  await expect(async () => {
+    await later.goto(`/today/${BOAT}/boarding`);
+    await expect(aboard(later)).toContainText(who);
+    await expect(aboard(later)).not.toContainText("Saved on this phone");
+  }).toPass({ timeout: 30_000 });
+});

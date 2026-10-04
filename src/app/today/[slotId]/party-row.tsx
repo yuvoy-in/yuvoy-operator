@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useState, useSyncExternalStore } from "react";
 import { markAttendance, type AttendanceState } from "./actions";
 import { isHolding, type PartyForClient } from "@/lib/day/types";
 import type { ScreeningSignal } from "@/lib/day/screening";
@@ -13,6 +13,10 @@ import { RelayPanel } from "./relay-panel";
 import { CashCollect } from "@/app/bookings/cash-collect";
 import { Button } from "@/components/ui/button";
 import { CheckIcon } from "@/components/ui/icons";
+import { OnlineOnly } from "@/components/ui/online-only";
+import { useOnline } from "@/components/ui/use-online";
+import { useChrome } from "@/components/chrome/chrome-context";
+import { offlineWrites, writeKey } from "@/lib/site/offline-writes";
 
 /**
  * One party on the manifest.
@@ -90,8 +94,68 @@ export function PartyRow({
    */
   unread?: number;
 }) {
+  const online = useOnline();
+  const { userId } = useChrome();
+  const kept = useSyncExternalStore(
+    offlineWrites.subscribe,
+    offlineWrites.list,
+    offlineWrites.serverList,
+  );
+  /*
+    Checked in on this phone with no signal, and not sent yet. The phone's
+    kept writes own it now (`lib/site/offline-writes.ts`); the strip above
+    the list says when it goes.
+  */
+  const keptHere = Boolean(
+    party.bookingId &&
+    userId &&
+    kept.some(
+      (w) =>
+        w.key === writeKey("arrived", party.bookingId as string) &&
+        w.userId === userId,
+    ),
+  );
+  /*
+    Checking in is safe to send twice (the API keeps the first arrival), so
+    with no signal, or when the send never came back, it is kept on the phone
+    and sent when the signal is back. The terminal outcomes are not, and their
+    buttons are off while offline; a send of one that never came back says so
+    here rather than taking the page to its error screen.
+  */
   const [state, act, pending] = useActionState<AttendanceState, FormData>(
-    markAttendance,
+    async (prev, form) => {
+      const outcome = String(form.get("outcome") ?? "");
+      const keep = (): AttendanceState => {
+        if (!userId || !party.bookingId) {
+          return {
+            bookingId: party.bookingId,
+            message: "No signal. Nothing was recorded.",
+          };
+        }
+        offlineWrites.add({
+          kind: "arrived",
+          userId,
+          slotId,
+          bookingId: party.bookingId,
+          at: Date.now(),
+        });
+        return {};
+      };
+      if (outcome === "arrived" && !navigator.onLine) return keep();
+      try {
+        const answer = await markAttendance(prev, form);
+        if (outcome === "arrived" && answer.retryable) return keep();
+        return answer;
+      } catch {
+        return outcome === "arrived"
+          ? keep()
+          : {
+              bookingId: party.bookingId,
+              message:
+                "The connection dropped, so we cannot tell whether that was recorded. Refresh once you have a signal.",
+            };
+      }
+    },
     {},
   );
 
@@ -256,24 +320,31 @@ export function PartyRow({
             use (yuvoy-operator#88 s3). "Here" read as a question on a jetty.
             The tick is drawn, not a character, so it matches every other icon.
           */}
-          <Button
-            type="submit"
-            name="outcome"
-            value="arrived"
-            disabled={pending}
-            variant={arrived ? "primary" : "outline"}
-            block={false}
-            className="flex-1"
-          >
-            {arrived ? (
-              <>
-                <CheckIcon className="size-5" />
-                Checked in
-              </>
-            ) : (
-              "Check in"
-            )}
-          </Button>
+          {keptHere && !arrived ? (
+            <p className="text-forest flex min-h-14 flex-1 items-center gap-2 text-sm font-bold">
+              <CheckIcon className="size-5 shrink-0" />
+              Checked in on this phone. Sends when the signal is back.
+            </p>
+          ) : (
+            <Button
+              type="submit"
+              name="outcome"
+              value="arrived"
+              disabled={pending}
+              variant={arrived ? "primary" : "outline"}
+              block={false}
+              className="flex-1"
+            >
+              {arrived ? (
+                <>
+                  <CheckIcon className="size-5" />
+                  Checked in
+                </>
+              ) : (
+                "Check in"
+              )}
+            </Button>
+          )}
 
           {/*
             Terminal outcomes appear only once the trip has set off. The API
@@ -285,7 +356,7 @@ export function PartyRow({
             <>
               <Button
                 onClick={() => setArmed("completed")}
-                disabled={pending}
+                disabled={pending || !online}
                 variant="secondary"
                 block={false}
                 className="flex-1"
@@ -294,7 +365,7 @@ export function PartyRow({
               </Button>
               <Button
                 onClick={() => setArmed("no_show")}
-                disabled={pending}
+                disabled={pending || !online}
                 variant="secondary"
                 block={false}
                 className="flex-1"
@@ -321,7 +392,7 @@ export function PartyRow({
                 type="submit"
                 name="outcome"
                 value={armed}
-                disabled={pending}
+                disabled={pending || !online}
                 variant="danger"
                 block={false}
                 className="flex-1"
@@ -374,11 +445,13 @@ export function PartyRow({
         has no bookingId, so there is nobody to address yet.
       */}
       {holding || cancelledHere ? null : (
-        <RelayPanel
-          slotId={slotId}
-          bookingId={party.bookingId}
-          who={party.name ?? "them"}
-        />
+        <OnlineOnly>
+          <RelayPanel
+            slotId={slotId}
+            bookingId={party.bookingId}
+            who={party.name ?? "them"}
+          />
+        </OnlineOnly>
       )}
 
       {/*
@@ -396,14 +469,16 @@ export function PartyRow({
         above Check in, a thumb's slip from it (the audit, O11).
       */}
       {party.bookingId && (cancellable || cancelledHere) ? (
-        <CancelBooking
-          bookingId={party.bookingId}
-          reference={party.reference ?? ""}
-          {...(party.name ? { who: party.name } : {})}
-          isCash={Boolean(cash)}
-          context="manifest"
-          onDone={() => setCancelledHere(true)}
-        />
+        <OnlineOnly>
+          <CancelBooking
+            bookingId={party.bookingId}
+            reference={party.reference ?? ""}
+            {...(party.name ? { who: party.name } : {})}
+            isCash={Boolean(cash)}
+            context="manifest"
+            onDone={() => setCancelledHere(true)}
+          />
+        </OnlineOnly>
       ) : null}
     </li>
   );

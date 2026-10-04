@@ -1,6 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import {
+  useActionState,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   recordCashCollected,
   type CashState,
@@ -21,6 +26,8 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { CoinsIcon } from "@/components/ui/icons";
 import { inputClass } from "@/components/ui/input";
+import { useChrome } from "@/components/chrome/chrome-context";
+import { offlineWrites, writeKey } from "@/lib/site/offline-writes";
 
 /**
  * The cash on one booking, and the tap that records it — yuvoy-operator#40 §1.
@@ -89,8 +96,56 @@ export function CashCollect({
    */
   onRecorded?: () => void;
 }) {
+  const { userId } = useChrome();
+  const kept = useSyncExternalStore(
+    offlineWrites.subscribe,
+    offlineWrites.list,
+    offlineWrites.serverList,
+  );
+  const keptHere = userId
+    ? kept.find(
+        (w) => w.key === writeKey("cash", bookingId) && w.userId === userId,
+      )
+    : undefined;
+  /*
+    A collection is recorded once and a repeat answers the first one, so with
+    no signal, or when the send never came back, it is kept on the phone and
+    sent when the signal is back (boarding mode, operator experiment D). The
+    phone's kept writes own it then; what it says comes from them.
+  */
   const [result, record, pending] = useActionState<CashState, FormData>(
-    recordCashCollected,
+    async (prev, form) => {
+      const keep = (): CashState => {
+        if (!userId || !bookingId) {
+          return {
+            message:
+              "No signal. Nothing was recorded yet. Tap again when you have a bar.",
+          };
+        }
+        const mode = form.get("mode") === "less" ? "less" : "fare";
+        const amount = mode === "less" ? String(form.get("amount") ?? "") : "";
+        offlineWrites.add({
+          kind: "cash",
+          userId,
+          slotId,
+          bookingId,
+          at: Date.now(),
+          mode,
+          amount,
+          amountPaise:
+            mode === "less" ? rupeesToPaise(amount) : cash.collectPaise,
+        });
+        return {};
+      };
+      if (!navigator.onLine) return keep();
+      try {
+        const answer = await recordCashCollected(prev, form);
+        return answer.retryable ? keep() : answer;
+      } catch {
+        // It may or may not have reached the API; a repeat is safe.
+        return keep();
+      }
+    },
     {},
   );
   const [less, setLess] = useState(false);
@@ -123,6 +178,19 @@ export function CashCollect({
             {formatPaise(recorded.shortfallPaise)} short of the fare.
           </p>
         ) : null}
+      </div>
+    );
+  }
+
+  if (keptHere) {
+    return (
+      <div className="border-paper-line mt-4 border-t pt-3">
+        <p role="status" className="text-sm font-bold">
+          {keptHere.kind === "cash" && keptHere.amountPaise !== null
+            ? `${formatPaise(keptHere.amountPaise)} taken, saved on this phone.`
+            : "The fare taken, saved on this phone."}{" "}
+          It sends when the signal is back.
+        </p>
       </div>
     );
   }

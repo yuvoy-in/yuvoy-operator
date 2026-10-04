@@ -184,13 +184,49 @@ describe("boarding", () => {
     ).toHaveTextContent("Asha Menon");
   });
 
-  it("says no signal before a tap, and offers no check-in while it lasts", () => {
+  it("says no signal before a tap, and offers no check-in with nobody to keep it as", () => {
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     render(<BoardingScreen {...props} />);
     expect(screen.getByRole("status")).toHaveTextContent("No signal");
     expect(
       screen.getByRole("button", { name: "Aboard: check in Asha Menon" }),
     ).toBeDisabled();
+  });
+
+  /*
+    With no signal, signed in (operator experiment D; owner go-ahead and
+    storage ruling, 4 Oct 2026): Aboard still works, the check-in is kept on
+    the phone after its five seconds, and the strip says what is kept.
+  */
+  it("keeps a check-in on the phone with no signal, and says so", async () => {
+    const { ChromeProvider } =
+      await import("@/components/chrome/chrome-context");
+    const { offlineWrites } = await import("@/lib/site/offline-writes");
+    offlineWrites.forget();
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    render(
+      <ChromeProvider
+        identity={{ businessName: null, canManage: true, userId: "usr_owner" }}
+      >
+        <BoardingScreen {...props} />
+      </ChromeProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Aboard: check in Asha Menon" }),
+    );
+    await pass(5_000);
+
+    expect(markAttendance).not.toHaveBeenCalled();
+    expect(offlineWrites.list()).toMatchObject([
+      { kind: "arrived", bookingId: "asha", slotId: "slot_dawn" },
+    ]);
+    const aboard = screen.getByRole("region", { name: "Aboard · 2" });
+    expect(aboard).toHaveTextContent("Asha Menon");
+    expect(aboard).toHaveTextContent("Saved on this phone");
+    expect(screen.getAllByRole("status")[0]).toHaveTextContent(
+      "1 check-in is saved on this phone. They send when the signal is back.",
+    );
   });
 
   it("puts the row back, saying why, when nothing was recorded", async () => {

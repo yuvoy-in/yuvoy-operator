@@ -1287,3 +1287,86 @@ test("on a desktop the arrow keys move along the board", async ({
     String(start.row),
   );
 });
+
+/*
+  With no signal (operator experiment B's offline state, built 4 Oct 2026).
+  The board is server-rendered: offline there is no other week, day or
+  inspector to fetch, and Next falls back to a full browser navigation that
+  lands on the browser's own "no internet" page. So the board stays readable,
+  nothing that changes something can be pressed, and a link that needs the
+  server is held with the reason.
+*/
+test("with no signal the calendar stays readable, changes nothing, and says so", async ({
+  page,
+  context,
+}) => {
+  await signIn(page);
+  await openDay(page, 1);
+  const notice = page.getByRole("status").filter({ hasText: "No signal" });
+  await expect(notice).toHaveCount(0);
+
+  await context.setOffline(true);
+  await expect(notice).toContainText(
+    "The calendar is read-only until you are back online. What it shows may be out of date.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Add departures" }),
+  ).toBeDisabled();
+
+  // Another week needs the server: held where it is, with the reason.
+  const here = page.url();
+  await page
+    .getByRole("navigation", { name: "Weeks" })
+    .getByRole("link", { name: "Later" })
+    .click();
+  await expect(notice).toContainText("That opens once you are back online.");
+  expect(page.url()).toBe(here);
+  await expect(page.getByRole("heading", { name: "Calendar" })).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
+
+  // Back online: the notice goes, and the board is usable again.
+  await context.setOffline(false);
+  await expect(notice).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Add departures" }),
+  ).toBeEnabled();
+});
+
+test("with no signal the inspector closes on the phone, and changes nothing", async ({
+  page,
+  context,
+}) => {
+  await signIn(page);
+  const inspector = await openDeparture(
+    page,
+    1,
+    "Snorkel trip to Elephant Beach",
+  );
+  await context.setOffline(true);
+  await expect(
+    page.getByRole("status").filter({ hasText: "No signal" }),
+  ).toBeVisible();
+
+  // Everything inside that changes the departure is off; Close is not.
+  const buttons = inspector.getByRole("button");
+  const names = (await buttons.allTextContents()).map((n) => n.trim());
+  expect(names.length, "the inspector offers something to do").toBeGreaterThan(
+    1,
+  );
+  for (let i = 0; i < names.length; i += 1) {
+    const button = buttons.nth(i);
+    const label = (await button.getAttribute("aria-label")) ?? names[i];
+    if (label === "Close") await expect(button).toBeEnabled();
+    else await expect(button).toBeDisabled();
+  }
+
+  await inspector.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.has("dep")).toBe(false);
+  await expect(page.getByRole("heading", { name: "Calendar" })).toBeVisible();
+  await context.setOffline(false);
+});
