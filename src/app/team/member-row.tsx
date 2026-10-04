@@ -10,6 +10,7 @@ import { AccessControls } from "./access-controls";
 import { JoinLink } from "./join-link";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { Chip } from "@/components/ui/chip";
 import { panelClass } from "@/components/ui/panel";
 
@@ -33,6 +34,10 @@ import { panelClass } from "@/components/ui/panel";
  * request two taps: a wet thumb costs nothing if it adds a seat and costs a
  * skipper their access if it does not. Not typed-confirmation territory
  * (they can be invited again), but not one tap either.
+ *
+ * It arrives still and leaves the same way (O06 B, `useStillConfirm`): the
+ * question fades in where "Remove" was, Back fades a held copy of it out as
+ * the words come back, and the row's receipt fades in.
  */
 export function MemberRow({
   member,
@@ -81,6 +86,17 @@ export function MemberRow({
   );
   const [confirming, setConfirming] = useState(false);
   const { trigger, question } = useConfirmFocus(confirming);
+  const { root, frame } = useStillConfirm(
+    state.removed
+      ? "receipt"
+      : removability.removable
+        ? confirming
+          ? "confirm"
+          : "text"
+        : removability.reason
+          ? "text:reason"
+          : "none",
+  );
 
   /*
     A role this build cannot describe is the one case the chip alone cannot
@@ -97,8 +113,8 @@ export function MemberRow({
       answers "did it work" ambiguously and "when does their access end" not at
       all — and the second is the whole reason somebody is removed in a hurry.
     */
-    return (
-      <li className={panelClass("done")}>
+    return frame(
+      <li ref={root} className={panelClass("done")}>
         <p className="text-base font-bold">
           {member.pending
             ? `Invitation to ${member.name} revoked`
@@ -115,11 +131,11 @@ export function MemberRow({
             ? "The invitation and its code no longer work."
             : "Signed out everywhere, now. Not at their next sign-in. If their phone is open on this portal, the next thing they tap will ask them to sign in."}
         </p>
-      </li>
+      </li>,
     );
   }
 
-  return (
+  return frame(
     <li className={panelClass()}>
       <div className="flex items-center justify-between gap-3">
         <p className="text-lg font-bold">{member.name}</p>
@@ -260,7 +276,11 @@ export function MemberRow({
       {removability.removable || removability.reason ? (
         removability.removable ? (
           confirming ? (
-            <form action={act} className="border-paper-line mt-4 border-t pt-4">
+            <form
+              ref={root}
+              action={act}
+              className="border-paper-line mt-4 border-t pt-4"
+            >
               <input type="hidden" name="id" value={member.id} />
               <p
                 ref={question}
@@ -299,29 +319,31 @@ export function MemberRow({
               </div>
             </form>
           ) : (
-            <Button
-              ref={trigger}
-              onClick={() => setConfirming(true)}
-              variant="danger-quiet"
-              size="md"
-              block={false}
-              aria-expanded={false}
-              /*
-                Whose, for a screen reader: every row says "Remove", and a list
-                of identical names is a list nobody can pick from (the audit,
-                O15). A label rather than hidden text, so the name is not a
-                second copy of the person's name in the row's text; it starts
-                with the visible word, so a voice command still finds it.
-              */
-              aria-label={
-                member.pending
-                  ? `Revoke invitation to ${member.name}`
-                  : `Remove ${member.name}`
-              }
-              className="mt-3"
-            >
-              {member.pending ? "Revoke invitation" : "Remove"}
-            </Button>
+            <div ref={root} className="mt-3">
+              <Button
+                ref={trigger}
+                onClick={() => setConfirming(true)}
+                variant="danger-quiet"
+                size="md"
+                block={false}
+                aria-expanded={false}
+                /*
+                  Whose, for a screen reader: every row says "Remove", and a
+                  list of identical names is a list nobody can pick from (the
+                  audit, O15). A label rather than hidden text, so the name is
+                  not a second copy of the person's name in the row's text; it
+                  starts with the visible word, so a voice command still finds
+                  it.
+                */
+                aria-label={
+                  member.pending
+                    ? `Revoke invitation to ${member.name}`
+                    : `Remove ${member.name}`
+                }
+              >
+                {member.pending ? "Revoke invitation" : "Remove"}
+              </Button>
+            </div>
           )
         ) : (
           /*
@@ -329,7 +351,10 @@ export function MemberRow({
             answers 409. Same call as the grant ceiling in O9: the refusal is
             knowable from what is already on screen, so it is said here.
           */
-          <p className="border-paper-line text-forest/70 mt-4 border-t pt-3 text-xs">
+          <p
+            ref={root}
+            className="border-paper-line text-forest/70 mt-4 border-t pt-3 text-xs"
+          >
             {removability.reason}
           </p>
         )
@@ -340,6 +365,6 @@ export function MemberRow({
           {state.message}
         </p>
       ) : null}
-    </li>
+    </li>,
   );
 }

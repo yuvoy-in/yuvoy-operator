@@ -105,6 +105,12 @@ export interface Lifted {
   copy: HTMLElement;
   rect: DOMRect;
   opacity: number;
+  /**
+   * The scroller it was seen through (a sheet's panel), or `null` for the
+   * page, read while it was still there: what its copy is clipped to when
+   * nothing of it is left on screen to ask.
+   */
+  scroller: HTMLElement | null;
 }
 
 /**
@@ -139,7 +145,7 @@ export function lift(el: Element | null): Lifted | null {
   copy.setAttribute("aria-hidden", "true");
   copy.setAttribute("data-motion", "");
   copy.inert = true;
-  return { copy, rect, opacity: opacityOf(el) };
+  return { copy, rect, opacity: opacityOf(el), scroller: scrollerOf(el) };
 }
 
 /** The nearest ancestor of `anchor` that scrolls, or none: the page. */
@@ -162,18 +168,25 @@ function scrollerOf(anchor: Element): HTMLElement | null {
  *
  * It is drawn in a fixed layer the size of what it was seen through: the
  * scroller `anchor` sits in (a sheet's panel, which it is clipped to, and
- * drawn above), or the window. Fixed, so it never makes the page or the
- * sheet longer than it now is: a confirm that leaves a shorter page lets the
- * scroll settle at once, as it always has, with the copy fading where it was
- * seen. Below the floating bar on a page, above everything in a sheet.
+ * drawn above), or the window. Without an `anchor`, which is how a confirm
+ * that left nothing in its place is put away, it is the scroller the copy
+ * was lifted from; one that has left the page with it draws nothing. Fixed,
+ * so it never makes the page or the sheet longer than it now is: a confirm
+ * that leaves a shorter page lets the scroll settle at once, as it always
+ * has, with the copy fading where it was seen. Below the floating bar on a
+ * page, above everything in a sheet.
+ *
+ * Returns what takes the copy away early, for a change that comes before
+ * its fade has ended.
  */
 export function dropLifted(
   lifted: Lifted,
-  anchor: Element,
+  anchor?: Element | null,
   duration: number = DURATION.quick,
-): void {
+): () => void {
   const { copy, rect, opacity } = lifted;
-  const scroller = scrollerOf(anchor);
+  const scroller = anchor ? scrollerOf(anchor) : lifted.scroller;
+  if (scroller && !scroller.isConnected) return () => {};
   const seen = scroller
     ? scroller.getBoundingClientRect()
     : { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight };
@@ -215,9 +228,10 @@ export function dropLifted(
   const gone = () => layer.remove();
   if (!fade) {
     gone();
-    return;
+    return gone;
   }
   fade.finished.then(gone, gone);
+  return gone;
 }
 
 /**

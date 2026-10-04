@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 
 const callOffDeparture = vi.fn();
 
@@ -234,25 +235,28 @@ describe("while the call-off runs", () => {
   O06 B (approved 4 Oct 2026): the one act that cannot be undone arrives
   still. Nothing moves; each new look fades in where the last stood, and the
   confirm Keep it puts away leaves as a held copy over the text that is
-  already back. A first paint fades nothing.
+  already back. A first paint fades nothing (`useStillConfirm`).
 */
 describe("the confirm, arriving and leaving", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
   it("fades the confirm in where the text was, and nothing on the first paint", () => {
     const { container } = render(
       <CallOffPanel slotId="slot_dawn" alreadyCalledOff={false} canManage />,
     );
-    expect(container.querySelector(".motion-in")).toBeNull();
+    expect(motion.played).toHaveLength(0);
     fireEvent.click(
       screen.getByRole("button", { name: "Call this departure off" }),
     );
-    const form = container.querySelector("form")!;
-    expect(form).toHaveClass("motion-in");
-    // It ships its own reduced version: a 120ms fade.
-    expect(form).toHaveAttribute("data-motion");
+    expect(motion.fadeOf(container.querySelector("form"))).toBeDefined();
   });
 
   it("opens still when the screen that drew it already asked", () => {
-    const { container } = render(
+    render(
       <CallOffPanel
         slotId="slot_dawn"
         alreadyCalledOff={false}
@@ -261,63 +265,47 @@ describe("the confirm, arriving and leaving", () => {
         onKeep={() => {}}
       />,
     );
-    expect(container.querySelector("form")).not.toHaveClass("motion-in");
+    // The screen that asked fades it in (the listing hub's row).
+    expect(motion.played).toHaveLength(0);
   });
 
   it("leaves a held copy of the confirm fading over the text that is back", () => {
-    const rect = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = () =>
-      ({ top: 400, left: 16, width: 340, height: 700 }) as DOMRect;
-    // jsdom has no Web Animations: a fade that never ends keeps the copy up.
-    Element.prototype.animate = (() =>
-      ({
-        finished: new Promise(() => {}),
-        cancel() {},
-      }) as unknown as Animation) as typeof Element.prototype.animate;
-    try {
-      render(
-        <CallOffPanel
-          slotId="slot_dawn"
-          alreadyCalledOff={false}
-          canManage
-          time="09:00"
-        />,
-      );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Call this departure off" }),
-      );
-      fireEvent.click(screen.getAllByRole("radio")[1]);
-      fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
+    render(
+      <CallOffPanel
+        slotId="slot_dawn"
+        alreadyCalledOff={false}
+        canManage
+        time="09:00"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Call this departure off" }),
+    );
+    fireEvent.click(screen.getAllByRole("radio")[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
 
-      // The real change has landed: the text is back, and fades in.
-      const trigger = screen.getByRole("button", {
-        name: "Call this departure off",
-      });
-      expect(trigger.parentElement).toHaveClass("motion-in");
-      expect(
-        screen.queryByRole("heading", { name: "Call off the 09:00?" }),
-      ).toBeNull();
+    // The real change has landed: the text is back, and fades in.
+    const trigger = screen.getByRole("button", {
+      name: "Call this departure off",
+    });
+    expect(motion.fadeOf(trigger.parentElement)).toBeDefined();
+    expect(
+      screen.queryByRole("heading", { name: "Call off the 09:00?" }),
+    ).toBeNull();
 
-      // The confirm as it was, choice and all, as a picture only.
-      const layer = document.body.querySelector(
-        ':scope > [aria-hidden="true"][data-motion]',
-      ) as HTMLElement;
-      const copy = layer.firstElementChild as HTMLElement;
-      expect(copy).toHaveTextContent("Call off the 09:00?");
-      expect(copy.inert).toBe(true);
-      expect(
-        (copy.querySelectorAll("input[type=radio]")[1] as HTMLInputElement)
-          .checked,
-      ).toBe(true);
-      expect(copy.querySelectorAll("[name]")).toHaveLength(0);
-      layer.remove();
-    } finally {
-      Element.prototype.getBoundingClientRect = rect;
-      delete (Element.prototype as unknown as Record<string, unknown>).animate;
-    }
+    // The confirm as it was, choice and all, as a picture only.
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Call off the 09:00?");
+    expect(copy.inert).toBe(true);
+    expect(
+      (copy.querySelectorAll("input[type=radio]")[1] as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(copy.querySelectorAll("[name]")).toHaveLength(0);
+    expect(motion.exitOf(copy)).toBeDefined();
   });
 
-  it("fades the receipt in once the call-off has gone through", async () => {
+  it("fades the receipt in once the call-off has gone through, with no copy", async () => {
     callOffDeparture.mockResolvedValue({
       result: {
         bookingsCancelled: 3,
@@ -336,6 +324,7 @@ describe("the confirm, arriving and leaving", () => {
     await user.click(screen.getAllByRole("radio")[0]);
     await user.click(screen.getByRole("button", { name: "Call it off" }));
     await screen.findByRole("heading", { name: "What that did" });
-    expect(container.querySelector("section")).toHaveClass("motion-in");
+    expect(motion.fadeOf(container.querySelector("section"))).toBeDefined();
+    expect(motion.copies()).toHaveLength(0);
   });
 });

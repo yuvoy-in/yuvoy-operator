@@ -6,6 +6,7 @@ import { WITHDRAW_REASONS } from "@/lib/media/rights";
 import { Button } from "@/components/ui/button";
 import { choiceClass } from "@/components/ui/input";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 
 /**
  * Taking a clip down, from the library rather than only from the receipt.
@@ -36,6 +37,9 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
  * in is quiet text in the warning colour, like every other act that ends
  * something, and the loud button is the one inside the confirm. It was a
  * secondary pill, the same shape as the actions beside it (the audit, O14).
+ * It arrives still and leaves the same way (O06 B, `useStillConfirm`): the
+ * question fades in where the words were, Not now fades a held copy of it
+ * out as they come back, and the receipt fades in.
  */
 export function WithdrawForm({
   mediaAssetId,
@@ -51,22 +55,26 @@ export function WithdrawForm({
   );
   const [open, setOpen] = useState(false);
   const { trigger, question } = useConfirmFocus(open);
+  const { root, frame } = useStillConfirm(
+    state.withdrawn ? "receipt" : open ? "confirm" : "text",
+  );
 
   if (state.withdrawn) {
-    return (
+    return frame(
       <p
+        ref={root}
         role="status"
         className="border-paper-line text-forest/80 mt-4 border-t pt-3 text-sm font-bold"
       >
         {state.withdrawn.note ??
           "It is off Yuvoy. The original is deleted at the video provider shortly afterwards."}
-      </p>
+      </p>,
     );
   }
 
   if (!open) {
-    return (
-      <div className="mt-4">
+    return frame(
+      <div ref={root} className="mt-4">
         <Button
           ref={trigger}
           onClick={() => setOpen(true)}
@@ -77,12 +85,16 @@ export function WithdrawForm({
         >
           Take it down
         </Button>
-      </div>
+      </div>,
     );
   }
 
-  return (
-    <form action={act} className="border-paper-line mt-4 border-t pt-4">
+  return frame(
+    <form
+      ref={root}
+      action={act}
+      className="border-paper-line mt-4 border-t pt-4"
+    >
       <input type="hidden" name="mediaAssetId" value={mediaAssetId} />
 
       <fieldset>
@@ -155,6 +167,6 @@ export function WithdrawForm({
           Not now
         </Button>
       </div>
-    </form>
+    </form>,
   );
 }

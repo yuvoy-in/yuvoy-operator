@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 
 /*
   What happens on screen after a cancel (yuvoy-operator#89 f16).
@@ -212,5 +213,53 @@ describe("focus in the cancel confirm", () => {
         ),
       ].map((input) => input.value),
     ).toEqual(["YV-ONE", "YV-TWO"]);
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026): the question fades in where the words were,
+  Keep it fades a held copy of it out as they come back, and the receipt
+  fades in with no copy (`useStillConfirm`).
+*/
+describe("arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
+  it("fades the question in, and Keep it fades a held copy out as the words come back", () => {
+    render(
+      <CancelBooking
+        bookingId="bkg_1"
+        reference="YV-TEST0001"
+        who="Asha Menon"
+        isCash={false}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel this booking" }),
+    );
+    const question = screen.getByText(
+      "Cancel Asha Menon's booking, YV-TEST0001?",
+    );
+    expect(motion.fadeOf(question.closest("form"))).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
+    const trigger = screen.getByRole("button", { name: "Cancel this booking" });
+    expect(motion.fadeOf(trigger.parentElement)).toBeDefined();
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Cancel Asha Menon's booking, YV-TEST0001?");
+    expect(motion.exitOf(copy)).toBeDefined();
+  });
+
+  it("fades the receipt in, with no copy of the question", async () => {
+    cancelBooking.mockResolvedValue({
+      done: { refundedPaise: 0, seatsReleased: 2 },
+    });
+    render(<CancelBooking bookingId="bkg_1" reference="YV-TEST0001" isCash />);
+    await cancelIt();
+    expect(motion.fadeOf(screen.getByRole("status"))).toBeDefined();
+    expect(motion.copies()).toHaveLength(0);
   });
 });

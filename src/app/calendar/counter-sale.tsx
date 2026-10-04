@@ -10,6 +10,7 @@ import {
 import type { OperatorSlot } from "@/lib/day/types";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 
@@ -33,6 +34,8 @@ import { Panel } from "@/components/ui/panel";
  * confirm that names what happens, because taking back a sale that was real
  * puts seats on sale that somebody is already sitting in (#81). Once taken
  * back, the receipt says the new state and the old controls go (#89 f16).
+ * The question arrives still and leaves the same way, and the receipt fades
+ * in (O06 B, `useStillConfirm`).
  *
  * Offered to everybody who may record one, which is everybody signed in, and
  * only when the API returned the entry's `id`: an older API did not, and then
@@ -57,6 +60,8 @@ export function CounterSale({
     FormData
   >(takeBackOfflineSale, {});
   const [sellingOpen, setSellingOpen] = useState(initiallyOpen);
+  // The take-back's receipt is drawn here, in place of the sale's.
+  const { root } = useStillConfirm(takeState.result ? "receipt" : "none");
 
   const oversold = saleState.result?.oversold;
   const saleId = saleState.result?.id;
@@ -70,7 +75,7 @@ export function CounterSale({
   if (takeState.result) {
     const taken = takeState.result;
     return (
-      <Panel tone="done" role="status" className="p-4">
+      <Panel ref={root} tone="done" role="status" className="p-4">
         {"already" in taken ? (
           <p className="text-sm font-bold">
             Already taken back. Its seats are on sale again.
@@ -263,10 +268,11 @@ function TakeBack({
 }) {
   const [asking, setAsking] = useState(false);
   const { trigger, question } = useConfirmFocus(asking);
+  const { root, frame } = useStillConfirm(asking ? "confirm" : "text");
 
   if (!asking) {
-    return (
-      <div className="mt-3">
+    return frame(
+      <div ref={root} className="mt-3">
         <Button
           ref={trigger}
           variant="danger-quiet"
@@ -277,12 +283,16 @@ function TakeBack({
         >
           That was a mistake
         </Button>
-      </div>
+      </div>,
     );
   }
 
-  return (
-    <form action={act} className="border-paper-line mt-4 border-t pt-4">
+  return frame(
+    <form
+      ref={root}
+      action={act}
+      className="border-paper-line mt-4 border-t pt-4"
+    >
       <input type="hidden" name="slotId" value={slotId} />
       <input type="hidden" name="saleId" value={saleId} />
       <p
@@ -323,6 +333,6 @@ function TakeBack({
           {seats === 1 ? "Keep it" : "Keep them"}
         </Button>
       </div>
-    </form>
+    </form>,
   );
 }

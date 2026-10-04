@@ -5,6 +5,7 @@ import { addBlackout, type BlackoutState } from "./actions";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
 import { Panel, panelClass } from "@/components/ui/panel";
 
@@ -33,6 +34,13 @@ import { Panel, panelClass } from "@/components/ui/panel";
  * text in the warning colour, and the button that closes carries the `danger`
  * pill. A day's form is opened by the day's own quiet "Close this day", which
  * hands it the day's two verbatim sentences to say first.
+ *
+ * ## It arrives still (O06 B, approved 4 Oct 2026)
+ *
+ * The question fades in where the words were, Keep them open fades a held
+ * copy of it out as the words come back, and the receipt fades in, as does
+ * the fresh form "Close more dates" asks for. A day's form is opened and put
+ * away by the day, which draws those two fades (`useStillConfirm`).
  */
 export interface ClosingDay {
   /** `YYYY-MM-DD`, in the market's calendar. */
@@ -72,6 +80,7 @@ export function BlackoutForm({
       day={day}
       onCancel={onCancel}
       onAgain={() => setRound((r) => r + 1)}
+      again={round > 0}
     >
       {children}
     </BlackoutRound>
@@ -83,12 +92,15 @@ function BlackoutRound({
   day,
   onCancel,
   onAgain,
+  again,
   children,
 }: {
   today: string;
   day?: ClosingDay;
   onCancel?: () => void;
   onAgain: () => void;
+  /** Drawn for "Close more dates", in place of a receipt, so it fades in. */
+  again: boolean;
   children?: ReactNode;
 }) {
   const [state, act, pending] = useActionState<BlackoutState, FormData>(
@@ -98,6 +110,16 @@ function BlackoutRound({
   // A day's form is already inside the panel somebody opened to reach it.
   const [open, setOpen] = useState(Boolean(day));
   const { trigger, question } = useConfirmFocus(open);
+  const { root, frame } = useStillConfirm(
+    state.result
+      ? "receipt"
+      : day?.closed
+        ? "text:closed"
+        : open
+          ? "confirm"
+          : "text",
+    { enter: again },
+  );
   /*
     Unique per form. The calendar can hold this form more than once — the
     range closure at the top and a day's inside its Manage panel — and two
@@ -113,8 +135,8 @@ function BlackoutRound({
 
   if (state.result) {
     const owed = state.result.existingBookings;
-    return (
-      <Panel tone={owed > 0 ? "alert" : "done"}>
+    return frame(
+      <Panel ref={root} tone={owed > 0 ? "alert" : "done"}>
         <p className="text-base font-bold">
           {day
             ? `${day.label} is closed to new bookings`
@@ -143,7 +165,7 @@ function BlackoutRound({
             Close more dates
           </Button>
         )}
-      </Panel>
+      </Panel>,
     );
   }
 
@@ -152,30 +174,32 @@ function BlackoutRound({
       It said "Reopening a closed day is not something the portal can do yet",
       which stopped being true when the day gained Reopen beside its closure.
     */
-    return (
-      <p className="text-forest/80 text-sm">
+    return frame(
+      <p ref={root} className="text-forest/80 text-sm">
         {`${day.label} is already closed to new bookings.`}
-      </p>
+      </p>,
     );
   }
 
   if (!open) {
-    return (
-      <Button
-        ref={trigger}
-        onClick={() => setOpen(true)}
-        variant="danger-quiet"
-        size="md"
-        block={false}
-        aria-expanded={false}
-      >
-        Close dates to new bookings
-      </Button>
+    return frame(
+      <div ref={root}>
+        <Button
+          ref={trigger}
+          onClick={() => setOpen(true)}
+          variant="danger-quiet"
+          size="md"
+          block={false}
+          aria-expanded={false}
+        >
+          Close dates to new bookings
+        </Button>
+      </div>,
     );
   }
 
-  return (
-    <form action={act} className={day ? undefined : panelClass()}>
+  return frame(
+    <form ref={root} action={act} className={day ? undefined : panelClass()}>
       <p
         ref={question}
         tabIndex={-1}
@@ -300,6 +324,6 @@ function BlackoutRound({
           </Button>
         )}
       </div>
-    </form>
+    </form>,
   );
 }

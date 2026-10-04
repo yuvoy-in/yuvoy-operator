@@ -13,6 +13,7 @@ import { PAUSE_REASONS } from "@/lib/services/listings";
 import { helpHref } from "@/lib/help/types";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 
@@ -59,6 +60,12 @@ type Stamped<T> = T & { at?: number };
  * the `danger` pill, under the one sentence that changes the decision: it does
  * not cancel the bookings already made. The rest of what pausing does, and
  * does not do, is one tap away in help rather than two paragraphs here.
+ *
+ * ## Both confirms arrive still (O06 B, approved 4 Oct 2026)
+ *
+ * Pause's question and Resume's fade in where their words were, Not now and
+ * Not yet fade a held copy out as the words come back, and each receipt
+ * fades in. Nothing moves (`useStillConfirm`).
  */
 export function PauseResume({
   experienceId,
@@ -97,16 +104,39 @@ export function PauseResume({
   const { trigger, question } = useConfirmFocus(open);
 
   const resumeIsLatest = (resumed.at ?? 0) > (paused.at ?? 0);
+  const { root, frame } = useStillConfirm(
+    resumed.done && resumeIsLatest
+      ? "receipt:resumed"
+      : paused.done
+        ? "receipt:paused"
+        : publicationState === "withdrawn"
+          ? "text:withdrawn"
+          : publicationState !== "published"
+            ? "none"
+            : open
+              ? "confirm"
+              : "text",
+  );
 
   if (resumed.done && resumeIsLatest) {
-    return <Resumed state={resumed.done.state} next={resumed.done.next} />;
+    return frame(
+      <Resumed
+        state={resumed.done.state}
+        next={resumed.done.next}
+        root={root}
+      />,
+    );
   }
 
   if (paused.done) {
     const { upcomingDepartures, bookingsToHonour, guestsToHonour, note, next } =
       paused.done;
-    return (
-      <Panel tone={bookingsToHonour > 0 ? "alert" : "done"} className="mt-4">
+    return frame(
+      <Panel
+        ref={root}
+        tone={bookingsToHonour > 0 ? "alert" : "done"}
+        className="mt-4"
+      >
         <p className="text-base font-bold">Paused</p>
         <p className="text-forest/80 mt-2 text-sm">
           {upcomingDepartures === 1
@@ -157,29 +187,32 @@ export function PauseResume({
           pending={resuming}
           message={resumeIsLatest ? resumed.message : undefined}
         />
-      </Panel>
+      </Panel>,
     );
   }
 
   if (publicationState === "withdrawn") {
-    return (
+    return frame(
       <ResumeControl
         experienceId={experienceId}
         title={title}
         action={resume}
         pending={resuming}
         message={resumed.message}
-      />
+      />,
     );
   }
 
   // A draft sells nothing, and a listing awaiting its first approval has no
   // switch at all.
-  if (publicationState !== "published") return null;
+  if (publicationState !== "published") return frame(null);
 
   if (!open) {
-    return (
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+    return frame(
+      <div
+        ref={root}
+        className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1"
+      >
         <Button
           ref={trigger}
           onClick={() => setOpen(true)}
@@ -201,17 +234,23 @@ export function PauseResume({
         >
           What pausing does
         </Link>
-      </div>
+      </div>,
     );
   }
 
-  return (
+  return frame(
     /*
       Keyed on the attempt counter so the form REMOUNTS after a refusal and
       re-reads the defaults below. Without it React keeps the reset,
-      uncontrolled inputs and the values handed back are never applied.
+      uncontrolled inputs and the values handed back are never applied. A
+      remount is not a new look, so it does not fade in again.
     */
-    <form key={paused.attempt ?? 0} action={pause} className="mt-4 space-y-4">
+    <form
+      key={paused.attempt ?? 0}
+      ref={root}
+      action={pause}
+      className="mt-4 space-y-4"
+    >
       <input type="hidden" name="id" value={experienceId} />
 
       <Panel tone="alert">
@@ -301,7 +340,7 @@ export function PauseResume({
           Not now
         </Button>
       </div>
-    </form>
+    </form>,
   );
 }
 
@@ -328,10 +367,11 @@ function ResumeControl({
 }) {
   const [armed, setArmed] = useState(false);
   const { trigger, question } = useConfirmFocus(armed);
+  const { root, frame } = useStillConfirm(armed ? "confirm" : "text");
 
   if (!armed) {
-    return (
-      <div className="mt-4">
+    return frame(
+      <div ref={root} className="mt-4">
         <Button
           ref={trigger}
           onClick={() => setArmed(true)}
@@ -345,12 +385,16 @@ function ResumeControl({
             {message}
           </p>
         ) : null}
-      </div>
+      </div>,
     );
   }
 
-  return (
-    <form action={action} className="border-paper-line mt-4 border-t pt-4">
+  return frame(
+    <form
+      ref={root}
+      action={action}
+      className="border-paper-line mt-4 border-t pt-4"
+    >
       <input type="hidden" name="id" value={experienceId} />
       <p
         ref={question}
@@ -387,7 +431,7 @@ function ResumeControl({
           Not yet
         </Button>
       </div>
-    </form>
+    </form>,
   );
 }
 
@@ -417,13 +461,16 @@ function ResumeControl({
 function Resumed({
   state,
   next,
+  root,
 }: {
   state: "published" | "in_review";
   next?: string;
+  /** The panel's own element, for the fade it arrives with. */
+  root?: (element: HTMLElement | null) => void;
 }) {
   if (state === "in_review") {
     return (
-      <Panel className="mt-4" role="status">
+      <Panel ref={root} className="mt-4" role="status">
         <p className="text-base font-bold">
           Still waiting for its first approval
         </p>
@@ -435,7 +482,7 @@ function Resumed({
     );
   }
   return (
-    <Panel tone="done" className="mt-4" role="status">
+    <Panel ref={root} tone="done" className="mt-4" role="status">
       <p className="text-base font-bold">Resumed</p>
       <p className="text-forest/80 mt-2 text-sm">
         {next ??

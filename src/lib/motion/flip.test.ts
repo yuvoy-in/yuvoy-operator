@@ -234,6 +234,48 @@ describe("a held copy of what left", () => {
     expect(lifted.copy.style.top).toBe("240px");
   });
 
+  it("is clipped to the sheet it was lifted from when nothing is left to ask", () => {
+    const $ = page(`
+      <div id="sheet" data-top="100" style="overflow-y: auto">
+        <div id="was" data-top="340"></div>
+      </div>`);
+    const lifted = lift($("was"))!;
+    $("was").remove();
+    dropLifted(lifted);
+    const layer = lifted.copy.parentElement!;
+    expect(layer.style.top).toBe("100px");
+    expect(layer.style.zIndex).toBe("60");
+  });
+
+  it("draws nothing when the sheet it was lifted from has gone too", () => {
+    const $ = page(`
+      <div id="sheet" data-top="100" style="overflow-y: auto">
+        <div id="was" data-top="340"></div>
+      </div>`);
+    const lifted = lift($("was"))!;
+    $("sheet").remove();
+    dropLifted(lifted)();
+    expect(lifted.copy.isConnected).toBe(false);
+    expect(played).toHaveLength(0);
+  });
+
+  it("can be taken away before its fade has ended", () => {
+    const $ = page(`<div id="was" data-top="10"></div><p id="anchor"></p>`);
+    Object.defineProperty(Element.prototype, "animate", {
+      configurable: true,
+      value: () =>
+        ({
+          finished: new Promise(() => {}),
+          cancel() {},
+        }) as unknown as Animation,
+    });
+    const lifted = lift($("was"))!;
+    const takeAway = dropLifted(lifted, $("anchor"));
+    expect(lifted.copy.isConnected).toBe(true);
+    takeAway();
+    expect(lifted.copy.isConnected).toBe(false);
+  });
+
   it("fades in 120ms on a linear curve under reduced motion", () => {
     reduce(true);
     const $ = page(`<div id="was" data-top="10"></div><p id="anchor"></p>`);

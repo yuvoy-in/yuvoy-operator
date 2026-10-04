@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 import type { OperatorSlot } from "@/lib/day/types";
 
 /*
@@ -247,5 +248,55 @@ describe("focus in the take-back confirm", () => {
     expect(
       screen.getByRole("button", { name: "That was a mistake" }),
     ).toHaveFocus();
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026): the take-back's question fades in where "That
+  was a mistake" was, Keep them fades a held copy of it out as the words come
+  back, and the take-back's receipt fades in with no copy
+  (`useStillConfirm`).
+*/
+describe("arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+    recordOfflineSale.mockResolvedValue({
+      result: {
+        id: "adj_1",
+        seatsRecorded: 2,
+        seatsRemaining: 4,
+        totalSoldOffline: 2,
+      },
+    });
+  });
+  afterEach(() => motion.restore());
+
+  it("fades the question in, and Keep them fades a held copy out as the words come back", async () => {
+    await recordTwo();
+    fireEvent.click(screen.getByRole("button", { name: "That was a mistake" }));
+    const question = screen.getByText(
+      "Take back the 2 seats you just recorded?",
+    );
+    expect(motion.fadeOf(question.closest("form"))).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep them" }));
+    const trigger = screen.getByRole("button", { name: "That was a mistake" });
+    expect(motion.fadeOf(trigger.parentElement)).toBeDefined();
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Take back the 2 seats you just recorded?");
+    expect(motion.exitOf(copy)).toBeDefined();
+  });
+
+  it("fades the take-back's receipt in, with no copy of the question", async () => {
+    takeBackOfflineSale.mockResolvedValue({
+      result: { seatsTakenBack: 2, seatsRemaining: 6, totalSoldOffline: 0 },
+    });
+    await recordTwo();
+    fireEvent.click(screen.getByRole("button", { name: "That was a mistake" }));
+    fireEvent.click(screen.getByRole("button", { name: "Take them back" }));
+    await screen.findByText("2 seats taken back and on sale again");
+    expect(motion.fadeOf(screen.getByRole("status"))).toBeDefined();
+    expect(motion.copies()).toHaveLength(0);
   });
 });

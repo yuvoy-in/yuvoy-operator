@@ -1,19 +1,12 @@
 "use client";
 
-import {
-  useActionState,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useActionState, useEffect, useState } from "react";
 import { callOffDeparture, type CallOffState } from "./actions";
 import { CALL_OFF_REASONS } from "@/lib/day/relay-types";
 import { formatPaise } from "@/lib/format/money";
-import { dropLifted, lift, type Lifted } from "@/lib/motion/flip";
-import { MeasureBefore } from "@/lib/motion/measure-before";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { choiceClass, textareaClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
@@ -52,14 +45,11 @@ import { cn } from "@/lib/cn";
  * should not cut in either: the page grew by a 700px confirm in one frame,
  * and Keep it took it away in one. Now nothing moves. Each new look of the
  * panel (the confirm, the quiet text back after Keep it, the receipt) fades
- * in where the last one stood, 150ms, and the confirm Keep it puts away
- * fades out as a held copy over the text that has already come back (150ms,
- * accelerating away), so the real change never waits for its exit. Neither
- * scrolls the confirm into view: moving the loud button under the thumb that
- * just tapped is how a double tap calls a boat off. A first paint fades
- * nothing; under reduced motion every fade takes 120ms. On the listing hub,
- * whose Manage row takes the whole panel away for Keep it, the row's own
- * change is what the operator sees.
+ * in where the last one stood, and the confirm Keep it puts away fades out
+ * as a held copy over the text that has already come back
+ * (`useStillConfirm`, which every named confirm shares). On the listing hub,
+ * whose Manage row opens it and takes it away for Keep it, the row draws
+ * the same two fades around it.
  */
 export function CallOffPanel({
   slotId,
@@ -114,44 +104,22 @@ export function CallOffPanel({
   }, [pending, onBusyChange]);
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
-  /*
-    Which look the panel has, and whether it has changed since it was first
-    drawn: only a change fades in. Worked out while rendering, React's
-    "storing information from previous renders".
-  */
-  const look = state.result ? "receipt" : open ? "confirm" : "text";
-  const [drawn, setDrawn] = useState(look);
-  const [changed, setChanged] = useState(false);
-  if (look !== drawn) {
-    setDrawn(look);
-    setChanged(true);
-  }
-  const arrive = changed ? "motion-in" : undefined;
-  const motion = changed ? "" : undefined;
-
-  const confirm = useRef<HTMLFormElement>(null);
-  const text = useRef<HTMLDivElement>(null);
-  // The same root in every look, so what the confirm was is read before the
-  // commit that takes it away.
-  const frame = (body: ReactNode) => (
-    <MeasureBefore<Lifted | null>
-      watch={open}
-      capture={() => lift(confirm.current)}
-      apply={(lifted) => {
-        if (lifted && text.current) dropLifted(lifted, text.current);
-      }}
-    >
-      {body}
-    </MeasureBefore>
+  const { root, frame } = useStillConfirm(
+    state.result
+      ? "receipt"
+      : alreadyCalledOff
+        ? "none"
+        : !canManage
+          ? "text:staff"
+          : open
+            ? "confirm"
+            : "text",
   );
 
   if (state.result) {
     const r = state.result;
     return frame(
-      <section
-        data-motion={motion}
-        className={panelClass("alert", cn(arrive, className))}
-      >
+      <section ref={root} className={panelClass("alert", className)}>
         {/*
           The banner at the top of the page already says the departure is off —
           it renders from the manifest, which the call-off revalidated. This
@@ -207,7 +175,7 @@ export function CallOffPanel({
   */
   if (!canManage) {
     return frame(
-      <p className={cn("text-forest/70 text-sm", className)}>
+      <p ref={root} className={cn("text-forest/70 text-sm", className)}>
         Calling off a departure needs an owner, an admin or a manager.
       </p>,
     );
@@ -215,7 +183,7 @@ export function CallOffPanel({
 
   if (!open) {
     return frame(
-      <div ref={text} data-motion={motion} className={cn(arrive, className)}>
+      <div ref={root} className={className}>
         <Button
           ref={trigger}
           onClick={() => setOpen(true)}
@@ -232,10 +200,9 @@ export function CallOffPanel({
 
   return frame(
     <form
-      ref={confirm}
+      ref={root}
       action={act}
-      data-motion={motion}
-      className={panelClass("alert", cn("bg-paper", arrive, className))}
+      className={panelClass("alert", cn("bg-paper", className))}
     >
       <h2
         ref={question}

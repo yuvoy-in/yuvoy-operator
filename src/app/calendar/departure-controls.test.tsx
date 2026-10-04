@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 import type { OperatorSlot } from "@/lib/day/types";
 
 const refresh = vi.fn();
@@ -314,5 +315,46 @@ describe("setting the seats", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveClass("motion-rise-in");
     expect(alert).toHaveAttribute("data-motion");
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026): the stop-selling question fades in where the
+  words were, Keep selling fades a held copy of it out as they come back, and
+  the receipt fades in with no copy (`useStillConfirm`).
+*/
+describe("the stop-selling confirm, arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
+  const QUESTION = /^Stop selling \d\d:\d\d Sky diving at key west\?$/;
+
+  it("fades the question in, and Keep selling fades a held copy out as the words come back", () => {
+    render(<DepartureControls slot={slot()} canManage canSellAtCounter />);
+    fireEvent.click(screen.getByRole("button", { name: "Stop selling" }));
+    expect(
+      motion.fadeOf(screen.getByText(QUESTION).closest("form")),
+    ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep selling" }));
+    const trigger = screen.getByRole("button", { name: "Stop selling" });
+    expect(motion.fadeOf(trigger.parentElement)).toBeDefined();
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Sky diving at key west?");
+    expect(motion.exitOf(copy)).toBeDefined();
+  });
+
+  it("fades the receipt in, with no copy of the question", async () => {
+    closeDeparture.mockResolvedValue({ done: true });
+    render(<DepartureControls slot={slot()} canManage canSellAtCounter />);
+    fireEvent.click(screen.getByRole("button", { name: "Stop selling" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Weather" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop selling it" }));
+    const receipt = await screen.findByText(/is closed to new bookings$/);
+    expect(motion.fadeOf(receipt.parentElement)).toBeDefined();
+    expect(motion.copies()).toHaveLength(0);
   });
 });

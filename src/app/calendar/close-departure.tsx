@@ -6,6 +6,7 @@ import { closeDeparture, type CloseDepartureState } from "./actions";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { choiceClass, textareaClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 
@@ -39,6 +40,12 @@ import { Panel } from "@/components/ui/panel";
  *
  * The listing hub opens it straight on the question (#85 s8), from its own
  * Manage row, so the one confirm serves both screens.
+ *
+ * ## It arrives still (O06 B, approved 4 Oct 2026)
+ *
+ * The question fades in where "Stop selling" was, Keep selling fades a held
+ * copy of it out as the words come back, and the receipt fades in. Nothing
+ * moves (`useStillConfirm`).
  */
 export function CloseDeparture({
   slotId,
@@ -72,6 +79,9 @@ export function CloseDeparture({
     {},
   );
   const router = useRouter();
+  const { root, frame } = useStillConfirm(
+    state.done ? "receipt" : !available ? "none" : open ? "confirm" : "text",
+  );
 
   const heading = `${time} ${title} is closed to new bookings`;
   /*
@@ -101,19 +111,19 @@ export function CloseDeparture({
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
   if (state.done) {
-    return (
-      <Panel tone="done" role="status" className="p-4">
+    return frame(
+      <Panel ref={root} tone="done" role="status" className="p-4">
         <p className="text-sm font-bold">{heading}</p>
         <p className="text-forest/80 mt-1 text-sm">{note}</p>
-      </Panel>
+      </Panel>,
     );
   }
 
-  if (!available) return null;
+  if (!available) return frame(null);
 
   if (!open) {
-    return (
-      <div>
+    return frame(
+      <div ref={root}>
         <Button
           ref={trigger}
           variant="danger-quiet"
@@ -124,12 +134,12 @@ export function CloseDeparture({
         >
           Stop selling
         </Button>
-      </div>
+      </div>,
     );
   }
 
-  return (
-    <form action={act} className="border-paper-line border-t pt-4">
+  return frame(
+    <form ref={root} action={act} className="border-paper-line border-t pt-4">
       <input type="hidden" name="slotId" value={slotId} />
       <p
         ref={question}
@@ -204,6 +214,6 @@ export function CloseDeparture({
           Keep selling
         </Button>
       </div>
-    </form>
+    </form>,
   );
 }

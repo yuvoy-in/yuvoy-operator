@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 
 const saveSchedule = vi.fn();
 
@@ -433,5 +434,60 @@ describe("what saving says afterwards", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Some rows need fixing.");
     expect(alert).toHaveTextContent("Tuesday at 09:00: Seats are 1 to 200.");
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026): the question fades in where Save was; put
+  away (Keep editing, or an edit that makes it moot) it fades out as a held
+  copy while what replaced it fades in; the receipt fades in with no copy
+  (`useStillConfirm`).
+*/
+describe("the question, arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
+  function ask() {
+    form();
+    fireEvent.change(usualTime(), { target: { value: "07:15" } });
+    fireEvent.click(save() as HTMLElement);
+  }
+
+  it("fades the question in, and Keep editing fades a held copy out as Save comes back", () => {
+    ask();
+    const question = screen.getByText("Save the schedule?");
+    expect(motion.fadeOf(question.parentElement)).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(motion.fadeOf(save()!.parentElement)).toBeDefined();
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Save the schedule?");
+    expect(motion.exitOf(copy)).toBeDefined();
+  });
+
+  it("puts the question away the same way when an edit makes it moot", () => {
+    ask();
+    // The time put back: nothing is removed, and nothing is left to save.
+    fireEvent.change(usualTime(), { target: { value: "09:00" } });
+    // Gone from the page: what is left of it is a picture a screen reader
+    // never meets.
+    expect(
+      screen.queryByRole("button", { name: "Save and close them" }),
+    ).toBeNull();
+    expect(motion.copies()[0]).toHaveTextContent("Save the schedule?");
+  });
+
+  it("fades the receipt in, with no copy of the question", async () => {
+    saveSchedule.mockResolvedValue({ done: true });
+    ask();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save and close them" }),
+    );
+    const receipt = await screen.findByText("The weekly schedule is saved");
+    expect(motion.fadeOf(receipt.parentElement)).toBeDefined();
+    expect(motion.copies()).toHaveLength(0);
   });
 });

@@ -277,14 +277,26 @@ test("a pill fills on the tap, before the server answers, and its rows say they 
 test("the call-off confirm fades in, and Keep it leaves a copy fading where it stood", async ({
   page,
 }) => {
+  await record(page);
   await signIn(page);
   // Kept, never sent: day.spec treats this departure the same way.
   await page.goto("/today/slot_late_morning");
+  await forget(page);
   await page.getByRole("button", { name: "Call this departure off" }).click();
+  // The confirm fades in where the text was: opacity only, 150ms.
+  await expect
+    .poll(async () =>
+      (await played(page)).some(
+        (p) =>
+          p.on.startsWith("form") &&
+          p.keyframes[0]?.opacity === 0 &&
+          p.duration === 150,
+      ),
+    )
+    .toBe(true);
   const confirm = page.locator("form", {
     has: page.getByRole("button", { name: "Call it off" }),
   });
-  await expect(confirm).toHaveClass(/\bmotion-in\b/);
 
   await page.getByRole("radio", { name: "Weather" }).check();
   // Whatever is laid over the page from here on, however briefly.
@@ -305,16 +317,25 @@ test("the call-off confirm fades in, and Keep it leaves a copy fading where it s
       }
     }).observe(document.body, { childList: true });
   });
+  await forget(page);
   await confirm.getByRole("button", { name: "Keep it" }).click();
   // The real change landed at once: the text is back, with focus.
   await expect(
     page.getByRole("button", { name: "Call this departure off" }),
   ).toBeFocused();
-  // The confirm as it was went over it, and is gone once it has faded.
+  // The confirm as it was went over it, fading out as the text faded in, and
+  // is gone once it has faded.
   const layers = await page.evaluate(
     () => (window as unknown as { __layers: string[] }).__layers,
   );
   expect(layers.some((text) => text.startsWith("Call off the"))).toBe(true);
+  const fades = await played(page);
+  expect(
+    fades.some((p) => p.keyframes.at(-1)?.opacity === 0 && p.duration === 150),
+  ).toBe(true);
+  expect(
+    fades.some((p) => p.keyframes[0]?.opacity === 0 && p.duration === 150),
+  ).toBe(true);
   await expect(
     page.locator("body > [aria-hidden=true][data-motion]"),
   ).toHaveCount(0, { timeout: 1_000 });

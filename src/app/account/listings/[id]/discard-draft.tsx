@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { discardDraft, type DiscardState } from "./actions";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 
 /**
  * "Discard this draft" on a draft nobody has seen (yuvoy-operator#112).
@@ -19,7 +20,9 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
  * quiet text in the warning colour, and the loud button is the one inside the
  * confirm, which names the listing and says what goes with it. Focus moves to
  * the question and comes back to the trigger on "Keep it"
- * (`useConfirmFocus`).
+ * (`useConfirmFocus`). It arrives still and leaves the same way (O06 B,
+ * `useStillConfirm`): the question fades in where the words were, and Keep
+ * it fades a held copy of it out as they come back.
  *
  * ## No receipt here
  *
@@ -41,11 +44,12 @@ export function DiscardDraft({
   );
   const [open, setOpen] = useState(false);
   const { trigger, question } = useConfirmFocus(open);
+  const { root, frame } = useStillConfirm(open ? "confirm" : "text");
   const name = title?.trim();
 
   if (!open) {
-    return (
-      <div className="mt-6">
+    return frame(
+      <div ref={root} className="mt-6">
         <Button
           ref={trigger}
           variant="danger-quiet"
@@ -56,12 +60,16 @@ export function DiscardDraft({
         >
           Discard this draft
         </Button>
-      </div>
+      </div>,
     );
   }
 
-  return (
-    <form action={act} className="border-paper-line mt-6 border-t pt-4">
+  return frame(
+    <form
+      ref={root}
+      action={act}
+      className="border-paper-line mt-6 border-t pt-4"
+    >
       <input type="hidden" name="experienceId" value={experienceId} />
 
       <p
@@ -107,6 +115,6 @@ export function DiscardDraft({
           Keep it
         </Button>
       </div>
-    </form>
+    </form>,
   );
 }

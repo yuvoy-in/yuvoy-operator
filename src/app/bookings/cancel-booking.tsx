@@ -8,6 +8,7 @@ import { formatPaise } from "@/lib/format/money";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { Panel } from "@/components/ui/panel";
 import { choiceClass, textareaClass } from "@/components/ui/input";
 
@@ -43,6 +44,12 @@ import { choiceClass, textareaClass } from "@/components/ui/input";
  * cancelling somebody's trip must not carry the weight of the safe action
  * beside it. The confirm it opens names what happens and carries the `danger`
  * pill. There is no heading over it any more: one control is not a group.
+ *
+ * ## It arrives still (O06 B, approved 4 Oct 2026)
+ *
+ * The question fades in where "Cancel this booking" was, Keep it fades a held
+ * copy of it out as the words come back, and the receipt fades in. Nothing
+ * moves (`useStillConfirm`).
  */
 export function CancelBooking({
   bookingId,
@@ -107,6 +114,9 @@ export function CancelBooking({
     (`available`), so it can re-read underneath it.
   */
   const finished = Boolean(state.done || state.alreadyCancelled);
+  const { root, frame } = useStillConfirm(
+    finished ? "receipt" : !available ? "none" : open ? "confirm" : "text",
+  );
   useEffect(() => {
     if (!finished) return;
     onDone?.();
@@ -116,8 +126,13 @@ export function CancelBooking({
   }, [finished]);
 
   if (finished) {
-    return (
-      <Panel tone="done" role="status" className={cn(className, "p-4")}>
+    return frame(
+      <Panel
+        ref={root}
+        tone="done"
+        role="status"
+        className={cn(className, "p-4")}
+      >
         <p className="text-base font-bold">This booking is cancelled</p>
         {state.done ? (
           <>
@@ -157,15 +172,15 @@ export function CancelBooking({
             </Button>
           </div>
         ) : null}
-      </Panel>
+      </Panel>,
     );
   }
 
-  if (!available) return null;
+  if (!available) return frame(null);
 
   if (!open) {
-    return (
-      <div className={className}>
+    return frame(
+      <div ref={root} className={className}>
         <Button
           ref={trigger}
           variant="danger-quiet"
@@ -176,12 +191,13 @@ export function CancelBooking({
         >
           Cancel this booking
         </Button>
-      </div>
+      </div>,
     );
   }
 
-  return (
+  return frame(
     <form
+      ref={root}
       action={act}
       className={cn(className, "border-paper-line border-t pt-4")}
     >
@@ -286,6 +302,6 @@ export function CancelBooking({
           Keep it
         </Button>
       </div>
-    </form>
+    </form>,
   );
 }
