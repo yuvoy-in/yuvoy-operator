@@ -46,7 +46,7 @@ export function InboxLink({ className }: { className?: string }) {
           : `Messages, ${count} unread ${count === 1 ? "conversation" : "conversations"}`
       }
       className={cn(
-        "ease-interaction bg-paper/10 text-paper ring-paper/12 hover:bg-paper/15 relative inline-flex size-11 shrink-0 items-center justify-center rounded-full ring-1 transition-[transform,background-color] duration-200 active:scale-[0.96]",
+        "motion-disc bg-paper/10 text-paper ring-paper/12 hover:bg-paper/15 relative inline-flex size-11 shrink-0 items-center justify-center rounded-full ring-1 active:scale-[0.96]",
         className,
       )}
     >

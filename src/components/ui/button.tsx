@@ -61,8 +61,9 @@ export function buttonClass({
 } = {}): string {
   return cn(
     "inline-flex shrink-0 items-center justify-center gap-2 rounded-full label font-bold whitespace-nowrap select-none",
-    "transition-[transform,background-color,border-color,color,opacity] duration-200 ease-interaction",
-    "active:scale-[0.98] disabled:pointer-events-none disabled:opacity-55",
+    // The press eases in and out (`motion-control`, globals.css): it names
+    // `scale`, which is the property `active:scale-*` writes.
+    "motion-control active:scale-[0.98] disabled:pointer-events-none disabled:opacity-55",
     VARIANT[variant],
     SIZE[size],
     block && "flex w-full",

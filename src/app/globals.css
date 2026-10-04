@@ -165,13 +165,23 @@
 
   /*
     Respect users who prefer less motion. This neutralises every animation and
-    transition globally, which is why individual components never need their
-    own reduced-motion branch.
+    transition globally.
+
+    Reduced motion SWAPS travel for a fade rather than deleting meaning (S01,
+    approved 4 Oct 2026, the same rule as the traveller app's): an element
+    that ships its own reduced version (a 120ms crossfade in place of a slide,
+    a tint that is colour and not motion, a countdown that steps once a
+    second) carries `data-motion` and is left to it; everything unmarked is
+    made instant, exactly as before. The reduced versions are written once,
+    in the "motion" sections at the foot of this file and in `lib/motion`, so
+    no component writes the branch by hand. `::backdrop` was missed by the old
+    rule; it is covered now.
   */
   @media (prefers-reduced-motion: reduce) {
-    *,
-    ::before,
-    ::after {
+    *:not([data-motion]),
+    *:not([data-motion])::before,
+    *:not([data-motion])::after,
+    :not([data-motion])::backdrop {
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
@@ -391,4 +401,67 @@
 
 [data-sun="on"] .border-b {
   border-bottom-width: 2px;
+}
+
+/* ---------------------------------------------------- motion: presses */
+
+/*
+  The portal's motion system (approved 4 Oct 2026, yuvoy/motion-lab; the
+  rules in yuvoy-app/docs/DESIGN_SYSTEM.md, v3.1). Productive, not
+  cinematic: 200ms is the ceiling for anything but progress, 150ms for what
+  is done dozens of times a shift, nothing travels across the screen, and a
+  change is marked and said rather than moved. `palette.test.ts` holds every
+  duration here and in the components to that ceiling.
+
+  Press feedback (the defect found by the study, in both apps): Tailwind 4
+  writes `active:scale-*` to the standalone `scale` property, and every
+  transition list here named only `transform`, so every press in the portal
+  snapped in and snapped back. These name `scale`: 100ms in, 150ms out.
+  `palette.test.ts` fails an `active:scale-` with no list that does.
+  `motion-control` is a Button's set, `motion-disc` a disc's (no opacity: a
+  disabled disc has always dimmed at once). The same two utilities as the
+  traveller app's, so a press reads the same in both products.
+
+  Reduced motion: a press changes the control's ground instead of its size.
+*/
+@utility motion-control {
+  transition:
+    scale 150ms var(--ease-interaction),
+    transform 200ms var(--ease-interaction),
+    background-color 200ms var(--ease-interaction),
+    border-color 200ms var(--ease-interaction),
+    color 200ms var(--ease-interaction),
+    opacity 200ms var(--ease-interaction);
+
+  &:active {
+    transition-duration: 100ms, 200ms, 200ms, 200ms, 200ms, 200ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      scale: 1 !important;
+      opacity: 0.85;
+    }
+  }
+}
+
+@utility motion-disc {
+  transition:
+    scale 150ms var(--ease-interaction),
+    transform 200ms var(--ease-interaction),
+    background-color 200ms var(--ease-interaction),
+    color 200ms var(--ease-interaction),
+    border-color 200ms var(--ease-interaction),
+    box-shadow 200ms var(--ease-interaction);
+
+  &:active {
+    transition-duration: 100ms, 200ms, 200ms, 200ms, 200ms, 200ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      scale: 1 !important;
+      opacity: 0.85;
+    }
+  }
 }
