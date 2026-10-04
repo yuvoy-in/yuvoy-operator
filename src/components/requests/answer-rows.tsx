@@ -1,9 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from "react";
 import { declineSentence } from "@/lib/day/request-types";
+import { cn } from "@/lib/cn";
 import { panelClass } from "@/components/ui/panel";
-import { CheckIcon } from "@/components/ui/icons";
+import { DrawnCheckIcon } from "@/components/ui/icons";
 import { HOLD_MS, type Answer, type Receipt } from "./answer-store";
 
 /**
@@ -27,16 +36,67 @@ export function useTakeFocusIfLost(ref: RefObject<HTMLElement | null>) {
   }, [ref]);
 }
 
+/** Hands a row's `<li>` to the list that plays the swap from one row to the next. */
+export type RowRef = (el: HTMLLIElement | null) => void;
+
+/** The row's own ref, and its list's (`RequestItem`), on the same `<li>`. */
+function useRowRef(outer?: RowRef) {
+  const row = useRef<HTMLLIElement>(null);
+  const attach = useCallback(
+    (el: HTMLLIElement | null) => {
+      row.current = el;
+      outer?.(el);
+    },
+    [outer],
+  );
+  return [row, attach] as const;
+}
+
+/**
+ * The five seconds, drawn (O02 A, approved 4 Oct 2026): a 4px forest bar
+ * under the row that empties across the time Undo still works. The one long
+ * motion in the portal, because it is the information: a bar can be judged
+ * at arm's length in sun without reading. Its words stay ("Sending in 3
+ * seconds"); this is their `aria-hidden` twin.
+ *
+ * Started from where the window is, not from full: a row drawn part way
+ * through (a list re-rendered under it) shows what is left. Under reduced
+ * motion it keeps running and steps once a second, in time with the words.
+ */
+function Drain({ until }: { until: number }) {
+  const bar = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const left = Math.min(HOLD_MS, Math.max(0, until - Date.now()));
+    bar.current?.style.setProperty("--window-delay", `${left - HOLD_MS}ms`);
+  }, [until]);
+  return (
+    <span
+      ref={bar}
+      aria-hidden="true"
+      data-motion=""
+      style={
+        {
+          "--window": `${HOLD_MS}ms`,
+          "--window-steps": String(Math.round(HOLD_MS / 1000)),
+        } as CSSProperties
+      }
+      className="motion-drain bg-forest pointer-events-none absolute inset-x-4 bottom-2 h-1 rounded-full"
+    />
+  );
+}
+
 /** "Accepting Reuben Mathai, 2 people", with Undo while it can still be taken back. */
 export function HeldRow({
   answer,
   onUndo,
+  rowRef,
 }: {
   answer: Extract<Answer, { phase: "holding" } | { phase: "sending" }>;
   onUndo: () => void;
+  rowRef?: RowRef;
 }) {
   const undo = useRef<HTMLButtonElement>(null);
-  const row = useRef<HTMLLIElement>(null);
+  const [row, attach] = useRowRef(rowRef);
   const [left, setLeft] = useState(Math.ceil(HOLD_MS / 1000));
   const holding = answer.phase === "holding";
   const until = holding ? answer.until : 0;
@@ -64,15 +124,27 @@ export function HeldRow({
 
   return (
     <li
-      ref={row}
+      ref={attach}
       tabIndex={-1}
-      className={panelClass("outline", "flex items-center gap-3 p-4")}
+      className={panelClass(
+        "outline",
+        // Room under the words for the window's bar (O02 A).
+        "relative flex items-center gap-3 p-4 pb-6",
+      )}
     >
       <div className="min-w-0 flex-1">
         <p className="text-base font-bold">
           {verb} {who}
         </p>
-        <p className="text-forest/80 mt-0.5 text-sm">
+        <p
+          // "Sending…" arrives in place of the countdown (150ms).
+          key={holding ? "holding" : "sending"}
+          data-motion=""
+          className={cn(
+            "text-forest/80 mt-0.5 text-sm",
+            !holding && "motion-in",
+          )}
+        >
           {holding ? (
             <>
               Sending in{" "}
@@ -95,6 +167,7 @@ export function HeldRow({
           Undo
         </button>
       ) : null}
+      {holding ? <Drain until={until} /> : null}
     </li>
   );
 }
@@ -108,17 +181,24 @@ export function HeldRow({
  * sends none, with the pay-by time worked out the same way. `toldBy` empty
  * means nobody could reach the traveller, so the receipt turns into a warning.
  */
-export function GrantedReceipt({ receipt }: { receipt: Receipt }) {
-  const row = useRef<HTMLLIElement>(null);
+export function GrantedReceipt({
+  receipt,
+  rowRef,
+}: {
+  receipt: Receipt;
+  rowRef?: RowRef;
+}) {
+  const [row, attach] = useRowRef(rowRef);
   useTakeFocusIfLost(row);
   return (
     <li
-      ref={row}
+      ref={attach}
       tabIndex={-1}
       className={panelClass(receipt.untold ? "alert" : "done")}
     >
       <p className="flex items-center gap-2 text-base font-bold">
-        {receipt.untold ? null : <CheckIcon className="size-4 shrink-0" />}
+        {/* The tick draws itself as the receipt arrives (O02 A). */}
+        {receipt.untold ? null : <DrawnCheckIcon className="size-4 shrink-0" />}
         Seats granted to {receipt.contactName}
       </p>
       <p className="text-forest/80 mt-2 text-sm">
@@ -144,15 +224,17 @@ export function GrantedReceipt({ receipt }: { receipt: Receipt }) {
 /** A decline, with the sentence the traveller was sent. */
 export function DeclinedReceipt({
   answer,
+  rowRef,
 }: {
   answer: Extract<Answer, { phase: "declined" }>;
+  rowRef?: RowRef;
 }) {
-  const row = useRef<HTMLLIElement>(null);
+  const [row, attach] = useRowRef(rowRef);
   useTakeFocusIfLost(row);
   return (
-    <li ref={row} tabIndex={-1} className={panelClass("done")}>
+    <li ref={attach} tabIndex={-1} className={panelClass("done")}>
       <p className="flex items-center gap-2 text-base font-bold">
-        <CheckIcon className="size-4 shrink-0" />
+        <DrawnCheckIcon className="size-4 shrink-0" />
         Declined {answer.view.name}
       </p>
       {answer.reasonCode ? (
@@ -171,13 +253,15 @@ export function DeclinedReceipt({
  */
 export function NotSentRow({
   answer,
+  rowRef,
 }: {
   answer: Extract<Answer, { phase: "failed" }>;
+  rowRef?: RowRef;
 }) {
-  const row = useRef<HTMLLIElement>(null);
+  const [row, attach] = useRowRef(rowRef);
   useTakeFocusIfLost(row);
   return (
-    <li ref={row} tabIndex={-1} role="alert" className={panelClass("alert")}>
+    <li ref={attach} tabIndex={-1} role="alert" className={panelClass("alert")}>
       <p className="text-terra-deep text-base font-bold">
         Not sent to {answer.view.name}
       </p>
