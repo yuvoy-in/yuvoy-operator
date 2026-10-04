@@ -300,3 +300,139 @@ describe("boarding", () => {
     );
   });
 });
+
+/*
+  O07 A (approved 4 Oct 2026): where the party went. A tap on Aboard moves the
+  row, and the eye can follow it; the headcount rolls; Undo's five seconds
+  are a hairline. What the server moves lands as it always has.
+*/
+describe("boarding, showing where a party went", () => {
+  type Played = {
+    el: Element;
+    frames: Keyframe[];
+    options: KeyframeAnimationOptions;
+  };
+  let played: Played[] = [];
+  const saved: Record<string, PropertyDescriptor | undefined> = {};
+
+  beforeEach(() => {
+    played = [];
+    for (const key of ["getBoundingClientRect", "getClientRects", "animate"]) {
+      saved[key] = Object.getOwnPropertyDescriptor(Element.prototype, key);
+    }
+    Object.defineProperties(Element.prototype, {
+      getBoundingClientRect: {
+        configurable: true,
+        value: () =>
+          ({ top: 300, left: 16, width: 360, height: 72 }) as DOMRect,
+      },
+      getClientRects: { configurable: true, value: () => [{}] },
+      animate: {
+        configurable: true,
+        value(
+          this: Element,
+          frames: Keyframe[],
+          options: KeyframeAnimationOptions,
+        ) {
+          played.push({ el: this, frames, options });
+          return {
+            finished: new Promise(() => {}),
+            cancel() {},
+          } as unknown as Animation;
+        },
+      },
+    });
+    vi.stubGlobal("innerHeight", 800);
+  });
+  afterEach(() => {
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(Element.prototype, key, descriptor);
+      else
+        delete (Element.prototype as unknown as Record<string, unknown>)[key];
+    }
+    vi.unstubAllGlobals();
+    document.body
+      .querySelectorAll(':scope > [aria-hidden="true"][data-motion]')
+      .forEach((layer) => layer.remove());
+  });
+
+  const layer = () =>
+    document.body.querySelector(
+      ':scope > [aria-hidden="true"][data-motion]',
+    ) as HTMLElement | null;
+
+  it("fades the row out of To come where it was, and into Aboard a breath later", () => {
+    render(<BoardingScreen {...props} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Aboard: check in Asha Menon" }),
+    );
+    // A picture of the row it left, fading where it stood: 100ms, exit.
+    const copy = layer()?.firstElementChild as HTMLElement;
+    expect(copy).toHaveTextContent("Asha Menon");
+    expect(copy.inert).toBe(true);
+    const out = played.find((p) => p.el === copy)!;
+    expect(out.options).toMatchObject({ duration: 100, fill: "forwards" });
+    // The real row, in Aboard at once, fading in after the copy has gone.
+    const aboard = screen.getByRole("region", { name: "Aboard · 2" });
+    const arrived = within(aboard).getByText("Asha Menon").closest("li")!;
+    const into = played.find((p) => p.el === arrived)!;
+    expect(into.frames[0]).toEqual({ opacity: 0 });
+    expect(into.options).toMatchObject({ duration: 150, delay: 100 });
+  });
+
+  it("rolls the headcount up, and keeps its text the one number", () => {
+    render(<BoardingScreen {...props} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Aboard: check in Asha Menon" }),
+    );
+    const count = screen.getByText("aboard").closest("p")!;
+    expect(count).toHaveTextContent("3 of 5 aboard");
+    const old = count.querySelector("[data-was]");
+    expect(old).toHaveAttribute("data-was", "1");
+    expect(old).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("draws Undo's five seconds as a hairline under the word", () => {
+    render(<BoardingScreen {...props} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Aboard: check in Asha Menon" }),
+    );
+    const undo = screen.getByRole("button", { name: "Undo" });
+    const hairline = undo.querySelector(".motion-drain") as HTMLElement;
+    expect(hairline).toHaveAttribute("aria-hidden", "true");
+    expect(hairline).toHaveClass("h-0.5");
+    expect(hairline.style.getPropertyValue("--window")).toBe("5000ms");
+  });
+
+  it("plays Undo the same way back", () => {
+    render(<BoardingScreen {...props} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Aboard: check in Asha Menon" }),
+    );
+    document.body
+      .querySelectorAll(':scope > [aria-hidden="true"][data-motion]')
+      .forEach((l) => l.remove());
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(layer()?.firstElementChild).toHaveTextContent("Asha Menon");
+    expect(
+      screen.getByRole("region", { name: "To come · 2" }),
+    ).toHaveTextContent("Asha Menon");
+  });
+
+  it("moves nothing it did not move: a party checked in elsewhere just lands", () => {
+    const { rerender } = render(<BoardingScreen {...props} />);
+    rerender(
+      <BoardingScreen
+        {...props}
+        rows={ROWS.map((r) =>
+          r.party.bookingId === "priya"
+            ? { ...r, party: { ...r.party, arrived: true } }
+            : r,
+        )}
+      />,
+    );
+    expect(layer()).toBeNull();
+    // No row slid, faded or rolled: the server's change simply lands.
+    expect(played.filter((p) => p.el.tagName === "LI")).toHaveLength(0);
+  });
+});

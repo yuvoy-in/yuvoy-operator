@@ -200,14 +200,17 @@ function Count({
       >
         {badgeText(n)}
       </span>
+      {/*
+        The old figure is drawn from an attribute, not as text, so the link's
+        text is still the one number while it fades.
+      */}
       {was !== null ? (
         <span
           key={`was-${changes}`}
           data-motion=""
-          className="motion-out absolute inset-0 flex items-center justify-center"
-        >
-          {badgeText(was)}
-        </span>
+          data-was={badgeText(was)}
+          className="motion-out absolute inset-0 flex items-center justify-center before:content-[attr(data-was)]"
+        />
       ) : null}
     </span>
   );

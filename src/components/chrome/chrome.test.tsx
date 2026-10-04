@@ -102,7 +102,9 @@ describe("the bar and the rail", () => {
     expect(link).toHaveAccessibleName("Bookings, 3 waiting on your answer");
     expect(link.querySelector(".motion-in")).toHaveTextContent("3");
     const old = link.querySelector(".motion-out");
-    expect(old).toHaveTextContent("2");
+    // Drawn from an attribute: the link's text is still the one number.
+    expect(old).toHaveAttribute("data-was", "2");
+    expect(link.textContent).toBe("3Bookings");
     // Both figures ship their own reduced version: a 120ms crossfade.
     expect(old).toHaveAttribute("data-motion");
 

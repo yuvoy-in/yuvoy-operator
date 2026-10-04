@@ -82,7 +82,10 @@ describe("a booking's state, as it changes", () => {
     expect(now).toHaveClass("motion-in");
     expect(now).toHaveAttribute("data-motion");
     const old = container.querySelector("[data-chip-was]");
-    expect(old).toHaveTextContent("Collect ₹9,000");
+    // Drawn from an attribute: the row's text is still its one state.
+    expect(old).toHaveAttribute("data-chip-was", "Collect ₹9,000");
+    expect(old).toHaveTextContent(/^$/);
+    expect(container.textContent).toBe("Confirmed");
     expect(old).toHaveClass("motion-out");
     expect(old).toHaveAttribute("aria-hidden", "true");
   });

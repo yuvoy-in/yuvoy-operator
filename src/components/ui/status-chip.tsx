@@ -84,17 +84,19 @@ export function StatusChip({ label, tone }: { label: string; tone: ChipTone }) {
         >
           {label}
         </Chip>
+        {/*
+          The old words are drawn from an attribute, not as text, so the row's
+          text is still its one state while they fade.
+        */}
         {was ? (
           <Chip
             key={`was-${changes}`}
             tone={was.tone}
             aria-hidden="true"
-            data-chip-was=""
+            data-chip-was={was.label}
             data-motion=""
-            className="motion-out pointer-events-none absolute top-0 right-0"
-          >
-            {was.label}
-          </Chip>
+            className="motion-out pointer-events-none absolute top-0 right-0 before:content-[attr(data-chip-was)]"
+          />
         ) : null}
       </span>
     </MeasureBefore>

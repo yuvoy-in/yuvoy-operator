@@ -3,16 +3,15 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
   type RefObject,
 } from "react";
 import { declineSentence } from "@/lib/day/request-types";
 import { cn } from "@/lib/cn";
 import { panelClass } from "@/components/ui/panel";
 import { DrawnCheckIcon } from "@/components/ui/icons";
+import { UndoWindow } from "@/components/ui/undo-window";
 import { HOLD_MS, type Answer, type Receipt } from "./answer-store";
 
 /**
@@ -50,39 +49,6 @@ function useRowRef(outer?: RowRef) {
     [outer],
   );
   return [row, attach] as const;
-}
-
-/**
- * The five seconds, drawn (O02 A, approved 4 Oct 2026): a 4px forest bar
- * under the row that empties across the time Undo still works. The one long
- * motion in the portal, because it is the information: a bar can be judged
- * at arm's length in sun without reading. Its words stay ("Sending in 3
- * seconds"); this is their `aria-hidden` twin.
- *
- * Started from where the window is, not from full: a row drawn part way
- * through (a list re-rendered under it) shows what is left. Under reduced
- * motion it keeps running and steps once a second, in time with the words.
- */
-function Drain({ until }: { until: number }) {
-  const bar = useRef<HTMLSpanElement>(null);
-  useLayoutEffect(() => {
-    const left = Math.min(HOLD_MS, Math.max(0, until - Date.now()));
-    bar.current?.style.setProperty("--window-delay", `${left - HOLD_MS}ms`);
-  }, [until]);
-  return (
-    <span
-      ref={bar}
-      aria-hidden="true"
-      data-motion=""
-      style={
-        {
-          "--window": `${HOLD_MS}ms`,
-          "--window-steps": String(Math.round(HOLD_MS / 1000)),
-        } as CSSProperties
-      }
-      className="motion-drain bg-forest pointer-events-none absolute inset-x-4 bottom-2 h-1 rounded-full"
-    />
-  );
 }
 
 /** "Accepting Reuben Mathai, 2 people", with Undo while it can still be taken back. */
@@ -167,7 +133,17 @@ export function HeldRow({
           Undo
         </button>
       ) : null}
-      {holding ? <Drain until={until} /> : null}
+      {/*
+        The five seconds, drawn (O02 A): a 4px bar under the words that
+        empties across the time Undo still works.
+      */}
+      {holding ? (
+        <UndoWindow
+          until={until}
+          hold={HOLD_MS}
+          className="inset-x-4 bottom-2 h-1"
+        />
+      ) : null}
     </li>
   );
 }
