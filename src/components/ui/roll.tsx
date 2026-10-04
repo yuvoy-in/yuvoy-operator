@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { DURATION, EASE, play, prefersReducedMotion } from "@/lib/motion";
+import { DURATION } from "@/lib/motion";
+import { rollFigure } from "@/lib/motion/figure";
 
 /**
  * A figure that rolls to its new value (O07 A, approved 4 Oct 2026): the
  * boarding headcount, read at arm's length. The old number leaves upward as
  * the new one comes up from below (150ms out, accelerating away; 200ms in),
  * and the other way when it goes down, so the eye sees which way it moved
- * without reading it twice. The first number drawn simply appears.
+ * without reading it twice. The first number drawn simply appears
+ * (`rollFigure`, which the Bookings count rolls with too).
  *
  * The old number is `aria-hidden`: the figure sits in its screen's polite
  * live region, which says the new number once. It is drawn from an attribute
@@ -32,50 +34,7 @@ export function Roll({ value }: { value: number }) {
   const up = was?.up ?? true;
   useLayoutEffect(() => {
     if (changes === 0) return;
-    const arriving = now.current;
-    const leaving = old.current;
-    if (prefersReducedMotion()) {
-      const fade = { duration: DURATION.reducedFade, easing: "linear" };
-      if (arriving) {
-        play(arriving, [{ opacity: 0 }, { opacity: 1 }], {
-          ...fade,
-          fill: "backwards",
-        });
-      }
-      if (leaving) {
-        play(leaving, [{ opacity: 1 }, { opacity: 0 }], {
-          ...fade,
-          fill: "forwards",
-        });
-      }
-      return;
-    }
-    // Six tenths of the figure's height: far enough to read as a roll.
-    const travel = (arriving?.offsetHeight ?? 0) * 0.6 * (up ? 1 : -1);
-    if (arriving) {
-      play(
-        arriving,
-        [
-          { opacity: 0, transform: `translateY(${travel}px)` },
-          { opacity: 1, transform: "none" },
-        ],
-        {
-          duration: DURATION.standard,
-          easing: EASE.interaction,
-          fill: "backwards",
-        },
-      );
-    }
-    if (leaving) {
-      play(
-        leaving,
-        [
-          { opacity: 1, transform: "none" },
-          { opacity: 0, transform: `translateY(${-travel}px)` },
-        ],
-        { duration: DURATION.quick, easing: EASE.exit, fill: "forwards" },
-      );
-    }
+    rollFigure(now.current, old.current, up);
   }, [changes, up]);
 
   // The old number is let go once it has rolled away.

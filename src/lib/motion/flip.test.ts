@@ -3,6 +3,7 @@ import { EASE } from ".";
 import {
   dropLifted,
   fadeIn,
+  fadeOut,
   followersOf,
   lift,
   MAX_SLIDES,
@@ -317,6 +318,29 @@ describe("fading in where it stands", () => {
       duration: 120,
       easing: "linear",
       fill: "backwards",
+    });
+  });
+});
+
+describe("fading out where it stands", () => {
+  it("takes 150ms, accelerating away, and holds the last frame", () => {
+    const $ = page(`<p id="a"></p>`);
+    fadeOut($("a"));
+    expect(played[0].frames.at(-1)).toEqual({ opacity: 0 });
+    expect(played[0].options).toEqual({
+      duration: 150,
+      easing: EASE.exit,
+      fill: "forwards",
+    });
+  });
+
+  it("takes 120ms on a linear curve under reduced motion", () => {
+    reduce(true);
+    const $ = page(`<p id="a"></p>`);
+    fadeOut($("a"));
+    expect(played[0].options).toMatchObject({
+      duration: 120,
+      easing: "linear",
     });
   });
 });

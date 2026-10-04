@@ -255,3 +255,18 @@ export function fadeIn(el: Element, delay = 0): Animation | null {
         },
   );
 }
+
+/**
+ * Fades an element out where it stands, from the opacity it is drawn at:
+ * 150ms, accelerating away; 120ms on a linear curve under reduced motion. It
+ * holds the last frame, so whoever asked takes the element away once it has
+ * played (or calls `stopAnimations` to bring it back).
+ */
+export function fadeOut(el: Element): Animation | null {
+  const reduced = prefersReducedMotion();
+  return play(el, [{ opacity: opacityOf(el) }, { opacity: 0 }], {
+    duration: reduced ? DURATION.reducedFade : DURATION.quick,
+    easing: reduced ? "linear" : EASE.exit,
+    fill: "forwards",
+  });
+}
