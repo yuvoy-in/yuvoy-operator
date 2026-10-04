@@ -68,7 +68,8 @@ describe("a figure that rolls", () => {
       opacity: 0,
       transform: "translateY(-43.199999999999996px)",
     });
-    expect(old.options).toMatchObject({ duration: 150, fill: "forwards" });
+    // Seven tenths of the roll in, as the lab and the traveller app leave.
+    expect(old.options).toMatchObject({ duration: 140, fill: "forwards" });
     // Its text is the one number while the old one leaves.
     expect(container.textContent).toBe("5");
   });

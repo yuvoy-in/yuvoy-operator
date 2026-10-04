@@ -14,9 +14,19 @@ import { DURATION, EASE, play, prefersReducedMotion, stopAnimations } from ".";
  */
 
 /**
+ * How long the old figure takes to roll away: seven tenths of the 200ms the
+ * new one takes to arrive, which is 140ms. The lab's shared roll
+ * (yuvoy/motion-lab, kit/motion.js, `duration * 0.7`) leaves in that, for
+ * O07 as for the traveller's T14, and the traveller's `RollingNumber` writes
+ * the same derivation, so the two products roll alike.
+ */
+export const ROLL_OUT_MS = Math.round(DURATION.standard * 0.7);
+
+/**
  * The new figure comes up from below when the value rises and down from
  * above when it falls, six tenths of its height, 200ms on the interaction
- * curve; the old one leaves the other way, accelerating away.
+ * curve; the old one leaves the other way in `ROLL_OUT_MS`, accelerating
+ * away.
  */
 export function rollFigure(
   arriving: HTMLElement | null,
@@ -52,7 +62,7 @@ export function rollFigure(
         { opacity: 1, transform: "none" },
         { opacity: 0, transform: `translateY(${-travel}px)` },
       ],
-      { duration: DURATION.quick, easing: EASE.exit, fill: "forwards" },
+      { duration: ROLL_OUT_MS, easing: EASE.exit, fill: "forwards" },
     );
   }
 }

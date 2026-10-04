@@ -7,7 +7,7 @@ import { rollFigure } from "@/lib/motion/figure";
 /**
  * A figure that rolls to its new value (O07 A, approved 4 Oct 2026): the
  * boarding headcount, read at arm's length. The old number leaves upward as
- * the new one comes up from below (150ms out, accelerating away; 200ms in),
+ * the new one comes up from below (140ms out, accelerating away; 200ms in),
  * and the other way when it goes down, so the eye sees which way it moved
  * without reading it twice. The first number drawn simply appears
  * (`rollFigure`, which the Bookings count rolls with too).

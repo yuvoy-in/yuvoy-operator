@@ -381,7 +381,7 @@ describe("a count that changes", () => {
       opacity: 0,
       transform: "translateY(6px)",
     });
-    expect(leave.options).toMatchObject({ easing: EASE.exit });
+    expect(leave.options).toMatchObject({ duration: 140, easing: EASE.exit });
   });
 
   it("cross-fades a fall nobody here answered, and a mark rolls one fall only", () => {
