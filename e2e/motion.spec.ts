@@ -163,13 +163,24 @@ test.describe("reduced motion swaps travel for a fade", () => {
   }) => {
     await record(page);
     await signIn(page);
-    const duration = await page
-      .getByRole("link", { name: /^Messages/ })
-      .evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration));
-    expect(
-      duration,
-      "an unmarked control's transitions are instant",
-    ).toBeLessThan(0.01);
+    /*
+      Polled: the bar is drawn again as Today settles after sign-in, and a
+      link read in that moment is already out of the page (its style is
+      empty, NaN). Only a link in the page answers.
+    */
+    await expect
+      .poll(
+        () =>
+          page
+            .getByRole("link", { name: /^Messages/ })
+            .evaluate((el) =>
+              el.isConnected
+                ? parseFloat(getComputedStyle(el).transitionDuration)
+                : Number.NaN,
+            ),
+        { message: "an unmarked control's transitions are instant" },
+      )
+      .toBeLessThan(0.01);
 
     await page.goto(`/calendar?day=${marketDay(0)}`);
     await page
@@ -203,13 +214,20 @@ test("a pending button keeps its colour, says it is busy, and shows its ring onl
   const floor = inspector.getByText(
     /^\d+ already sold, so it cannot go lower\.$/,
   );
-  test.skip(
-    (await floor.count()) === 0,
+  /*
+    Waited for, never skipped. The inspector draws its seats a moment after
+    it rises, and a count taken at once found nothing, so this check skipped
+    itself on every run and proved nothing. The fixture's departure has five
+    on it (slot_dawn); refusing a number below that is what keeps this
+    read-only, so a departure with nobody on it is a broken check, not a skip.
+  */
+  await expect(
+    floor,
     "needs a departure with somebody on it: the refusal is what keeps this read-only",
-  );
+  ).toBeVisible();
   // Below what is sold: refused by the action before the API, so nothing changes.
   const sold = Number((await floor.innerText()).split(" ")[0]);
-  test.skip(sold < 1, "nothing sold to go below");
+  expect(sold, "nothing sold to go below").toBeGreaterThan(0);
   await inspector.getByLabel("Seats offered").fill(String(sold - 1));
 
   await slow(page, isAction, 1_500);
