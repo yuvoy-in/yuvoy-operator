@@ -1234,7 +1234,7 @@ for (const required of ["error.tsx", "global-error.tsx", "not-found.tsx"]) {
   }
 }
 
-/* ------- 13. the one localStorage exception stays one, and stays safe ---- */
+/* ---- 13. the two localStorage exceptions stay two, and stay safe ------- */
 
 /**
  * `src/lib/media/slot-store.ts` is the only file in `src/` allowed to touch
@@ -1265,13 +1265,25 @@ for (const required of ["error.tsx", "global-error.tsx", "not-found.tsx"]) {
  *
  * Both are caught here by reading the eslint config and the store itself,
  * because the failure is a file's CONTENT, which no type and no test sees.
+ *
+ * ## The second exception (owner ruling, 4 Oct 2026)
+ *
+ * `src/lib/site/offline-writes.ts` keeps the check-ins and cash an operator
+ * records with no signal, so they survive the phone closing the app at the
+ * jetty (operator experiment D). The owner chose that over losing them, on
+ * the condition that it keeps opaque ids, amounts and times and nothing a
+ * person could be found or signed in by. So its code may not declare a name,
+ * a reference, a phone, an email, a token or a URL.
  */
 const STORE = join(SRC, "lib/media/slot-store.ts");
 const ALLOWED_LOCALSTORAGE = new Set([
   "src/lib/media/slot-store.ts",
   "src/lib/media/slot-store.test.ts",
+  "src/lib/site/offline-writes.ts",
+  "src/lib/site/offline-writes.test.ts",
   "e2e/reels.spec.ts",
 ]);
+const OFFLINE_WRITES = join(SRC, "lib/site/offline-writes.ts");
 
 for (const f of files) {
   if (!/\blocalStorage\b/.test(code(f))) continue;
@@ -1279,7 +1291,8 @@ for (const f of files) {
   problems.push(
     `${rel(f)}: uses localStorage. It is banned in this portal — the session ` +
       `is an httpOnly cookie precisely so nothing worth stealing is anywhere ` +
-      `a script can read. The single exception is src/lib/media/slot-store.ts.`,
+      `a script can read. The exceptions are src/lib/media/slot-store.ts and ` +
+      `src/lib/site/offline-writes.ts.`,
   );
 }
 
@@ -1321,6 +1334,28 @@ if (existsSync(STORE)) {
           `writing video into our account … do not persist it client-side ` +
           `either". Since yuvoy-api#66 §3 the API hands the URL back on ` +
           `request, so there is nothing to gain by keeping one.`,
+      );
+    }
+  }
+}
+
+if (existsSync(OFFLINE_WRITES)) {
+  const kept = code(OFFLINE_WRITES);
+  for (const [pattern, what] of [
+    // Fields, not words: the strip's own sentences say "this phone".
+    [/\bname\s*[?]?:/, "a `name` field"],
+    [/\breference\w*\s*[?]?:/i, "a `reference` field"],
+    [/\bphone\w*\s*[?]?:/i, "a phone field"],
+    [/\bemail\w*\s*[?]?:/i, "an email field"],
+    [/\btoken\w*\s*[?]?:/i, "a token field"],
+    [/https?:\/\//, "an absolute URL"],
+  ]) {
+    if (pattern.test(kept)) {
+      problems.push(
+        `src/lib/site/offline-writes.ts mentions ${what}. What it keeps on the ` +
+          `phone is opaque ids, amounts and times and nothing else (owner ` +
+          `ruling, 4 Oct 2026): the screens supply names, and nothing kept ` +
+          `there may find or sign in a person.`,
       );
     }
   }

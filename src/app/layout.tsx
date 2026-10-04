@@ -55,7 +55,7 @@ export default async function RootLayout({
     to call. `chromeData` cannot throw: a signed-out door, a dead session or a
     dropped connection costs a piece of chrome, never a page.
   */
-  const { badges, suspension, businessName, canManage, unread } =
+  const { badges, suspension, businessName, canManage, unread, userId } =
     await chromeData();
 
   return (
@@ -73,6 +73,7 @@ export default async function RootLayout({
             businessName,
             canManage,
             ...(unread !== undefined ? { unread } : {}),
+            ...(userId ? { userId } : {}),
           }}
           banner={<SuspensionBanner suspension={suspension} />}
         >

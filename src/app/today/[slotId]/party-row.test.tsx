@@ -433,3 +433,81 @@ describe("PartyRow — its booking and its messages", () => {
     expect(screen.queryByRole("link", { name: /new message/ })).toBeNull();
   });
 });
+
+/*
+  With no signal (operator experiment D; owner go-ahead and storage ruling,
+  4 Oct 2026). Checking in is kept on the phone and sent when the signal is
+  back; closing out, messages and cancelling wait for the signal.
+*/
+describe("PartyRow with no signal", () => {
+  async function offlineRow(departed = false) {
+    const { ChromeProvider } =
+      await import("@/components/chrome/chrome-context");
+    const { offlineWrites } = await import("@/lib/site/offline-writes");
+    offlineWrites.forget();
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    render(
+      <ChromeProvider
+        identity={{ businessName: null, canManage: true, userId: "usr_owner" }}
+      >
+        <ul>
+          <PartyRow
+            party={party}
+            slotId="slot_dawn"
+            departed={departed}
+            screening={null}
+            cash={null}
+            timezone={TZ}
+            canManage
+          />
+        </ul>
+      </ChromeProvider>,
+    );
+    return offlineWrites;
+  }
+
+  it("keeps a check-in on the phone, and says so in place of the button", async () => {
+    markAttendance.mockClear();
+    const offlineWrites = await offlineRow();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Check in" }));
+
+    expect(markAttendance).not.toHaveBeenCalled();
+    expect(offlineWrites.list()).toMatchObject([
+      {
+        kind: "arrived",
+        userId: "usr_owner",
+        slotId: "slot_dawn",
+        bookingId: "bk_1",
+      },
+    ]);
+    expect(
+      screen.getByText(
+        "Checked in on this phone. Sends when the signal is back.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check in" })).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it("offers no message or cancel until the signal is back", async () => {
+    await offlineRow();
+    expect(
+      screen.getByRole("button", { name: "Message Asha Menon" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Cancel this booking" }),
+    ).toBeDisabled();
+    // Checking in still works: it is kept on the phone.
+    expect(screen.getByRole("button", { name: "Check in" })).toBeEnabled();
+    vi.restoreAllMocks();
+  });
+
+  it("offers no closing out once the boat has left, until the signal is back", async () => {
+    await offlineRow(true);
+    expect(screen.getByRole("button", { name: "Completed" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "No-show" })).toBeDisabled();
+    vi.restoreAllMocks();
+  });
+});

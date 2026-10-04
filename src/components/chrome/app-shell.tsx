@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { isBareRoute, type NavBadges } from "@/lib/site/nav";
 import { ChromeProvider, type ChromeIdentity } from "./chrome-context";
+import { OfflineReplayer } from "./offline-replayer";
 import { NavList } from "./nav-items";
 import { StageIdentity } from "./stage-identity";
 import { TabBar } from "./tab-bar";
@@ -68,6 +69,8 @@ export function AppShell({
 
   return (
     <ChromeProvider identity={identity}>
+      {/* Sends what was kept on this phone offline, from any screen. */}
+      <OfflineReplayer />
       <div className="stage on-dark flex min-h-dvh flex-col lg:flex-row">
         <aside
           className={cn(

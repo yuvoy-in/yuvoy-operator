@@ -29,17 +29,7 @@ export function ReadOnlyWhenOffline({
   children: ReactNode;
 }) {
   const online = useOnline();
-  const [held, setHeld] = useState(false);
-  // Back online: the next time it drops, the notice starts plain again.
-  if (online && held) setHeld(false);
-
-  const onClickCapture = (event: MouseEvent<HTMLDivElement>) => {
-    if (online) return;
-    if (!pageLink(event.target)) return;
-    // Before Next's own link handler, which skips a prevented click.
-    event.preventDefault();
-    setHeld(true);
-  };
+  const { held, onClickCapture } = useHeldLinks(online);
 
   return (
     <div onClickCapture={onClickCapture}>
@@ -62,6 +52,28 @@ export function ReadOnlyWhenOffline({
       {children}
     </div>
   );
+}
+
+/**
+ * Holds a link to another page of this app while there is no signal, and says
+ * whether one was held, so the screen can add "That opens once you are back
+ * online." Put `onClickCapture` on an element around the links.
+ */
+export function useHeldLinks(online: boolean): {
+  held: boolean;
+  onClickCapture: (event: MouseEvent<HTMLElement>) => void;
+} {
+  const [held, setHeld] = useState(false);
+  // Back online: the next time it drops, the notice starts plain again.
+  if (online && held) setHeld(false);
+  const onClickCapture = (event: MouseEvent<HTMLElement>) => {
+    if (online) return;
+    if (!pageLink(event.target)) return;
+    // Before Next's own link handler, which skips a prevented click.
+    event.preventDefault();
+    setHeld(true);
+  };
+  return { held, onClickCapture };
 }
 
 /**

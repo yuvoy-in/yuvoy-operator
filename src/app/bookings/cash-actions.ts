@@ -44,6 +44,11 @@ export interface CashState {
   typed?: string;
   /** Bumped per refused attempt, so the form remounts onto `typed`. */
   attempt?: number;
+  /**
+   * We could not reach the API, so nothing was recorded and sending it again
+   * is safe (a collection is recorded once). What the phone keeps to send.
+   */
+  retryable?: true;
 }
 
 const schema = z.object({
@@ -126,9 +131,12 @@ export async function recordCashCollected(
     };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
-      return again(
-        "No signal. Nothing was recorded yet. Tap again when you have a bar; a second tap is safe, it can only be recorded once.",
-      );
+      return {
+        ...again(
+          "No signal. Nothing was recorded yet. Tap again when you have a bar; a second tap is safe, it can only be recorded once.",
+        ),
+        retryable: true,
+      };
     }
     if (err instanceof OperatorApiError) {
       if (err.isNotFound) {
