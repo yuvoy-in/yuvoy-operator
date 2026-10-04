@@ -265,12 +265,13 @@ export function CallOffPanel({
       <div className="mt-5 flex gap-2">
         <Button
           type="submit"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Cancelling…"
           variant="danger"
           block={false}
           className="flex-1"
         >
-          {pending ? "Cancelling…" : "Call it off"}
+          Call it off
         </Button>
         <Button
           onClick={() => (onKeep ? onKeep() : setOpen(false))}

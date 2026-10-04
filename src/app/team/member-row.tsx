@@ -279,12 +279,13 @@ export function MemberRow({
               <div className="mt-4 flex gap-2">
                 <Button
                   type="submit"
-                  disabled={pending}
+                  pending={pending}
+                  pendingLabel="Removing…"
                   variant="danger"
                   block={false}
                   className="flex-1"
                 >
-                  {pending ? "Removing…" : member.pending ? "Revoke" : "Remove"}
+                  {member.pending ? "Revoke" : "Remove"}
                 </Button>
                 <Button
                   onClick={() => setConfirming(false)}

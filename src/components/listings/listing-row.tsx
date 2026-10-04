@@ -594,12 +594,13 @@ export function ListingRow({
           <div className="mt-4 flex gap-2">
             <Button
               type="submit"
-              disabled={pending}
+              pending={pending}
+              pendingLabel="Sending…"
               variant="primary"
               block={false}
               className="flex-1"
             >
-              {pending ? "Sending…" : "Send it to us"}
+              Send it to us
             </Button>
             <Button
               onClick={() => setEditing(false)}

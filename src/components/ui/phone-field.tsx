@@ -97,9 +97,10 @@ export function PhoneField({
       <div
         className={cn(
           "rounded-control border-paper-line bg-paper-deep mt-2 flex h-14 items-center border",
-          "ease-interaction transition-[border-color,background-color] duration-200",
+          "ease-interaction transition-[border-color,background-color] duration-150",
           "focus-within:border-forest/60 focus-within:bg-paper",
-          invalid && "border-terra-deep",
+          // The same mark as every other field (`inputClass`): no room taken.
+          invalid && "border-terra-deep inset-ring-terra-deep inset-ring",
         )}
       >
         {/*

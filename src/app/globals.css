@@ -465,3 +465,179 @@
     }
   }
 }
+
+/* -------------------------------- motion: marks, arrivals and waiting */
+
+/*
+  The pieces every portal motion is made of, written once so each screen
+  moves the same way. Each element that wears one carries `data-motion`,
+  which is how the reduced versions below survive the global rule at the top
+  of this file (S01 A): under reduced motion nothing rises or travels,
+  crossfades take 120ms on a linear curve, and colour and opacity stay,
+  because they are not motion (WCAG 2.3.3) and they carry the meaning.
+
+  Every arrival fills `backwards` only: once it has played, the element is
+  drawn by its own styles again, so a later `disabled:opacity-55` or a dim
+  is never overridden by a finished fade.
+*/
+@layer components {
+  /*
+    The mark (O01, O03, O08): a forest tint over what changed, fading out
+    over 1.2s on a linear curve. Longer than the 200ms ceiling on purpose: it
+    is a mark that decays, not a motion, and it is opacity, so it plays the
+    same under reduced motion. `lib/motion/mark.ts` draws it.
+  */
+  .motion-mark {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background-color: color-mix(in srgb, var(--color-forest) 14%, transparent);
+    animation: motion-mark 1200ms linear forwards;
+  }
+
+  /* Arriving where it stands: words, a receipt, a row in its new place. */
+  .motion-in {
+    animation: motion-in 150ms var(--ease-interaction) backwards;
+  }
+
+  /* A line arriving under the thing it is about, rising 4px (O04). */
+  .motion-rise-in {
+    animation: motion-rise-in 150ms var(--ease-interaction) backwards;
+  }
+
+  /* Leaving where it stood: the words a label had a moment ago. */
+  .motion-out {
+    animation: motion-out 150ms var(--ease-exit) forwards;
+  }
+
+  /*
+    The waiting ring (O04): 16px, held back for the show delay (300ms) so a
+    fast answer never flashes it, then faded in, and turning once a second,
+    which is honest progress: it turns only while a save is out. It keeps its
+    room from the first frame of the wait, so the button changes width once,
+    with its words, and never again when the ring appears.
+  */
+  .motion-busy-ring {
+    display: inline-block;
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
+    animation:
+      motion-in 150ms var(--ease-interaction) 300ms backwards,
+      motion-spin 1s linear infinite;
+  }
+
+  /*
+    A tick that draws itself (O02's receipt, O04's "Now offering 10."), on a
+    path given `pathLength="1"`: 200ms, the portal's ceiling, a breath after
+    the line it sits in has arrived.
+  */
+  .motion-tick path {
+    stroke-dasharray: 1;
+    animation: motion-tick 200ms var(--ease-interaction) 80ms backwards;
+  }
+
+  /*
+    The undo window (O02, O07): a bar that empties across the five seconds
+    in which Undo still works, the one long motion in the portal, because it
+    is the information. Its length and where it starts are set from the
+    store's own constant (`--window`, and a negative `--window-delay` for a
+    row drawn part way through), so the bar and the words "Sending in 3
+    seconds" can never disagree. Under reduced motion it keeps running and
+    steps once a second, in time with the words.
+  */
+  .motion-drain {
+    transform-origin: left center;
+    animation: motion-drain var(--window, 5000ms) linear
+      var(--window-delay, 0ms) forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .motion-in,
+    .motion-rise-in {
+      animation: motion-in 120ms linear backwards;
+    }
+
+    .motion-out {
+      animation: motion-out 120ms linear forwards;
+    }
+
+    .motion-busy-ring {
+      animation: motion-in 120ms linear 300ms backwards;
+    }
+
+    .motion-tick path {
+      animation: none;
+    }
+
+    .motion-drain {
+      animation-timing-function: steps(var(--window-steps, 5), end);
+    }
+  }
+}
+
+@keyframes motion-mark {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes motion-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes motion-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes motion-tick {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes motion-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}

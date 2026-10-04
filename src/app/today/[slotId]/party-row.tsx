@@ -392,16 +392,14 @@ export function PartyRow({
                 type="submit"
                 name="outcome"
                 value={armed}
-                disabled={pending || !online}
+                pending={pending}
+                pendingLabel="Recording…"
+                disabled={!online}
                 variant="danger"
                 block={false}
                 className="flex-1"
               >
-                {pending
-                  ? "Recording…"
-                  : armed === "no_show"
-                    ? "Confirm no-show"
-                    : "Confirm completed"}
+                {armed === "no_show" ? "Confirm no-show" : "Confirm completed"}
               </Button>
               <Button
                 onClick={() => setArmed(null)}

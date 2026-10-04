@@ -270,12 +270,13 @@ function BlackoutRound({
       <div className="mt-4 flex gap-2">
         <Button
           type="submit"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Closing…"
           variant="danger"
           block={false}
           className="flex-1"
         >
-          {pending ? "Closing…" : day ? `Close ${spoken}` : "Close them"}
+          {day ? `Close ${spoken}` : "Close them"}
         </Button>
         {day ? (
           onCancel ? (

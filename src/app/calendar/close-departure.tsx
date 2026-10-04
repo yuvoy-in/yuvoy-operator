@@ -189,9 +189,10 @@ export function CloseDeparture({
           variant="danger"
           block={false}
           className="flex-1"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Closing…"
         >
-          {pending ? "Closing…" : "Stop selling it"}
+          Stop selling it
         </Button>
         <Button
           variant="secondary"

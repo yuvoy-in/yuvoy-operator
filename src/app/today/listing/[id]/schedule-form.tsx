@@ -193,15 +193,10 @@ export function ScheduleForm({
               variant="danger"
               block={false}
               className="flex-1"
-              disabled={pending}
+              pending={pending}
+              pendingLabel={removingAll ? "Removing…" : "Saving…"}
             >
-              {removingAll
-                ? pending
-                  ? "Removing…"
-                  : "Remove schedule"
-                : pending
-                  ? "Saving…"
-                  : "Save and close them"}
+              {removingAll ? "Remove schedule" : "Save and close them"}
             </Button>
             <Button
               variant="secondary"
@@ -246,10 +241,12 @@ export function ScheduleForm({
           <Button
             type="submit"
             block={false}
-            disabled={pending || blocked}
+            pending={pending}
+            pendingLabel="Saving…"
+            disabled={blocked}
             aria-describedby={blocked ? blockedId : undefined}
           >
-            {pending ? "Saving…" : "Save the schedule"}
+            Save the schedule
           </Button>
           <UndoChanges
             onUndo={() => setPlan(planFromRows(weekly))}

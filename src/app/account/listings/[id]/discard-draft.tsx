@@ -92,9 +92,10 @@ export function DiscardDraft({
           variant="danger"
           block={false}
           className="flex-1"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Discarding…"
         >
-          {pending ? "Discarding…" : "Discard the draft"}
+          Discard the draft
         </Button>
         <Button
           variant="secondary"

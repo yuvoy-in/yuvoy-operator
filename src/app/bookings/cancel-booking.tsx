@@ -271,9 +271,10 @@ export function CancelBooking({
           variant="danger"
           block={false}
           className="flex-1"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Cancelling…"
         >
-          {pending ? "Cancelling…" : "Cancel the booking"}
+          Cancel the booking
         </Button>
         <Button
           variant="secondary"

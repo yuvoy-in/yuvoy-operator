@@ -113,8 +113,13 @@ export function AttachForm({
         </p>
       ) : null}
 
-      <Button type="submit" disabled={pending} size="md">
-        {pending ? "Attaching…" : "Attach to listing"}
+      <Button
+        type="submit"
+        pending={pending}
+        pendingLabel="Attaching…"
+        size="md"
+      >
+        Attach to listing
       </Button>
     </form>
   );

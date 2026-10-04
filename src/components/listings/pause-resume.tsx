@@ -284,12 +284,13 @@ export function PauseResume({
       <div className="flex gap-2">
         <Button
           type="submit"
-          disabled={pausing}
+          pending={pausing}
+          pendingLabel="Pausing…"
           variant="danger"
           block={false}
           className="flex-1"
         >
-          {pausing ? "Pausing…" : "Pause it"}
+          Pause it
         </Button>
         <Button
           type="button"
@@ -369,11 +370,12 @@ function ResumeControl({
       <div className="mt-4 flex gap-2">
         <Button
           type="submit"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Resuming…"
           block={false}
           className="flex-1"
         >
-          {pending ? "Resuming…" : "Yes, resume it"}
+          Yes, resume it
         </Button>
         <Button
           onClick={() => setArmed(false)}

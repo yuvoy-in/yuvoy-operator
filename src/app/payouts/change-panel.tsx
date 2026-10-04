@@ -154,12 +154,13 @@ export function ChangePanel({
             <div className="mt-4 flex gap-2">
               <Button
                 type="submit"
-                disabled={pending}
+                pending={pending}
+                pendingLabel="Stopping…"
                 variant="danger"
                 block={false}
                 className="flex-1"
               >
-                {pending ? "Stopping…" : "Stop the change"}
+                Stop the change
               </Button>
               <Button
                 onClick={() => setConfirming(false)}

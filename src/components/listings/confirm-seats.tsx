@@ -90,8 +90,13 @@ export function ConfirmSeats({
           {state.message}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} className="mt-3">
-        {pending ? "Confirming…" : "Confirm all"}
+      <Button
+        type="submit"
+        pending={pending}
+        pendingLabel="Confirming…"
+        className="mt-3"
+      >
+        Confirm all
       </Button>
     </form>
   );

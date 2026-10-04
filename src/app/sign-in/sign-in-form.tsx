@@ -120,14 +120,12 @@ export function SignInForm({ next }: { next?: string | null }) {
 
       <Button
         type="submit"
-        disabled={pending || (state.step === "phone" && !complete)}
+        pending={pending}
+        pendingLabel="Working…"
+        disabled={state.step === "phone" && !complete}
         aria-describedby={state.step === "phone" ? "sign-in-where" : undefined}
       >
-        {pending
-          ? "Working…"
-          : state.step === "code"
-            ? "Sign in"
-            : "Send me a code"}
+        {state.step === "code" ? "Sign in" : "Send me a code"}
       </Button>
 
       {state.step === "phone" ? (

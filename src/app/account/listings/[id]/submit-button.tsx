@@ -47,8 +47,14 @@ export function SubmitButton({
   return (
     <form action={act}>
       <input type="hidden" name="experienceId" value={experienceId} />
-      <Button type="submit" block={false} disabled={pending || missing > 0}>
-        {pending ? "Sending…" : sendLabel(label, missing)}
+      <Button
+        type="submit"
+        block={false}
+        pending={pending}
+        pendingLabel="Sending…"
+        disabled={missing > 0}
+      >
+        {sendLabel(label, missing)}
       </Button>
       {state.message ? (
         <div className="mt-2">

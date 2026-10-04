@@ -78,8 +78,13 @@ export function JoinForm() {
         </p>
       ) : null}
 
-      <Button type="submit" disabled={pending || !complete}>
-        {pending ? "Accepting…" : "Accept the invitation"}
+      <Button
+        type="submit"
+        pending={pending}
+        pendingLabel="Accepting…"
+        disabled={!complete}
+      >
+        Accept the invitation
       </Button>
     </form>
   );

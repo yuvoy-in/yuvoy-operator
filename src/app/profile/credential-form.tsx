@@ -184,8 +184,13 @@ export function CredentialForm({
           </p>
         ) : null}
 
-        <Button type="submit" disabled={pending} variant="primary">
-          {pending ? "Sending…" : "Send it to us"}
+        <Button
+          type="submit"
+          pending={pending}
+          pendingLabel="Sending…"
+          variant="primary"
+        >
+          Send it to us
         </Button>
       </form>
     </Panel>

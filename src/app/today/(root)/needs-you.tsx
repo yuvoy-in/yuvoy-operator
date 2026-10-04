@@ -267,8 +267,13 @@ function ConfirmSeatsRow({
           Why?
         </Link>
         <div className="mt-3">
-          <Button type="submit" variant="secondary" disabled={pending}>
-            {pending ? "Confirming…" : "Confirm all"}
+          <Button
+            type="submit"
+            variant="secondary"
+            pending={pending}
+            pendingLabel="Confirming…"
+          >
+            Confirm all
           </Button>
         </div>
       </form>

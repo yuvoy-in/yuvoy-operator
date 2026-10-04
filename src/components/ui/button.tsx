@@ -1,6 +1,18 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes, Ref } from "react";
+import type {
+  AnchorHTMLAttributes,
+  ButtonHTMLAttributes,
+  ReactNode,
+  Ref,
+} from "react";
 import Link from "next/link";
-import { cn } from "@/lib/cn";
+import { BusyButton } from "./busy-button";
+import {
+  buttonClass,
+  type ButtonSize,
+  type ButtonVariant,
+} from "./button-class";
+
+export { buttonClass, type ButtonSize, type ButtonVariant };
 
 /**
  * The portal's one button, as a pill (v2.7).
@@ -27,56 +39,26 @@ import { cn } from "@/lib/cn";
  *
  * CTAs stay monochrome, as everywhere in the system: terracotta is never a
  * fill.
+ *
+ * ## While it works (O04 A, approved 4 Oct 2026)
+ *
+ * A form's submit passes `pending` while its action runs, and its working
+ * words as `pendingLabel`. It used to be `disabled`, which faded the one
+ * button the operator just pressed to 55%, the look of a control that is
+ * switched off, at the very moment it should look most alive. Now it keeps
+ * its full colour and stays focusable, says it is busy (`aria-busy`,
+ * `aria-disabled`), refuses a second tap itself, cross-fades its words to the
+ * working verb, and shows a 16px ring only if the answer is not back after
+ * 300ms. See `BusyButton`.
  */
-export type ButtonVariant =
-  "primary" | "secondary" | "outline" | "danger" | "danger-quiet";
-export type ButtonSize = "dock" | "md" | "sm";
-
-const VARIANT: Record<ButtonVariant, string> = {
-  primary: "bg-forest text-paper hover:bg-forest/90",
-  secondary:
-    "border border-paper-line bg-paper-deep text-forest hover:border-forest/40",
-  outline: "border border-forest/25 text-forest hover:border-forest",
-  danger: "border-2 border-terra-deep text-terra-deep hover:bg-terra-deep/5",
-  "danger-quiet":
-    "text-terra-deep underline decoration-terra-deep/40 underline-offset-4 hover:bg-terra-deep/5",
-};
-
-const SIZE: Record<ButtonSize, string> = {
-  dock: "dock-target px-5",
-  md: "h-11 px-5",
-  sm: "h-9 px-4 text-[11px]",
-};
-
-export function buttonClass({
-  variant = "primary",
-  size = "dock",
-  block = true,
-  className,
-}: {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  block?: boolean;
-  className?: string;
-} = {}): string {
-  return cn(
-    "inline-flex shrink-0 items-center justify-center gap-2 rounded-full label font-bold whitespace-nowrap select-none",
-    // The press eases in and out (`motion-control`, globals.css): it names
-    // `scale`, which is the property `active:scale-*` writes.
-    "motion-control active:scale-[0.98] disabled:pointer-events-none disabled:opacity-55",
-    VARIANT[variant],
-    SIZE[size],
-    block && "flex w-full",
-    className,
-  );
-}
-
 export function Button({
   variant,
   size,
   block,
   className,
   type = "button",
+  pending,
+  pendingLabel,
   ...props
 }: {
   variant?: ButtonVariant;
@@ -85,7 +67,29 @@ export function Button({
   block?: boolean;
   /** A prop since React 19, passed to the `<button>` with the rest. */
   ref?: Ref<HTMLButtonElement>;
+  /**
+   * The action this button started is running. A button that can be
+   * pending is always given a boolean here, never `undefined` one render
+   * and `false` the next: it is drawn by `BusyButton` from its first frame.
+   */
+  pending?: boolean;
+  /** Its words while pending: the working verb, "Saving…". */
+  pendingLabel?: ReactNode;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
+  if (pending !== undefined) {
+    return (
+      <BusyButton
+        type={type}
+        variant={variant}
+        size={size}
+        block={block}
+        className={className}
+        pending={pending}
+        pendingLabel={pendingLabel}
+        {...props}
+      />
+    );
+  }
   return (
     <button
       type={type}

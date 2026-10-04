@@ -204,11 +204,12 @@ export function CounterSale({
         <div className="mt-4 flex gap-2">
           <Button
             type="submit"
-            disabled={selling}
+            pending={selling}
+            pendingLabel="Recording…"
             block={false}
             className="flex-1"
           >
-            {selling ? "Recording…" : "Record it"}
+            Record it
           </Button>
           <Button
             onClick={() => setSellingOpen(false)}
@@ -307,13 +308,10 @@ function TakeBack({
           variant="danger"
           block={false}
           className="flex-1"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Taking back…"
         >
-          {pending
-            ? "Taking back…"
-            : seats === 1
-              ? "Take it back"
-              : "Take them back"}
+          {seats === 1 ? "Take it back" : "Take them back"}
         </Button>
         <Button
           variant="secondary"

@@ -265,3 +265,54 @@ describe("focus in the stop-selling confirm", () => {
     expect(screen.getByRole("button", { name: "Stop selling" })).toHaveFocus();
   });
 });
+
+/*
+  Saving the seats (O04 A, approved 4 Oct 2026): "Set seats" keeps its colour
+  while it works, and the answer's line arrives rather than being dropped in.
+*/
+describe("setting the seats", () => {
+  it("keeps the button alive while it saves, then the answer arrives with a tick", async () => {
+    let answer: (value: unknown) => void = () => {};
+    setCapacity.mockImplementation(
+      () => new Promise((resolve) => (answer = resolve)),
+    );
+    const user = userEvent.setup();
+    render(<DepartureControls slot={slot()} canManage canSellAtCounter />);
+    await user.clear(screen.getByLabelText("Seats offered"));
+    await user.type(screen.getByLabelText("Seats offered"), "10");
+    await user.click(screen.getByRole("button", { name: "Set seats" }));
+
+    const busy = await screen.findByRole("button", { name: "Saving…" });
+    // Not switched off: busy, and a second tap is refused by the button.
+    expect(busy).not.toBeDisabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    await user.click(busy);
+    expect(setCapacity).toHaveBeenCalledTimes(1);
+
+    answer({ seats: 10 });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Now offering 10.");
+    // It rises in, and its tick draws; both ship their own reduced version.
+    expect(status).toHaveClass("motion-rise-in");
+    expect(status).toHaveAttribute("data-motion");
+    expect(status.querySelector("svg.motion-tick path")).toHaveAttribute(
+      "pathLength",
+      "1",
+    );
+    expect(
+      screen.getByRole("button", { name: "Set seats" }),
+    ).not.toHaveAttribute("aria-busy");
+  });
+
+  it("lets the refusal arrive the same way", async () => {
+    setCapacity.mockResolvedValue({
+      message: "2 seats are already sold. You cannot go below that.",
+    });
+    const user = userEvent.setup();
+    render(<DepartureControls slot={slot()} canManage canSellAtCounter />);
+    await user.click(screen.getByRole("button", { name: "Set seats" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveClass("motion-rise-in");
+    expect(alert).toHaveAttribute("data-motion");
+  });
+});

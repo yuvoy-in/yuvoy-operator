@@ -272,11 +272,13 @@ export function CashCollect({
           <div className="mt-3 flex gap-2">
             <Button
               type="submit"
-              disabled={pending || !canRecordAmount(comparison)}
+              pending={pending}
+              pendingLabel="Recording…"
+              disabled={!canRecordAmount(comparison)}
               block={false}
               className="flex-1"
             >
-              {pending ? "Recording…" : recordLabel(typed)}
+              {recordLabel(typed)}
             </Button>
             <Button
               onClick={() => setLess(false)}
@@ -295,9 +297,19 @@ export function CashCollect({
             <input type="hidden" name="bookingId" value={bookingId} />
             <input type="hidden" name="slotId" value={slotId} />
             <input type="hidden" name="mode" value="fare" />
-            <Button type="submit" disabled={pending} variant={emphasis}>
+            <Button
+              type="submit"
+              pending={pending}
+              pendingLabel={
+                <>
+                  <CoinsIcon className="size-5" />
+                  Recording…
+                </>
+              }
+              variant={emphasis}
+            >
               <CoinsIcon className="size-5" />
-              {pending ? "Recording…" : takeLabel(cash.collectPaise)}
+              {takeLabel(cash.collectPaise)}
             </Button>
           </form>
           <button
