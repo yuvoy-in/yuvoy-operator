@@ -534,6 +534,30 @@ extracted.** It has not been — that is a recorded debt, not an oversight.
 fails on any divergence. It warns rather than fails when that checkout is absent, so
 CI does not block on a repo it did not clone.
 
+## Motion
+
+The portal's half of the motion system the owner approved on 4 Oct 2026
+(`yuvoy/motion-lab`, decisions in its `APPROVALS.md`; the rules in
+`yuvoy-app/docs/DESIGN_SYSTEM.md` v3.1). Productive, not cinematic:
+
+- **200ms is the ceiling** for anything but progress, 150ms for what is done
+  dozens of times a shift. Progress is what may be long, because it is the
+  information: the five-second undo window (`UndoWindow`), a turning ring.
+- **A change the operator did not make is marked and said, not moved:** a forest
+  tint that fades over 1.2s (`lib/motion/mark.ts`) and a polite live region
+  (`Announcer`). What moves stays on its screen: a list closing a gap, a party
+  into Aboard (FLIP, measured before the commit by `MeasureBefore`).
+- **Reduced motion swaps travel for a fade.** The global rule makes everything
+  instant except elements marked `data-motion`, which ship their own reduced
+  version; script motion branches inside `lib/motion`. No component writes its
+  own reduced branch.
+- **Presses animate `scale`** (`motion-control`, `motion-disc`, `motion-press`).
+
+`palette.test.ts` holds the ceiling (component classes, inline styles,
+`globals.css`), keeps every script motion inside `lib/motion` on its named
+durations, and fails a press whose transition list does not name `scale`.
+`motion.test.ts` fails when a curve in script drifts from `@theme`.
+
 ## Copy
 
 - **No long dash in anything an operator reads.** No em dash (U+2014), en dash

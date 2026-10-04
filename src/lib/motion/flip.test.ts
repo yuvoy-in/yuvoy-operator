@@ -185,6 +185,9 @@ describe("a held copy of what left", () => {
     expect(copy.hasAttribute("id")).toBe(false);
     expect(copy.querySelectorAll("[id]")).toHaveLength(0);
     expect(copy.querySelectorAll("[name]")).toHaveLength(0);
+    for (const control of copy.querySelectorAll("input, textarea")) {
+      expect(control).toHaveAttribute("tabindex", "-1");
+    }
     expect(copy.inert).toBe(true);
     expect(copy).toHaveAttribute("aria-hidden", "true");
     // The box ticked comes with it.

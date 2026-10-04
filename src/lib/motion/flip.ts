@@ -112,9 +112,9 @@ export interface Lifted {
  * ticked and the words typed come with it (an input's cloning copies its
  * value). Call it before the commit (`MeasureBefore`).
  *
- * The copy is a picture, nothing more: `inert` and `aria-hidden`, with no
- * ids (no second element answers to a label) and no names (nothing in it is
- * ever submitted with a form it happens to land in).
+ * The copy is a picture, nothing more: `inert`, `aria-hidden` and out of the
+ * tab order, with no ids (no second element answers to a label) and no names
+ * (nothing in it is ever submitted with a form it happens to land in).
  */
 export function lift(el: Element | null): Lifted | null {
   if (!(el instanceof HTMLElement) || !el.isConnected) return null;
@@ -126,6 +126,15 @@ export function lift(el: Element | null): Lifted | null {
   }
   for (const node of copy.querySelectorAll("[name]")) {
     node.removeAttribute("name");
+  }
+  /*
+    Out of the tab order as well as inert: a checker that does not know
+    `inert` must still find nothing focusable under `aria-hidden`.
+  */
+  for (const node of copy.querySelectorAll<HTMLElement>(
+    "a[href], button, input, select, textarea, summary, [tabindex]",
+  )) {
+    node.setAttribute("tabindex", "-1");
   }
   copy.setAttribute("aria-hidden", "true");
   copy.setAttribute("data-motion", "");
