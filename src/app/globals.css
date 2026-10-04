@@ -105,6 +105,17 @@
      halfway through every entrance on the site. */
   --ease-cinematic: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-interaction: cubic-bezier(0.32, 0.72, 0, 1);
+  /*
+    The motion system (approved 4 Oct 2026, yuvoy/motion-lab). Two curves
+    production had no word for. `move`: A to B with both ends on screen (an
+    indicator gliding, a list closing a gap); Material 3's standard curve.
+    `exit`: leaving, accelerating away so a dismissal never lingers; Material
+    3's emphasized accelerate. Durations are written where they are used, on
+    the scale press 100 / quick 150 / standard 200 / sheet 250 / spatial 350 /
+    moment 450ms, and palette.test.ts holds every pairing to its budget.
+  */
+  --ease-move: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
 
   /* ------------------------------------------------------------- tracking */
   --tracking-wordmark: 0.34em;
