@@ -210,7 +210,7 @@ export function CounterSale({
           <Button
             type="submit"
             pending={selling}
-            pendingLabel="Recording…"
+            pendingLabel="Recording"
             block={false}
             className="flex-1"
           >
@@ -319,7 +319,7 @@ function TakeBack({
           block={false}
           className="flex-1"
           pending={pending}
-          pendingLabel="Taking back…"
+          pendingLabel="Taking back"
         >
           {seats === 1 ? "Take it back" : "Take them back"}
         </Button>

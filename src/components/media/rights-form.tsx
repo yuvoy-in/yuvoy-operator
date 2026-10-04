@@ -215,7 +215,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
       <Button
         type="submit"
         pending={pending}
-        pendingLabel="Recording…"
+        pendingLabel="Recording"
         disabled={!hash}
       >
         I confirm this, and submit for review

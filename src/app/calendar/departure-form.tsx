@@ -565,7 +565,7 @@ function DepartureRound({
         <Button
           type="submit"
           pending={pending}
-          pendingLabel="Adding…"
+          pendingLabel="Adding"
           block={false}
           className="flex-1"
         >

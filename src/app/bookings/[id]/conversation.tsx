@@ -159,7 +159,7 @@ export function Conversation({
             variant="secondary"
             block={false}
             pending={loading}
-            pendingLabel="Loading…"
+            pendingLabel="Loading"
             onClick={showEarlier}
           >
             Show earlier messages
@@ -208,7 +208,7 @@ export function Conversation({
             <Button
               type="submit"
               pending={sending}
-              pendingLabel="Sending…"
+              pendingLabel="Sending"
               disabled={text.trim().length === 0}
             >
               Send

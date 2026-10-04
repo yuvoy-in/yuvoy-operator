@@ -200,7 +200,7 @@ export function CloseDeparture({
           block={false}
           className="flex-1"
           pending={pending}
-          pendingLabel="Closing…"
+          pendingLabel="Closing"
         >
           Stop selling it
         </Button>

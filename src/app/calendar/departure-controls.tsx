@@ -198,7 +198,7 @@ export function ConfirmDepartureSeats({ slot }: { slot: OperatorSlot }) {
       <input type="hidden" name="slotId" value={slot.id} />
       <input type="hidden" name="seats" value={slot.seats} />
       <input type="hidden" name="sold" value={slot.sold} />
-      <Button type="submit" pending={pending} pendingLabel="Confirming…">
+      <Button type="submit" pending={pending} pendingLabel="Confirming">
         {slot.seats === 1 ? "Confirm 1 seat" : `Confirm ${slot.seats} seats`}
       </Button>
       {/*
@@ -310,7 +310,7 @@ export function SeatsForm({ slot }: { slot: OperatorSlot }) {
           <Button
             type="submit"
             pending={saving}
-            pendingLabel="Saving…"
+            pendingLabel="Saving"
             variant="outline"
             block={false}
             className="flex-1"

@@ -359,7 +359,7 @@ export function MeetingPin({ initial }: { initial: Pin | null }) {
           block={false}
           onClick={locate}
           pending={locating}
-          pendingLabel="Finding you…"
+          pendingLabel="Finding you"
         >
           Use my location
         </Button>

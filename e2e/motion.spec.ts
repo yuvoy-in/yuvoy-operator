@@ -220,7 +220,7 @@ test("a pending button keeps its colour, says it is busy, and shows its ring onl
     return ring ? Number(getComputedStyle(ring).opacity) : null;
   });
   if (early !== null) expect(early).toBeLessThan(0.5);
-  const busy = inspector.getByRole("button", { name: "Saving…" });
+  const busy = inspector.getByRole("button", { name: "Saving", exact: true });
   await expect(busy).toHaveAttribute("aria-busy", "true");
   // Full colour, and still focusable: not `disabled`.
   expect(await busy.evaluate((el) => (el as HTMLButtonElement).disabled)).toBe(

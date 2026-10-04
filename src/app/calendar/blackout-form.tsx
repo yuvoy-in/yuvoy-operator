@@ -295,7 +295,7 @@ function BlackoutRound({
         <Button
           type="submit"
           pending={pending}
-          pendingLabel="Closing…"
+          pendingLabel="Closing"
           variant="danger"
           block={false}
           className="flex-1"

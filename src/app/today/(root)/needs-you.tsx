@@ -423,7 +423,7 @@ function ConfirmSeatsRow({
             type="submit"
             variant="secondary"
             pending={pending}
-            pendingLabel="Confirming…"
+            pendingLabel="Confirming"
           >
             Confirm all
           </Button>

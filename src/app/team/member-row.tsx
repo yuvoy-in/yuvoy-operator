@@ -300,7 +300,7 @@ export function MemberRow({
                 <Button
                   type="submit"
                   pending={pending}
-                  pendingLabel="Removing…"
+                  pendingLabel="Removing"
                   variant="danger"
                   block={false}
                   className="flex-1"

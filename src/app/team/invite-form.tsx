@@ -83,7 +83,7 @@ export function InviteForm() {
 
       {state.sent ? <Receipt state={state} /> : null}
 
-      <Button type="submit" pending={pending} pendingLabel="Sending…">
+      <Button type="submit" pending={pending} pendingLabel="Sending">
         Send the invitation
       </Button>
     </form>

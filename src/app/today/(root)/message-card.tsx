@@ -156,7 +156,7 @@ export function MessageCard({
           <Button
             onClick={open}
             pending={phase === "opening"}
-            pendingLabel="Opening…"
+            pendingLabel="Opening"
           >
             Read and reply
           </Button>
@@ -256,7 +256,7 @@ export function MessageCard({
                 <Button
                   type="submit"
                   pending={sending}
-                  pendingLabel="Sending…"
+                  pendingLabel="Sending"
                   disabled={text.trim().length === 0}
                 >
                   Send

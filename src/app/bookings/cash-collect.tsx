@@ -297,7 +297,7 @@ export function CashCollect({
             <Button
               type="submit"
               pending={pending}
-              pendingLabel="Recording…"
+              pendingLabel="Recording"
               disabled={!canRecordAmount(comparison)}
               block={false}
               className="flex-1"
@@ -327,7 +327,7 @@ export function CashCollect({
               pendingLabel={
                 <>
                   <CoinsIcon className="size-5" />
-                  Recording…
+                  Recording
                 </>
               }
               variant={emphasis}

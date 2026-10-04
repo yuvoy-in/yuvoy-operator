@@ -12,7 +12,7 @@ import { Button } from "./button";
 
 function save(pending: boolean, onClick = vi.fn()) {
   return (
-    <Button pending={pending} pendingLabel="Saving…" onClick={onClick}>
+    <Button pending={pending} pendingLabel="Saving" onClick={onClick}>
       Set seats
     </Button>
   );
@@ -36,7 +36,7 @@ describe("a button that can be pending", () => {
     button.focus();
 
     rerender(save(true));
-    const busy = screen.getByRole("button", { name: "Saving…" });
+    const busy = screen.getByRole("button", { name: "Saving" });
     expect(busy).toBe(button);
     // Not `disabled`: that is what faded it and dropped focus onto the page.
     expect(busy).not.toBeDisabled();
@@ -51,12 +51,12 @@ describe("a button that can be pending", () => {
     render(
       <form onSubmit={(event) => onSubmit(event.nativeEvent)}>
         <input aria-label="Seats" defaultValue="8" />
-        <Button type="submit" pending pendingLabel="Saving…" onClick={onClick}>
+        <Button type="submit" pending pendingLabel="Saving" onClick={onClick}>
           Set seats
         </Button>
       </form>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Saving…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Saving" }));
     expect(onClick).not.toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -153,9 +153,9 @@ describe("the words, as they change", () => {
     expect(words.style.top).toBe("18px");
 
     const arriving = container.querySelector(".motion-in");
-    expect(arriving).toHaveTextContent("Saving…");
+    expect(arriving).toHaveTextContent("Saving");
     // The button's name is the new words alone.
-    expect(screen.getByRole("button")).toHaveAccessibleName("Saving…");
+    expect(screen.getByRole("button")).toHaveAccessibleName("Saving");
   });
 
   it("lets the old words go once they have faded, and cross-fades back", () => {
@@ -172,7 +172,7 @@ describe("the words, as they change", () => {
 
     rerender(save(false));
     const leaving = container.querySelector(".motion-out");
-    expect(leaving).toHaveTextContent("Saving…");
+    expect(leaving).toHaveTextContent("Saving");
     expect((leaving!.firstElementChild as HTMLElement).style.left).toBe("34px");
     expect(container.querySelector(".motion-in")).toHaveTextContent(
       "Set seats",
@@ -185,6 +185,6 @@ describe("the words, as they change", () => {
     rerender(save(false));
     const leaving = container.querySelectorAll(".motion-out");
     expect(leaving).toHaveLength(1);
-    expect(leaving[0]).toHaveTextContent("Saving…");
+    expect(leaving[0]).toHaveTextContent("Saving");
   });
 });

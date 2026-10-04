@@ -86,7 +86,7 @@ export function ThreadList({
             variant="secondary"
             block={false}
             pending={loading}
-            pendingLabel="Loading…"
+            pendingLabel="Loading"
             onClick={more}
           >
             Show more

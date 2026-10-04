@@ -291,7 +291,7 @@ export function CallOffPanel({
         <Button
           type="submit"
           pending={pending}
-          pendingLabel="Cancelling…"
+          pendingLabel="Cancelling"
           variant="danger"
           block={false}
           className="flex-1"

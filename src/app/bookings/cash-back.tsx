@@ -105,7 +105,7 @@ export function CashBack({
           block={false}
           className="flex-1"
           pending={pending}
-          pendingLabel="Recording…"
+          pendingLabel="Recording"
         >
           Yes, I gave it back
         </Button>

@@ -288,7 +288,7 @@ export function CancelBooking({
           block={false}
           className="flex-1"
           pending={pending}
-          pendingLabel="Cancelling…"
+          pendingLabel="Cancelling"
         >
           Cancel the booking
         </Button>

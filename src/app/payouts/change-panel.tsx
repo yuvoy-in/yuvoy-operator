@@ -155,7 +155,7 @@ export function ChangePanel({
               <Button
                 type="submit"
                 pending={pending}
-                pendingLabel="Stopping…"
+                pendingLabel="Stopping"
                 variant="danger"
                 block={false}
                 className="flex-1"

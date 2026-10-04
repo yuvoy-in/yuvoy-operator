@@ -126,7 +126,7 @@ export function Submitted({
             <Button
               type="submit"
               pending={pending}
-              pendingLabel="Taking it down…"
+              pendingLabel="Taking it down"
               variant="danger"
               block={false}
               className="flex-1"

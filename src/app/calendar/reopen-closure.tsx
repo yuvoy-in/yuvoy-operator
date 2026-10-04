@@ -70,7 +70,7 @@ export function ReopenClosure({
         variant="secondary"
         block={false}
         pending={pending}
-        pendingLabel="Reopening…"
+        pendingLabel="Reopening"
       >
         Reopen
       </Button>

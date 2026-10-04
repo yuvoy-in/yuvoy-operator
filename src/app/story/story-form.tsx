@@ -187,7 +187,7 @@ function StoryRound({
       <Button
         type="submit"
         pending={pending}
-        pendingLabel="Saving…"
+        pendingLabel="Saving"
         disabled={Boolean(aboutProblem) || Boolean(langsProblem)}
       >
         Save

@@ -281,7 +281,7 @@ function RoleForm({
       <Actions
         pending={pending}
         submitLabel="Save role"
-        pendingLabel="Saving…"
+        pendingLabel="Saving"
         onClose={onClose}
       />
       <Failure state={state} />
@@ -321,7 +321,7 @@ function HoldForm({
       <Actions
         pending={pending}
         submitLabel="Pause access"
-        pendingLabel="Pausing…"
+        pendingLabel="Pausing"
         onClose={onClose}
       />
       <Failure state={state} />
@@ -353,7 +353,7 @@ function RestoreForm({
       <Actions
         pending={pending}
         submitLabel="Give access back"
-        pendingLabel="Restoring…"
+        pendingLabel="Restoring"
         onClose={onClose}
       />
       <Failure state={state} />

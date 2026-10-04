@@ -324,7 +324,7 @@ export function PauseResume({
         <Button
           type="submit"
           pending={pausing}
-          pendingLabel="Pausing…"
+          pendingLabel="Pausing"
           variant="danger"
           block={false}
           className="flex-1"
@@ -415,7 +415,7 @@ function ResumeControl({
         <Button
           type="submit"
           pending={pending}
-          pendingLabel="Resuming…"
+          pendingLabel="Resuming"
           block={false}
           className="flex-1"
         >

@@ -595,7 +595,7 @@ export function ListingRow({
             <Button
               type="submit"
               pending={pending}
-              pendingLabel="Sending…"
+              pendingLabel="Sending"
               variant="primary"
               block={false}
               className="flex-1"

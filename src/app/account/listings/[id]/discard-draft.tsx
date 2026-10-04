@@ -101,7 +101,7 @@ export function DiscardDraft({
           block={false}
           className="flex-1"
           pending={pending}
-          pendingLabel="Discarding…"
+          pendingLabel="Discarding"
         >
           Discard the draft
         </Button>

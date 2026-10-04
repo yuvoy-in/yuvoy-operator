@@ -200,7 +200,7 @@ export function BankForm({
         ) : (
           <Button
             pending={sending}
-            pendingLabel="Sending…"
+            pendingLabel="Sending"
             onClick={async () => {
               setSending(true);
               setStep(await requestStepUp());
@@ -244,7 +244,7 @@ export function BankForm({
         <Button
           type="submit"
           pending={pending}
-          pendingLabel="Raising…"
+          pendingLabel="Raising"
           disabled={!step.sent}
         >
           Raise the change

@@ -51,7 +51,7 @@ export function SubmitButton({
         type="submit"
         block={false}
         pending={pending}
-        pendingLabel="Sending…"
+        pendingLabel="Sending"
         disabled={missing > 0}
       >
         {sendLabel(label, missing)}

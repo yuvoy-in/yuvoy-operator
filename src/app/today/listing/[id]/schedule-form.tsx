@@ -204,7 +204,7 @@ export function ScheduleForm({
               block={false}
               className="flex-1"
               pending={pending}
-              pendingLabel={removingAll ? "Removing…" : "Saving…"}
+              pendingLabel={removingAll ? "Removing" : "Saving"}
             >
               {removingAll ? "Remove schedule" : "Save and close them"}
             </Button>
@@ -258,7 +258,7 @@ export function ScheduleForm({
             type="submit"
             block={false}
             pending={pending}
-            pendingLabel="Saving…"
+            pendingLabel="Saving"
             disabled={blocked}
             aria-describedby={blocked ? blockedId : undefined}
           >

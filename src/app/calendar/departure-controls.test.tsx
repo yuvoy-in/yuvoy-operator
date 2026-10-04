@@ -283,7 +283,7 @@ describe("setting the seats", () => {
     await user.type(screen.getByLabelText("Seats offered"), "10");
     await user.click(screen.getByRole("button", { name: "Set seats" }));
 
-    const busy = await screen.findByRole("button", { name: "Saving…" });
+    const busy = await screen.findByRole("button", { name: "Saving" });
     // Not switched off: busy, and a second tap is refused by the button.
     expect(busy).not.toBeDisabled();
     expect(busy).toHaveAttribute("aria-busy", "true");

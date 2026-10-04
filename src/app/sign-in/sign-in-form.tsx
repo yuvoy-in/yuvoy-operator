@@ -121,7 +121,7 @@ export function SignInForm({ next }: { next?: string | null }) {
       <Button
         type="submit"
         pending={pending}
-        pendingLabel="Working…"
+        pendingLabel="Working"
         disabled={state.step === "phone" && !complete}
         aria-describedby={state.step === "phone" ? "sign-in-where" : undefined}
       >

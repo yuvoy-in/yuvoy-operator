@@ -393,7 +393,7 @@ export function PartyRow({
                 name="outcome"
                 value={armed}
                 pending={pending}
-                pendingLabel="Recording…"
+                pendingLabel="Recording"
                 disabled={!online}
                 variant="danger"
                 block={false}

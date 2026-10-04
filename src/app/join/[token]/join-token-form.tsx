@@ -204,7 +204,7 @@ export function JoinTokenForm({
         <Button
           type="submit"
           pending={pending}
-          pendingLabel="Working…"
+          pendingLabel="Working"
           disabled={
             (state.step === "phone" && !complete) ||
             // Nothing may be sent while an unanswered "this removes you from

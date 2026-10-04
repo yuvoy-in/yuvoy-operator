@@ -253,7 +253,7 @@ export function DetailsForm({
         <Button
           type="submit"
           pending={pending}
-          pendingLabel="Saving…"
+          pendingLabel="Saving"
           variant="primary"
         >
           Save these details

@@ -73,7 +73,7 @@ export function Button({
    * and `false` the next: it is drawn by `BusyButton` from its first frame.
    */
   pending?: boolean;
-  /** Its words while pending: the working verb, "Saving…". */
+  /** Its words while pending: the working verb, "Saving", with no ellipsis. */
   pendingLabel?: ReactNode;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   if (pending !== undefined) {

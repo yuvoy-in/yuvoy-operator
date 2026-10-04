@@ -62,7 +62,7 @@ export function DownloadStatement({
       <Button
         variant="outline"
         pending={pending}
-        pendingLabel="Preparing…"
+        pendingLabel="Preparing"
         onClick={save}
       >
         Download statement

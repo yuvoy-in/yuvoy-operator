@@ -81,7 +81,7 @@ export function JoinForm() {
       <Button
         type="submit"
         pending={pending}
-        pendingLabel="Accepting…"
+        pendingLabel="Accepting"
         disabled={!complete}
       >
         Accept the invitation

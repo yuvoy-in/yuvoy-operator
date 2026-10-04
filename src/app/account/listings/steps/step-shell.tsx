@@ -63,7 +63,7 @@ export function StepShell({
             type="submit"
             block={false}
             pending={pending}
-            pendingLabel="Saving…"
+            pendingLabel="Saving"
           >
             {nextLabel}
           </Button>

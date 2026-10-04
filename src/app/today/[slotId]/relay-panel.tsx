@@ -209,7 +209,7 @@ function RelayRound({
         <Button
           type="submit"
           pending={pending}
-          pendingLabel="Sending…"
+          pendingLabel="Sending"
           block={false}
           className="flex-1"
         >

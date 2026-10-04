@@ -44,7 +44,7 @@ export function RemovePhoto({
         type="submit"
         variant="danger"
         pending={pending}
-        pendingLabel="Removing…"
+        pendingLabel="Removing"
       >
         Remove it
       </Button>

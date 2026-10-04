@@ -187,7 +187,7 @@ export function CredentialForm({
         <Button
           type="submit"
           pending={pending}
-          pendingLabel="Sending…"
+          pendingLabel="Sending"
           variant="primary"
         >
           Send it to us

@@ -356,7 +356,7 @@ function MoveTime({
           block={false}
           className="flex-1"
           pending={pending}
-          pendingLabel="Moving…"
+          pendingLabel="Moving"
         >
           Move it
         </Button>

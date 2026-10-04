@@ -392,6 +392,67 @@ describe("palette", () => {
         "no presses found: the scan is looking in the wrong place",
       ).toBeGreaterThan(2);
     });
+
+    /**
+     * Every piece of text a `pendingLabel` can draw, from one file's code: a
+     * string, the strings of an expression (a branch between two verbs), and
+     * the words in a fragment (an icon beside the verb).
+     */
+    function pendingLabels(src: string): string[] {
+      const out: string[] = [];
+      for (const m of src.matchAll(/\bpendingLabel(?:=|\s*:\s*)/g)) {
+        let i = m.index + m[0].length;
+        while (/\s/.test(src[i] ?? "")) i += 1;
+        const open = src[i];
+        if (open === '"' || open === "'" || open === "`") {
+          out.push(src.slice(i + 1, src.indexOf(open, i + 1)));
+          continue;
+        }
+        if (open !== "{") continue;
+        let depth = 0;
+        let end = i;
+        for (; end < src.length; end += 1) {
+          if (src[end] === "{") depth += 1;
+          if (src[end] === "}" && --depth === 0) break;
+        }
+        const expression = src.slice(i + 1, end);
+        for (const [, , text] of expression.matchAll(
+          /(["'`])((?:(?!\1)[^\n])*)\1/g,
+        )) {
+          out.push(text);
+        }
+        for (const [, text] of expression.matchAll(/>([^<>{}]+)</g)) {
+          if (text.trim()) out.push(text.trim());
+        }
+      }
+      return out;
+    }
+
+    it("names a busy button's working verb with no ellipsis (O04 A)", () => {
+      /*
+        The approved label is "Saving", with no ellipsis (O04 A, approved
+        4 Oct 2026; yuvoy/motion-lab, experiments/o04-forms.js): the button
+        keeps its colour and says it is busy, and the ring that turns beside
+        the verb after 300ms is what says it is still going. Three dots said
+        it a second time, in type. Read from every way a label reaches the
+        busy button, so a branch or a fragment cannot slip one past.
+      */
+      let labels = 0;
+      const offenders: string[] = [];
+      for (const file of FILES.filter((f) => f.endsWith(".tsx"))) {
+        for (const label of pendingLabels(read(file))) {
+          labels += 1;
+          if (/(?:…|\.\.\.)\s*$/.test(label)) {
+            offenders.push(`${rel(file)}: "${label}"`);
+          }
+        }
+      }
+      expect(offenders).toEqual([]);
+      expect(
+        labels,
+        "no working verbs found: the scan is looking in the wrong place",
+      ).toBeGreaterThan(40);
+    });
   });
 
   it("never puts text below the documented opacity floor", () => {

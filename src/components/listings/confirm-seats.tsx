@@ -93,7 +93,7 @@ export function ConfirmSeats({
       <Button
         type="submit"
         pending={pending}
-        pendingLabel="Confirming…"
+        pendingLabel="Confirming"
         className="mt-3"
       >
         Confirm all
