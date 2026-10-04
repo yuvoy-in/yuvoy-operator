@@ -89,6 +89,15 @@ describe("a figure that rolls", () => {
     );
   });
 
+  it("rolls a fall once, and letting the old number go replays nothing", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<Roll value={5} />);
+    rerender(<Roll value={3} />);
+    const rolled = played.length;
+    act(() => vi.advanceTimersByTime(250));
+    expect(played).toHaveLength(rolled);
+  });
+
   it("lets the old number go once it has rolled away", () => {
     vi.useFakeTimers();
     const { rerender, container } = render(<Roll value={3} />);

@@ -32,8 +32,14 @@ export function Roll({ value }: { value: number }) {
   const now = useRef<HTMLSpanElement>(null);
   const old = useRef<HTMLSpanElement>(null);
   const up = was?.up ?? true;
+  /*
+    The change last drawn. Letting the old number go turns `up` back to its
+    default, and a fall used to roll a second time, upward, when it did.
+  */
+  const drawn = useRef(0);
   useLayoutEffect(() => {
-    if (changes === 0) return;
+    if (changes === 0 || changes === drawn.current) return;
+    drawn.current = changes;
     rollFigure(now.current, old.current, up);
   }, [changes, up]);
 
