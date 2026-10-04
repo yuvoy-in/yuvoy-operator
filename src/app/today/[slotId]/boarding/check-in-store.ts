@@ -13,7 +13,10 @@ import type { AttendanceState } from "../actions";
  * be done until the API has answered.
  *
  * Arriving is idempotent on the API ("a second tap keeps the first arrival
- * time"), so a send that failed for want of signal is safe to tap again.
+ * time"), so a check-in that cannot be sent is kept on the phone instead and
+ * sent when the signal is back (`keep`, `lib/site/offline-writes.ts`): with
+ * no signal when the five seconds are up, or when the send never came back.
+ * The phone's list of kept writes then owns it, not this store.
  */
 
 export const HOLD_MS = 5_000;
@@ -39,20 +42,31 @@ export interface CheckInStore {
   settle(bookingId: string): void;
   flush(): void;
   onSent(listener: ((bookingId: string) => void) | null): void;
+  /** How to keep a check-in that cannot be sent. Unset, it fails instead. */
+  onKeep(keep: KeepCheckIn | null): void;
 }
 
 /** What a send that never got an answer says. */
 export const UNKNOWN_CHECK_IN =
   "The connection dropped, so we cannot tell whether that was recorded. Tap Aboard again: a second tap is safe.";
 
+/**
+ * Keeps a check-in on the phone to send later. `false` when it cannot be kept
+ * (nobody is signed in that the phone knows of), and the row then says so.
+ */
+export type KeepCheckIn = (bookingId: string, tappedAt: number) => boolean;
+
 export function createCheckInStore(
   slotId: string,
   mark: MarkAttendance,
   clock: () => number = () => Date.now(),
+  isOnline: () => boolean = () => navigator.onLine,
 ): CheckInStore {
+  let keep: KeepCheckIn = () => false;
   let state: Record<string, CheckIn> = {};
   const listeners = new Set<() => void>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const tapped = new Map<string, number>();
   let sent: ((bookingId: string) => void) | null = null;
 
   function set(id: string, next: CheckIn | null) {
@@ -69,9 +83,26 @@ export function createCheckInStore(
     timers.delete(id);
   }
 
+  /**
+   * Hands a check-in to the phone's kept writes, then lets go of it here. In
+   * that order, so the row is never in neither list for a render.
+   */
+  function keepOrFail(id: string, message: string) {
+    if (keep(id, tapped.get(id) ?? clock())) {
+      tapped.delete(id);
+      set(id, null);
+      return;
+    }
+    set(id, { phase: "failed", message });
+  }
+
   async function send(id: string) {
     if (state[id]?.phase !== "holding") return;
     stopTimer(id);
+    if (!isOnline()) {
+      keepOrFail(id, "No signal. Nothing was recorded.");
+      return;
+    }
     set(id, { phase: "sending" });
     const form = new FormData();
     form.set("bookingId", id);
@@ -79,15 +110,21 @@ export function createCheckInStore(
     form.set("outcome", "arrived");
     try {
       const answer = await mark({}, form);
+      if (answer.retryable) {
+        keepOrFail(id, answer.message ?? UNKNOWN_CHECK_IN);
+        return;
+      }
       if (answer.message) {
         set(id, { phase: "failed", message: answer.message });
         return;
       }
       // Kept until the re-read manifest says arrived: see `settle`.
+      tapped.delete(id);
       set(id, { phase: "sent" });
       sent?.(id);
     } catch {
-      set(id, { phase: "failed", message: UNKNOWN_CHECK_IN });
+      // It may or may not have reached the API; arriving twice is safe.
+      keepOrFail(id, UNKNOWN_CHECK_IN);
     }
   }
 
@@ -101,7 +138,9 @@ export function createCheckInStore(
       const phase = state[id]?.phase;
       if (!id || phase === "sending" || phase === "sent") return;
       stopTimer(id);
-      set(id, { phase: "holding", until: clock() + HOLD_MS });
+      const now = clock();
+      tapped.set(id, now);
+      set(id, { phase: "holding", until: now + HOLD_MS });
       timers.set(
         id,
         setTimeout(() => void send(id), HOLD_MS),
@@ -110,6 +149,7 @@ export function createCheckInStore(
     undo(id) {
       if (state[id]?.phase !== "holding") return false;
       stopTimer(id);
+      tapped.delete(id);
       set(id, null);
       return true;
     },
@@ -124,6 +164,9 @@ export function createCheckInStore(
     },
     onSent(listener) {
       sent = listener;
+    },
+    onKeep(next) {
+      keep = next ?? (() => false);
     },
   };
 }

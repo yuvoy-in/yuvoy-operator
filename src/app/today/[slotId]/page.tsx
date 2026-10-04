@@ -28,6 +28,7 @@ import { Panel, panelClass } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
 import { readInbox } from "@/lib/site/inbox";
 import { backFrom, hereWith, withFrom } from "@/lib/site/back-to";
+import { KeptOnThisPhone } from "@/components/chrome/kept-on-this-phone";
 
 /**
  * The departure, not the word "Manifest" — yuvoy-operator#21.
@@ -212,30 +213,42 @@ export default async function ManifestPage({
   return (
     <Screen nav={{ back }}>
       <RefreshOnFocus />
-
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
-        {startsAt ? (
-          <>
-            <span className="tabular-nums">
-              {marketTime(startsAt, timezone)}
-            </span>{" "}
-          </>
-        ) : null}
-        <span className="text-3xl">{manifest.experience || "Departure"}</span>
-      </h1>
-
-      {startsAt || manifest.meetingPoint ? (
-        <p className="text-forest/80 mt-2 text-base">
-          {[
-            startsAt ? marketDay(startsAt, timezone) : "",
-            manifest.meetingPoint,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-      ) : null}
-
       {/*
+        With no signal, check-ins and cash taken are kept on this phone and the
+        strip says so; see `KeptOnThisPhone` (operator experiment D).
+      */}
+      <KeptOnThisPhone
+        slotId={slotId}
+        timezone={timezone}
+        names={Object.fromEntries(
+          parties
+            .filter((p) => p.bookingId)
+            .map((p) => [p.bookingId as string, p.name?.trim() || "A guest"]),
+        )}
+      >
+        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+          {startsAt ? (
+            <>
+              <span className="tabular-nums">
+                {marketTime(startsAt, timezone)}
+              </span>{" "}
+            </>
+          ) : null}
+          <span className="text-3xl">{manifest.experience || "Departure"}</span>
+        </h1>
+
+        {startsAt || manifest.meetingPoint ? (
+          <p className="text-forest/80 mt-2 text-base">
+            {[
+              startsAt ? marketDay(startsAt, timezone) : "",
+              manifest.meetingPoint,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
+
+        {/*
         The departure is off. Nothing else on the page matters as much.
 
         It said "Everybody on it has been told and refunded in full", which was
@@ -243,121 +256,121 @@ export default async function ManifestPage({
         who paid at the counter got nothing back from us, and a message counts
         only the people we could reach. What is true is what the call-off did.
       */}
-      {manifest.calledOff ? (
-        <div className="mt-6">
-          <Problem
-            title="This departure is called off"
-            body="Every booking on it is cancelled, and everything paid online goes back in full."
-          />
-        </div>
-      ) : null}
+        {manifest.calledOff ? (
+          <div className="mt-6">
+            <Problem
+              title="This departure is called off"
+              body="Every booking on it is cancelled, and everything paid online goes back in full."
+            />
+          </div>
+        ) : null}
 
-      {/*
+        {/*
         Money the business is holding that is not theirs, above everything
         else below it: each party stays here until the return is recorded.
       */}
-      {giveBack ? (
-        <section className="mt-6" aria-labelledby="give-back">
-          <div className={panelClass("alert")}>
-            <h2 id="give-back" className="text-base font-bold">
-              You are holding {formatPaise(giveBack.totalPaise)} that is not
-              yours
-            </h2>
-            <p className="text-forest/80 mt-2 text-sm">
-              {giveBack.parties.length === 1
-                ? "This traveller paid you in cash, so nothing of theirs reached us to refund. Hand it back, then record it here."
-                : "These travellers paid you in cash, so nothing of theirs reached us to refund. Hand it back, then record each one here."}
-            </p>
-            <ul className="mt-4 space-y-3">
-              {giveBack.parties.map((party) => (
-                <li
-                  key={party.bookingId}
-                  className="border-paper-line border-t pt-3"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-base font-bold slashed-zero tabular-nums">
-                      {party.reference || "-"}
+        {giveBack ? (
+          <section className="mt-6" aria-labelledby="give-back">
+            <div className={panelClass("alert")}>
+              <h2 id="give-back" className="text-base font-bold">
+                You are holding {formatPaise(giveBack.totalPaise)} that is not
+                yours
+              </h2>
+              <p className="text-forest/80 mt-2 text-sm">
+                {giveBack.parties.length === 1
+                  ? "This traveller paid you in cash, so nothing of theirs reached us to refund. Hand it back, then record it here."
+                  : "These travellers paid you in cash, so nothing of theirs reached us to refund. Hand it back, then record each one here."}
+              </p>
+              <ul className="mt-4 space-y-3">
+                {giveBack.parties.map((party) => (
+                  <li
+                    key={party.bookingId}
+                    className="border-paper-line border-t pt-3"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-base font-bold slashed-zero tabular-nums">
+                        {party.reference || "-"}
+                      </p>
+                      <p className="shrink-0 text-base font-bold tabular-nums">
+                        {formatPaise(party.amountPaise)}
+                      </p>
+                    </div>
+                    <p className="text-forest/70 mt-1 text-sm">
+                      {[
+                        party.name,
+                        party.guests === 1
+                          ? "1 guest"
+                          : party.guests > 1
+                            ? `${party.guests} guests`
+                            : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
-                    <p className="shrink-0 text-base font-bold tabular-nums">
-                      {formatPaise(party.amountPaise)}
-                    </p>
-                  </div>
-                  <p className="text-forest/70 mt-1 text-sm">
-                    {[
-                      party.name,
-                      party.guests === 1
-                        ? "1 guest"
-                        : party.guests > 1
-                          ? `${party.guests} guests`
-                          : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                  {/*
+                    {/*
                     OWNER, ADMIN or MANAGER: "STAFF cannot record giving the
                     cash back". A staff login is told who can, rather than
                     shown a control the API will refuse.
                   */}
-                  {me.canManage ? (
-                    <CashBack
-                      bookingId={party.bookingId}
-                      amountPaise={party.amountPaise}
-                      refreshLabel="Update the list"
-                    />
-                  ) : (
-                    <p className="text-forest/70 mt-2 text-sm">
-                      An owner, an admin or a manager records it once it is
-                      handed back.
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      ) : null}
+                    {me.canManage ? (
+                      <CashBack
+                        bookingId={party.bookingId}
+                        amountPaise={party.amountPaise}
+                        refreshLabel="Update the list"
+                      />
+                    ) : (
+                      <p className="text-forest/70 mt-2 text-sm">
+                        An owner, an admin or a manager records it once it is
+                        handed back.
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        ) : null}
 
-      {/*
+        {/*
         Totals come from the server. They are computed there precisely "so
         three clients cannot disagree about them on a dock", and seatsSold
         and seatsSoldOffline answer different questions — an operator adding
         them together to get a head count is the mistake this layout avoids
         by never putting them beside each other as one number.
       */}
-      {manifest.calledOff ? null : (
-        <dl className="mt-8 grid grid-cols-3 gap-3">
-          <Total label="Parties" value={totals.parties} />
-          <Total label="Guests" value={totals.guests} />
-          {/*
+        {manifest.calledOff ? null : (
+          <dl className="mt-8 grid grid-cols-3 gap-3">
+            <Total label="Parties" value={totals.parties} />
+            <Total label="Guests" value={totals.guests} />
+            {/*
             "Checked in", not "Here" (yuvoy-operator#88 s3): "Here" is our
             word, and on a jetty it reads as a question.
           */}
-          <Total label="Checked in" value={totals.arrived} />
-        </dl>
-      )}
-      {!manifest.calledOff && totals.seatsSoldOffline ? (
-        <p className="text-forest/70 mt-3 text-sm">
-          {totals.seatsSoldOffline === 1
-            ? "1 more seat sold at your counter is not on this list."
-            : `${totals.seatsSoldOffline} more seats sold at your counter are not on this list.`}
-        </p>
-      ) : null}
+            <Total label="Checked in" value={totals.arrived} />
+          </dl>
+        )}
+        {!manifest.calledOff && totals.seatsSoldOffline ? (
+          <p className="text-forest/70 mt-3 text-sm">
+            {totals.seatsSoldOffline === 1
+              ? "1 more seat sold at your counter is not on this list."
+              : `${totals.seatsSoldOffline} more seats sold at your counter are not on this list.`}
+          </p>
+        ) : null}
 
-      {/*
+        {/*
         Boarding mode (operator experiment D): this manifest built for the
         jetty, one hand and bright sun. The one primary action here, because
         at the boat it is the thing the screen is for.
       */}
-      {!manifest.calledOff && confirmedRows.length > 0 ? (
-        <div className="mt-6">
-          <ButtonLink href={withFrom(`/today/${slotId}/boarding`, here)}>
-            {departed ? "Close out the boat" : "Start boarding"}
-          </ButtonLink>
-        </div>
-      ) : null}
+        {!manifest.calledOff && confirmedRows.length > 0 ? (
+          <div className="mt-6">
+            <ButtonLink href={withFrom(`/today/${slotId}/boarding`, here)}>
+              {departed ? "Close out the boat" : "Start boarding"}
+            </ButtonLink>
+          </div>
+        ) : null}
 
-      {/*
+        {/*
         Telling the whole departure something. Above the list rather than
         below it: at 6am the thing an operator most often needs is to move a
         time or a meeting point for everybody, not to tick one person off.
@@ -366,11 +379,11 @@ export default async function ManifestPage({
         this departure" was the same words twice where the guest list should
         be (yuvoy-operator#88 s3). The button carries it.
       */}
-      {!manifest.calledOff ? (
-        <RelayPanel slotId={slotId} who="everyone booked" />
-      ) : null}
+        {!manifest.calledOff ? (
+          <RelayPanel slotId={slotId} who="everyone booked" />
+        ) : null}
 
-      {/*
+        {/*
         The screener, summarised, directly above the list it is about.
 
         Rendered only on a departure that asks one — a snorkel trip shows
@@ -385,52 +398,82 @@ export default async function ManifestPage({
         No number here is a claim about anybody's health, and none can become
         one: `clear` is not read by this screen or any other in the portal.
       */}
-      {screening.asks ? (
-        <section className="mt-8" aria-labelledby="screening">
-          <h2 id="screening" className="label text-forest/75">
-            Medical question
-          </h2>
-          <div className="mt-3">
-            {screening.outstanding > 0 ? (
-              <Problem
-                title={`${screening.outstanding} of ${screening.total} ${
-                  screening.outstanding === 1 ? "has" : "have"
-                } no answer recorded`}
-                body="Ask them before they board. They are marked in the list below."
-              />
-            ) : (
-              <Panel className="p-6">
-                <p className="text-base font-bold">
-                  Everybody on this list has answered
-                </p>
-                <p className="text-forest/70 mt-2 text-sm">
-                  {screening.flagged > 0
-                    ? "Some rows below still ask you to check with them before boarding."
-                    : "Nothing outstanding for this departure."}
-                </p>
-              </Panel>
-            )}
-          </div>
-        </section>
-      ) : null}
+        {screening.asks ? (
+          <section className="mt-8" aria-labelledby="screening">
+            <h2 id="screening" className="label text-forest/75">
+              Medical question
+            </h2>
+            <div className="mt-3">
+              {screening.outstanding > 0 ? (
+                <Problem
+                  title={`${screening.outstanding} of ${screening.total} ${
+                    screening.outstanding === 1 ? "has" : "have"
+                  } no answer recorded`}
+                  body="Ask them before they board. They are marked in the list below."
+                />
+              ) : (
+                <Panel className="p-6">
+                  <p className="text-base font-bold">
+                    Everybody on this list has answered
+                  </p>
+                  <p className="text-forest/70 mt-2 text-sm">
+                    {screening.flagged > 0
+                      ? "Some rows below still ask you to check with them before boarding."
+                      : "Nothing outstanding for this departure."}
+                  </p>
+                </Panel>
+              )}
+            </div>
+          </section>
+        ) : null}
 
-      {/*
+        {/*
         A called-off departure has nobody on it: the API empties `parties`,
         and "Nobody booked yet" under it would read as a departure nobody
         wanted rather than one that was called off.
       */}
-      {manifest.calledOff ? null : (
-        <section className="mt-10" aria-labelledby="confirmed">
-          <h2 id="confirmed" className="label text-forest/75">
-            Coming
-          </h2>
-          {confirmedRows.length === 0 ? (
-            <p className="text-forest/70 mt-3 text-base">Nobody booked yet</p>
-          ) : (
+        {manifest.calledOff ? null : (
+          <section className="mt-10" aria-labelledby="confirmed">
+            <h2 id="confirmed" className="label text-forest/75">
+              Coming
+            </h2>
+            {confirmedRows.length === 0 ? (
+              <p className="text-forest/70 mt-3 text-base">Nobody booked yet</p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {confirmedRows.map(({ party, signal }) => (
+                  <PartyRow
+                    key={party.bookingId}
+                    party={party}
+                    slotId={slotId}
+                    departed={departed}
+                    screening={signal}
+                    cash={cashOf(party)}
+                    timezone={timezone}
+                    canManage={me.canManage}
+                    {...bookingOf(party)}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {/*
+        Holds are on the manifest deliberately: "a party mid-checkout at
+        08:40 may walk up at 08:55, and a manifest that omits them sends the
+        operator into an argument they cannot win."
+      */}
+        {holdRows.length > 0 ? (
+          <section className="mt-10" aria-labelledby="holding">
+            <h2 id="holding" className="label text-forest/75">
+              Still paying
+            </h2>
+            {/* Each row says what a hold means, so the section need not. */}
             <ul className="mt-3 space-y-3">
-              {confirmedRows.map(({ party, signal }) => (
+              {holdRows.map(({ party, signal }, i) => (
                 <PartyRow
-                  key={party.bookingId}
+                  key={party.reference ?? i}
                   party={party}
                   slotId={slotId}
                   departed={departed}
@@ -438,59 +481,30 @@ export default async function ManifestPage({
                   cash={cashOf(party)}
                   timezone={timezone}
                   canManage={me.canManage}
-                  {...bookingOf(party)}
                 />
               ))}
             </ul>
-          )}
-        </section>
-      )}
+          </section>
+        ) : null}
 
-      {/*
-        Holds are on the manifest deliberately: "a party mid-checkout at
-        08:40 may walk up at 08:55, and a manifest that omits them sends the
-        operator into an argument they cannot win."
-      */}
-      {holdRows.length > 0 ? (
-        <section className="mt-10" aria-labelledby="holding">
-          <h2 id="holding" className="label text-forest/75">
-            Still paying
-          </h2>
-          {/* Each row says what a hold means, so the section need not. */}
-          <ul className="mt-3 space-y-3">
-            {holdRows.map(({ party, signal }, i) => (
-              <PartyRow
-                key={party.reference ?? i}
-                party={party}
-                slotId={slotId}
-                departed={departed}
-                screening={signal}
-                cash={cashOf(party)}
-                timezone={timezone}
-                canManage={me.canManage}
-              />
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {/*
+        {/*
         Last, and quiet (yuvoy-operator#81 t5): text in the warning colour,
         behind a confirm that names the time and what happens to everyone on
         it.
       */}
-      <CallOffPanel
-        slotId={slotId}
-        alreadyCalledOff={Boolean(manifest.calledOff)}
-        canManage={me.canManage}
-        time={startsAt ? marketTime(startsAt, timezone) : undefined}
-        title={manifest.experience}
-        day={
-          startsAt
-            ? dayWords(marketDayOf(startsAt, timezone) ?? "", today)
-            : undefined
-        }
-      />
+        <CallOffPanel
+          slotId={slotId}
+          alreadyCalledOff={Boolean(manifest.calledOff)}
+          canManage={me.canManage}
+          time={startsAt ? marketTime(startsAt, timezone) : undefined}
+          title={manifest.experience}
+          day={
+            startsAt
+              ? dayWords(marketDayOf(startsAt, timezone) ?? "", today)
+              : undefined
+          }
+        />
+      </KeptOnThisPhone>
     </Screen>
   );
 }
