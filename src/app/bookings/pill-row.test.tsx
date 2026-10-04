@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { PillPanel, PillRow, PillSwap, type Pill } from "./pill-row";
 import { NothingBooked } from "./nothing-booked";
@@ -169,12 +169,27 @@ describe("the pill row", () => {
 
   it("draws each pill's count, and none from a read that failed", () => {
     row("upcoming");
-    expect(screen.getByRole("link", { name: /^Past/ })).toHaveTextContent(
-      "Past12",
-    );
+    expect(
+      within(screen.getByRole("link", { name: /^Past/ })).getByText("12"),
+    ).toHaveClass("tabular-nums");
     expect(screen.getByRole("link", { name: /^Cancelled/ })).toHaveTextContent(
       /^Cancelled$/,
     );
+  });
+
+  it("names each pill with a space between its word and its count", () => {
+    /*
+      The count is its own flex item, and a name computed from the content
+      ran the two together: "Past12", which a screen reader says as one
+      word. Exact names, so a run-together one fails.
+    */
+    row("upcoming");
+    const [requests, upcoming, past, cancelled] = screen.getAllByRole("link");
+    expect(requests).toHaveAccessibleName("Requests 2");
+    expect(upcoming).toHaveAccessibleName("Upcoming 4");
+    expect(past).toHaveAccessibleName("Past 12");
+    // A pill whose count did not load is its word alone.
+    expect(cancelled).toHaveAccessibleName("Cancelled");
   });
 });
 

@@ -202,6 +202,16 @@ export function PillRow({
             href={pill.href}
             data-pill={pill.key}
             aria-current={on ? "page" : undefined}
+            /*
+              The name, with a space between the word and its count. The
+              count is a flex item of its own, so a name computed from the
+              content ran the two together ("Past12"). Built here it reads
+              "Past 12" in every engine, and it starts with the visible word,
+              so a voice command still finds the pill.
+            */
+            aria-label={
+              pill.count !== null ? `${pill.label} ${pill.count}` : undefined
+            }
             onClick={(event) => tap(event, pill.key)}
             className={buttonClass({
               variant: on ? "primary" : "secondary",
