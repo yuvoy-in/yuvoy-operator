@@ -133,31 +133,30 @@ export function lift(el: Element | null): Lifted | null {
   return { copy, rect, opacity: opacityOf(el) };
 }
 
-/**
- * The scroller a copy is drawn in, so it scrolls and clips with what it was
- * part of: the nearest positioned ancestor that scrolls (a sheet's panel),
- * or the page.
- */
-function hostFor(anchor: Element): HTMLElement {
+/** The nearest ancestor of `anchor` that scrolls, or none: the page. */
+function scrollerOf(anchor: Element): HTMLElement | null {
   for (
     let node = anchor.parentElement;
     node && node !== document.body;
     node = node.parentElement
   ) {
-    const style = getComputedStyle(node);
-    if (/(auto|scroll)/.test(style.overflowY) && style.position !== "static") {
-      return node;
-    }
+    if (/(auto|scroll)/.test(getComputedStyle(node).overflowY)) return node;
   }
-  return document.body;
+  return null;
 }
 
 /**
- * Draws a lifted copy where it stood, over the layout that has already
- * changed, and fades it out: 150ms, accelerating away (`exit`), from the
- * opacity it had; 120ms on a linear curve under reduced motion. `anchor` is
- * anything still on screen near where it stood, which decides the scroller
- * it is drawn in. Gone from the page once it has faded, whatever happens.
+ * Draws a lifted copy where it stood on screen, over the layout that has
+ * already changed, and fades it out: 150ms, accelerating away (`exit`), from
+ * the opacity it had; 120ms on a linear curve under reduced motion. Gone
+ * from the page once it has faded, whatever happens.
+ *
+ * It is drawn in a fixed layer the size of what it was seen through: the
+ * scroller `anchor` sits in (a sheet's panel, which it is clipped to, and
+ * drawn above), or the window. Fixed, so it never makes the page or the
+ * sheet longer than it now is: a confirm that leaves a shorter page lets the
+ * scroll settle at once, as it always has, with the copy fading where it was
+ * seen. Below the floating bar on a page, above everything in a sheet.
  */
 export function dropLifted(
   lifted: Lifted,
@@ -165,42 +164,50 @@ export function dropLifted(
   duration: number = DURATION.quick,
 ): void {
   const { copy, rect, opacity } = lifted;
-  const host = hostFor(anchor);
-  let top: number;
-  let left: number;
-  if (host === document.body) {
-    top = rect.top + window.scrollY;
-    left = rect.left + window.scrollX;
-  } else {
-    const box = host.getBoundingClientRect();
-    top = rect.top - box.top - host.clientTop + host.scrollTop;
-    left = rect.left - box.left - host.clientLeft + host.scrollLeft;
-  }
+  const scroller = scrollerOf(anchor);
+  const seen = scroller
+    ? scroller.getBoundingClientRect()
+    : { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight };
+
+  const layer = document.createElement("div");
+  layer.setAttribute("aria-hidden", "true");
+  layer.setAttribute("data-motion", "");
+  layer.inert = true;
+  Object.assign(layer.style, {
+    position: "fixed",
+    top: `${seen.top}px`,
+    left: `${seen.left}px`,
+    width: `${seen.width}px`,
+    height: `${seen.height}px`,
+    overflow: "hidden",
+    pointerEvents: "none",
+    zIndex: scroller ? "60" : "20",
+  });
   Object.assign(copy.style, {
     position: "absolute",
-    top: `${top}px`,
-    left: `${left}px`,
+    top: `${rect.top - seen.top}px`,
+    left: `${rect.left - seen.left}px`,
     width: `${rect.width}px`,
     height: `${rect.height}px`,
     margin: "0",
-    zIndex: "1",
     overflow: "hidden",
-    pointerEvents: "none",
     animation: "none",
     transform: "none",
   });
-  host.appendChild(copy);
+  layer.appendChild(copy);
+  document.body.appendChild(layer);
+
   const reduced = prefersReducedMotion();
   const fade = play(copy, [{ opacity }, { opacity: 0 }], {
     duration: reduced ? DURATION.reducedFade : duration,
     easing: reduced ? "linear" : EASE.exit,
     fill: "forwards",
   });
+  const gone = () => layer.remove();
   if (!fade) {
-    copy.remove();
+    gone();
     return;
   }
-  const gone = () => copy.remove();
   fade.finished.then(gone, gone);
 }
 

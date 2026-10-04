@@ -38,11 +38,10 @@ import {
 import { marketDays, now } from "@/lib/format/market-time";
 import { ButtonLink } from "@/components/ui/button";
 import { Problem } from "@/components/ui/states";
-import { cn } from "@/lib/cn";
 import { BookingFilters } from "@/app/bookings/filters";
 import { BookingList } from "@/app/bookings/booking-list";
 import { NothingBooked } from "@/app/bookings/nothing-booked";
-import { PillRow } from "@/app/bookings/pill-row";
+import { PillPanel, PillRow, PillSwap } from "@/app/bookings/pill-row";
 import { RequestQueue } from "@/app/bookings/request-queue";
 import { requestView } from "@/lib/day/request-view";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
@@ -191,165 +190,164 @@ export default async function BookingsPage({
       </h1>
 
       {/*
-        The pills. Links rather than buttons: the URL holds the place, so back
-        and refresh restore the pill somebody was on, and a pill can be opened
-        in a new tab like anything else on the web. 44px tall, for a wet thumb.
-
-        No badges at all when the read failed. A number from a failed read is
-        one an operator would plan against.
+        The pills, and the rows they choose, share one `PillSwap`: a tapped
+        pill fills at once, and the rows under it say they are on their way
+        and cross-fade when they come (O05 B; see `pill-row.tsx`).
       */}
-      <PillRow label="Which bookings" selected={view}>
-        {views.map((pill) => {
-          const selected = pill === view;
-          return (
-            <ButtonLink
-              key={pill}
-              href={pillHref(pill, filters)}
-              variant={selected ? "primary" : "secondary"}
-              size="md"
-              block={false}
-              aria-current={selected ? "page" : undefined}
-              className={cn(selected && "pointer-events-none")}
-            >
-              {PILL_LABEL[pill]}
-              {counts ? (
-                <span className="tabular-nums">{countFor(counts, pill)}</span>
+      <PillSwap>
+        {/*
+          The pills. Links rather than buttons: the URL holds the place, so
+          back and refresh restore the pill somebody was on, and a pill can be
+          opened in a new tab like anything else on the web. 44px tall, for a
+          wet thumb.
+
+          No badges at all when the read failed. A number from a failed read
+          is one an operator would plan against.
+        */}
+        <PillRow
+          label="Which bookings"
+          selected={view}
+          pills={views.map((pill) => ({
+            key: pill,
+            label: PILL_LABEL[pill],
+            href: pillHref(pill, filters),
+            count: counts ? countFor(counts, pill) : null,
+          }))}
+        />
+
+        {/*
+          The search and the filters, under the pills rather than above them
+          (operator experiment A): which bookings comes before which of them,
+          and on a phone the pills are the first thing a thumb reaches.
+        */}
+        <BookingFilters
+          filters={filters}
+          view={view}
+          today={today}
+          tomorrow={tomorrow}
+          listings={listingOptions}
+        />
+
+        <PillPanel view={view}>
+          {page === null ? (
+            /*
+              One line and a way back, for every pill. The button is a link to this
+              same URL: the route is `force-dynamic`, so navigating to itself
+              genuinely re-reads rather than replaying a cached answer.
+            */
+            <div className="mt-8">
+              <Problem
+                title="Bookings did not load. Try again."
+                body="Nothing has changed. This is us, not you."
+              />
+              <div className="mt-4">
+                {/*
+                  The pill somebody chose, or none: a failed read falls back to
+                  Upcoming, and carrying that here pinned it, so trying again
+                  never opened on the first pill with anything in it (O5).
+                */}
+                <ButtonLink
+                  href={pillHref(asked, filters)}
+                  variant="secondary"
+                  block={false}
+                >
+                  Try again
+                </ButtonLink>
+              </div>
+            </div>
+          ) : view === "requests" ? (
+            <div className="mt-6">
+              {requests === null ? (
+                <Problem
+                  title="Requests did not load. Try again."
+                  body="Your bookings on the other pills are unaffected."
+                />
+              ) : (
+                /*
+                  The list and its receipts are one client component on purpose: the
+                  receipt an accept produces has to outlive the row the next refresh
+                  removes. See `RequestQueue`.
+
+                  Rendered when the queue is EMPTY too, and it says so itself. The
+                  page used to swap it for the empty line once the last request had
+                  gone, which unmounted the queue and took the receipt for that last
+                  request with it: "still has to pay", gone on the next refresh.
+                */
+                <RequestQueue
+                  views={visibleRequests.map((request) =>
+                    requestView(request, { at, today, tomorrow }),
+                  )}
+                  empty={emptyLine("requests", filtered)}
+                  /*
+                    Accepting is refused while suspended and declining is not (#50):
+                    a suspended business can always let a traveller go and can never
+                    take one on. The row draws Decline either way and drops Accept,
+                    rather than going read-only and leaving a traveller waiting on
+                    an answer that cannot come.
+                  */
+                  canAnswer={me.canManage}
+                  canAccept={!me.suspension}
+                />
+              )}
+
+              {visibleRequests.length === 0 && filtered ? (
+                <div className="mt-4">
+                  <ButtonLink
+                    href={pillHref("requests", {
+                      q: "",
+                      experienceId: "",
+                      from: "",
+                      to: "",
+                    })}
+                    variant="secondary"
+                    block={false}
+                  >
+                    Clear
+                  </ButtonLink>
+                </div>
               ) : null}
-            </ButtonLink>
-          );
-        })}
-      </PillRow>
-
-      {/*
-        The search and the filters, under the pills rather than above them
-        (operator experiment A): which bookings comes before which of them,
-        and on a phone the pills are the first thing a thumb reaches.
-      */}
-      <BookingFilters
-        filters={filters}
-        view={view}
-        today={today}
-        tomorrow={tomorrow}
-        listings={listingOptions}
-      />
-
-      {page === null ? (
-        /*
-          One line and a way back, for every pill. The button is a link to this
-          same URL: the route is `force-dynamic`, so navigating to itself
-          genuinely re-reads rather than replaying a cached answer.
-        */
-        <div className="mt-8">
-          <Problem
-            title="Bookings did not load. Try again."
-            body="Nothing has changed. This is us, not you."
-          />
-          <div className="mt-4">
-            {/*
-              The pill somebody chose, or none: a failed read falls back to
-              Upcoming, and carrying that here pinned it, so trying again
-              never opened on the first pill with anything in it (O5).
-            */}
-            <ButtonLink
-              href={pillHref(asked, filters)}
-              variant="secondary"
-              block={false}
-            >
-              Try again
-            </ButtonLink>
-          </div>
-        </div>
-      ) : view === "requests" ? (
-        <div className="mt-6">
-          {requests === null ? (
-            <Problem
-              title="Requests did not load. Try again."
-              body="Your bookings on the other pills are unaffected."
+            </div>
+          ) : nothingYet ? (
+            <NothingBooked
+              canManage={me.canManage}
+              suspended={Boolean(me.suspension)}
             />
           ) : (
-            /*
-              The list and its receipts are one client component on purpose: the
-              receipt an accept produces has to outlive the row the next refresh
-              removes. See `RequestQueue`.
-
-              Rendered when the queue is EMPTY too, and it says so itself. The
-              page used to swap it for the empty line once the last request had
-              gone, which unmounted the queue and took the receipt for that last
-              request with it: "still has to pay", gone on the next refresh.
-            */
-            <RequestQueue
-              views={visibleRequests.map((request) =>
-                requestView(request, { at, today, tomorrow }),
-              )}
-              empty={emptyLine("requests", filtered)}
-              /*
-                Accepting is refused while suspended and declining is not (#50):
-                a suspended business can always let a traveller go and can never
-                take one on. The row draws Decline either way and drops Accept,
-                rather than going read-only and leaving a traveller waiting on
-                an answer that cannot come.
-              */
-              canAnswer={me.canManage}
-              canAccept={!me.suspension}
-            />
+            <>
+              <BookingList
+                /*
+                  Keyed on the query, so switching pill or filter mounts a fresh
+                  list rather than showing the previous pill's rows under the new
+                  one until the server answers. The pages already loaded belong to
+                  the cursor that issued them and cannot be carried across.
+                */
+                key={pillHref(view, filters)}
+                view={view}
+                filters={filters}
+                initial={page}
+                today={today}
+                tomorrow={tomorrow}
+              />
+              {page.items.length === 0 && filtered ? (
+                <div className="mt-4">
+                  <ButtonLink
+                    href={pillHref(view, {
+                      q: "",
+                      experienceId: "",
+                      from: "",
+                      to: "",
+                    })}
+                    variant="secondary"
+                    block={false}
+                  >
+                    Clear
+                  </ButtonLink>
+                </div>
+              ) : null}
+            </>
           )}
-
-          {visibleRequests.length === 0 && filtered ? (
-            <div className="mt-4">
-              <ButtonLink
-                href={pillHref("requests", {
-                  q: "",
-                  experienceId: "",
-                  from: "",
-                  to: "",
-                })}
-                variant="secondary"
-                block={false}
-              >
-                Clear
-              </ButtonLink>
-            </div>
-          ) : null}
-        </div>
-      ) : nothingYet ? (
-        <NothingBooked
-          canManage={me.canManage}
-          suspended={Boolean(me.suspension)}
-        />
-      ) : (
-        <>
-          <BookingList
-            /*
-              Keyed on the query, so switching pill or filter mounts a fresh
-              list rather than showing the previous pill's rows under the new
-              one until the server answers. The pages already loaded belong to
-              the cursor that issued them and cannot be carried across.
-            */
-            key={pillHref(view, filters)}
-            view={view}
-            filters={filters}
-            initial={page}
-            today={today}
-            tomorrow={tomorrow}
-          />
-          {page.items.length === 0 && filtered ? (
-            <div className="mt-4">
-              <ButtonLink
-                href={pillHref(view, {
-                  q: "",
-                  experienceId: "",
-                  from: "",
-                  to: "",
-                })}
-                variant="secondary"
-                block={false}
-              >
-                Clear
-              </ButtonLink>
-            </div>
-          ) : null}
-        </>
-      )}
+        </PillPanel>
+      </PillSwap>
     </Screen>
   );
 }

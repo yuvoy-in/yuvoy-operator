@@ -466,6 +466,27 @@
   }
 }
 
+/*
+  A press, and nothing else: for a control whose colour must change in the
+  frame it is tapped. The Bookings pills (O05 B): the tapped pill fills at
+  once, before the server has answered, because that fill IS the answer to
+  the finger; a 200ms fade there reads as a tap that has not landed.
+*/
+@utility motion-press {
+  transition: scale 150ms var(--ease-interaction);
+
+  &:active {
+    transition-duration: 100ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      scale: 1 !important;
+      opacity: 0.85;
+    }
+  }
+}
+
 /* -------------------------------- motion: marks, arrivals and waiting */
 
 /*

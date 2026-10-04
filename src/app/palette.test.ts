@@ -379,7 +379,7 @@ describe("palette", () => {
         if (!/\bactive:scale-/.test(text)) continue;
         presses += 1;
         const animates =
-          /\bmotion-(control|disc)\b/.test(text) ||
+          /\bmotion-(control|disc|press)\b/.test(text) ||
           /\btransition-transform\b/.test(text) ||
           /\btransition-\[[^\]]*\bscale\b/.test(text);
         expect(

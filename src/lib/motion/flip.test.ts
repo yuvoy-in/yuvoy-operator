@@ -200,7 +200,12 @@ describe("a held copy of what left", () => {
     const lifted = lift($("was"))!;
     $("was").remove();
     dropLifted(lifted, $("anchor"));
+    const layer = lifted.copy.parentElement!;
     expect(lifted.copy.isConnected).toBe(true);
+    // A fixed layer over the window, so the page is never made longer by it.
+    expect(layer.style.position).toBe("fixed");
+    expect(layer).toHaveAttribute("aria-hidden", "true");
+    expect(layer.style.zIndex).toBe("20");
     expect(lifted.copy.style.position).toBe("absolute");
     expect(lifted.copy.style.top).toBe("300px");
     expect(played.at(-1)!.options).toMatchObject({
@@ -210,7 +215,20 @@ describe("a held copy of what left", () => {
     });
     await Promise.resolve();
     await Promise.resolve();
-    expect(lifted.copy.isConnected).toBe(false);
+    expect(layer.isConnected).toBe(false);
+  });
+
+  it("is clipped to the sheet it was in, and drawn above it", () => {
+    const $ = page(`
+      <div id="sheet" data-top="100" style="overflow-y: auto">
+        <div id="was" data-top="340"></div><p id="anchor"></p>
+      </div>`);
+    const lifted = lift($("was"))!;
+    dropLifted(lifted, $("anchor"));
+    const layer = lifted.copy.parentElement!;
+    expect(layer.style.top).toBe("100px");
+    expect(layer.style.zIndex).toBe("60");
+    expect(lifted.copy.style.top).toBe("240px");
   });
 
   it("fades in 120ms on a linear curve under reduced motion", () => {
@@ -230,6 +248,7 @@ describe("a held copy of what left", () => {
     delete (Element.prototype as unknown as Record<string, unknown>).animate;
     dropLifted(lifted, $("anchor"));
     expect(lifted.copy.isConnected).toBe(false);
+    expect(document.body.querySelector("[data-motion]")).toBeNull();
   });
 });
 

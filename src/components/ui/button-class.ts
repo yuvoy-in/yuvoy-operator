@@ -31,18 +31,27 @@ export function buttonClass({
   variant = "primary",
   size = "dock",
   block = true,
+  motion = "control",
   className,
 }: {
   variant?: ButtonVariant;
   size?: ButtonSize;
   block?: boolean;
+  /**
+   * `control` eases the press and the colours; `press` eases the press
+   * alone, for a control whose colour must change in the frame it is
+   * tapped (the Bookings pills, O05 B).
+   */
+  motion?: "control" | "press";
   className?: string;
 } = {}): string {
   return cn(
     "inline-flex shrink-0 items-center justify-center gap-2 rounded-full label font-bold whitespace-nowrap select-none",
-    // The press eases in and out (`motion-control`, globals.css): it names
+    // The press eases in and out (globals.css, "motion: presses"): both name
     // `scale`, which is the property `active:scale-*` writes.
-    "motion-control active:scale-[0.98] disabled:pointer-events-none disabled:opacity-55",
+    motion === "press"
+      ? "motion-press active:scale-[0.98] disabled:pointer-events-none disabled:opacity-55"
+      : "motion-control active:scale-[0.98] disabled:pointer-events-none disabled:opacity-55",
     VARIANT[variant],
     SIZE[size],
     block && "flex w-full",
