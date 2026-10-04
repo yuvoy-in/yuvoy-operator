@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   useActionState,
   useCallback,
-  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -21,7 +20,13 @@ import type {
 } from "@/lib/home/needs";
 import type { RequestView } from "@/lib/day/request-view";
 import { changeSentences, needChanges } from "@/lib/home/changes";
-import { DURATION, EASE, play, prefersReducedMotion } from "@/lib/motion";
+import {
+  DURATION,
+  EASE,
+  play,
+  prefersReducedMotion,
+  stopAnimations,
+} from "@/lib/motion";
 import { markChange } from "@/lib/motion/mark";
 import { sameOrder, stableOrder } from "@/lib/site/stable-order";
 import { cn } from "@/lib/cn";
@@ -278,9 +283,19 @@ export function NeedsYou({
     return row instanceof HTMLElement ? row : null;
   }, []);
 
-  // A card that arrived is marked where it landed.
+  /*
+    A card that arrived is marked where it landed. One that came back before
+    its fade had ended is given back too: drawn, and answering, again.
+  */
   useLayoutEffect(() => {
-    for (const key of arrived.keys) markChange(rowOf(key));
+    for (const key of arrived.keys) {
+      const row = rowOf(key);
+      if (row?.inert) {
+        row.inert = false;
+        stopAnimations(row);
+      }
+      markChange(row);
+    }
   }, [arrived, rowOf]);
 
   /*
@@ -289,7 +304,7 @@ export function NeedsYou({
     up over it, in one frame, as it always has.
   */
   const leavingKeys = Object.keys(leaving).join("\n");
-  useEffect(() => {
+  useLayoutEffect(() => {
     const keys = leavingKeys ? leavingKeys.split("\n") : [];
     if (keys.length === 0) return;
     const reduced = prefersReducedMotion();

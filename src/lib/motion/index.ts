@@ -1,5 +1,3 @@
-import { useSyncExternalStore } from "react";
-
 /**
  * The motion system in script (approved 4 Oct 2026; the study and its
  * decisions are in yuvoy/motion-lab, the rules in yuvoy-app's
@@ -13,11 +11,13 @@ import { useSyncExternalStore } from "react";
  * ## The portal's rules (motion-system.md, section 14)
  *
  * Productive. 200ms is the ceiling for anything but progress, and 150ms for
- * anything done dozens of times a shift. Nothing travels: a change is marked
- * (a forest tint that fades) and said (a polite live region), never sent on
- * a journey across the screen. The one long motion is the undo window,
- * because it is the information. `palette.test.ts` holds every duration in
- * the portal to that ceiling, these included.
+ * anything done dozens of times a shift. No spatial journeys: what moves
+ * stays on the screen it is on (a list closing a gap, a party into the list
+ * below), and a change the operator did not make is marked (a forest tint
+ * that fades) and said (a polite live region) rather than moved. The one
+ * long motion is the undo window, because it is the information.
+ * `palette.test.ts` holds every duration in the portal to that ceiling,
+ * these included.
  *
  * `--ease-cinematic` has no copy here on purpose: it is the traveller's
  * travel curve, and the portal has no travel.
@@ -69,23 +69,6 @@ export function prefersReducedMotion(): boolean {
     typeof window.matchMedia === "function"
     ? window.matchMedia(QUERY).matches
     : false;
-}
-
-function subscribe(onChange: () => void): () => void {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
-    return () => {};
-  const list = window.matchMedia(QUERY);
-  list.addEventListener("change", onChange);
-  return () => list.removeEventListener("change", onChange);
-}
-
-/**
- * The same preference as a render value that follows a live change in the
- * system setting. The server snapshot is `false`, so the first client render
- * matches the server's HTML.
- */
-export function useReducedMotion(): boolean {
-  return useSyncExternalStore(subscribe, prefersReducedMotion, () => false);
 }
 
 /**

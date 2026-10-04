@@ -409,7 +409,7 @@
   The portal's motion system (approved 4 Oct 2026, yuvoy/motion-lab; the
   rules in yuvoy-app/docs/DESIGN_SYSTEM.md, v3.1). Productive, not
   cinematic: 200ms is the ceiling for anything but progress, 150ms for what
-  is done dozens of times a shift, nothing travels across the screen, and a
+  is done dozens of times a shift, no spatial journeys, and a
   change is marked and said rather than moved. `palette.test.ts` holds every
   duration here and in the components to that ceiling.
 

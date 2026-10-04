@@ -911,3 +911,35 @@ describe("Needs you, when a re-read changes it", () => {
     ).toHaveLength(0);
   });
 });
+
+describe("Needs you, when a card comes back before its fade has ended", () => {
+  it("draws it again, answering, rather than leaving it faded", () => {
+    vi.useFakeTimers();
+    try {
+      const daniel: Need = {
+        kind: "request",
+        key: "request-req_daniel",
+        view: {
+          ...VIEW,
+          id: "req_daniel",
+          name: "Daniel Okafor",
+          title: "Daniel Okafor, 1 person",
+        },
+      };
+      const { rerender } = render(
+        <NeedsYou {...props} needs={[daniel, REQUEST]} />,
+      );
+      rerender(<NeedsYou {...props} needs={[REQUEST]} />);
+      const row = screen.getByText("Daniel Okafor, 1 person").closest("li")!;
+      expect(row.inert).toBe(true);
+      // Back on the next read, inside its 100ms.
+      rerender(<NeedsYou {...props} needs={[daniel, REQUEST]} />);
+      act(() => vi.advanceTimersByTime(200));
+      const back = screen.getByText("Daniel Okafor, 1 person").closest("li")!;
+      expect(back.inert).toBe(false);
+      expect(back.querySelector(".motion-mark")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
