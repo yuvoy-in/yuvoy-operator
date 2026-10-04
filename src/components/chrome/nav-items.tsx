@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { cn } from "@/lib/cn";
+import { DURATION } from "@/lib/motion";
 import {
   BADGES,
   badgeText,
@@ -147,7 +148,15 @@ export function NavList({
   );
 }
 
-/** One count. Decorative: the link says the number in words. */
+/**
+ * One count. Decorative: the link says the number in words.
+ *
+ * When it changes under the operator (a request arriving, one answered on
+ * another phone), the number cross-fades in place, 150ms (O01 A, approved
+ * 4 Oct 2026): the bubble stays where it is and only its figure changes, so
+ * the change is seen without anything moving. Under reduced motion the
+ * crossfade takes 120ms. The first number drawn simply appears.
+ */
 function Count({
   n,
   onPaper,
@@ -158,18 +167,48 @@ function Count({
   onPaper: boolean;
   className?: string;
 }) {
+  const [shown, setShown] = useState(n);
+  const [was, setWas] = useState<number | null>(null);
+  const [changes, setChanges] = useState(0);
+  if (n !== shown) {
+    setWas(shown);
+    setShown(n);
+    setChanges((c) => c + 1);
+  }
+  // The old figure is let go once its fade has played.
+  useEffect(() => {
+    if (was === null) return;
+    const timer = setTimeout(() => setWas(null), DURATION.quick + 50);
+    return () => clearTimeout(timer);
+  }, [was, changes]);
+
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] leading-none font-bold tabular-nums",
+        "relative inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] leading-none font-bold tabular-nums",
         onPaper
           ? "bg-forest text-paper ring-paper ring-2"
           : "bg-paper text-forest ring-forest ring-2",
         className,
       )}
     >
-      {badgeText(n)}
+      <span
+        key={changes}
+        data-motion=""
+        className={changes > 0 ? "motion-in" : undefined}
+      >
+        {badgeText(n)}
+      </span>
+      {was !== null ? (
+        <span
+          key={`was-${changes}`}
+          data-motion=""
+          className="motion-out absolute inset-0 flex items-center justify-center"
+        >
+          {badgeText(was)}
+        </span>
+      ) : null}
     </span>
   );
 }

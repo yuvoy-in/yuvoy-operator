@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 
 let pathname = "/today";
 vi.mock("next/navigation", () => ({ usePathname: () => pathname }));
@@ -82,6 +82,33 @@ describe("the bar and the rail", () => {
     expect(screen.getByRole("link", { name: "Business" }).textContent).toBe(
       "Business",
     );
+  });
+
+  /*
+    O01 A (approved 4 Oct 2026): a count that changes under the operator
+    cross-fades in place, so the change is seen without anything moving.
+  */
+  it("cross-fades a count that changes, and draws the first one still", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <NavList orientation="bar" canManage badges={{ bookings: 2 }} />,
+    );
+    const link = screen.getByRole("link", {
+      name: "Bookings, 2 waiting on your answer",
+    });
+    expect(link.querySelector(".motion-in, .motion-out")).toBeNull();
+
+    rerender(<NavList orientation="bar" canManage badges={{ bookings: 3 }} />);
+    expect(link).toHaveAccessibleName("Bookings, 3 waiting on your answer");
+    expect(link.querySelector(".motion-in")).toHaveTextContent("3");
+    const old = link.querySelector(".motion-out");
+    expect(old).toHaveTextContent("2");
+    // Both figures ship their own reduced version: a 120ms crossfade.
+    expect(old).toHaveAttribute("data-motion");
+
+    act(() => vi.advanceTimersByTime(200));
+    expect(link.querySelector(".motion-out")).toBeNull();
+    vi.useRealTimers();
   });
 
   it("is a bar only where the bar belongs", () => {
