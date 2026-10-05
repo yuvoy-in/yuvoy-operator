@@ -80,8 +80,10 @@ export function ChangePanel({
   if (result.stopped) {
     return (
       <Panel tone="done">
-        <p className="text-base font-bold">Stopped. Nothing was changed.</p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-base font-bold text-balance">
+          Stopped. Nothing was changed.
+        </p>
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           {/*
             "Change your sign-in" was here, and there is nothing to change: a
             sign-in is a code sent each time. Calling us is what helps.
@@ -99,11 +101,13 @@ export function ChangePanel({
 
   return (
     <Panel tone={stoppable ? "alert" : "raised"}>
-      <p className="text-base font-bold">{title}</p>
+      <p className="text-base font-bold text-balance">{title}</p>
       {summary ? (
         <p className="text-forest/90 mt-2 font-mono text-sm">{summary}</p>
       ) : null}
-      <p className="text-forest/80 mt-2 text-sm">{body}</p>
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
+        {body}
+      </p>
 
       {/* Both clocks, always — the design is only trustworthy if it is visible. */}
       <dl className="border-paper-line mt-4 space-y-2 border-t pt-4 text-sm">
@@ -131,7 +135,7 @@ export function ChangePanel({
           here — the rule every role gate in this portal follows. A staff phone
           on a jetty should not discover this after tapping.
         */
-        <p className="text-forest/80 mt-5 text-sm">
+        <p className="text-forest/80 leading-body mt-5 text-sm text-pretty">
           If this was not asked for, an owner or an admin can stop it. Your role
           cannot. Tell them now rather than waiting.
         </p>
@@ -141,9 +145,9 @@ export function ChangePanel({
         confirming ? (
           <form action={act} className="border-paper-line mt-5 border-t pt-4">
             <input type="hidden" name="id" value={id} />
-            <p className="text-sm font-bold">Stop this change?</p>
+            <p className="text-sm font-bold text-balance">Stop this change?</p>
             {/* What happens, named before the tap that does it. */}
-            <p className="text-forest/80 mt-1.5 text-sm">
+            <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
               {hasAccountOnFile
                 ? "Payouts keep going to the account on file. "
                 : "Nothing about where the money goes is changed. "}
@@ -175,10 +179,10 @@ export function ChangePanel({
           </form>
         ) : (
           <div className="mt-5">
-            <p className="text-terra-deep text-sm font-bold">
+            <p className="text-terra-deep text-sm font-bold text-balance">
               Did you not ask for this?
             </p>
-            <p className="text-forest/80 mt-1 text-sm">
+            <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
               Stop it now. It takes no code and no waiting.
             </p>
             <Button

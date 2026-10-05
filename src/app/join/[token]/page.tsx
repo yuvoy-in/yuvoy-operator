@@ -59,7 +59,7 @@ export default async function JoinTokenPage({
 
   return (
     <Screen nav="none" stageLabel="For operators" width="sm">
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Join {businessName ?? "this business"}
       </h1>
       {/*
@@ -67,14 +67,14 @@ export default async function JoinTokenPage({
         a forwarded message needs to know it will not work for them — before
         they type a number and find out.
       */}
-      <p className="text-forest/70 mt-3 text-base">
+      <p className="text-forest/70 leading-body mt-3 text-base text-pretty">
         This link only works for a number {businessName ?? "the business"} has
         already added.
       </p>
 
       <JoinTokenForm token={token} businessName={businessName} />
 
-      <p className="border-paper-line text-forest/70 mt-10 border-t pt-6 text-sm">
+      <p className="border-paper-line text-forest/70 leading-body mt-10 border-t pt-6 text-sm text-pretty">
         Already have an account here?{" "}
         <Link
           href="/sign-in"

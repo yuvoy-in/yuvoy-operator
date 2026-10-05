@@ -46,11 +46,11 @@ export function WeekNav({
       <div className="min-w-0">
         <h2
           id="board-week"
-          className="font-display tracking-display text-2xl leading-tight"
+          className="font-display tracking-display leading-display text-2xl text-balance"
         >
           {week === thisWeek ? "This week" : `Week of ${first}`}
         </h2>
-        <p className="text-forest/80 mt-1 text-sm">
+        <p className="text-forest/80 mt-1 text-sm tabular-nums">
           {first} to {last}
           {summary ? ` · ${summary}` : ""}
         </p>

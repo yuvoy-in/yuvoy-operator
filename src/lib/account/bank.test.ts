@@ -149,6 +149,7 @@ describe("the account on file", () => {
     expect(accountOnFile([applied("chg_a", "2026-08-01T09:00:00Z")])).toEqual({
       id: "chg_a",
       line: "HDFC0001234 · account ending 4412",
+      ifsc: "HDFC0001234",
       bankName: "HDFC Bank",
     });
   });
@@ -190,6 +191,8 @@ describe("the account on file", () => {
     ]);
     expect(onFile?.line).toBe("Account ending in four-four");
     expect(onFile?.bankName).toBeNull();
+    // And no IFSC is pulled out of it to set as a reference.
+    expect(onFile?.ifsc).toBeNull();
   });
 });
 

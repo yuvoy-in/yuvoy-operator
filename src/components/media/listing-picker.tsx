@@ -79,7 +79,9 @@ export function ListingPicker({
           <span className="label text-forest/75 block">
             Which listing this {noun} is for
           </span>
-          <span className="mt-1 block font-bold">{fixedTitle}</span>
+          <span className="voice-host mt-1 block text-balance">
+            {fixedTitle}
+          </span>
         </p>
         <RolePicker
           id={id}
@@ -103,7 +105,7 @@ export function ListingPicker({
 
   if (listings.length === 0) {
     return (
-      <p className="text-forest/80 text-sm">
+      <p className="text-forest/80 leading-body text-sm text-pretty">
         Write a listing first, then come back and add a {noun} to it. A {noun}
         {" belongs to a listing, so there is nowhere to put this one yet."}
       </p>

@@ -99,6 +99,23 @@ describe("a draft read back", () => {
     expect(f.get("media")?.missing).toBe(false);
   });
 
+  /*
+    The operator's own words read back in the host's voice (v3.2), and nothing
+    of ours does: a vocabulary word, a price or a count is Yuvoy speaking.
+  */
+  it("marks which values are the operator's own words", () => {
+    const own = [...fields(FULL).values()]
+      .filter((f) => f.ownWords)
+      .map((f) => f.key);
+    expect(own).toEqual([
+      "title",
+      "summary",
+      "description",
+      "meetingPoint",
+      "meetingLandmark",
+    ]);
+  });
+
   it("treats whitespace as nothing said", () => {
     expect(
       fields({ ...FULL, summary: "   " }).get("summary")?.value,

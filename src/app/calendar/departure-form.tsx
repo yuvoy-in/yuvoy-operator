@@ -115,7 +115,7 @@ function DepartureRound({
       <Panel tone={created > 0 ? "done" : "raised"}>
         {created > 0 ? (
           <>
-            <p className="text-base font-bold">
+            <p className="text-base font-bold text-balance">
               {departureCount(created)} added
             </p>
             {created < asked ? (
@@ -124,7 +124,7 @@ function DepartureRound({
                 plainly, because the alternative is an operator counting rows
                 and concluding the portal dropped some.
               */
-              <p className="text-forest/80 mt-2 text-sm">
+              <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
                 {asked - created} of the {asked} you asked for already had a
                 departure at that time, so those were left alone.
               </p>
@@ -149,7 +149,7 @@ function DepartureRound({
                 said. The fallback said "Check it on Listings", a tab that went
                 in #96 (yuvoy-operator#117 item 2).
               */
-              <p className="text-forest/80 mt-2 text-sm">
+              <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
                 {onSale === false
                   ? (notOnSaleDetail ?? "They are not on sale yet.")
                   : "They are on sale from now."}{" "}
@@ -170,15 +170,19 @@ function DepartureRound({
           </>
         ) : (
           <>
-            <p className="text-base font-bold">Nothing to add</p>
-            <p className="text-forest/80 mt-2 text-sm">
+            <p className="text-base font-bold text-balance">Nothing to add</p>
+            <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
               Every one of those days and times already has a departure, so
               nothing was changed. Pressing again is safe. It never sells the
               same boat twice.
             </p>
           </>
         )}
-        {note ? <p className="text-forest/80 mt-2 text-sm">{note}</p> : null}
+        {note ? (
+          <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
+            {note}
+          </p>
+        ) : null}
         <Button onClick={onAgain} variant="secondary" className="mt-4">
           Add more departures
         </Button>
@@ -209,10 +213,10 @@ function DepartureRound({
   if (listings === null) {
     return (
       <Panel tone="alert">
-        <p className="text-base font-bold">
+        <p className="text-base font-bold text-balance">
           We could not load your listings just now
         </p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           Everything below still works. This is only the list of listings to add
           a departure to. Reload the page to try again.
         </p>
@@ -223,8 +227,8 @@ function DepartureRound({
   if (listings.length === 0) {
     return (
       <Panel>
-        <p className="text-base font-bold">Adding a departure</p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-base font-bold text-balance">Adding a departure</p>
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           A departure belongs to a listing, and you have not written one yet.
         </p>
         {/*
@@ -241,7 +245,7 @@ function DepartureRound({
           and telling them to message us instead is a day of waiting for
           something they could do in a minute.
         */}
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           Write your first one on{" "}
           <a href="/account" className="underline underline-offset-2">
             your business
@@ -266,7 +270,7 @@ function DepartureRound({
         No line explaining the form (yuvoy-operator#80 t4). The count before
         the button says what it will make, which is the sentence that matters.
       */}
-      <p className="text-base font-bold">Add departures</p>
+      <p className="text-base font-bold text-balance">Add departures</p>
 
       {/* ------------------------------------------------- which listing -- */}
       <div className="mt-4">
@@ -286,7 +290,8 @@ function DepartureRound({
               departures to the wrong listing is the mistake with no undo on this
               screen, so the name is on the page either way.
             */}
-            <p className="mt-2 text-base font-bold">{listings[0].title}</p>
+            {/* The listing's own name, in the host's voice (v3.2). */}
+            <p className="voice-host mt-2 text-base">{listings[0].title}</p>
           </>
         ) : (
           <select
@@ -548,7 +553,10 @@ function DepartureRound({
           date field — a batch that is wrong is wrong here, where it costs a
           glance rather than a support conversation.
         */
-        <p role="status" className="text-forest/80 mt-4 text-sm">
+        <p
+          role="status"
+          className="text-forest/80 leading-body mt-4 text-sm text-pretty"
+        >
           That is <strong>{departureCount(count)}</strong>
           {spansDays ? ` between ${fromDate} and ${toDate}` : ` on ${fromDate}`}
           . Yuvoy sells seats on every one.

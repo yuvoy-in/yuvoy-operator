@@ -126,17 +126,29 @@ export function RequestCard({
             </p>
             {clock}
           </div>
-          <p className="mt-2 text-lg leading-snug font-bold">{view.title}</p>
+          <p className="mt-2 text-lg leading-snug font-bold text-balance">
+            {view.title}
+          </p>
         </>
       ) : (
         <div className="flex items-start justify-between gap-3">
-          <p className="min-w-0 text-lg leading-snug font-bold">{view.title}</p>
+          <p className="min-w-0 text-lg leading-snug font-bold text-balance">
+            {view.title}
+          </p>
           {clock}
         </div>
       )}
-      <p className="text-forest/80 mt-1 text-sm">{view.trip}</p>
+      {/* The experience in its host's words, the time on our clock (v3.2). */}
+      <p className="text-forest/80 mt-1 text-sm tabular-nums">
+        {view.experience ? (
+          <span className="voice-host">{view.experience}</span>
+        ) : (
+          "A departure"
+        )}
+        {view.when ? ` · ${view.when}` : null}
+      </p>
       {view.asked ? (
-        <p className="text-forest/80 mt-1 text-sm">{view.asked}</p>
+        <p className="text-forest/80 mt-1 text-sm tabular-nums">{view.asked}</p>
       ) : null}
       <p
         className={cn(
@@ -191,7 +203,9 @@ export function RequestCard({
               className="rounded-control border-paper-line bg-paper mt-3 border p-3"
             >
               <p className="label text-forest/75">{view.firstName} reads</p>
-              <p className="mt-1 text-sm">{declineSentence(reason)}</p>
+              <p className="leading-body mt-1 text-sm text-pretty">
+                {declineSentence(reason)}
+              </p>
             </div>
           ) : null}
 

@@ -40,7 +40,7 @@ export function MediaStep({
     <Panel className="mt-6">
       {/* One title: the stepper names the step (#80 t2, #85 s11). */}
       <h2 className="sr-only">Media</h2>
-      <p className="text-forest/70 text-sm">
+      <p className="text-forest/70 leading-body text-sm text-pretty">
         Not required, but a listing with no reel or photograph shows travellers
         a blank card.
       </p>
@@ -56,14 +56,18 @@ export function MediaStep({
       </div>
 
       <section className="mt-8">
-        <h3 className="font-display text-xl">Add a clip</h3>
+        <h3 className="font-display tracking-display leading-display text-xl text-balance">
+          Add a clip
+        </h3>
         <div className="mt-4">
           <Uploader listings={listings} fixedExperienceId={id} />
         </div>
       </section>
 
       <section className="mt-8">
-        <h3 className="font-display text-xl">Add a photograph</h3>
+        <h3 className="font-display tracking-display leading-display text-xl text-balance">
+          Add a photograph
+        </h3>
         <div className="mt-4">
           <PhotoUploader listings={listings} fixedExperienceId={id} />
         </div>

@@ -115,14 +115,18 @@ export function ScheduleForm({
   if (state.done) {
     return frame(
       <Panel ref={root} tone="done" role="status" className="mt-3 p-4">
-        <p className="text-base font-bold">The weekly schedule is saved</p>
+        <p className="text-base font-bold text-balance">
+          The weekly schedule is saved
+        </p>
         {/*
           The API's own sentence, verbatim: it says how many departures the save
           made and how many it closed, which nothing on this screen can work
           out.
         */}
         {state.note ? (
-          <p className="text-forest/80 mt-2 text-sm">{state.note}</p>
+          <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
+            {state.note}
+          </p>
         ) : null}
         {/*
           And whether any of it can actually be bought. A week of departures
@@ -170,7 +174,10 @@ export function ScheduleForm({
         is, above. A disabled button with no reason is a dead end.
       */}
       {dirty && blocked ? (
-        <p id={blockedId} className="text-forest/80 mt-4 text-sm">
+        <p
+          id={blockedId}
+          className="text-forest/80 leading-body mt-4 text-sm text-pretty"
+        >
           Fix what is marked above to save.
         </p>
       ) : null}
@@ -188,11 +195,11 @@ export function ScheduleForm({
           <p
             ref={question}
             tabIndex={-1}
-            className="text-sm font-bold outline-none"
+            className="text-sm font-bold text-balance outline-none"
           >
             {removingAll ? "Remove the weekly schedule?" : "Save the schedule?"}
           </p>
-          <p className="text-forest/80 mt-1.5 text-sm">
+          <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
             {removingAll
               ? "Departures it made are closed to new bookings. Bookings on them stay."
               : closingSentence(closing)}

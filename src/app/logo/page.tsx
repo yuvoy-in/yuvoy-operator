@@ -77,7 +77,7 @@ export default async function LogoPage() {
         logo no longer stops a sale on a LIVE business. Whether it stops THIS
         business is on Business, which reads `gates` per blocker.
       */}
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Your logo
       </h1>
 
@@ -99,8 +99,10 @@ export default async function LogoPage() {
               />
             ) : null}
             <div className="min-w-0">
-              <p className="text-base font-bold">You have a logo</p>
-              <p className="text-forest/70 mt-1 text-sm">
+              <p className="text-base font-bold text-balance">
+                You have a logo
+              </p>
+              <p className="text-forest/70 leading-body mt-1 text-sm text-pretty">
                 {logoUrl
                   ? "This is what travellers see."
                   : /*
@@ -114,7 +116,9 @@ export default async function LogoPage() {
             </div>
           </div>
         ) : (
-          <p className="text-base font-bold">You have not set one yet</p>
+          <p className="text-base font-bold text-balance">
+            You have not set one yet
+          </p>
         )}
 
         {review ? (
@@ -133,7 +137,7 @@ export default async function LogoPage() {
               login offered the file picker chose a picture, waited for it,
               and was then told their role could not do it.
             */
-            <p className="text-forest/80 text-sm">
+            <p className="text-forest/80 leading-body text-sm text-pretty">
               Only an owner, an admin or a manager can change the logo. Ask one
               of them at your business.
             </p>
@@ -147,7 +151,7 @@ export default async function LogoPage() {
         travellers see it, which changes nothing anybody does here, is the
         answer this links to.
       */}
-      <p className="text-forest/70 mt-8 text-sm">
+      <p className="text-forest/70 leading-body mt-8 text-sm text-pretty">
         Once your account is live, we look at a new logo before it replaces the
         one travellers see.
       </p>

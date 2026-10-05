@@ -35,11 +35,17 @@ describe("paying a statement", () => {
 
     expect(screen.getByText("yuvoy.dev@example")).toBeVisible();
     expect(screen.getByText("Yuvoy (dev)")).toBeVisible();
-    expect(
-      screen.getByText(
-        "Keep YC-7KQ2MZ9P in the payment note, so we can match your payment to this statement.",
-      ),
-    ).toBeVisible();
+    const note = screen.getByText(/in the payment note, so we can match/);
+    expect(note).toBeVisible();
+    expect(note).toHaveTextContent(
+      /^Keep YC-7KQ2MZ9P in the payment note, so we can match your payment to this statement\.$/,
+    );
+    // Set as every reference is, wherever it is quoted (v3.2).
+    const refs = screen.getAllByText("YC-7KQ2MZ9P");
+    expect(refs).toHaveLength(2);
+    for (const ref of refs) {
+      expect(ref).toHaveClass("tracking-ref", "slashed-zero", "tabular-nums");
+    }
     expect(
       screen.getByText(/Paying from another phone or a computer\?/),
     ).toBeVisible();

@@ -192,7 +192,7 @@ export function BookingList({
 
   if (page.items.length === 0) {
     return (
-      <p className="text-forest/70 mt-6 text-base">
+      <p className="text-forest/70 leading-body mt-6 text-base text-pretty">
         {emptyLine(
           view,
           Boolean(
@@ -247,10 +247,13 @@ export function BookingList({
                         <span className="block truncate text-base font-bold">
                           {rowName(booking)}
                         </span>
+                        {/* The experience in its host's words (v3.2). */}
                         <span className="text-forest/70 block truncate text-sm">
                           {booking.guests}
                           {" · "}
-                          {booking.experience}
+                          <span className="voice-host">
+                            {booking.experience}
+                          </span>
                         </span>
                       </span>
                     </span>

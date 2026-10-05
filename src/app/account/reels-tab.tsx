@@ -78,7 +78,9 @@ export function ReelsTab({
   if (media.length === 0) {
     return (
       <div className="mt-6">
-        <p className="text-forest/70 text-base">{emptyLine}</p>
+        <p className="text-forest/70 leading-body text-base text-pretty">
+          {emptyLine}
+        </p>
         {suspended || !offerAdd ? null : (
           <Button
             variant="secondary"

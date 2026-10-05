@@ -55,8 +55,10 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
       <input type="hidden" name="statementSha256" value={hash} />
 
       <div>
-        <p className="text-base font-bold">Your clip is uploaded</p>
-        <p className="text-forest/70 mt-1 text-sm">
+        <p className="text-base font-bold text-balance">
+          Your clip is uploaded
+        </p>
+        <p className="text-forest/70 leading-body mt-1 text-sm text-pretty">
           One thing left: tell us it is yours to give us.
         </p>
       </div>
@@ -66,7 +68,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
         never paraphrased in JSX — the two must be the same bytes or the
         attestation is a claim about words nobody saw.
       */}
-      <blockquote className="rounded-card border-paper-line bg-paper-deep border p-5 text-sm whitespace-pre-line">
+      <blockquote className="rounded-card border-paper-line bg-paper-deep leading-body border p-5 text-sm text-pretty whitespace-pre-line">
         {RIGHTS_STATEMENT}
       </blockquote>
 

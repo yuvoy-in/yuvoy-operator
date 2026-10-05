@@ -104,7 +104,9 @@ export function RequestQueue({
     <>
       <AnswerAnnouncer answers={answers} />
       {rows.length === 0 ? (
-        <p className="text-forest/70 text-base">{empty}</p>
+        <p className="text-forest/70 leading-body text-base text-pretty">
+          {empty}
+        </p>
       ) : (
         <ul className="space-y-3">{rows}</ul>
       )}

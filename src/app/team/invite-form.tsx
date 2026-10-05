@@ -277,10 +277,10 @@ function InviteFields({ state }: { state: InviteState }) {
       */}
       {role === "OWNER" ? (
         <Panel tone="alert" className="p-4">
-          <p className="text-sm font-bold">
+          <p className="text-sm font-bold text-balance">
             An owner can change where the business is paid.
           </p>
-          <p className="text-forest/80 mt-1.5 text-sm">
+          <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
             They get everything an owner can do, from the moment they accept.
             Check the number.
           </p>
@@ -326,7 +326,7 @@ function Receipt({ state }: { state: InviteState }) {
         "Invited", not "code sent": the invitation exists either way, and
         whether anything reached them is the line below, not this one.
       */}
-      <p className="text-base font-bold">
+      <p className="text-base font-bold text-balance">
         {sent.name} is invited as {roleLabel(sent.role)}
       </p>
 
@@ -343,14 +343,14 @@ function Receipt({ state }: { state: InviteState }) {
             {state.joinUrl ? (
               <JoinLink url={state.joinUrl} />
             ) : (
-              <p className="text-forest/80 text-sm">
+              <p className="text-forest/80 leading-body text-sm text-pretty">
                 They accept at{" "}
                 <span className="font-bold">operators.yuvoy.in/join</span>, then
                 sign in as usual. Nothing is granted until they do.
               </p>
             )}
           </div>
-          <p className="text-forest/80 mt-3 text-sm">
+          <p className="text-forest/80 leading-body mt-3 text-sm text-pretty">
             We also sent them the invitation, with the link and their code.
           </p>
           {state.note ? (
@@ -388,7 +388,7 @@ function Receipt({ state }: { state: InviteState }) {
         what they meant to type. Both stay.
       */}
       <p className="text-forest/80 mt-3 font-mono text-sm">{sent.phone}</p>
-      <p className="text-forest/80 mt-2 text-sm">
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
         Check that number. If it is wrong, invite the right one. A new
         invitation to the same person replaces the old code rather than adding a
         second.

@@ -290,13 +290,17 @@ function MoveTime({
   if (state.done) {
     return (
       <Panel tone="done" role="status" className="mt-3 p-4">
-        <p className="text-sm font-bold">This departure has moved</p>
+        <p className="text-sm font-bold text-balance">
+          This departure has moved
+        </p>
         {/*
           The API's sentence, verbatim: it says how many travellers were told,
           which is the number an operator is actually asking about.
         */}
         {state.note ? (
-          <p className="text-forest/80 mt-1.5 text-sm">{state.note}</p>
+          <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
+            {state.note}
+          </p>
         ) : null}
         {/*
           The bookings nothing could carry the new time to (op#89). Said apart
@@ -338,7 +342,7 @@ function MoveTime({
         is the part that makes moving a departure a decision rather than an
         edit. The receipt says who could not be reached.
       */}
-      <p className="text-forest/80 mt-3 text-sm">
+      <p className="text-forest/80 leading-body mt-3 text-sm text-pretty">
         Move {slot.title} from {time} to {to}? We message everyone booked with
         the new time, and each of them can cancel for a full refund until it
         leaves.

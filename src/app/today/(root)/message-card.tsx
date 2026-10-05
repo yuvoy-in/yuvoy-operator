@@ -140,13 +140,21 @@ export function MessageCard({
       <p
         ref={heading}
         tabIndex={-1}
-        className="mt-2 text-lg leading-snug font-bold outline-none"
+        className="mt-2 text-lg leading-snug font-bold text-balance outline-none"
       >
         {name ? `${name} wrote` : "A guest wrote"}
       </p>
-      <p className="text-forest/80 mt-1 text-sm">{need.trip}</p>
+      {/* The experience in its host's words, the time on our clock (v3.2). */}
+      <p className="text-forest/80 mt-1 text-sm tabular-nums">
+        {need.experience ? (
+          <span className="voice-host">{need.experience}</span>
+        ) : (
+          "A trip"
+        )}
+        {need.when ? ` · ${need.when}` : null}
+      </p>
       <p className="text-forest/80 mt-1 text-sm">
-        <span className="tracking-wider slashed-zero tabular-nums">
+        <span className="tracking-ref slashed-zero tabular-nums">
           {need.reference}
         </span>
       </p>
@@ -179,7 +187,7 @@ export function MessageCard({
       {phase === "open" && thread ? (
         <div className="mt-4">
           {thread.messages.length === 0 ? (
-            <p className="text-forest/70 text-sm">
+            <p className="text-forest/70 leading-body text-sm text-pretty">
               Nothing has been said here yet.
             </p>
           ) : (
@@ -264,7 +272,7 @@ export function MessageCard({
               </div>
             </form>
           ) : (
-            <p className="text-forest/80 mt-4 text-sm">
+            <p className="text-forest/80 leading-body mt-4 text-sm text-pretty">
               {closedLine(thread.closedReason)}
             </p>
           )}

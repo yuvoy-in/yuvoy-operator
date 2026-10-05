@@ -42,7 +42,7 @@ export default async function MessagesPage() {
 
   return (
     <Screen nav={{ back: { href: "/today", label: "today" } }}>
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Conversations
       </h1>
 
@@ -69,7 +69,9 @@ export default async function MessagesPage() {
           </div>
         </div>
       ) : page.rows.length === 0 ? (
-        <p className="text-forest/70 mt-8 text-base">No conversations yet</p>
+        <p className="text-forest/70 leading-body mt-8 text-base text-pretty">
+          No conversations yet
+        </p>
       ) : (
         <div className="mt-8">
           <ThreadList initial={page} now={at} />

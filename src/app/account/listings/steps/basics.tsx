@@ -74,7 +74,7 @@ export function BasicsStep({
           required
           minLength={3}
           defaultValue={listing.title ?? ""}
-          className={inputClass("mt-2")}
+          className={inputClass("voice-host mt-2")}
           aria-invalid={marked("title")}
           aria-describedby={describedBy("title", "b-title", "b-title-help")}
         />
@@ -173,7 +173,7 @@ export function BasicsStep({
           id="b-summary"
           name="summary"
           defaultValue={listing.summary ?? ""}
-          className={inputClass("mt-2")}
+          className={inputClass("voice-host mt-2")}
           aria-invalid={marked("summary")}
           aria-describedby={describedBy("summary", "b-summary")}
         />
@@ -187,7 +187,7 @@ export function BasicsStep({
           name="description"
           rows={5}
           defaultValue={listing.description ?? ""}
-          className={inputClass("mt-2 h-auto py-3")}
+          className={inputClass("voice-host mt-2 h-auto py-3")}
           aria-invalid={marked("description")}
           aria-describedby={describedBy("description", "b-description")}
         />

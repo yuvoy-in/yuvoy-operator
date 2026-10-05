@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cn } from "@/lib/cn";
 import {
   STEPS,
   STEP_LABEL,
@@ -78,8 +79,18 @@ export function ReviewStep({
           <li key={step} className={panelClass()}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-base font-bold">{STEP_LABEL[step]}</p>
-                <p className="text-forest/70 mt-1 text-sm">{summary[step]}</p>
+                <p className="text-base font-bold text-balance">
+                  {STEP_LABEL[step]}
+                </p>
+                {/* The listing's own name in the host's voice (v3.2). */}
+                <p
+                  className={cn(
+                    "text-forest/70 mt-1 text-sm",
+                    step === "basics" && listing.title && "voice-host",
+                  )}
+                >
+                  {summary[step]}
+                </p>
                 {unfinished.has(step) ? (
                   <p className="text-terra-deep mt-1 text-sm font-bold">
                     Still missing something
@@ -99,7 +110,7 @@ export function ReviewStep({
 
       {blockers.length > 0 ? (
         <Panel tone="alert" className="p-4">
-          <p className="text-sm font-bold">
+          <p className="text-sm font-bold text-balance">
             Still missing: {describeBlockers(blockers).join(", ")}
           </p>
         </Panel>
@@ -110,12 +121,12 @@ export function ReviewStep({
           Documents a listing like this needs
         </h3>
         {documents === null ? (
-          <p className="text-forest/70 mt-2 text-sm">
+          <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
             We could not read which documents this needs. It does not stop you
             sending it.
           </p>
         ) : documents.length === 0 ? (
-          <p className="text-forest/70 mt-2 text-sm">
+          <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
             None, in your market, for this kind of listing.
           </p>
         ) : (
@@ -142,12 +153,12 @@ export function ReviewStep({
         <SubmitButton experienceId={id} label="Send for review" />
       ) : (
         <Panel tone="alert" className="p-4">
-          <p className="text-sm font-bold">
+          <p className="text-sm font-bold text-balance">
             {listing.activityType
               ? "Say whether the price is per person or for the group first."
               : "Say what kind of activity this is first."}
           </p>
-          <p className="text-forest/80 mt-1.5 text-sm">
+          <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
             We would take it without, and approval would not. Sending it now
             buys a refusal in a few days about something you can answer here.
           </p>

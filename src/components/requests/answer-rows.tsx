@@ -99,7 +99,7 @@ export function HeldRow({
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-base font-bold">
+        <p className="text-base font-bold text-balance">
           {verb} {who}
         </p>
         <p
@@ -128,7 +128,7 @@ export function HeldRow({
           ref={undo}
           type="button"
           onClick={onUndo}
-          className="border-forest/25 hover:border-forest dock-target label ease-interaction shrink-0 rounded-full border px-5 font-bold transition-colors duration-200"
+          className="border-forest/25 hover:border-forest dock-target text-button ease-interaction shrink-0 rounded-full border px-5 font-bold transition-colors duration-200"
         >
           Undo
         </button>
@@ -172,14 +172,14 @@ export function GrantedReceipt({
       tabIndex={-1}
       className={panelClass(receipt.untold ? "alert" : "done")}
     >
-      <p className="flex items-center gap-2 text-base font-bold">
+      <p className="flex items-center gap-2 text-base font-bold text-balance">
         {/* The tick draws itself as the receipt arrives (O02 A). */}
         {receipt.untold ? null : (
           <DrawnCheckIcon after="receipt" className="size-4 shrink-0" />
         )}
         Seats granted to {receipt.contactName}
       </p>
-      <p className="text-forest/80 mt-2 text-sm">
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
         {receipt.sentence ??
           `They are holding ${receipt.guests} ${
             receipt.guests === 1 ? "seat" : "seats"
@@ -211,12 +211,12 @@ export function DeclinedReceipt({
   useTakeFocusIfLost(row);
   return (
     <li ref={attach} tabIndex={-1} className={panelClass("done")}>
-      <p className="flex items-center gap-2 text-base font-bold">
+      <p className="flex items-center gap-2 text-base font-bold text-balance">
         <DrawnCheckIcon after="receipt" className="size-4 shrink-0" />
         Declined {answer.view.name}
       </p>
       {answer.reasonCode ? (
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           They read: {declineSentence(answer.reasonCode)}
         </p>
       ) : null}

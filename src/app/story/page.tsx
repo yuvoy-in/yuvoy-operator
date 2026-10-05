@@ -4,6 +4,7 @@ import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
 import { PHOTOS_MAX, toStory } from "@/lib/story/story";
 import { operatorPageUrl } from "@/lib/site/traveller-app";
+import { cn } from "@/lib/cn";
 import { Screen } from "@/components/chrome/screen";
 import { buttonClass } from "@/components/ui/button";
 import { panelClass } from "@/components/ui/panel";
@@ -78,7 +79,7 @@ export default async function StoryPage() {
         ("In your words") that sat over the first field: what a traveller reads,
         and what they never see, is an answer in Help (#80 t4).
       */}
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Your story
       </h1>
 
@@ -127,7 +128,10 @@ export default async function StoryPage() {
           <StoryForm about={story.about} languages={story.languages} />
 
           <section className="mt-12" aria-labelledby="photographs">
-            <h2 id="photographs" className="font-display text-2xl">
+            <h2
+              id="photographs"
+              className="font-display tracking-display leading-display text-2xl text-balance"
+            >
               Photographs
             </h2>
             {/*
@@ -137,7 +141,7 @@ export default async function StoryPage() {
               is exactly what a video-first feed exists to prevent." Where the
               footage does belong is in Help (#88 s17, #80 t4).
             */}
-            <p className="text-forest/70 mt-2 text-sm">
+            <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
               The boat, the shop, the crew. Not the trip itself.
             </p>
 
@@ -181,7 +185,7 @@ export default async function StoryPage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-forest/70 mt-5 text-sm">
+              <p className="text-forest/70 leading-body mt-5 text-sm text-pretty">
                 None yet. Your page shows no photographs until you add one.
               </p>
             )}
@@ -192,7 +196,7 @@ export default async function StoryPage() {
                   Said before a sixth is chosen, rather than after it has
                   uploaded and the API has answered 409.
                 */
-                <p className="text-forest/80 text-sm font-bold">
+                <p className="text-forest/80 text-sm font-bold text-balance">
                   That is five, the most your page shows. Remove one to add
                   another.
                 </p>
@@ -203,13 +207,16 @@ export default async function StoryPage() {
           </section>
 
           <section className="mt-12" aria-labelledby="checked-by-us">
-            <h2 id="checked-by-us" className="font-display text-2xl">
+            <h2
+              id="checked-by-us"
+              className="font-display tracking-display leading-display text-2xl text-balance"
+            >
               Checked by us
             </h2>
             {/* The API's own reason, verbatim — "the `why` string is there to
                 be shown". */}
             {story.reviewed.why ? (
-              <p className="text-forest/70 mt-2 text-sm">
+              <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
                 {story.reviewed.why}
               </p>
             ) : null}
@@ -225,6 +232,7 @@ export default async function StoryPage() {
               <Fact
                 label="Where travellers find you"
                 value={story.reviewed.findThemAt}
+                host
               />
             </dl>
             {/*
@@ -236,7 +244,7 @@ export default async function StoryPage() {
               A number to call: there is no message channel to us in the
               portal, so "message us" pointed nowhere (yuvoy-operator#117).
             */}
-            <p className="text-forest/70 mt-4 text-sm">
+            <p className="text-forest/70 leading-body mt-4 text-sm text-pretty">
               To change either, call us on{" "}
               <a
                 href={SUPPORT_PHONE_HREF}
@@ -254,11 +262,25 @@ export default async function StoryPage() {
 }
 
 /** A reviewed fact, or the plain statement that there is none yet. */
-function Fact({ label, value }: { label: string; value: string | null }) {
+function Fact({
+  label,
+  value,
+  host,
+}: {
+  label: string;
+  value: string | null;
+  /**
+   * The business's own words, set in the host's voice as the traveller app
+   * sets them (v3.2). The stand-in for none is ours, so it stays in our voice.
+   */
+  host?: boolean;
+}) {
   return (
     <div>
       <dt className="label text-forest/70">{label}</dt>
-      <dd className="mt-1 text-base">
+      <dd
+        className={cn("mt-1 text-base", host && value !== null && "voice-host")}
+      >
         {value ?? (
           <span className="text-forest/70 text-sm">Not on your page yet</span>
         )}

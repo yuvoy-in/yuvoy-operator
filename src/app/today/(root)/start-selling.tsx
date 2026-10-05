@@ -52,7 +52,7 @@ function Step({ step }: { step: ChecklistStep }) {
   const words = (
     <span
       className={cn(
-        "min-w-0 flex-1 text-base",
+        "min-w-0 flex-1 text-base text-balance",
         step.done ? "text-forest/70" : "font-bold",
       )}
     >

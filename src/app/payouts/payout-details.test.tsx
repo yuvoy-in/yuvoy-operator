@@ -21,6 +21,7 @@ const { PayoutDetails } = await import("./payout-details");
 const ON_FILE = {
   id: "chg_bank_0",
   line: "HDFC0001234 · account ending 4412",
+  ifsc: "HDFC0001234",
   bankName: "HDFC Bank",
 };
 
@@ -28,9 +29,12 @@ describe("an account on file", () => {
   it("is text with one Change button, and no form until Change", () => {
     render(<PayoutDetails onFile={ON_FILE} refusal={null} />);
 
-    expect(
-      screen.getByText("HDFC0001234 · account ending 4412"),
-    ).toBeInTheDocument();
+    // One line of text, its IFSC set as a reference inside it (v3.2).
+    const ifsc = screen.getByText("HDFC0001234");
+    expect(ifsc).toHaveClass("slashed-zero");
+    expect(ifsc.parentElement).toHaveTextContent(
+      /^HDFC0001234 · account ending 4412$/,
+    );
     expect(screen.getByText("HDFC Bank")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Change" })).toHaveLength(1);
     expect(screen.queryByLabelText("Account number")).toBeNull();

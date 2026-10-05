@@ -137,8 +137,8 @@ export function PauseResume({
         tone={bookingsToHonour > 0 ? "alert" : "done"}
         className="mt-4"
       >
-        <p className="text-base font-bold">Paused</p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-base font-bold text-balance">Paused</p>
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           {upcomingDepartures === 1
             ? "One upcoming departure has stopped being offered."
             : `${upcomingDepartures} upcoming departures have stopped being offered.`}{" "}
@@ -175,7 +175,7 @@ export function PauseResume({
           sending. Two sentences saying the same thing would be worse than
           either; one of them only appears when the other cannot.
         */}
-        <p className="text-forest/70 mt-3 text-sm">
+        <p className="text-forest/70 leading-body mt-3 text-sm text-pretty">
           {next ??
             "Resume it here whenever you are ready. It goes straight back on sale. Nothing waits on us."}
         </p>
@@ -257,7 +257,7 @@ export function PauseResume({
         <p
           ref={question}
           tabIndex={-1}
-          className="text-sm font-bold outline-none"
+          className="text-sm font-bold text-balance outline-none"
         >
           Pause {title}? It stops new bookings. It does not cancel the ones you
           have, and those travellers still expect their trip.
@@ -399,11 +399,11 @@ function ResumeControl({
       <p
         ref={question}
         tabIndex={-1}
-        className="text-sm font-bold outline-none"
+        className="text-sm font-bold text-balance outline-none"
       >
         Put {title} back on sale?
       </p>
-      <p className="text-forest/80 mt-1.5 text-sm">
+      <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
         It goes back on sale as soon as you do. There is no review to wait for.
       </p>
       {message ? (
@@ -471,10 +471,10 @@ function Resumed({
   if (state === "in_review") {
     return (
       <Panel ref={root} className="mt-4" role="status">
-        <p className="text-base font-bold">
+        <p className="text-base font-bold text-balance">
           Still waiting for its first approval
         </p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           {next ??
             "Resuming cannot skip a review that has not happened yet. It goes on sale when we approve it."}
         </p>
@@ -483,8 +483,8 @@ function Resumed({
   }
   return (
     <Panel ref={root} tone="done" className="mt-4" role="status">
-      <p className="text-base font-bold">Resumed</p>
-      <p className="text-forest/80 mt-2 text-sm">
+      <p className="text-base font-bold text-balance">Resumed</p>
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
         {next ??
           "It is back on sale. If anything on your account stops sales, the label on this listing says so. Resuming does not change that."}
       </p>

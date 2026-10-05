@@ -175,7 +175,7 @@ export default async function CalendarPage({
       <RefreshOnFocus />
 
       {/* "Calendar", not "Capacity" or "Board": yuvoy-operator#32, #36. */}
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Calendar
       </h1>
 
@@ -184,7 +184,7 @@ export default async function CalendarPage({
         panel headed as though something had gone wrong (#45 item 7).
       */}
       {!me.canManage ? (
-        <p className="text-forest/80 mt-3 text-base">
+        <p className="text-forest/80 leading-body mt-3 text-base text-pretty">
           Only owners, admins and managers can change seats or close dates.
         </p>
       ) : null}
@@ -255,7 +255,7 @@ export default async function CalendarPage({
               />
 
               {rows.length === 0 ? (
-                <p className="text-forest/80 mt-5 text-base">
+                <p className="text-forest/80 leading-body mt-5 text-base text-pretty">
                   Nothing scheduled this week
                 </p>
               ) : (

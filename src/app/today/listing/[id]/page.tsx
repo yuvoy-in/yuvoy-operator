@@ -130,7 +130,8 @@ export default async function ListingHubPage({
   return (
     <Screen nav={{ back: BACK }}>
       <div className="flex items-start justify-between gap-3">
-        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        {/* The listing's own name, in the host's voice (v3.2). */}
+        <h1 className="voice-host leading-display text-4xl text-balance">
           {listing.title}
         </h1>
         <Chip>{listingLabel(listing)}</Chip>
@@ -212,7 +213,7 @@ export default async function ListingHubPage({
         </h2>
 
         {byDay.size === 0 ? (
-          <p className="text-forest/70 mt-2 text-base">
+          <p className="text-forest/70 leading-body mt-2 text-base text-pretty">
             Nothing scheduled in the next two weeks
           </p>
         ) : (

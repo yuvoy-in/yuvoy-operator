@@ -115,7 +115,7 @@ export function MemberRow({
     */
     return frame(
       <li ref={root} className={panelClass("done")}>
-        <p className="text-base font-bold">
+        <p className="text-base font-bold text-balance">
           {member.pending
             ? `Invitation to ${member.name} revoked`
             : `${member.name} removed`}
@@ -126,7 +126,7 @@ export function MemberRow({
           (`sent: false`, yuvoy-operator#91). What revoking does is true either
           way: the invitation, and the code that goes with it, stop working.
         */}
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           {member.pending
             ? "The invitation and its code no longer work."
             : "Signed out everywhere, now. Not at their next sign-in. If their phone is open on this portal, the next thing they tap will ask them to sign in."}
@@ -138,7 +138,7 @@ export function MemberRow({
   return frame(
     <li className={panelClass()}>
       <div className="flex items-center justify-between gap-3">
-        <p className="text-lg font-bold">{member.name}</p>
+        <p className="text-lg font-bold text-balance">{member.name}</p>
         <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
           {/*
             Every role, not just the strongest. `roles` is plural in the
@@ -146,7 +146,8 @@ export function MemberRow({
             would quietly hide half of what somebody has been granted.
           */}
           {member.roles.map((role) => (
-            <Chip key={role} className="label text-forest/75 bg-paper">
+            // A chip: its own 11px at the label's weight, in sentence case.
+            <Chip key={role} className="text-forest/75 bg-paper font-medium">
               {roleLabel(role)}
             </Chip>
           ))}
@@ -170,7 +171,7 @@ export function MemberRow({
           described with the nearest guess: telling an owner somebody has less
           access than they do is how a phone gets handed over.
         */
-        <p className="text-forest/70 mt-2 text-sm">
+        <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
           We cannot describe this role in this version of the portal. Ask us
           what it grants before you rely on it.
         </p>
@@ -186,7 +187,7 @@ export function MemberRow({
           catches it a day later, which is when somebody actually looks
           (yuvoy-api#62).
         */
-        <p className="text-forest/80 mt-2 font-mono text-sm tracking-wider">
+        <p className="text-forest/80 tracking-ref mt-2 font-mono text-sm">
           {/*
             "Invited on", not "Sent to". Nothing is sent to a phone: there is
             no WhatsApp sender, and an invitation goes by email or by hand
@@ -285,13 +286,13 @@ export function MemberRow({
               <p
                 ref={question}
                 tabIndex={-1}
-                className="text-sm font-bold outline-none"
+                className="text-sm font-bold text-balance outline-none"
               >
                 {member.pending
                   ? `Revoke the invitation to ${member.name}?`
                   : `Remove ${member.name}?`}
               </p>
-              <p className="text-forest/80 mt-1.5 text-sm">
+              <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
                 {member.pending
                   ? "The invitation and its code stop working. You can invite them again."
                   : "Their sessions end immediately. Not at their next sign-in. You can invite them again afterwards."}

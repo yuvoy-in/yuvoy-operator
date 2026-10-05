@@ -39,7 +39,7 @@ export function RemovePhoto({
   return (
     <form action={act} className="space-y-2">
       <input type="hidden" name="photoId" value={photoId} />
-      <p className="text-sm font-bold">Take it off your page?</p>
+      <p className="text-sm font-bold text-balance">Take it off your page?</p>
       <Button
         type="submit"
         variant="danger"

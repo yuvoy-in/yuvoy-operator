@@ -29,12 +29,12 @@ export function ReviewPanel({
   if (note.state === "waiting") {
     return (
       <Panel tone="outline" role="status" className="p-4">
-        <p className="text-sm font-bold">
+        <p className="text-sm font-bold text-balance">
           {subject === "logo"
             ? "A new logo is waiting for our check"
             : "A change to these details is waiting for our check"}
         </p>
-        <p className="text-forest/80 mt-1 text-sm">
+        <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
           {sent}
           {subject === "logo"
             ? hasCurrent
@@ -55,9 +55,13 @@ export function ReviewPanel({
   if (note.reason) {
     return (
       <Panel tone="alert" role="status" className="p-4">
-        <p className="text-sm font-bold">{note.reason}</p>
+        <p className="leading-body text-sm font-bold text-pretty">
+          {note.reason}
+        </p>
         {note.sentOn ? (
-          <p className="text-forest/80 mt-1 text-sm">Sent on {note.sentOn}.</p>
+          <p className="text-forest/80 mt-1 text-sm tabular-nums">
+            Sent on {note.sentOn}.
+          </p>
         ) : null}
       </Panel>
     );
@@ -69,12 +73,12 @@ export function ReviewPanel({
   */
   return (
     <Panel tone="alert" role="status" className="p-4">
-      <p className="text-sm font-bold">
+      <p className="text-sm font-bold text-balance">
         {subject === "logo"
           ? "We did not use the logo you sent"
           : "We did not apply the change you sent"}
       </p>
-      <p className="text-forest/80 mt-1 text-sm">
+      <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
         {sent}
         {subject === "logo"
           ? hasCurrent

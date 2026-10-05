@@ -64,10 +64,11 @@ export function choiceClass(checked?: boolean, className?: string): string {
 /**
  * The words that name a field.
  *
- * NOT the `label` utility, which is uppercase and wide-tracked. That is the
- * brand's editorial voice and it belongs over a section, not on a box somebody
- * is about to type in: set in it, an ordinary question becomes "WHAT IS IT
- * CALLED", which is the same question shouted (yuvoy-operator#85 s11).
+ * NOT the `label` utility, which heads a section at 13px. A field's question
+ * is read by somebody about to type, so it is set a step larger and stays with
+ * the box it names. (Before v3.2 the label was uppercase and wide-tracked, and
+ * a question set in it became "WHAT IS IT CALLED", the same question shouted:
+ * yuvoy-operator#85 s11.)
  *
  * Sentence case, at 14px, a step above the 12px hint underneath it and a step
  * below the 16px the field itself is set in. Inline, like the `<label>` it

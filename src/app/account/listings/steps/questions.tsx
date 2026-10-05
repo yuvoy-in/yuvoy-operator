@@ -92,7 +92,9 @@ export function QuestionsStep({
       </p>
 
       {rows.length === 0 ? (
-        <p className="text-forest/70 text-sm">No questions yet.</p>
+        <p className="text-forest/70 leading-body text-sm text-pretty">
+          No questions yet.
+        </p>
       ) : (
         <ul className="space-y-4">
           {rows.map((row, i) => (
@@ -105,7 +107,7 @@ export function QuestionsStep({
                 maxLength={200}
                 value={row.text}
                 onChange={(e) => update(i, { text: e.target.value })}
-                className={inputClass("mt-2")}
+                className={inputClass("voice-host mt-2")}
                 aria-invalid={
                   state.fields?.includes(`questions.${i}.text`) || undefined
                 }

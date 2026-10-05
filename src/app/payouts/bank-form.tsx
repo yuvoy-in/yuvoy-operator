@@ -146,7 +146,7 @@ export function BankForm({
           goes to the owner's email address (yuvoy-operator#91). Who it goes to
           is the part that matters, and is unchanged: an owner, whoever asks.
         */}
-        <p className="text-sm font-bold">
+        <p className="text-sm font-bold text-balance">
           A code is emailed to the owner, whoever asks
         </p>
 

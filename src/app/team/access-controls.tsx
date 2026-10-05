@@ -204,7 +204,9 @@ function RoleForm({
     <form action={act} className="border-paper-line border-t pt-4">
       <input type="hidden" name="id" value={member.id} />
       <fieldset>
-        <legend className="text-sm font-bold">What {member.name} can do</legend>
+        <legend className="text-sm font-bold text-balance">
+          What {member.name} can do
+        </legend>
         <div className="mt-3 space-y-2">
           {ASSIGNABLE_ROLES.map((role) => {
             const described = describeRole(role)!;
@@ -257,11 +259,11 @@ function RoleForm({
       */}
       {chosen === "OWNER" && !member.roles.includes("OWNER") ? (
         <Panel tone="alert" className="mt-3 p-4">
-          <p className="text-sm font-bold">
+          <p className="text-sm font-bold text-balance">
             They will be able to change where the business is paid.
           </p>
           {iAmOnlyAdmin ? (
-            <p className="text-forest/80 mt-1.5 text-sm">
+            <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
               You will not be able to change their access afterwards.
             </p>
           ) : null}
@@ -273,7 +275,7 @@ function RoleForm({
         demoted is signed out the moment this is saved, so an owner doing it to
         a skipper mid-trip should know before, not after.
       */}
-      <p className="text-forest/80 mt-3 text-sm">
+      <p className="text-forest/80 leading-body mt-3 text-sm text-pretty">
         Saving signs {member.name} out everywhere. They sign back in with the
         new role.
       </p>
@@ -313,8 +315,10 @@ function HoldForm({
   return (
     <form action={act} className="border-paper-line border-t pt-4">
       <input type="hidden" name="id" value={member.id} />
-      <p className="text-sm font-bold">Pause {member.name}&rsquo;s access?</p>
-      <p className="text-forest/80 mt-1.5 text-sm">
+      <p className="text-sm font-bold text-balance">
+        Pause {member.name}&rsquo;s access?
+      </p>
+      <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
         They stay on this list with the same role, and cannot sign in until you
         give it back. Their sessions end now.
       </p>
@@ -346,8 +350,10 @@ function RestoreForm({
   return (
     <form action={act} className="border-paper-line border-t pt-4">
       <input type="hidden" name="id" value={member.id} />
-      <p className="text-sm font-bold">Give {member.name} access back?</p>
-      <p className="text-forest/80 mt-1.5 text-sm">
+      <p className="text-sm font-bold text-balance">
+        Give {member.name} access back?
+      </p>
+      <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
         With the role they had. They sign in again as usual.
       </p>
       <Actions

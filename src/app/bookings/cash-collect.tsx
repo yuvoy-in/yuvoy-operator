@@ -194,7 +194,7 @@ export function CashCollect({
         {recorded &&
         !recorded.alreadyRecorded &&
         recorded.shortfallPaise > 0 ? (
-          <p className="text-forest/80 mt-1 text-sm">
+          <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
             Recorded {formatPaise(recorded.collectedPaise)}. That is{" "}
             {formatPaise(recorded.shortfallPaise)} short of the fare.
           </p>
@@ -226,7 +226,7 @@ export function CashCollect({
     return (
       <div className="border-paper-line mt-4 border-t pt-3">
         <p className="text-sm font-bold">{describeCash(cash, timezone)}</p>
-        <p className="text-forest/80 mt-1 text-sm">
+        <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
           This trip was marked completed before the cash was recorded, and it
           can no longer be recorded here.
         </p>

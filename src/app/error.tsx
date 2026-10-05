@@ -30,7 +30,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 export default function Error({ reset }: { reset: () => void }) {
   return (
     <Screen nav="none" width="sm">
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         That did not load
       </h1>
       <Button onClick={reset} className="mt-8">
@@ -46,7 +46,7 @@ export default function Error({ reset }: { reset: () => void }) {
         relay that reached eleven people twice is not a cosmetic failure, and
         this portal cannot tell them from here whether the tap landed.
       */}
-      <p className="border-paper-line text-forest/70 mt-10 border-t pt-6 text-sm">
+      <p className="border-paper-line text-forest/70 leading-body mt-10 border-t pt-6 text-sm text-pretty">
         If you had just tapped something (accepted a request, sent a message,
         marked somebody off), check whether it took effect before doing it
         again.

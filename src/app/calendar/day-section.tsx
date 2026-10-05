@@ -63,7 +63,7 @@ export function DaySection({
 
   return (
     <section aria-labelledby={headingId} className="mt-6">
-      <h3 id={headingId} className="text-lg font-bold">
+      <h3 id={headingId} className="text-lg font-bold text-balance">
         {label}
       </h3>
       <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
@@ -87,7 +87,10 @@ export function DaySection({
 
       {/* Why the day is closed, at the top of it, with when it opens again. */}
       {wholeDay.map((closure) => (
-        <p key={closure.id} className="text-forest/80 mt-2 text-sm">
+        <p
+          key={closure.id}
+          className="text-forest/80 leading-body mt-2 text-sm text-pretty"
+        >
           {closureLine(closure)}
         </p>
       ))}
@@ -113,7 +116,8 @@ export function DaySection({
                   {cell.time}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 text-sm font-bold">
+                  {/* The listing's own name, in the host's voice (v3.2). */}
+                  <span className="voice-host line-clamp-2 text-sm">
                     {cell.title}
                   </span>
                   <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { requireOperator } from "@/lib/auth/session";
 import {
   getChangeRequests,
@@ -14,7 +14,7 @@ import {
   payoutHold,
   type ChangeRequest,
 } from "@/lib/money/earnings";
-import { accountOnFile } from "@/lib/account/bank";
+import { accountOnFile, type OnFile } from "@/lib/account/bank";
 import { canManageAccess } from "@/lib/team/access";
 import {
   SETTLEMENT_STATE_LABEL,
@@ -45,6 +45,7 @@ import { formatPaise } from "@/lib/format/money";
 import { helpHref } from "@/lib/help";
 import { Empty, Problem } from "@/components/ui/states";
 import { Screen } from "@/components/chrome/screen";
+import { AccountLine } from "@/components/account/account-line";
 import { Panel, panelClass } from "@/components/ui/panel";
 import {
   BankIcon,
@@ -114,7 +115,7 @@ export default async function MoneyPage({
   if (!me.canManage) {
     return (
       <Screen nav="tabs">
-        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        <h1 className="font-display tracking-display leading-display text-4xl text-balance">
           Money
         </h1>
         <div className="mt-6">
@@ -161,7 +162,7 @@ export default async function MoneyPage({
 
   return (
     <Screen nav="tabs">
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Money
       </h1>
 
@@ -200,7 +201,9 @@ export default async function MoneyPage({
             */
             return (
               <Panel key={block} className="mt-6">
-                <p className="text-lg font-bold">Nothing owed either way yet</p>
+                <p className="text-lg font-bold text-balance">
+                  Nothing owed either way yet
+                </p>
               </Panel>
             );
           case "payout":
@@ -208,7 +211,7 @@ export default async function MoneyPage({
               <NextPayout
                 key={block}
                 week={nextSettlement}
-                to={onFile?.line ?? null}
+                to={onFile}
                 held={Boolean(hold)}
               />
             );
@@ -236,7 +239,7 @@ export default async function MoneyPage({
       <section className="mt-10" aria-labelledby="past-payouts">
         <h2
           id="past-payouts"
-          className="font-display tracking-display text-2xl leading-tight"
+          className="font-display tracking-display leading-display text-2xl text-balance"
         >
           Past payouts
         </h2>
@@ -321,7 +324,11 @@ export default async function MoneyPage({
           href="/payouts"
           icon={BankIcon}
           label="Payout details"
-          detail={onFile?.line}
+          detail={
+            onFile ? (
+              <AccountLine line={onFile.line} ifsc={onFile.ifsc} />
+            ) : undefined
+          }
         />
       </div>
     </Screen>
@@ -354,10 +361,10 @@ function HoldWarning({
         : "awaiting review";
   return (
     <Panel tone="alert" className="mt-6 p-6">
-      <p className="text-terra-deep text-base font-bold">
+      <p className="text-terra-deep text-base font-bold text-balance">
         Payouts are on hold while your bank change is reviewed
       </p>
-      <p className="text-forest/80 mt-2 text-sm">
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
         {hold.summary ?? "A bank change"} is {stage}. Nothing is paid out until
         it settles.{" "}
         {canStop
@@ -386,12 +393,12 @@ function NextPayout({
 }: {
   week: SettlementWeek;
   /** The account on file, as Payout details says it. `null`: none on file. */
-  to: string | null;
+  to: OnFile | null;
   /** A bank change is in flight, so nothing is paid out until it settles. */
   held: boolean;
 }) {
   const owedBack = isOwedBack(week.netPaise);
-  const destination = payoutDestination(week.netPaise, to, held);
+  const destination = payoutDestination(week.netPaise, to?.line ?? null, held);
   return (
     <Panel className="mt-6" role="region" aria-labelledby="next-payout">
       <h2 id="next-payout" className="label text-forest/75">
@@ -408,14 +415,15 @@ function NextPayout({
       */}
       <p
         className={cn(
-          "font-display tracking-display mt-4 text-4xl leading-none",
+          // A figure on the board, untracked as every board figure is (v3.2).
+          "font-board mt-4 text-4xl leading-none tabular-nums",
           owedBack && "text-terra-deep",
         )}
       >
         {formatPaise(week.netPaise)}
       </p>
       {owedBack ? (
-        <p className="text-terra-deep mt-2 text-sm">
+        <p className="text-terra-deep leading-body mt-2 text-sm text-pretty">
           A correction is larger than this week pays. Nothing is sent until we
           have agreed with you how to settle it.
         </p>
@@ -449,7 +457,10 @@ function NextPayout({
                   href="/payouts"
                   className="decoration-forest/40 underline underline-offset-4"
                 >
-                  {destination.line}
+                  <AccountLine
+                    line={destination.line}
+                    ifsc={to?.ifsc ?? null}
+                  />
                 </Link>
               )}
             </dd>
@@ -458,7 +469,7 @@ function NextPayout({
       </dl>
 
       {/* Both hedges: without them this reads as a promise of a date. */}
-      <p className="text-forest/70 mt-5 text-sm">
+      <p className="text-forest/70 leading-body mt-5 text-sm text-pretty">
         {nextSettlementNote(week.settlesFrom)}
       </p>
       <HelpLink id="how-payouts-work">How a payout is worked out</HelpLink>
@@ -482,11 +493,11 @@ function BookedNotRun({ pipeline }: { pipeline: SettlementPipeline }) {
       <h2 id="booked-not-run" className="label text-forest/75">
         Booked, not run yet
       </h2>
-      <p className="font-display tracking-display mt-3 text-2xl leading-none">
+      <p className="font-board mt-3 text-2xl leading-none tabular-nums">
         {formatPaise(pipeline.netPaise)}
       </p>
       {/* The one sentence that stops it being read as owed. */}
-      <p className="text-forest/70 mt-2 text-sm">
+      <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
         Not earned until the trip is marked.
       </p>
       <dl className="mt-4 space-y-2 text-sm">
@@ -526,7 +537,7 @@ function CashSection({ cash }: { cash: CashOnTheTab }) {
         */}
         {lead ? (
           <>
-            <p className="font-display tracking-display mt-3 text-2xl leading-none">
+            <p className="font-board mt-3 text-2xl leading-none tabular-nums">
               {formatPaise(lead.paise)}
             </p>
             <p className="text-forest/70 mt-2 text-sm">
@@ -543,7 +554,7 @@ function CashSection({ cash }: { cash: CashOnTheTab }) {
           "Nothing owed either way yet" (the audit, M3).
         */}
         {!cash.cashKnown ? (
-          <p className="text-forest/80 mt-3 text-sm">
+          <p className="text-forest/80 leading-body mt-3 text-sm text-pretty">
             We could not load your cash figures just now. Open Cash to try
             again.
           </p>
@@ -599,7 +610,7 @@ function CashSection({ cash }: { cash: CashOnTheTab }) {
           )}
         >
           <span className="min-w-0">
-            <span className="block text-base font-bold">
+            <span className="block text-base font-bold text-balance">
               {unrecorded.bookings === 1
                 ? "1 past cash trip has no payment recorded"
                 : `${unrecorded.bookings} past cash trips have no payment recorded`}
@@ -644,7 +655,8 @@ function CommissionToPay({ bill }: { bill: CommissionOnTheTab }) {
         </h2>
         {bill.owedPaise !== null ? (
           <>
-            <p className="font-display tracking-display mt-3 text-4xl leading-none">
+            {/* A figure on the board, as the next payout's is (v3.2). */}
+            <p className="font-board mt-3 text-4xl leading-none tabular-nums">
               {formatPaise(bill.owedPaise)}
             </p>
             <p className="text-forest/70 mt-2 text-sm">
@@ -658,7 +670,7 @@ function CommissionToPay({ bill }: { bill: CommissionOnTheTab }) {
             A total over a list cut short, or over a statement that will not
             say what it owes, understates the bill. Each row still says.
           */
-          <p className="text-forest/80 mt-3 text-sm">
+          <p className="text-forest/80 leading-body mt-3 text-sm text-pretty">
             We could not add up what is owed. Each statement below says what is
             left to pay on it.
           </p>
@@ -688,7 +700,7 @@ function SettledStatements({ bill }: { bill: CommissionOnTheTab }) {
     <section className="mt-10" aria-labelledby="commission-statements">
       <h2
         id="commission-statements"
-        className="font-display tracking-display text-2xl leading-tight"
+        className="font-display tracking-display leading-display text-2xl text-balance"
       >
         Commission statements
       </h2>
@@ -727,11 +739,11 @@ function LatestStatement({ settlement }: { settlement: Settlement }) {
       <h2 id="latest-statement" className="label text-forest/75">
         Latest payout statement
       </h2>
-      <p className="mt-1 text-base font-bold">
+      <p className="mt-1 text-base font-bold text-balance">
         {weekLabel(settlement.periodStart, settlement.periodEnd)}
       </p>
       <DownloadStatement id={settlement.id} className="mt-4" />
-      <p className="text-forest/70 mt-3 text-sm">
+      <p className="text-forest/70 leading-body mt-3 text-sm text-pretty">
         Older payout statements are on each paid week&rsquo;s page.
       </p>
     </Panel>
@@ -763,7 +775,7 @@ function SettlementRow({ settlement }: { settlement: Settlement }) {
       className="rounded-card border-paper-line bg-paper-deep hover:border-forest/40 ease-interaction flex items-center justify-between gap-4 border p-4 transition-colors duration-200"
     >
       <div className="min-w-0">
-        <p className="font-bold">
+        <p className="font-bold text-balance">
           {weekLabel(settlement.periodStart, settlement.periodEnd)}
         </p>
         <p className="text-forest/70 mt-1 text-sm">
@@ -801,7 +813,7 @@ function Door({
   icon: ComponentType<{ className?: string }>;
   label: string;
   /** A fact about what is behind it, under the label: the account on file. */
-  detail?: string;
+  detail?: ReactNode;
   className?: string;
 }) {
   return (

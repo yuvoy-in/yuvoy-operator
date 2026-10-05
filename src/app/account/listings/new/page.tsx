@@ -29,7 +29,7 @@ export default async function NewListingPage() {
   if (!me.canManage || me.suspension) {
     return (
       <Screen nav={{ back: { href: "/account", label: "your business" } }}>
-        <h1 className="font-display tracking-display text-3xl leading-tight">
+        <h1 className="font-display tracking-display leading-display text-3xl text-balance">
           Add a listing
         </h1>
         <div className="mt-6">
@@ -51,7 +51,7 @@ export default async function NewListingPage() {
 
   return (
     <Screen nav={{ back: { href: "/account", label: "your business" } }}>
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Add a listing
       </h1>
 

@@ -36,10 +36,12 @@ export function HelpTopics({ sections }: { sections: readonly HelpSection[] }) {
                   className={panelClass("raised", "group scroll-mt-6 p-0")}
                 >
                   <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-base font-bold [&::-webkit-details-marker]:hidden">
-                    <span className="min-w-0">{topic.question}</span>
+                    <span className="min-w-0 text-balance">
+                      {topic.question}
+                    </span>
                     <ChevronRightIcon className="text-terra-deep ease-interaction size-5 shrink-0 transition-transform duration-200 group-open:rotate-90" />
                   </summary>
-                  <div className="text-forest/80 space-y-3 px-4 pb-4 text-sm">
+                  <div className="text-forest/80 leading-body space-y-3 px-4 pb-4 text-sm text-pretty">
                     {topic.answer.map((paragraph, i) => (
                       <p key={i}>{paragraph}</p>
                     ))}

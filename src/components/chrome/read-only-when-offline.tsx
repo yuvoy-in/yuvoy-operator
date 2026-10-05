@@ -39,9 +39,11 @@ export function ReadOnlyWhenOffline({
       >
         {!online ? (
           <div className={panelClass("alert", "p-4")}>
-            <p className="text-terra-deep text-base font-bold">No signal</p>
+            <p className="text-terra-deep text-base font-bold text-balance">
+              No signal
+            </p>
             {/* A real space: read out, the two lines must not run together. */}{" "}
-            <p className="text-forest/80 mt-1 text-sm">
+            <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
               {what} is read-only until you are back online. What it shows may
               be out of date.
               {held ? " That opens once you are back online." : null}

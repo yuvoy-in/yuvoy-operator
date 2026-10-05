@@ -31,7 +31,7 @@ export function StatementRow({
       className="rounded-card border-paper-line bg-paper-deep hover:border-forest/40 ease-interaction flex items-center justify-between gap-4 border p-4 transition-colors duration-200"
     >
       <div className="min-w-0">
-        <p className="font-bold">
+        <p className="font-bold text-balance">
           {weekLabel(statement.weekStart, statement.weekEnd)}
         </p>
         <p className="text-forest/70 mt-1 text-sm">

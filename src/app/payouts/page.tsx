@@ -62,7 +62,7 @@ export default async function PayoutsPage() {
   if (!me.canManage) {
     return (
       <Screen nav={{ back: BACK }}>
-        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        <h1 className="font-display tracking-display leading-display text-4xl text-balance">
           Payout details
         </h1>
         <div className="mt-6">
@@ -85,7 +85,7 @@ export default async function PayoutsPage() {
   if (requests === null) {
     return (
       <Screen nav={{ back: BACK }}>
-        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        <h1 className="font-display tracking-display leading-display text-4xl text-balance">
           Payout details
         </h1>
         <div className="mt-6">
@@ -144,7 +144,7 @@ export default async function PayoutsPage() {
 
   return (
     <Screen nav={{ back: BACK }}>
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Payout details
       </h1>
 
@@ -196,7 +196,9 @@ export default async function PayoutsPage() {
                       </span>
                     </div>
                     {reason ? (
-                      <p className="text-forest/80 mt-1.5">{reason}</p>
+                      <p className="text-forest/80 leading-body mt-1.5 text-pretty">
+                        {reason}
+                      </p>
                     ) : null}
                   </li>
                 );

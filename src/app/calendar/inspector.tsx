@@ -63,12 +63,25 @@ export function DepartureInspector({
   return (
     <InspectorSheet
       dep={slot.id}
-      title={`${time} ${slot.title}`}
+      title={
+        /* The time on the board, the name in the host's words (v3.2). */
+        <>
+          <span className="font-board tracking-normal tabular-nums">
+            {time}
+          </span>{" "}
+          <span className="voice-host">{slot.title}</span>
+        </>
+      }
       closeHref={closeHref}
     >
-      <p className="text-forest/80 -mt-3 text-sm">
+      <p className="text-forest/80 -mt-3 text-sm tabular-nums">
         {shortDate(day)}
-        {meeting ? ` · ${meeting}` : ""}
+        {meeting ? (
+          <>
+            {" · "}
+            <span className="voice-host">{meeting}</span>
+          </>
+        ) : null}
       </p>
 
       <section aria-labelledby="inspector-who" className="mt-5">
@@ -76,11 +89,13 @@ export function DepartureInspector({
           Who is on it
         </h3>
         {manifest === null ? (
-          <p className="text-forest/80 mt-2 text-sm">
+          <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
             Who is on it did not load. The manifest has them.
           </p>
         ) : parties.length === 0 ? (
-          <p className="text-forest/80 mt-2 text-sm">Nobody booked yet</p>
+          <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
+            Nobody booked yet
+          </p>
         ) : (
           <ul className="mt-2 space-y-1">
             {named.map((party) => (

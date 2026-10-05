@@ -111,14 +111,15 @@ export default async function BoardingPage({
 
   const where = manifest.meetingPoint?.split(",")[0]?.trim();
   const mode = calledOff ? "Called off" : departed ? "Closing out" : "Boarding";
-  const kicker = [mode, time, where].filter(Boolean).join(" · ");
 
   return (
     <Screen nav={{ back: departure }}>
       <BoardingScreen
         slotId={slotId}
-        kicker={kicker}
-        title={[time, manifest.experience].filter(Boolean).join(" ")}
+        mode={mode}
+        time={time}
+        where={where ?? ""}
+        experience={manifest.experience ?? ""}
         departed={departed}
         calledOff={calledOff}
         seats={seats}

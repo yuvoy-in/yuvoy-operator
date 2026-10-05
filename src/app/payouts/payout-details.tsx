@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { OnFile } from "@/lib/account/bank";
+import { AccountLine } from "@/components/account/account-line";
 import { Button } from "@/components/ui/button";
 import { panelClass } from "@/components/ui/panel";
 import { BankForm } from "./bank-form";
@@ -40,7 +41,9 @@ export function PayoutDetails({
     return (
       <div className="mt-8">
         {refusal ? (
-          <p className="text-forest/80 text-sm">{refusal}</p>
+          <p className="text-forest/80 leading-body text-sm text-pretty">
+            {refusal}
+          </p>
         ) : (
           <BankForm />
         )}
@@ -59,7 +62,7 @@ export function PayoutDetails({
         <div className="min-w-0">
           <p className="label text-forest/75">Account on file</p>
           <p className="mt-1.5 text-base font-bold wrap-break-word">
-            {onFile.line}
+            <AccountLine line={onFile.line} ifsc={onFile.ifsc} />
           </p>
           {onFile.bankName ? (
             <p className="text-forest/70 mt-0.5 text-sm">{onFile.bankName}</p>
@@ -79,7 +82,9 @@ export function PayoutDetails({
       </div>
 
       {refusal ? (
-        <p className="text-forest/80 mt-3 text-sm">{refusal}</p>
+        <p className="text-forest/80 leading-body mt-3 text-sm text-pretty">
+          {refusal}
+        </p>
       ) : changing ? (
         <div className="mt-6">
           <BankForm

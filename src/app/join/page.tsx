@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 export default function JoinPage() {
   return (
     <Screen nav="none" stageLabel="For operators" width="sm">
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Accept an invitation
       </h1>
       {/*
@@ -35,13 +35,13 @@ export default function JoinPage() {
         has added you to their business" explained the screen its heading
         already names (yuvoy-operator#80 t4).
       */}
-      <p className="text-forest/70 mt-3 text-base">
+      <p className="text-forest/70 leading-body mt-3 text-base text-pretty">
         Enter your number and the code from your invitation.
       </p>
 
       <JoinForm />
 
-      <p className="border-paper-line text-forest/70 mt-10 border-t pt-6 text-sm">
+      <p className="border-paper-line text-forest/70 leading-body mt-10 border-t pt-6 text-sm text-pretty">
         Already accepted?{" "}
         <Link
           href="/sign-in"

@@ -44,9 +44,9 @@ function pill(page: Page, name: string) {
 /**
  * The number on a pill.
  *
- * Read out of the text rather than compared as text: the label is uppercased in
- * CSS and carries a line break before the count, so comparing whole strings
- * tests the stylesheet. The number is the thing under test.
+ * Read out of the text rather than compared as text: the label carries a line
+ * break before the count, so comparing whole strings tests the stylesheet. The
+ * number is the thing under test.
  */
 async function pillCount(page: Page, name: string): Promise<number> {
   const text = await pill(page, name).innerText();

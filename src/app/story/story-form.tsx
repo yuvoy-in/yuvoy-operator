@@ -81,8 +81,8 @@ function StoryRound({
   if (state.saved) {
     return (
       <Panel tone="done" role="status" className="mt-5">
-        <p className="text-base font-bold">Saved</p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-base font-bold text-balance">Saved</p>
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           {state.saved.about
             ? "Travellers see it on your page now."
             : "Your page shows no About section until you write one."}
@@ -115,7 +115,7 @@ function StoryRound({
           rows={6}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          className={textareaClass("mt-2")}
+          className={textareaClass("voice-host mt-2")}
           aria-describedby="about-hint about-count"
           aria-invalid={state.field === "about" || undefined}
         />
