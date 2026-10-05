@@ -99,8 +99,10 @@ const NONE: Readonly<Record<string, CheckIn>> = {};
  */
 export function BoardingScreen({
   slotId,
-  kicker,
-  title,
+  mode,
+  time,
+  where,
+  experience,
   departed,
   calledOff,
   seats,
@@ -110,10 +112,19 @@ export function BoardingScreen({
   doneHref,
 }: {
   slotId: string;
-  /** "Boarding · 11:30 · Beach 3 dive hut". */
-  kicker: string;
-  /** "11:30 Try-dive at Nemo Reef". */
-  title: string;
+  /*
+    The kicker, "Boarding · 11:30 · Beach 3 dive hut", and the heading,
+    "11:30 Try-dive at Nemo Reef", in parts, so the host's words are set in
+    their own voice (v3.2).
+  */
+  /** "Boarding", "Closing out" or "Called off". */
+  mode: string;
+  /** "11:30", or "" when the manifest carries no start. */
+  time: string;
+  /** The meeting point's first part, or "" when there is none. */
+  where: string;
+  /** The experience's name, or "" when the manifest carries none. */
+  experience: string;
   departed: boolean;
   calledOff: boolean;
   /** "5 of 8 seats sold", from the day's departures, or null when unread. */
@@ -241,9 +252,31 @@ export function BoardingScreen({
     <div ref={board} data-sun={sun ? "on" : "off"} className="pb-28 lg:pb-0">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="label text-forest/75">{kicker}</p>
-          <h1 className="font-display tracking-display mt-1 text-3xl leading-tight">
-            {title}
+          {/*
+            Pretty, so a meeting point that runs onto a second line takes
+            more than its last word with it (sun mode sets this larger). A
+            no-break space before each dot, so no line ever starts with one.
+          */}
+          <p className="label text-forest/75 text-pretty tabular-nums">
+            {[mode, time].filter(Boolean).join("\u00a0· ")}
+            {where ? (
+              <>
+                {"\u00a0· "}
+                <span className="voice-host">{where}</span>
+              </>
+            ) : null}
+          </p>
+          {/* The time on the board, untracked, and the name in the host's words. */}
+          <h1 className="font-display tracking-display leading-display mt-1 text-3xl text-balance">
+            {time ? (
+              <span className="font-board tracking-normal tabular-nums">
+                {time}
+              </span>
+            ) : null}
+            {time && experience ? " " : null}
+            {experience ? (
+              <span className="voice-host">{experience}</span>
+            ) : null}
           </h1>
         </div>
         <button
@@ -272,11 +305,11 @@ export function BoardingScreen({
         Said again, politely, each time it moves.
       */}
         <p aria-live="polite" className="mt-6 flex items-baseline gap-2">
-          <span className="font-display text-7xl leading-none tabular-nums">
+          <span className="font-board text-7xl leading-none tabular-nums">
             <Roll value={count.aboard} />
           </span>{" "}
           <span className="text-forest/80 text-2xl">of</span>{" "}
-          <span className="font-display text-7xl leading-none tabular-nums">
+          <span className="font-board text-7xl leading-none tabular-nums">
             {count.booked}
           </span>{" "}
           <span className="text-2xl font-bold">aboard</span>
@@ -284,23 +317,31 @@ export function BoardingScreen({
         {/*
         Joined with real separators, not a flex gap: a gap is space to the
         eye and nothing to a screen reader, which read "2 parties to
-        come₹9,000 to take".
+        come₹9,000 to take". Each fact holds together and the line breaks
+        only after a dot (a no-break space sits before it), so a wrap never
+        strands "sold" or opens a line with "·".
       */}
         <p className="text-forest/80 mt-3 text-base">
           {[
-            <span key="come">
+            <span key="come" className="whitespace-nowrap">
               <b className="text-forest">{toCome.length}</b>{" "}
               {toCome.length === 1 ? "party to come" : "parties to come"}
             </span>,
             ...(cash !== null && cash > 0
               ? [
-                  <span key="cash">
+                  <span key="cash" className="whitespace-nowrap">
                     <b className="text-forest">{formatPaise(cash)}</b> to take
                   </span>,
                 ]
               : []),
-            ...(seats ? [<span key="seats">{seats}</span>] : []),
-          ].flatMap((part, i) => (i === 0 ? [part] : [" · ", part]))}
+            ...(seats
+              ? [
+                  <span key="seats" className="whitespace-nowrap">
+                    {seats}
+                  </span>,
+                ]
+              : []),
+          ].flatMap((part, i) => (i === 0 ? [part] : ["\u00a0· ", part]))}
         </p>
 
         {calledOff ? (
@@ -329,8 +370,10 @@ export function BoardingScreen({
 
         {rows.length === 0 ? (
           <div className={panelClass("raised", "mt-5")}>
-            <p className="text-base font-bold">Nobody is booked on this one.</p>
-            <p className="text-forest/80 mt-1 text-sm">
+            <p className="text-base font-bold text-balance">
+              Nobody is booked on this one.
+            </p>
+            <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
               {departed
                 ? "It left with nobody aboard."
                 : "It stays on sale until bookings close."}
@@ -405,21 +448,29 @@ export function BoardingScreen({
                             aria-label={`${spoken}. Open`}
                             className="min-w-0 flex-1 py-1 text-left"
                           >
-                            <span className="block text-lg leading-tight font-bold">
+                            <span className="block text-lg leading-tight font-bold text-balance">
                               {party.name}
                             </span>
                             <span className="text-forest/80 block text-sm">
                               {party.guests === 1
                                 ? "1 guest"
                                 : `${party.guests} guests`}
-                              {" · "}
-                              <span className="tracking-wider slashed-zero tabular-nums">
+                              {/*
+                                The reference moves down whole rather than
+                                breaking at its own hyphen ("YV-" / "CANCEL2B"
+                                at 320px): it is what an operator reads
+                                against a phone at the jetty. An inline block
+                                still wraps inside if it is ever wider than
+                                the column, so it can never overflow.
+                              */}
+                              {"\u00a0· "}
+                              <span className="tracking-ref inline-block max-w-full slashed-zero tabular-nums">
                                 {party.reference}
                               </span>
                             </span>
                             {flags.length > 0 ? (
                               <span className="text-terra-deep mt-0.5 block text-sm font-bold">
-                                {flags.join(" · ")}
+                                {flags.join("\u00a0· ")}
                               </span>
                             ) : null}
                           </button>
@@ -498,14 +549,14 @@ export function BoardingScreen({
                       >
                         <CheckIcon className="size-6 shrink-0" />
                         <span className="min-w-0">
-                          <span className="block text-base leading-tight font-bold">
+                          <span className="block text-base leading-tight font-bold text-balance">
                             {party.name}
                           </span>
                           <span className="text-forest/80 block text-sm">
                             {party.guests === 1
                               ? "1 guest"
                               : `${party.guests} guests`}
-                            {" · "}
+                            {"\u00a0· "}
                             {holding
                               ? "Checking in"
                               : state?.phase === "sending"
@@ -524,7 +575,7 @@ export function BoardingScreen({
                               move(party.bookingId);
                             }
                           }}
-                          className="border-forest/25 hover:border-forest dock-target label relative shrink-0 rounded-full border px-5 font-bold"
+                          className="border-forest/25 hover:border-forest dock-target text-button relative shrink-0 rounded-full border px-5 font-bold"
                         >
                           Undo
                           {/*

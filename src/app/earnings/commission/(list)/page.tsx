@@ -41,7 +41,7 @@ export default async function CommissionStatementsPage() {
   if (!me.canManage) {
     return (
       <Screen nav={{ back: BACK }}>
-        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        <h1 className="font-display tracking-display leading-display text-4xl text-balance">
           Commission statements
         </h1>
         <div className="mt-6">
@@ -64,7 +64,7 @@ export default async function CommissionStatementsPage() {
 
   return (
     <Screen nav={{ back: BACK }}>
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Commission statements
       </h1>
 
@@ -88,13 +88,14 @@ export default async function CommissionStatementsPage() {
                 not say what it owes, understates the bill. Each row still says
                 what is left on it.
               */
-              <p className="text-forest/80 text-sm">
+              <p className="text-forest/80 leading-body text-sm text-pretty">
                 We could not add up what is owed. Each statement below says what
                 is left to pay on it.
               </p>
             ) : owed > 0 ? (
               <>
-                <p className="font-display tracking-display text-4xl leading-none">
+                {/* On the board, as every figure on Money is (v3.2). */}
+                <p className="font-board text-4xl leading-none tabular-nums">
                   {formatPaise(owed)}
                 </p>
                 <p className="text-forest/70 mt-2 text-sm">
@@ -104,7 +105,7 @@ export default async function CommissionStatementsPage() {
                 </p>
               </>
             ) : (
-              <p className="text-lg font-bold">Nothing to pay</p>
+              <p className="text-lg font-bold text-balance">Nothing to pay</p>
             )}
           </Panel>
 

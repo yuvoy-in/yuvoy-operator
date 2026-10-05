@@ -450,7 +450,7 @@ export function Uploader({
             advice they cannot act on. So they get the one true fact instead,
             which is when the slot frees up.
           */}
-          <p className="text-forest/70 mt-2 text-sm">
+          <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
             {phase.by ? (
               <>
                 One clip at a time. Choose {phase.by.name} again and it carries
@@ -555,7 +555,7 @@ export function Uploader({
               className={
                 p.severity === "refuse"
                   ? "text-terra-deep mt-3 text-sm font-bold"
-                  : "text-forest/80 mt-3 text-sm"
+                  : "text-forest/80 leading-body mt-3 text-sm text-pretty"
               }
             >
               {p.message}
@@ -563,7 +563,10 @@ export function Uploader({
           ))}
 
           {phase.resumeFrom > 0 ? (
-            <p className="text-forest/80 mt-3 text-sm" role="status">
+            <p
+              className="text-forest/80 leading-body mt-3 text-sm text-pretty"
+              role="status"
+            >
               Picks up from {formatBytes(phase.resumeFrom)} already uploaded.
               Nothing is sent twice.
             </p>
@@ -610,7 +613,9 @@ export function Uploader({
 
       {phase.name === "uploading" ? (
         <div>
-          <p className="text-base font-bold">Uploading {phase.file.name}</p>
+          <p className="text-base font-bold text-balance">
+            Uploading {phase.file.name}
+          </p>
           {/*
             A real number, not a spinner. Twenty minutes of a progress bar that
             moves is a different experience from twenty minutes of one that
@@ -622,7 +627,7 @@ export function Uploader({
             value={phase.uploaded}
             aria-label="Upload progress"
           />
-          <p className="text-forest/80 mt-2 text-sm" role="status">
+          <p className="text-forest/80 mt-2 text-sm tabular-nums" role="status">
             {formatBytes(phase.uploaded)} of {formatBytes(phase.file.size)}
             {phase.file.size > 0
               ? ` · ${Math.floor((phase.uploaded / phase.file.size) * 100)}%`
@@ -634,7 +639,7 @@ export function Uploader({
               path here, and an operator who sees it recover once trusts the
               screen for the next twenty minutes.
             */
-            <p className="text-forest/70 mt-2 text-sm">
+            <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
               The connection dropped {phase.resumes}{" "}
               {phase.resumes === 1 ? "time" : "times"} and picked up again.
               Nothing was lost.
@@ -661,12 +666,12 @@ export function Uploader({
             there is no `GET /media` to find the clip again from anywhere else.
             So the ask is still to stay, and the way back is still said.
           */}
-          <p className="text-forest/70 mt-2 text-sm">
+          <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
             This takes a minute or two. Stay here if you can. If you lose the
             page, choose the same clip again and we will pick it up from here.
           </p>
           {phase.resumes > 0 ? (
-            <p className="text-forest/80 mt-2 text-sm">
+            <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
               The connection dropped {phase.resumes}{" "}
               {phase.resumes === 1 ? "time" : "times"} on the way up and picked
               up again. Nothing was lost.

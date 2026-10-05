@@ -118,7 +118,9 @@ export function DepartureControls({
           does next, which is why it is the one sentence that stays.
         */}
         {slot.onSale === false && slot.notOnSaleDetail ? (
-          <p className="text-forest/90">{slot.notOnSaleDetail}</p>
+          <p className="text-forest/90 leading-body text-pretty">
+            {slot.notOnSaleDetail}
+          </p>
         ) : null}
       </div>
 

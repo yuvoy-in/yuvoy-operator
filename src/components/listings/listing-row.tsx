@@ -100,7 +100,8 @@ export function ListingRow({
   return (
     <li id={`listing-${listing.id}`} className={panelClass()}>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-lg font-bold">{listing.title}</p>
+        {/* The listing's own name, in the host's voice (v3.2). */}
+        <p className="voice-host text-lg text-balance">{listing.title}</p>
         <Chip
           tone={
             // `accent` is the tone for something the operator has to answer.
@@ -118,7 +119,9 @@ export function ListingRow({
         </Chip>
       </div>
 
-      <p className="text-forest/80 mt-2 text-sm">{status.body}</p>
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
+        {status.body}
+      </p>
 
       {/*
         The door out of `not_selling` — yuvoy-operator#28.
@@ -157,7 +160,7 @@ export function ListingRow({
       */}
       {blockers.length > 0 ? (
         <div className="mt-3">
-          <p className="text-terra-deep text-sm font-bold">
+          <p className="text-terra-deep text-sm font-bold text-balance">
             {blockers.length === 1
               ? "One thing is missing before we can approve it:"
               : `${blockers.length} things are missing before we can approve it:`}
@@ -205,13 +208,13 @@ export function ListingRow({
       */}
       {!listing.sentBack && listing.review?.rejectionCode ? (
         <div className="border-terra-deep/30 mt-3 border-t pt-3">
-          <p className="text-terra-deep text-sm font-bold">
+          <p className="text-terra-deep text-sm font-bold text-balance">
             {rejection ??
               listing.review.rejectionNote ??
               `We came back to you on this one. Call us on ${SUPPORT_PHONE} and we will say why.`}
           </p>
           {rejection && listing.review.rejectionNote ? (
-            <p className="text-forest/80 mt-1.5 text-sm">
+            <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
               {listing.review.rejectionNote}
             </p>
           ) : null}
@@ -224,7 +227,7 @@ export function ListingRow({
         saying so on every row would train an operator to stop reading them.
       */}
       {status.selling && !hasFootage ? (
-        <p className="border-paper-line text-forest/80 mt-3 border-t pt-3 text-sm">
+        <p className="border-paper-line text-forest/80 leading-body mt-3 border-t pt-3 text-sm text-pretty">
           On sale with nothing to show. Travellers see a blank card until a
           photograph or a reel is attached to it.{" "}
           <a href="/account?tab=reels" className="underline underline-offset-2">
@@ -284,7 +287,7 @@ export function ListingRow({
               required
               minLength={3}
               defaultValue={defaults.title}
-              className={inputClass("mt-2")}
+              className={inputClass("voice-host mt-2")}
             />
           </div>
 
@@ -299,7 +302,7 @@ export function ListingRow({
               id={`summary-${listing.id}`}
               name="summary"
               defaultValue={defaults.summary}
-              className={inputClass("mt-2")}
+              className={inputClass("voice-host mt-2")}
             />
           </div>
 
@@ -361,7 +364,7 @@ export function ListingRow({
               name="description"
               rows={4}
               defaultValue={defaults.description}
-              className={inputClass("mt-2")}
+              className={inputClass("voice-host mt-2 h-auto py-3")}
             />
           </div>
 
@@ -376,7 +379,7 @@ export function ListingRow({
               id={`meeting-${listing.id}`}
               name="meetingPoint"
               defaultValue={defaults.meetingPoint}
-              className={inputClass("mt-2")}
+              className={inputClass("voice-host mt-2")}
             />
           </div>
 
@@ -518,7 +521,7 @@ export function ListingRow({
               name="inclusions"
               rows={3}
               defaultValue={defaults.inclusions}
-              className={inputClass("mt-2")}
+              className={inputClass("voice-host mt-2 h-auto py-3")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
               One per line. Leave it empty if nothing is included.
@@ -537,7 +540,7 @@ export function ListingRow({
               name="requirements"
               rows={3}
               defaultValue={defaults.requirements}
-              className={inputClass("mt-2")}
+              className={inputClass("voice-host mt-2 h-auto py-3")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
               What to bring, and what they need to be able to do, one per line.
@@ -557,7 +560,7 @@ export function ListingRow({
               name="safetyNotes"
               rows={3}
               defaultValue={defaults.safetyNotes}
-              className={inputClass("mt-2")}
+              className={inputClass("voice-host mt-2 h-auto py-3")}
             />
             {/*
               The one field where an operator can over-claim. Said here rather
@@ -579,7 +582,7 @@ export function ListingRow({
             Since D-032.3 it names the half that goes live at once. It said
             the whole change waited for us, which was wrong for a price.
           */}
-          <p className="text-forest/80 mt-4 text-sm">
+          <p className="text-forest/80 leading-body mt-4 text-sm text-pretty">
             {status.selling
               ? "This does not take it off sale. Price, duration, group size and where to meet change at once, and we read the rest first. Anybody who already booked keeps what they booked on."
               : "This sends it to us. Nothing is on sale until we approve it."}

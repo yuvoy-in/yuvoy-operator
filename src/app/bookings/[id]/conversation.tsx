@@ -141,7 +141,7 @@ export function Conversation({
     >
       <h2
         id="conversation-heading"
-        className="font-display tracking-display text-2xl leading-tight"
+        className="font-display tracking-display leading-display text-2xl text-balance"
       >
         Conversation
       </h2>
@@ -149,7 +149,7 @@ export function Conversation({
         The one sentence kept (#80 t4): it changes what somebody types. "With
         this traveller, about this trip" described the section and went.
       */}
-      <p className="text-forest/70 mt-2 text-sm">
+      <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
         Phone numbers, email addresses and links are not allowed on either side.
       </p>
 
@@ -168,7 +168,7 @@ export function Conversation({
       ) : null}
 
       {thread.messages.length === 0 ? (
-        <p className="text-forest/70 mt-4 text-sm">
+        <p className="text-forest/70 leading-body mt-4 text-sm text-pretty">
           Nothing has been said here yet.
         </p>
       ) : (
@@ -217,7 +217,9 @@ export function Conversation({
         </form>
       ) : (
         <Panel className="mt-6 p-4">
-          <p className="text-sm">{closedLine(thread.closedReason)}</p>
+          <p className="leading-body text-sm text-pretty">
+            {closedLine(thread.closedReason)}
+          </p>
           {/*
             A failure raised just before the thread closed still has something to
             say, and the composer it belonged to has gone. Kept rather than
@@ -256,7 +258,7 @@ export function Bubble({ message }: { message: ThreadMessage }) {
             : "border-paper-line bg-paper-deep",
         )}
       >
-        <p className="text-forest/75 text-xs">
+        <p className="text-forest/75 text-xs tabular-nums">
           <span className="font-bold">{message.senderName}</span>
           {" · "}
           {/*
@@ -279,8 +281,18 @@ export function Bubble({ message }: { message: ThreadMessage }) {
             `whitespace-pre-wrap`: the API keeps line breaks ("trimmed, with its
             line breaks"), and collapsing them turns a list of three things to
             bring into one run-on sentence.
+
+            The business's own messages are the host speaking, so they are in
+            the host's voice (v3.2); the traveller's stay in ours.
           */
-          <p className="mt-1 text-sm whitespace-pre-wrap">{message.text}</p>
+          <p
+            className={cn(
+              "leading-body mt-1 text-sm text-pretty whitespace-pre-wrap",
+              mine && "voice-host",
+            )}
+          >
+            {message.text}
+          </p>
         )}
       </div>
     </li>

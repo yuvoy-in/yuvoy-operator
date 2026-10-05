@@ -40,7 +40,7 @@ export default async function TeamNotificationsPage({
   if (!canManageAccess(me.roles)) {
     return (
       <Screen nav={{ back: { href: "/team", label: "team access" } }}>
-        <h1 className="font-display tracking-display text-3xl leading-tight">
+        <h1 className="font-display tracking-display leading-display text-3xl text-balance">
           Notifications
         </h1>
         <div className="mt-6">
@@ -84,10 +84,10 @@ export default async function TeamNotificationsPage({
         is worth saying precisely because this route lives under /team: "no
         switch exists that could silence a security warning".
       */}
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         {settings.name || "Notifications"}
       </h1>
-      <p className="text-forest/70 mt-3 text-base">
+      <p className="text-forest/70 leading-body mt-3 text-base text-pretty">
         Changing a switch here does not change what they can do.
       </p>
 

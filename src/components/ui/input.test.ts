@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { fieldLabelClass, inputClass, textareaClass } from "./input";
 
 /*
@@ -51,5 +53,40 @@ describe("a field marked invalid", () => {
     const list = inputClass().split(" ");
     expect(list).toContain("duration-150");
     expect(list).toContain("transition-[border-color,background-color]");
+  });
+});
+
+/*
+  `inputClass` is a one-line field, 56px tall (`h-14`). On a textarea that
+  height won over `rows`, so "What happens on the day" was written in a box
+  one line tall that scrolled. A textarea is drawn with `textareaClass`, or
+  with `inputClass` given `h-auto`, as the listing builder's steps are.
+*/
+describe("a textarea", () => {
+  const SRC = join(process.cwd(), "src");
+  const walk = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const full = join(dir, name);
+      return statSync(full).isDirectory()
+        ? walk(full)
+        : /\.tsx$/.test(name) && !/\.test\.tsx$/.test(name)
+          ? [full]
+          : [];
+    });
+
+  it("is as tall as its rows, never the height of a one-line field", () => {
+    const offenders = walk(SRC).flatMap((file) => {
+      const src = readFileSync(file, "utf8");
+      return [...src.matchAll(/<textarea\b[\s\S]*?(?:\/>|<\/textarea>)/g)]
+        .filter(([tag]) => {
+          const args = /\binputClass\(([^)]*)\)/.exec(tag)?.[1];
+          return args !== undefined && !/\bh-auto\b/.test(args);
+        })
+        .map(({ index }) => {
+          const line = src.slice(0, index).split("\n").length;
+          return `${file.replace(process.cwd() + "/", "")}:${line}`;
+        });
+    });
+    expect(offenders).toEqual([]);
   });
 });

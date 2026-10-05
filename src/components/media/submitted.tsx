@@ -44,7 +44,7 @@ export function Submitted({
   if (state.withdrawn) {
     return (
       <Panel>
-        <p className="text-base font-bold">Taken down</p>
+        <p className="text-base font-bold text-balance">Taken down</p>
         {/*
           "Two acts that fail independently, and only the first is
           transactional: it comes off Yuvoy immediately, and the original is
@@ -55,7 +55,7 @@ export function Submitted({
           them is how an operator who asked because somebody objected is told
           the footage is gone when it is not, yet.
         */}
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           {state.withdrawn.note ??
             "It is off Yuvoy. The original is deleted at the video provider shortly afterwards."}
         </p>
@@ -72,12 +72,14 @@ export function Submitted({
 
   return (
     <Panel tone="done">
-      <p className="text-base font-bold">Recorded, and queued for review</p>
-      <p className="text-forest/80 mt-2 text-sm">
+      <p className="text-base font-bold text-balance">
+        Recorded, and queued for review
+      </p>
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
         {attestationNote ??
           "A person at Yuvoy checks this before the clip can appear anywhere."}
       </p>
-      <p className="text-forest/80 mt-2 text-sm">
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
         It is <strong>not published</strong>. Nothing you have uploaded is
         visible to travellers until that check is done.
       </p>

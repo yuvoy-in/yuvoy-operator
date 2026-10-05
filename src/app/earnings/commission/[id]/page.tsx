@@ -65,7 +65,7 @@ export default async function CommissionStatementPage({
   if (!me.canManage) {
     return (
       <Screen nav={{ back: BACK }}>
-        <h1 className="font-display tracking-display text-3xl leading-tight">
+        <h1 className="font-display tracking-display leading-display text-3xl text-balance">
           Commission statement
         </h1>
         <div className="mt-6">
@@ -107,7 +107,7 @@ export default async function CommissionStatementPage({
 
   return (
     <Screen nav={{ back: BACK }}>
-      <h1 className="font-display tracking-display text-3xl leading-tight">
+      <h1 className="font-display tracking-display leading-display text-3xl text-balance">
         {weekLabel(statement.weekStart, statement.weekEnd)}
       </h1>
       <p className="text-forest/80 mt-2 text-base">
@@ -117,7 +117,8 @@ export default async function CommissionStatementPage({
       <Panel className="mt-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="font-display tracking-display text-4xl leading-none">
+            {/* On the board, as every figure on Money is (v3.2). */}
+            <p className="font-board text-4xl leading-none tabular-nums">
               {formatPaise(owing ? owed : statement.commissionPaise)}
             </p>
             <p className="text-forest/70 mt-2 text-sm">
@@ -148,7 +149,12 @@ export default async function CommissionStatementPage({
 
         <div className="border-paper-line mt-5 border-t pt-4">
           <dl className="space-y-2 text-sm">
-            <Row label="Reference" value={statement.reference} plain />
+            <Row
+              label="Reference"
+              value={statement.reference}
+              plain
+              reference
+            />
           </dl>
         </div>
       </Panel>
@@ -182,7 +188,7 @@ export default async function CommissionStatementPage({
       <section className="mt-10" aria-labelledby="statement-trips">
         <h2
           id="statement-trips"
-          className="font-display tracking-display text-2xl leading-tight"
+          className="font-display tracking-display leading-display text-2xl text-balance"
         >
           Trips on this statement
         </h2>
@@ -202,7 +208,7 @@ export default async function CommissionStatementPage({
                 className={panelClass("outline")}
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <p className="text-base font-bold slashed-zero tabular-nums">
+                  <p className="tracking-ref text-base font-bold slashed-zero tabular-nums">
                     {line.bookingReference || "-"}
                   </p>
                   <p className="text-forest/70 shrink-0 text-sm">
@@ -231,7 +237,7 @@ export default async function CommissionStatementPage({
                 */}
                 {Number.isInteger(line.collectedPaise) &&
                 line.collectedPaise !== line.farePaise ? (
-                  <p className="text-forest/70 mt-2 text-sm">
+                  <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
                     You recorded taking {formatPaise(line.collectedPaise)}. The
                     commission is worked out on the fare.
                   </p>
@@ -245,7 +251,7 @@ export default async function CommissionStatementPage({
       <section className="mt-10" aria-labelledby="statement-payments">
         <h2
           id="statement-payments"
-          className="font-display tracking-display text-2xl leading-tight"
+          className="font-display tracking-display leading-display text-2xl text-balance"
         >
           Payments received
         </h2>
@@ -258,7 +264,7 @@ export default async function CommissionStatementPage({
           </div>
         ) : null}
         {payments.length === 0 ? (
-          <p className="text-forest/70 mt-3 text-sm">
+          <p className="text-forest/70 leading-body mt-3 text-sm text-pretty">
             {owing ? "Nothing received yet." : "None recorded."}
           </p>
         ) : (
@@ -275,7 +281,7 @@ export default async function CommissionStatementPage({
                 </div>
                 <p className="text-forest/70 mt-1 text-sm">
                   UPI transaction ID{" "}
-                  <span className="text-forest tracking-wider slashed-zero tabular-nums select-all">
+                  <span className="text-forest tracking-ref slashed-zero tabular-nums select-all">
                     {payment.utr}
                   </span>
                 </p>
@@ -301,15 +307,29 @@ function Row({
   label,
   value,
   plain,
+  reference,
 }: {
   label: string;
   value: string;
   plain?: boolean;
+  /**
+   * The statement's reference, set as every reference is, so a 0 in it never
+   * passes for an O (v3.2).
+   */
+  reference?: boolean;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
       <dt className="text-forest/75">{label}</dt>
-      <dd className={cn("tabular-nums", !plain && "font-bold")}>{value}</dd>
+      <dd
+        className={cn(
+          "tabular-nums",
+          !plain && "font-bold",
+          reference && "tracking-ref slashed-zero",
+        )}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

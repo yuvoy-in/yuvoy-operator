@@ -38,7 +38,7 @@ export function Glance({
       >
         <span
           className={cn(
-            "min-w-0 flex-1 text-base font-bold",
+            "min-w-0 flex-1 text-base font-bold text-balance",
             tone === "alert" && "text-terra-deep",
           )}
         >

@@ -19,7 +19,7 @@ export function SentBack({
   const reason = describeRejection(sentBack.rejectionCode);
   return (
     <div className="border-terra-deep/30 mt-3 border-t pt-3">
-      <p className="text-terra-deep text-sm font-bold">
+      <p className="text-terra-deep text-sm font-bold text-balance">
         We sent this back to you.{" "}
         {reason ??
           sentBack.rejectionNote ??
@@ -31,11 +31,11 @@ export function SentBack({
         branch.
       */}
       {reason && sentBack.rejectionNote?.trim() ? (
-        <p className="text-forest/80 mt-1.5 text-sm">
+        <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
           {sentBack.rejectionNote}
         </p>
       ) : null}
-      <p className="text-forest/70 mt-1.5 text-sm">
+      <p className="text-forest/70 leading-body mt-1.5 text-sm text-pretty">
         It is a draft again. Change it below and send it to us when you are
         ready.
       </p>

@@ -47,7 +47,9 @@ export async function ReviewsTab() {
 
   return (
     <div className="mt-6">
-      <p className="text-base font-bold">{reviewSummaryLine(summary ?? {})}</p>
+      <p className="text-base font-bold text-balance">
+        {reviewSummaryLine(summary ?? {})}
+      </p>
       {tags ? <p className="text-forest/70 mt-1 text-sm">{tags}</p> : null}
 
       {count === 0 ? null : (
@@ -67,14 +69,17 @@ export async function ReviewsTab() {
                     {reviewerName(review.travellerName)}
                   </span>
                 </p>
-                <p className="text-forest/70 mt-1 text-sm">
-                  {review.experienceTitle}
+                {/* The listing's own name, in the host's voice (v3.2). */}
+                <p className="text-forest/70 mt-1 text-sm tabular-nums">
+                  <span className="voice-host">{review.experienceTitle}</span>
                   {review.tripDate
                     ? ` · ${marketDateLabel(review.tripDate)}`
                     : null}
                 </p>
                 {review.comment ? (
-                  <p className="mt-2 text-sm">{review.comment}</p>
+                  <p className="leading-body mt-2 text-sm text-pretty">
+                    {review.comment}
+                  </p>
                 ) : null}
                 {(review.tags ?? []).length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">

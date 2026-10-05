@@ -49,10 +49,16 @@ export function SuspensionBanner({
       role="alert"
       className="border-terra/40 bg-terra/10 text-paper border-b px-5 py-4 lg:px-8"
     >
-      <p className="text-sm font-bold">{message}</p>
-      {admin ? <p className="text-paper/80 mt-2 text-sm">{admin}</p> : null}
+      <p className="text-sm font-bold text-balance">{message}</p>
+      {admin ? (
+        <p className="text-paper/80 leading-body mt-2 text-sm text-pretty">
+          {admin}
+        </p>
+      ) : null}
       {stillAllowed ? (
-        <p className="text-paper/70 mt-2 text-sm">{stillAllowed}</p>
+        <p className="text-paper/70 leading-body mt-2 text-sm text-pretty">
+          {stillAllowed}
+        </p>
       ) : null}
     </div>
   );

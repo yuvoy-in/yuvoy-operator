@@ -11,6 +11,10 @@ import { cn } from "@/lib/cn";
  * On a paper sheet the accent tone is `terra-deep` on `paper-deep` (5.49:1).
  * There is no dark-surface chip in the portal; nothing sits on the stage but
  * chrome.
+ *
+ * `data-chip` is the stable way to find one, from a test or a script. Its
+ * classes are styling and move with the type system: v3.2 took off the
+ * `label` class the team's tests used to find a role chip.
  */
 export type ChipTone = "neutral" | "accent" | "selected";
 
@@ -27,6 +31,7 @@ export function Chip({
 }: { tone?: ChipTone } & HTMLAttributes<HTMLSpanElement>) {
   return (
     <span
+      data-chip=""
       className={cn(
         "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] whitespace-nowrap",
         TONE[tone],

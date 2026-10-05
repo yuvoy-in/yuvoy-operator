@@ -43,10 +43,10 @@ export default function SignUpPage() {
       but sign-in (yuvoy-operator#96).
     */
     <Screen nav="none" stageLabel="For operators">
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Create your account
       </h1>
-      <p className="text-forest/70 mt-3 text-base">
+      <p className="text-forest/70 leading-body mt-3 text-base text-pretty">
         {/*
           The email is named up front while it is required (owner, 21 Sep
           2026): an operator who learns at the fourth field that they need an
@@ -64,10 +64,10 @@ export default function SignUpPage() {
         expensive misunderstanding this flow can create.
       */}
       <Panel className="mt-6 p-4">
-        <p className="text-base font-bold">
+        <p className="text-base font-bold text-balance">
           Creating an account does not put you on sale
         </p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           You can sign in straight away and get set up. Travellers cannot book
           you until somebody at Yuvoy has checked your business over. You will
           see exactly what is outstanding, and who it is with, as soon as you

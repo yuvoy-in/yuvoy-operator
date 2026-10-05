@@ -91,7 +91,7 @@ export default async function ProfilePage() {
   return (
     <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>
       {/* One title (op#80 t2): no eyebrow over it, no caption in the bar. */}
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Business details
       </h1>
 
@@ -109,7 +109,7 @@ export default async function ProfilePage() {
             "ease-interaction hover:bg-paper mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200",
           )}
         >
-          <span className="text-base font-bold">
+          <span className="text-base font-bold text-balance">
             {theirMove.length === 1
               ? "1 thing waiting on you"
               : `${theirMove.length} things waiting on you`}
@@ -168,7 +168,7 @@ export default async function ProfilePage() {
           "ease-interaction hover:bg-paper mt-10 flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-200",
         )}
       >
-        <span className="text-base font-bold">
+        <span className="text-base font-bold text-balance">
           Documents we hold, and when they run out
         </span>
         <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />

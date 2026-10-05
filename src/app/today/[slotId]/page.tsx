@@ -227,25 +227,40 @@ export default async function ManifestPage({
             .map((p) => [p.bookingId as string, p.name?.trim() || "A guest"]),
         )}
       >
-        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        {/*
+          Three voices in one heading (v3.2): the time on the board, untracked
+          as every board figure is, and the experience in its host's words.
+          The "Departure" standing in for a missing name is ours, so it keeps
+          Yuvoy's headline face. Each span repeats the headline leading,
+          because a size utility resets it on the element it sits on.
+        */}
+        <h1 className="font-display tracking-display leading-display text-4xl text-balance">
           {startsAt ? (
             <>
-              <span className="tabular-nums">
+              <span className="font-board tracking-normal tabular-nums">
                 {marketTime(startsAt, timezone)}
               </span>{" "}
             </>
           ) : null}
-          <span className="text-3xl">{manifest.experience || "Departure"}</span>
+          {manifest.experience ? (
+            <span className="voice-host leading-display text-3xl text-balance">
+              {manifest.experience}
+            </span>
+          ) : (
+            <span className="leading-display text-3xl text-balance">
+              Departure
+            </span>
+          )}
         </h1>
 
         {startsAt || manifest.meetingPoint ? (
-          <p className="text-forest/80 mt-2 text-base">
-            {[
-              startsAt ? marketDay(startsAt, timezone) : "",
-              manifest.meetingPoint,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+          <p className="text-forest/80 mt-2 text-base tabular-nums">
+            {/* The day on our clock, the meeting point in its host's words. */}
+            {startsAt ? marketDay(startsAt, timezone) : null}
+            {startsAt && manifest.meetingPoint ? " · " : null}
+            {manifest.meetingPoint ? (
+              <span className="voice-host">{manifest.meetingPoint}</span>
+            ) : null}
           </p>
         ) : null}
 
@@ -275,11 +290,11 @@ export default async function ManifestPage({
         {giveBack ? (
           <section className="mt-6" aria-labelledby="give-back">
             <div className={panelClass("alert")}>
-              <h2 id="give-back" className="text-base font-bold">
+              <h2 id="give-back" className="text-base font-bold text-balance">
                 You are holding {formatPaise(giveBack.totalPaise)} that is not
                 yours
               </h2>
-              <p className="text-forest/80 mt-2 text-sm">
+              <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
                 {giveBack.parties.length === 1
                   ? "This traveller paid you in cash, so nothing of theirs reached us to refund. Hand it back, then record it here."
                   : "These travellers paid you in cash, so nothing of theirs reached us to refund. Hand it back, then record each one here."}
@@ -291,7 +306,7 @@ export default async function ManifestPage({
                     className="border-paper-line border-t pt-3"
                   >
                     <div className="flex items-baseline justify-between gap-3">
-                      <p className="text-base font-bold slashed-zero tabular-nums">
+                      <p className="tracking-ref text-base font-bold slashed-zero tabular-nums">
                         {party.reference || "-"}
                       </p>
                       <p className="shrink-0 text-base font-bold tabular-nums">
@@ -322,7 +337,7 @@ export default async function ManifestPage({
                         refreshLabel="Update the list"
                       />
                     ) : (
-                      <p className="text-forest/70 mt-2 text-sm">
+                      <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
                         An owner, an admin or a manager records it once it is
                         handed back.
                       </p>
@@ -353,7 +368,7 @@ export default async function ManifestPage({
           </dl>
         )}
         {!manifest.calledOff && totals.seatsSoldOffline ? (
-          <p className="text-forest/70 mt-3 text-sm">
+          <p className="text-forest/70 leading-body mt-3 text-sm text-pretty">
             {totals.seatsSoldOffline === 1
               ? "1 more seat sold at your counter is not on this list."
               : `${totals.seatsSoldOffline} more seats sold at your counter are not on this list.`}
@@ -416,10 +431,10 @@ export default async function ManifestPage({
                 />
               ) : (
                 <Panel className="p-6">
-                  <p className="text-base font-bold">
+                  <p className="text-base font-bold text-balance">
                     Everybody on this list has answered
                   </p>
-                  <p className="text-forest/70 mt-2 text-sm">
+                  <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
                     {screening.flagged > 0
                       ? "Some rows below still ask you to check with them before boarding."
                       : "Nothing outstanding for this departure."}
@@ -441,7 +456,9 @@ export default async function ManifestPage({
               Coming
             </h2>
             {confirmedRows.length === 0 ? (
-              <p className="text-forest/70 mt-3 text-base">Nobody booked yet</p>
+              <p className="text-forest/70 leading-body mt-3 text-base text-pretty">
+                Nobody booked yet
+              </p>
             ) : (
               <ul className="mt-3 space-y-3">
                 {confirmedRows.map(({ party, signal }) => (
@@ -516,7 +533,9 @@ function Total({ label, value }: { label: string; value?: number }) {
   return (
     <Panel className="p-4">
       <dt className="label text-forest/70">{label}</dt>
-      <dd className="font-display mt-1 text-3xl leading-none">{value ?? 0}</dd>
+      <dd className="font-board mt-1 text-3xl leading-none tabular-nums">
+        {value ?? 0}
+      </dd>
     </Panel>
   );
 }

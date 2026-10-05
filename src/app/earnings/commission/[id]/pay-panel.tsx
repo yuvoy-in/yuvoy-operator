@@ -57,10 +57,10 @@ export function PayPanel({
           is". Our own words stand in only when it sent none.
         */
         <>
-          <p className="mt-3 text-base">
+          <p className="leading-body mt-3 text-base text-pretty">
             {message ?? "Paying by UPI is not set up yet."}
           </p>
-          <p className="text-forest/80 mt-2 text-sm">
+          <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
             Questions about this statement? Call us on{" "}
             <a
               href={SUPPORT_PHONE_HREF}
@@ -68,7 +68,11 @@ export function PayPanel({
             >
               {SUPPORT_PHONE}
             </a>{" "}
-            with its reference, {reference}.
+            with its reference,{" "}
+            <span className="tracking-ref slashed-zero tabular-nums">
+              {reference}
+            </span>
+            .
           </p>
         </>
       ) : (
@@ -105,7 +109,7 @@ export function PayPanel({
             <div className="flex items-center justify-between gap-3">
               <dt className="text-forest/75 shrink-0">Reference</dt>
               <dd className="flex min-w-0 items-center gap-3">
-                <span className="font-bold tracking-wider slashed-zero tabular-nums select-all">
+                <span className="tracking-ref font-bold slashed-zero tabular-nums select-all">
                   {reference}
                 </span>
                 <CopyValue value={reference} what="the reference" />
@@ -114,10 +118,17 @@ export function PayPanel({
           </dl>
 
           <p className="mt-5 text-sm font-bold">
-            Keep {reference} in the payment note, so we can match your payment
-            to this statement.
+            Keep{" "}
+            {/*
+              The reference as it is typed into the note: set as every
+              reference is, so each character can be checked (v3.2).
+            */}
+            <span className="tracking-ref slashed-zero tabular-nums">
+              {reference}
+            </span>{" "}
+            in the payment note, so we can match your payment to this statement.
           </p>
-          <p className="text-forest/70 mt-2 text-sm">
+          <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
             {link
               ? `Paying from another phone or a computer? Send ${amount} to the UPI ID above from any UPI app, with the reference in the note.`
               : `Send ${amount} to the UPI ID above from any UPI app, with the reference in the note.`}{" "}

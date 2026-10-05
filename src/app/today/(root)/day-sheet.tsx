@@ -77,7 +77,8 @@ function DayChoice({
     <label
       htmlFor={id}
       className={cn(
-        "label ease-interaction inline-flex h-11 cursor-pointer items-center rounded-full border px-5 font-bold transition-colors duration-200 select-none",
+        // A chip: production's 12px bold, in sentence case (v3.2).
+        "ease-interaction inline-flex h-11 cursor-pointer items-center rounded-full border px-5 text-xs font-bold transition-colors duration-200 select-none",
         "border-paper-line bg-paper-deep text-forest hover:border-forest/40",
         "has-[:checked]:border-forest has-[:checked]:bg-forest has-[:checked]:text-paper",
         // The radio itself is invisible, so its focus ring is drawn here.
@@ -142,7 +143,9 @@ function Day({
         {day.summary}
       </h2>
       {day.rows.length === 0 ? (
-        <p className="text-forest/70 mt-2 text-base">{empty}</p>
+        <p className="text-forest/70 leading-body mt-2 text-base text-pretty">
+          {empty}
+        </p>
       ) : (
         <ul className="mt-3 space-y-2">
           {day.rows.map((row) => (
@@ -176,7 +179,8 @@ function DepartureRow({ row }: { row: RunRow }) {
         {row.time}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-base font-bold">{row.title}</span>
+        {/* The listing's own name, in the host's voice (v3.2). */}
+        <span className="voice-host block truncate text-base">{row.title}</span>
         <span className="mt-0.5 block text-sm">
           <span className={TONE[row.tone]}>{row.state}</span>
           {row.checkedIn ? (

@@ -27,8 +27,10 @@ export function JoinForm() {
   if (state.joinedWithoutSession) {
     return (
       <Panel tone="done" role="status" className="mt-8">
-        <p className="text-base font-bold">You are on the account</p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-base font-bold text-balance">
+          You are on the account
+        </p>
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           Sign in with the same number and ask for a code.
         </p>
         <ButtonLink href="/sign-in" className="mt-4">

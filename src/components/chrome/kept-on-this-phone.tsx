@@ -80,8 +80,10 @@ export function KeptOnThisPhone({
   if (!online) {
     strip = (
       <div className={panelClass("alert", "p-4")}>
-        <p className="text-terra-deep text-base font-bold">No signal</p>{" "}
-        <p className="text-forest/80 mt-1 text-sm">
+        <p className="text-terra-deep text-base font-bold text-balance">
+          No signal
+        </p>{" "}
+        <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
           {saved
             ? `${saved} They send when the signal is back.`
             : "Check-ins and cash you take are kept on this phone and sent when the signal is back."}{" "}
@@ -93,8 +95,8 @@ export function KeptOnThisPhone({
   } else if (saved) {
     strip = (
       <div className={panelClass("raised", "p-4")}>
-        <p className="text-base font-bold">Sending</p>{" "}
-        <p className="text-forest/80 mt-1 text-sm">
+        <p className="text-base font-bold text-balance">Sending</p>{" "}
+        <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
           Sending {items?.phrase}, kept on this phone.
         </p>
       </div>
@@ -103,12 +105,15 @@ export function KeptOnThisPhone({
     strip = (
       <div className={panelClass(lines.length > 0 ? "alert" : "done", "p-4")}>
         {sentAt ? (
-          <p className="text-base font-bold">
+          <p className="text-base font-bold text-balance tabular-nums">
             What was kept on this phone was sent at {sentAt}.
           </p>
         ) : null}
         {lines.map((line) => (
-          <p key={line} className="text-forest/80 mt-1 text-sm">
+          <p
+            key={line}
+            className="text-forest/80 leading-body mt-1 text-sm text-pretty"
+          >
             {line}
           </p>
         ))}

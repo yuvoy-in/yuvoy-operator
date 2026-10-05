@@ -64,8 +64,11 @@ export function Sheet({
   leaving = false,
   onLeft,
 }: {
-  /** Named for a screen reader, and drawn as the sheet's heading. */
-  title: string;
+  /**
+   * Named for a screen reader, and drawn as the sheet's heading. A node, so a
+   * heading can set the host's words in their own voice (v3.2).
+   */
+  title: ReactNode;
   onClose: () => void;
   children: ReactNode;
   className?: string;
@@ -230,7 +233,10 @@ export function Sheet({
         )}
       >
         <div className="flex items-start justify-between gap-4">
-          <h2 id={headingId} className="font-display text-2xl">
+          <h2
+            id={headingId}
+            className="font-display tracking-display leading-display text-2xl text-balance"
+          >
             {title}
           </h2>
           <IconButton

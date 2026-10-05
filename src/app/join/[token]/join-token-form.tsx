@@ -50,7 +50,7 @@ export function JoinTokenForm({
   if (state.step === "done") {
     return (
       <Panel tone="done" role="status" className="mt-8">
-        <p className="text-lg font-bold">
+        <p className="text-lg font-bold text-balance">
           You are on {state.invited?.businessName ?? businessName ?? "the team"}
         </p>
         {/*
@@ -58,7 +58,7 @@ export function JoinTokenForm({
           happened, so this is not an error. The ordinary path signs them in
           and redirects, and never renders this panel at all.
         */}
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           Sign in with the same number and ask for a code.
         </p>
         <ButtonLink href="/sign-in" className="mt-5">
@@ -93,7 +93,7 @@ export function JoinTokenForm({
           */}
           {state.invited?.role ? (
             <Panel className="p-4">
-              <p className="text-sm">
+              <p className="leading-body text-sm text-pretty">
                 You have been added to{" "}
                 <span className="font-bold">
                   {state.invited.businessName ?? businessName}
@@ -124,16 +124,18 @@ export function JoinTokenForm({
           */}
           {step.notSent ? (
             <Panel tone="alert" role="alert" className="p-4">
-              <p className="text-sm font-bold">{step.notSent}</p>
+              <p className="text-sm font-bold text-balance">{step.notSent}</p>
             </Panel>
           ) : null}
 
           {leaving && step.leavingText ? (
             <Panel tone="alert" className="p-4">
-              <p className="text-sm font-bold">
+              <p className="text-sm font-bold text-balance">
                 This will take you off {leaving}
               </p>
-              <p className="text-forest/90 mt-2 text-sm">{step.leavingText}</p>
+              <p className="text-forest/90 leading-body mt-2 text-sm text-pretty">
+                {step.leavingText}
+              </p>
               <label className="mt-3 flex items-start gap-3 text-sm">
                 <input
                   type="checkbox"

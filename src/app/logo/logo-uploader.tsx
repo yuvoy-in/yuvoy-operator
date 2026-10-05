@@ -145,7 +145,7 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
         <p role="status" className="text-forest text-sm font-bold">
           Saved. Your mark is on your listings now.
         </p>
-        <p className="text-forest/70 mt-2 text-sm">
+        <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
           Travellers see it on a card with no clip, and on the page about your
           business.
         </p>
@@ -171,7 +171,7 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
         <p role="status" className="text-forest text-sm font-bold">
           Sent to us for a check
         </p>
-        <p className="text-forest/70 mt-2 text-sm">
+        <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
           {hasLogo
             ? "We look at a new logo before it goes on your reels and listings. Your current one stays up until we have."
             : "We look at a new logo before it goes on your reels and listings. It appears there once we have."}

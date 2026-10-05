@@ -48,9 +48,10 @@ export function StageIdentity({
               className="bg-paper/25 h-4 w-px shrink-0"
             />
           ) : null}
+          {/* The business's own name, in its own voice (v3.2). */}
           <span
             className={cn(
-              "text-paper min-w-0 truncate font-bold",
+              "voice-host text-paper min-w-0 truncate",
               size === "rail" ? "text-base" : "text-sm",
             )}
           >

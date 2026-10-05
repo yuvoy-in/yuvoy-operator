@@ -338,7 +338,7 @@ export function NeedsYou({
       <Announcer said={said} />
       {rows.length === 0 && seats.confirmed === undefined ? (
         <div className={panelClass("done", "mt-3")}>
-          <p className="font-display text-2xl leading-tight">
+          <p className="font-display tracking-display leading-display text-2xl text-balance">
             Nothing needs you now
           </p>
           {nextUp ? (
@@ -371,7 +371,9 @@ function DocumentCard({ need }: { need: DocumentNeed }) {
         </p>
         <Chip tone="accent">{need.chip}</Chip>
       </div>
-      <p className="mt-2 text-base leading-snug font-bold">{need.text}</p>
+      <p className="mt-2 text-base leading-snug font-bold text-balance">
+        {need.text}
+      </p>
       {need.action ? (
         <div className="mt-4">
           <ButtonLink href={need.action.href} variant="secondary">
@@ -404,7 +406,7 @@ function ConfirmSeatsRow({
         form's: a year of windows only against an API from before #244.
       */}
       <form action={action}>
-        <p className="text-base font-bold">{need.text}</p>
+        <p className="text-base font-bold text-balance">{need.text}</p>
         {need.detail ? (
           <p className="text-forest/80 mt-1 text-sm">{need.detail}</p>
         ) : null}
@@ -442,7 +444,7 @@ function ConfirmSeatsRow({
 function SeatsConfirmed({ n }: { n: number }) {
   return (
     <li role="status" className={panelClass("done", "p-4")}>
-      <p className="text-base font-bold">
+      <p className="text-base font-bold text-balance">
         {n === 0
           ? "Nothing needed confirming"
           : n === 1
@@ -450,7 +452,7 @@ function SeatsConfirmed({ n }: { n: number }) {
             : `Seats confirmed on ${n} departures`}
       </p>
       {n > 0 ? (
-        <p className="text-forest/80 mt-1 text-sm">
+        <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
           Back on sale, with the seats as they were.
         </p>
       ) : null}
@@ -469,7 +471,7 @@ function LinkRow({ need }: { need: LinkNeed }) {
       <span className="min-w-0 flex-1">
         <span
           className={cn(
-            "block text-base font-bold",
+            "block text-base font-bold text-balance",
             need.tone === "alert" && "text-terra-deep",
           )}
         >

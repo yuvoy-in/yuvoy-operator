@@ -77,12 +77,12 @@ export function CounterSale({
     return (
       <Panel ref={root} tone="done" role="status" className="p-4">
         {"already" in taken ? (
-          <p className="text-sm font-bold">
+          <p className="text-sm font-bold text-balance">
             Already taken back. Its seats are on sale again.
           </p>
         ) : (
           <>
-            <p className="text-sm font-bold">
+            <p className="text-sm font-bold text-balance">
               {seatCount(taken.seatsTakenBack)} taken back and on sale again
             </p>
             <p className="text-forest/80 mt-1.5 text-sm">
@@ -97,7 +97,7 @@ export function CounterSale({
           happened, and somebody at our end closes it" (yuvoy-api#226).
         */}
         {oversold?.incidentId ? (
-          <p className="text-forest/80 mt-1.5 text-sm">
+          <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
             Incident {oversold.incidentId} stays open until we close it.
           </p>
         ) : null}
@@ -128,10 +128,10 @@ export function CounterSale({
     */
     return (
       <Panel tone="alert" className="bg-paper p-4">
-        <p className="text-terra-deep text-base font-bold">
+        <p className="text-terra-deep text-base font-bold text-balance">
           This oversold the departure
         </p>
-        <p className="text-forest/90 mt-2 text-sm">
+        <p className="text-forest/90 leading-body mt-2 text-sm text-pretty">
           {oversold.message ||
             `${oversold.guests} ${oversold.guests === 1 ? "guest" : "guests"} who paid us no longer have a seat.`}
         </p>
@@ -142,7 +142,7 @@ export function CounterSale({
               {oversold.bookings.map((ref) => (
                 <li
                   key={ref}
-                  className="text-sm tracking-wider slashed-zero tabular-nums"
+                  className="tracking-ref text-sm slashed-zero tabular-nums"
                 >
                   {ref}
                 </li>
@@ -169,7 +169,7 @@ export function CounterSale({
   if (saleState.result) {
     return (
       <Panel tone="done" className="p-4">
-        <p className="text-sm font-bold">
+        <p className="text-sm font-bold text-balance">
           {saleState.result.seatsRecorded} recorded at your counter
         </p>
         <p className="text-forest/80 mt-1.5 text-sm">
@@ -298,11 +298,11 @@ function TakeBack({
       <p
         ref={question}
         tabIndex={-1}
-        className="text-sm font-bold outline-none"
+        className="text-sm font-bold text-balance outline-none"
       >
         Take back the {seatCount(seats)} you just recorded?
       </p>
-      <p className="text-forest/80 mt-1 text-sm">
+      <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
         {seats === 1 ? "It goes" : "They go"} back on sale straight away. Only
         do this if {seats === 1 ? "it was" : "they were"} not sold.
         {incident ? " The incident stays open until we close it." : ""}

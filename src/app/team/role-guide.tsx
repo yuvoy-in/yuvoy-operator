@@ -34,7 +34,7 @@ export function RoleGuide() {
           return (
             <div key={role}>
               <dt className="font-bold">{described.label}</dt>
-              <dd className="text-forest/80 mt-1">
+              <dd className="text-forest/80 leading-body mt-1 text-pretty">
                 {described.can}
                 {described.cannot ? (
                   <span className="text-forest/70"> {described.cannot}</span>

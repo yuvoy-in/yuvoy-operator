@@ -132,7 +132,8 @@ export default async function ListingPage({
       ) : null}
 
       <div className="mt-4 flex items-start justify-between gap-3">
-        <h1 className="font-display tracking-display text-3xl leading-tight">
+        {/* The listing's own name, in the host's voice (v3.2). */}
+        <h1 className="voice-host leading-display text-3xl text-balance">
           {listing.title}
         </h1>
         <Chip>{listingLabel(listing)}</Chip>
@@ -147,21 +148,21 @@ export default async function ListingPage({
       */}
       {sentBack ? (
         <Panel tone="alert" className="mt-4 p-4">
-          <p className="text-sm font-bold">
+          <p className="text-sm font-bold text-balance">
             Sent back:{" "}
             {describeRejection(sentBack.rejectionCode) ??
               sentBack.rejectionNote}
           </p>
           {describeRejection(sentBack.rejectionCode) &&
           sentBack.rejectionNote ? (
-            <p className="text-forest/80 mt-1.5 text-sm">
+            <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
               {sentBack.rejectionNote}
             </p>
           ) : null}
         </Panel>
       ) : status === "changes_rejected" && listing.review ? (
         <Panel tone="alert" className="mt-4 p-4">
-          <p className="text-sm font-bold">
+          <p className="text-sm font-bold text-balance">
             Changes declined:{" "}
             {describeRejection(listing.review.rejectionCode) ??
               listing.review.rejectionNote}

@@ -27,6 +27,7 @@ import { waitingItems } from "@/lib/account/waiting";
 import {
   TAB_LABEL,
   TAB_VALUES,
+  UNNAMED_BUSINESS,
   businessName,
   orderForProfile,
   ratingLine,
@@ -36,6 +37,7 @@ import {
   type TileListing,
 } from "@/lib/account/profile";
 import { posterFor } from "@/lib/services/home";
+import { cn } from "@/lib/cn";
 import { listListings, listMedia } from "@/lib/day/manifest";
 import { readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
 import { operatorPageUrl } from "@/lib/site/traveller-app";
@@ -164,6 +166,8 @@ export default async function AccountPage({
     .map((l) => ({ id: l.id!, title: l.title!, status: l.status }));
 
   const name = businessName(profile);
+  // The business's own name, or our stand-in for a missing one (v3.2).
+  const own = name !== UNNAMED_BUSINESS;
   /*
     Each thing waiting on the operator, named and linked where it is fixed
     (op#86 s9). The same list the Business tab's badge counts.
@@ -179,7 +183,13 @@ export default async function AccountPage({
       {active ? (
         <>
           <div className="flex items-start justify-between gap-3">
-            <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+            <h1
+              className={
+                own
+                  ? "voice-host leading-display text-4xl text-balance"
+                  : "font-display tracking-display leading-display text-4xl text-balance"
+              }
+            >
               {name}
             </h1>
             <div className="flex shrink-0 items-center gap-2">
@@ -219,7 +229,14 @@ export default async function AccountPage({
                   className="size-16 rounded-full object-cover"
                 />
               ) : (
-                <span className="bg-paper-deep font-display text-forest flex size-16 items-center justify-center rounded-full text-2xl">
+                <span
+                  className={cn(
+                    "bg-paper-deep text-forest flex size-16 items-center justify-center rounded-full text-2xl",
+                    own
+                      ? "voice-host"
+                      : "font-display tracking-display leading-display text-balance",
+                  )}
+                >
                   {name.slice(0, 1).toUpperCase()}
                 </span>
               )}
@@ -302,7 +319,7 @@ export default async function AccountPage({
           <section aria-labelledby="your-page" className="mt-10">
             <h2
               id="your-page"
-              className="font-display tracking-display text-2xl leading-tight"
+              className="font-display tracking-display leading-display text-2xl text-balance"
             >
               Your page
             </h2>
@@ -312,7 +329,7 @@ export default async function AccountPage({
         </>
       ) : (
         <>
-          <h1 className="font-display tracking-display mt-4 text-4xl leading-[1.05]">
+          <h1 className="font-display tracking-display leading-display mt-4 text-4xl text-balance">
             Your account cannot take bookings
           </h1>
           {/*
@@ -323,25 +340,25 @@ export default async function AccountPage({
             one code covers both, and inventing which would be worse than
             saying neither.
           */}
-          <p className="text-forest/80 mt-3 text-base">
+          <p className="text-forest/80 leading-body mt-3 text-base text-pretty">
             Your sign-in works. It is the business account that is on hold, so
             departures are not on sale and bookings cannot be taken.
           </p>
-          <p className="text-forest/80 mt-3 text-base">
+          <p className="text-forest/80 leading-body mt-3 text-base text-pretty">
             We have not told you why here, because this screen does not know. A
             person at Yuvoy does. That is the conversation to have.
           </p>
 
           <Panel tone="alert" className="mt-8">
-            <p className="text-base font-bold">Call us</p>
+            <p className="text-base font-bold text-balance">Call us</p>
             <p className="mt-1.5 font-mono text-lg">+91 81216 57657</p>
-            <p className="text-forest/70 mt-2 text-sm">
+            <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
               If you have travellers booked on departures today, say so first.
               Those bookings still exist and still need somebody to meet them.
             </p>
           </Panel>
 
-          <p className="text-forest/70 mt-8 text-sm">
+          <p className="text-forest/70 leading-body mt-8 text-sm text-pretty">
             Nothing else in the portal will open while the account is on hold.
             Signing out and back in will not change it.
           </p>
@@ -364,7 +381,7 @@ function Stat({ value, label }: { value: string; label: string }) {
   return (
     <div className="flex flex-col-reverse">
       <dt className="text-forest/70 mt-1 text-xs">{label}</dt>
-      <dd className="font-display text-2xl leading-none">{value}</dd>
+      <dd className="font-board text-2xl leading-none tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -408,7 +425,9 @@ function ListingsGrid({
   if (listings.length === 0) {
     return (
       <div className="mt-6">
-        <p className="text-forest/70 text-base">No listings yet</p>
+        <p className="text-forest/70 leading-body text-base text-pretty">
+          No listings yet
+        </p>
         {canManage && !suspended ? (
           <ButtonLink
             href="/account/listings/new"
@@ -455,7 +474,8 @@ function ListingsGrid({
               )}
               <span className="flex flex-col items-start gap-1.5 p-3">
                 <Chip tone={attention ? "accent" : "neutral"}>{state}</Chip>
-                <span className="text-sm leading-snug font-bold">
+                {/* The listing's own name, in the host's voice (v3.2). */}
+                <span className="voice-host text-sm leading-snug text-balance">
                   {listing.title}
                 </span>
                 {line ? (

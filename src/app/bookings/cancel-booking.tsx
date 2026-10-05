@@ -133,10 +133,12 @@ export function CancelBooking({
         role="status"
         className={cn(className, "p-4")}
       >
-        <p className="text-base font-bold">This booking is cancelled</p>
+        <p className="text-base font-bold text-balance">
+          This booking is cancelled
+        </p>
         {state.done ? (
           <>
-            <p className="text-forest/80 mt-2 text-sm">
+            <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
               {formatPaise(state.done.refundedPaise)} refunded.{" "}
               {state.done.seatsReleased === 1
                 ? "1 seat is back on the departure."
@@ -149,7 +151,9 @@ export function CancelBooking({
               figure of ₹0 does not say.
             */}
             {state.done.note ? (
-              <p className="text-forest/80 mt-2 text-sm">{state.done.note}</p>
+              <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
+                {state.done.note}
+              </p>
             ) : null}
           </>
         ) : (
@@ -157,7 +161,7 @@ export function CancelBooking({
             Nothing to report, and that is the honest answer: "retrying after it
             worked answers `409 already_cancelled` and refunds nothing twice."
           */
-          <p className="text-forest/80 mt-2 text-sm">
+          <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
             It was already cancelled, and nothing was refunded twice.
           </p>
         )}
@@ -206,14 +210,16 @@ export function CancelBooking({
       <p
         ref={question}
         tabIndex={-1}
-        className="text-base font-bold outline-none"
+        className="text-base font-bold text-balance outline-none"
       >
         {who
           ? `Cancel ${who}'s booking, ${reference}?`
           : `Cancel ${reference}?`}
       </p>
-      <p className="text-forest/80 mt-1.5 text-sm">This cannot be undone.</p>
-      <p className="text-forest/80 mt-1.5 text-sm">
+      <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
+        This cannot be undone.
+      </p>
+      <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
         {/*
           Opposite facts, so they are not merged. A cash booking refunds nothing
           because nothing reached us; saying "refunded in full" on one would

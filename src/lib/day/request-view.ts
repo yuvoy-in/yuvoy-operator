@@ -38,6 +38,14 @@ export interface RequestView {
   title: string;
   /** "Snorkel trip to Elephant Beach · Today at 23:30". */
   trip: string;
+  /**
+   * The two halves of `trip`, for a card that sets each in its own voice: the
+   * host's own name for the experience (null when the request carries none,
+   * because the "A departure" standing in for it is ours), and when it leaves
+   * ("" when the request carries no start).
+   */
+  experience: string | null;
+  when: string;
   /** "Asked 2 h ago · Answer by 07:10", whatever of it is known. */
   asked: string;
   /** The clock, from the API's own minutes: "24 min left". */
@@ -67,13 +75,13 @@ export function requestView(
   const grantable = request.seatsGrantable ?? 0;
   const short = !canGrant(request);
 
-  const trip = [request.experience?.trim() || "A departure"];
+  const experience = request.experience?.trim() || null;
   const day = request.startsAt ? marketDayOf(request.startsAt, timezone) : null;
-  if (day && request.startsAt) {
-    trip.push(
-      `${dayCaption(day, ctx.today, ctx.tomorrow, timezone)} at ${marketTime(request.startsAt, timezone)}`,
-    );
-  }
+  const when =
+    day && request.startsAt
+      ? `${dayCaption(day, ctx.today, ctx.tomorrow, timezone)} at ${marketTime(request.startsAt, timezone)}`
+      : "";
+  const trip = [experience ?? "A departure", ...(when ? [when] : [])];
 
   /*
     The deadline as a clock time beside the countdown, the one phrasing both
@@ -96,6 +104,8 @@ export function requestView(
     guests,
     title: `${name}, ${people(guests)}`,
     trip: trip.join(" · "),
+    experience,
+    when,
     asked: asked.join(" · "),
     clock: timeToAnswer(request.minutesToAnswer),
     urgent: urgencyOf(request.minutesToAnswer) === "critical",

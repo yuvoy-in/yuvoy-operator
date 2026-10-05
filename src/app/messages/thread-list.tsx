@@ -141,7 +141,17 @@ function ThreadRowLink({ row, now }: { row: ThreadRow; now: number }) {
     >
       <span className="min-w-0 flex-1">
         <span className="flex items-start justify-between gap-3">
-          <span className="min-w-0 truncate text-base font-bold">{lead}</span>
+          {/*
+            The trip in its host's words (v3.2). The reference standing in for
+            a missing name is ours, so it keeps our weight.
+          */}
+          {row.experience ? (
+            <span className="voice-host min-w-0 truncate text-base">
+              {lead}
+            </span>
+          ) : (
+            <span className="min-w-0 truncate text-base font-bold">{lead}</span>
+          )}
           {unread ? (
             <>
               <span
@@ -172,7 +182,7 @@ function ThreadRowLink({ row, now }: { row: ThreadRow; now: number }) {
           {last ? ` ${last}` : ""}
         </span>
         {reference ? (
-          <span className="text-forest/70 mt-1 block text-xs tracking-wider slashed-zero tabular-nums">
+          <span className="text-forest/70 tracking-ref mt-1 block text-xs slashed-zero tabular-nums">
             {reference}
           </span>
         ) : null}

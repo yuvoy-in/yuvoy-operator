@@ -50,7 +50,7 @@ export default async function SettlementPage({
   if (!me.canManage) {
     return (
       <Screen nav={{ back: BACK }}>
-        <h1 className="font-display tracking-display text-3xl leading-tight">
+        <h1 className="font-display tracking-display leading-display text-3xl text-balance">
           Payout
         </h1>
         <div className="mt-6">
@@ -86,7 +86,7 @@ export default async function SettlementPage({
         it is a fact rather than a label, so it is the line under the heading,
         with what the week is waiting for.
       */}
-      <h1 className="font-display tracking-display text-3xl leading-tight">
+      <h1 className="font-display tracking-display leading-display text-3xl text-balance">
         {weekLabel(settlement.periodStart, settlement.periodEnd)}
       </h1>
       <p className="text-forest/80 mt-2 text-base">{stateLine(settlement)}</p>
@@ -94,7 +94,7 @@ export default async function SettlementPage({
       <Panel className="mt-6">
         <p
           className={cn(
-            "font-display tracking-display text-4xl leading-none",
+            "font-board text-4xl leading-none tabular-nums",
             isOwedBack(settlement.netPaise) && "text-terra-deep",
           )}
         >
@@ -126,7 +126,7 @@ export default async function SettlementPage({
                 value={formatPaise(settlement.adjustmentsPaise)}
               />
             </dl>
-            <p className="text-forest/70 mt-2 text-sm">
+            <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
               A correction carried into this payout. It has no row of its own,
               so the bookings below add up to{" "}
               {formatPaise(settlement.netPaise - settlement.adjustmentsPaise)}.
@@ -143,7 +143,12 @@ export default async function SettlementPage({
         {settlement.state === "settled" && settlement.reference ? (
           <div className="border-paper-line mt-5 border-t pt-4">
             <dl className="space-y-2 text-sm">
-              <Row label="Bank reference" value={settlement.reference} plain />
+              <Row
+                label="Bank reference"
+                value={settlement.reference}
+                plain
+                reference
+              />
             </dl>
           </div>
         ) : null}
@@ -154,7 +159,7 @@ export default async function SettlementPage({
       ) : null}
 
       <section className="mt-10">
-        <h2 className="font-display tracking-display text-2xl leading-tight">
+        <h2 className="font-display tracking-display leading-display text-2xl text-balance">
           What it paid
         </h2>
 
@@ -171,7 +176,7 @@ export default async function SettlementPage({
               <li key={line.bookingId}>
                 <Panel tone="outline">
                   <div className="flex items-baseline justify-between gap-4">
-                    <p className="text-sm tracking-wider slashed-zero tabular-nums">
+                    <p className="tracking-ref text-sm slashed-zero tabular-nums">
                       {line.reference}
                     </p>
                     <p
@@ -219,15 +224,29 @@ function Row({
   label,
   value,
   plain,
+  reference,
 }: {
   label: string;
   value: string;
   plain?: boolean;
+  /**
+   * A reference (the bank's), set as every reference is, so a 0 in it never
+   * passes for an O (v3.2).
+   */
+  reference?: boolean;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
       <dt className="text-forest/75">{label}</dt>
-      <dd className={cn("tabular-nums", !plain && "font-bold")}>{value}</dd>
+      <dd
+        className={cn(
+          "tabular-nums",
+          !plain && "font-bold",
+          reference && "tracking-ref slashed-zero",
+        )}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

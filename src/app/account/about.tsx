@@ -14,7 +14,16 @@ export function About({ text }: { text: string }) {
 
   return (
     <div className="mt-3">
-      <p className={open ? "text-sm" : "line-clamp-2 text-sm"}>{text}</p>
+      {/* The business's own words, in its own voice (v3.2). */}
+      <p
+        className={
+          open
+            ? "voice-host leading-body text-sm text-pretty"
+            : "voice-host leading-body line-clamp-2 text-sm text-pretty"
+        }
+      >
+        {text}
+      </p>
       {/*
         Always offered rather than measured. Knowing whether two lines actually
         clipped needs the rendered height, which is a layout read on every

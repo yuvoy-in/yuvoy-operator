@@ -71,7 +71,7 @@ export function LocationStep({
           name="meetingPoint"
           required
           defaultValue={listing.meetingPoint ?? ""}
-          className={inputClass("mt-2")}
+          className={inputClass("voice-host mt-2")}
           aria-invalid={marked("meetingPoint")}
           aria-describedby={describedBy("meetingPoint", "l-meeting")}
         />
@@ -86,7 +86,7 @@ export function LocationStep({
           id="l-landmark"
           name="meetingLandmark"
           defaultValue={listing.meetingLandmark ?? ""}
-          className={inputClass("mt-2")}
+          className={inputClass("voice-host mt-2")}
           aria-describedby={describedBy(
             "meetingLandmark",
             "l-landmark",
@@ -110,7 +110,7 @@ export function LocationStep({
           name="inclusions"
           rows={4}
           defaultValue={(listing.inclusions ?? []).join("\n")}
-          className={inputClass("mt-2 h-auto py-3")}
+          className={inputClass("voice-host mt-2 h-auto py-3")}
           aria-describedby="l-inclusions-help"
         />
         <p id="l-inclusions-help" className="text-forest/70 mt-1.5 text-xs">
@@ -127,7 +127,7 @@ export function LocationStep({
           name="requirements"
           rows={4}
           defaultValue={(listing.requirements ?? []).join("\n")}
-          className={inputClass("mt-2 h-auto py-3")}
+          className={inputClass("voice-host mt-2 h-auto py-3")}
           aria-describedby="l-requirements-help"
         />
         <p id="l-requirements-help" className="text-forest/70 mt-1.5 text-xs">
@@ -144,7 +144,7 @@ export function LocationStep({
           name="safetyNotes"
           rows={3}
           defaultValue={listing.safetyNotes ?? ""}
-          className={inputClass("mt-2 h-auto py-3")}
+          className={inputClass("voice-host mt-2 h-auto py-3")}
         />
       </div>
 

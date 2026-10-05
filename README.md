@@ -559,6 +559,25 @@ The portal's half of the motion system the owner approved on 4 Oct 2026
 durations, and fails a press whose transition list does not name `scale`.
 `motion.test.ts` fails when a curve in script drifts from `@theme`.
 
+## Typography
+
+The portal's half of the three voices the owner approved on 5 Oct 2026
+(`yuvoy/typography-lab`, decision in its `APPROVALS.md`). The system is
+`yuvoy-app/docs/typography-system.md`; how the portal applies it is
+`docs/typography-system.md`.
+
+- **The business's public words are in Gotu** (`voice-host`), on screen and in
+  the fields that write them, so an operator sees their words as travellers
+  will. A stand-in we write when they wrote nothing ("Your listing") is ours.
+- **The portal speaks in Anek**, with sentence-case labels. Tracked capitals
+  are gone.
+- **The figure that leads a block is on the board** (`font-board`): a
+  departure's time, the day's counts, every lead figure on Money.
+- **References are tabular with a slashed zero**, the IFSC included.
+
+`palette.test.ts` checks every class string against the three voices, and
+`pnpm tokens:check` keeps the type tokens the app's.
+
 ## Copy
 
 - **No long dash in anything an operator reads.** No em dash (U+2014), en dash

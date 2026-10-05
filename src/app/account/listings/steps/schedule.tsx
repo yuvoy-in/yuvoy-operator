@@ -36,8 +36,10 @@ export function ScheduleStep({
     <Panel className="mt-6">
       {/* One title: the stepper names the step (#80 t2, #85 s11). */}
       <h2 className="sr-only">Schedule</h2>
-      <p className="text-forest/70 text-sm">You can leave this until later.</p>
-      <p className="text-forest/70 mt-2 text-sm">
+      <p className="text-forest/70 leading-body text-sm text-pretty">
+        You can leave this until later.
+      </p>
+      <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
         Departures made on a draft do not sell. They go on sale with the listing
         when it is published.
       </p>

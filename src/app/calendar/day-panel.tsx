@@ -101,8 +101,10 @@ export function DayPanel({
           <ul className="mt-2 space-y-3">
             {receipts.map((r) => (
               <li key={r.key} className="text-sm">
-                <p className="font-bold">{r.title}</p>
-                <p className="text-forest/80 mt-1">{r.note}</p>
+                <p className="font-bold text-balance">{r.title}</p>
+                <p className="text-forest/80 leading-body mt-1 text-pretty">
+                  {r.note}
+                </p>
               </li>
             ))}
           </ul>
@@ -119,14 +121,14 @@ export function DayPanel({
           <ul className="mt-2 space-y-3">
             {closures.map((closure) => (
               <li key={closure.id}>
-                <p className="text-sm font-bold">
+                <p className="text-sm font-bold text-balance">
                   {closure.departureId
                     ? "One departure"
                     : closure.experienceId
                       ? "One listing"
                       : "The whole day"}
                 </p>
-                <p className="text-forest/80 mt-1 text-sm">
+                <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
                   {closureLine(closure)}
                 </p>
                 <ReopenClosure

@@ -37,7 +37,7 @@ export function ConfirmSeats({
     const n = state.confirmed;
     return (
       <Panel tone="done" role="status" className="p-4">
-        <p className="text-base font-bold">
+        <p className="text-base font-bold text-balance">
           {n === 0
             ? "Nothing needed confirming"
             : n === 1
@@ -51,7 +51,7 @@ export function ConfirmSeats({
           so no horizon is claimed either way.
         */}
         {n > 0 ? (
-          <p className="text-forest/80 mt-1.5 text-sm">
+          <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
             Anything that was off sale only for this is back on sale. The seat
             counts are as they were.
           </p>
@@ -67,7 +67,7 @@ export function ConfirmSeats({
       {experienceId ? (
         <input type="hidden" name="experienceId" value={experienceId} />
       ) : null}
-      <p className="text-base font-bold">
+      <p className="text-base font-bold text-balance">
         {notOnSale > 0
           ? notOnSale === 1
             ? "1 departure is not on sale"
@@ -76,7 +76,7 @@ export function ConfirmSeats({
             ? "1 departure goes off sale within a day"
             : `${goingOffSoon} departures go off sale within a day`}
       </p>
-      <p className="text-forest/80 mt-1.5 text-sm">
+      <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
         {notOnSale > 0
           ? "Nobody has confirmed their seats for two days, so travellers cannot book them."
           : "Unless somebody confirms their seats, travellers stop being able to book them."}

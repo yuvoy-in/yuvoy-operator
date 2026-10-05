@@ -90,7 +90,10 @@ export function JoinLink({
           )}
         </Button>
         {state === "failed" ? (
-          <p role="status" className="text-forest/80 text-sm">
+          <p
+            role="status"
+            className="text-forest/80 leading-body text-sm text-pretty"
+          >
             Could not copy it here. Open this page on another device, or invite
             them again to see the link.
           </p>
@@ -101,8 +104,8 @@ export function JoinLink({
 
   return (
     <div>
-      <p className="text-base font-bold">Send them this link</p>
-      <p className="text-forest/80 mt-1 text-sm">
+      <p className="text-base font-bold text-balance">Send them this link</p>
+      <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
         Nothing is granted until they open it and enter their own number.
       </p>
 
@@ -132,7 +135,10 @@ export function JoinLink({
             Not an error to apologise for: the link is right there and
             selectable. This says what to do instead, which is all it can.
           */
-          <p role="status" className="text-forest/80 text-sm">
+          <p
+            role="status"
+            className="text-forest/80 leading-body text-sm text-pretty"
+          >
             Could not copy it here. Select the link above and copy it by hand.
           </p>
         ) : null}

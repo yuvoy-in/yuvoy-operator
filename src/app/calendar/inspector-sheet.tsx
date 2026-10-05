@@ -88,7 +88,7 @@ export function InspectorSheet({
 }: {
   /** The departure this is about, as the address names it. */
   dep: string;
-  title: string;
+  title: ReactNode;
   closeHref: string;
   children: ReactNode;
 }) {

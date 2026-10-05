@@ -57,8 +57,14 @@ export function CashCard({
         <BanknoteIcon className="size-4" />
         Cash to take
       </p>
-      <p className="mt-2 text-lg leading-snug font-bold">{need.text}</p>
-      <p className="text-forest/80 mt-1 text-sm">{need.detail}</p>
+      <p className="mt-2 text-lg leading-snug font-bold text-balance">
+        {need.text}
+      </p>
+      {/* The departure in its host's words, the count in ours (v3.2). */}
+      <p className="text-forest/80 mt-1 text-sm">
+        <span className="voice-host">{need.experience}</span>
+        {` · ${need.partyCount}`}
+      </p>
 
       {open ? (
         parties.length === 0 ? (
@@ -113,9 +119,9 @@ function PartyCash({
   const told = useCallback(() => onRecorded(party), [onRecorded, party]);
   return (
     <li className="border-paper-line border-t pt-3 first:border-t-0">
-      <p className="text-base font-bold">{party.name}</p>
+      <p className="text-base font-bold text-balance">{party.name}</p>
       <p className="text-forest/80 text-sm">
-        <span className="tracking-wider slashed-zero tabular-nums">
+        <span className="tracking-ref slashed-zero tabular-nums">
           {party.reference}
         </span>
         {" · "}

@@ -4,8 +4,12 @@ import { Panel } from "./panel";
 export function Empty({ title, body }: { title: string; body?: string }) {
   return (
     <Panel className="p-6">
-      <p className="text-base font-bold">{title}</p>
-      {body ? <p className="text-forest/70 mt-2 text-sm">{body}</p> : null}
+      <p className="text-base font-bold text-balance">{title}</p>
+      {body ? (
+        <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
+          {body}
+        </p>
+      ) : null}
     </Panel>
   );
 }

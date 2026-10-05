@@ -47,7 +47,11 @@ export function StepShell({
   return (
     <Panel className="mt-6">
       <h2 className="sr-only">{title}</h2>
-      {blurb ? <p className="text-forest/70 text-sm">{blurb}</p> : null}
+      {blurb ? (
+        <p className="text-forest/70 leading-body text-sm text-pretty">
+          {blurb}
+        </p>
+      ) : null}
 
       <form action={action} className={blurb ? "mt-5 space-y-5" : "space-y-5"}>
         {children}

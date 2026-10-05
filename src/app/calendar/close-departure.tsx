@@ -113,8 +113,10 @@ export function CloseDeparture({
   if (state.done) {
     return frame(
       <Panel ref={root} tone="done" role="status" className="p-4">
-        <p className="text-sm font-bold">{heading}</p>
-        <p className="text-forest/80 mt-1 text-sm">{note}</p>
+        <p className="text-sm font-bold text-balance">{heading}</p>
+        <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
+          {note}
+        </p>
       </Panel>,
     );
   }
@@ -144,11 +146,11 @@ export function CloseDeparture({
       <p
         ref={question}
         tabIndex={-1}
-        className="text-sm font-bold outline-none"
+        className="text-sm font-bold text-balance outline-none"
       >
         Stop selling {time} {title}?
       </p>
-      <p className="text-forest/80 mt-1 text-sm">
+      <p className="text-forest/80 leading-body mt-1 text-sm text-pretty">
         New bookings stop straight away. Anybody already on it stays booked, and
         the rest of the day keeps selling.
       </p>
