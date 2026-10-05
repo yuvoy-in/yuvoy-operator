@@ -76,6 +76,11 @@ carried the label, 700 (`font-bold`) for buttons, titles, navigation and emphasi
 portal has no `text-body` step, so its sun mode can lift body a size like any other `text-sm`.
 Figures sit at `leading-none`. `cn()` keeps a leading written before a size.
 
+The host's words are clamped only at relaxed leadings (`line-clamp-2 text-sm`, `truncate text-base`),
+where Gotu's accents fit inside the line. A clamped host headline at 1.08 would cut the top off a
+capital's accent; it takes the room the app's document describes, and `palette.test.ts` fails one
+without it.
+
 ## Letter spacing
 
 `tracking-display` (-0.005em) on headlines, `tracking-ref` (0.04em) on references, 0 everywhere
