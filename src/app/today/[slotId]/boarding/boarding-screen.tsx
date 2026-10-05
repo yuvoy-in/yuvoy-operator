@@ -455,14 +455,22 @@ export function BoardingScreen({
                               {party.guests === 1
                                 ? "1 guest"
                                 : `${party.guests} guests`}
-                              {" · "}
-                              <span className="tracking-ref slashed-zero tabular-nums">
+                              {/*
+                                The reference moves down whole rather than
+                                breaking at its own hyphen ("YV-" / "CANCEL2B"
+                                at 320px): it is what an operator reads
+                                against a phone at the jetty. An inline block
+                                still wraps inside if it is ever wider than
+                                the column, so it can never overflow.
+                              */}
+                              {"\u00a0· "}
+                              <span className="tracking-ref inline-block max-w-full slashed-zero tabular-nums">
                                 {party.reference}
                               </span>
                             </span>
                             {flags.length > 0 ? (
                               <span className="text-terra-deep mt-0.5 block text-sm font-bold">
-                                {flags.join(" · ")}
+                                {flags.join("\u00a0· ")}
                               </span>
                             ) : null}
                           </button>
@@ -548,7 +556,7 @@ export function BoardingScreen({
                             {party.guests === 1
                               ? "1 guest"
                               : `${party.guests} guests`}
-                            {" · "}
+                            {"\u00a0· "}
                             {holding
                               ? "Checking in"
                               : state?.phase === "sending"
