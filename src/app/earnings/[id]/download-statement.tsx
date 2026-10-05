@@ -59,8 +59,13 @@ export function DownloadStatement({
 
   return (
     <div className={className}>
-      <Button variant="outline" disabled={pending} onClick={save}>
-        {pending ? "Preparing…" : "Download statement"}
+      <Button
+        variant="outline"
+        pending={pending}
+        pendingLabel="Preparing"
+        onClick={save}
+      >
+        Download statement
       </Button>
       {failure ? (
         <p role="alert" className="text-terra-deep mt-3 text-sm">

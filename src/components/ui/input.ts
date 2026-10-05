@@ -1,5 +1,9 @@
 import { cn } from "@/lib/cn";
 
+/** The invalid mark: the accent border and a 1px ring inside it, no room taken. */
+const INVALID =
+  "aria-[invalid=true]:border-terra-deep aria-[invalid=true]:inset-ring aria-[invalid=true]:inset-ring-terra-deep";
+
 /**
  * The field classes, in one place.
  *
@@ -11,14 +15,21 @@ import { cn } from "@/lib/cn";
 export function inputClass(className?: string): string {
   return cn(
     "rounded-control border-paper-line bg-paper-deep text-forest w-full border px-4 text-base outline-none",
-    "transition-[border-color,background-color] duration-200 ease-interaction",
+    "transition-[border-color,background-color] duration-150 ease-interaction",
     "focus:border-forest/60 focus:bg-paper placeholder:text-forest/70",
     /*
       A field marked invalid is SEEN to be, not only announced: a refused save,
       or the field Edit was opened for (#85 s10). It was `aria-invalid` alone,
       which a sighted operator never saw.
+
+      Two pixels of the accent, drawn as the 1px border plus a 1px ring inside
+      it (O04 A, approved 4 Oct 2026). The border used to grow from 1px to 2px,
+      which moved the words in the box by a pixel in the one frame the mark
+      landed: a field that twitches as it is marked. The ring takes no room,
+      so nothing in the field moves; the border's colour carries the 150ms
+      fade, and the ring, a shadow, is never animated.
     */
-    "aria-[invalid=true]:border-terra-deep aria-[invalid=true]:border-2",
+    INVALID,
     "h-14",
     className,
   );
@@ -28,9 +39,9 @@ export function inputClass(className?: string): string {
 export function textareaClass(className?: string): string {
   return cn(
     "rounded-control border-paper-line bg-paper-deep text-forest w-full border p-4 text-base outline-none",
-    "transition-[border-color,background-color] duration-200 ease-interaction",
+    "transition-[border-color,background-color] duration-150 ease-interaction",
     "focus:border-forest/60 focus:bg-paper",
-    "aria-[invalid=true]:border-terra-deep aria-[invalid=true]:border-2",
+    INVALID,
     className,
   );
 }

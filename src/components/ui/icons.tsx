@@ -258,6 +258,33 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+/**
+ * The same tick, drawn on arrival: its stroke is measured as one unit
+ * (`pathLength`), so `.motion-tick` in globals.css can draw it from nothing
+ * in 200ms. It starts a breath after the line it sits in, and the breath is
+ * the experiment's own: `after="receipt"` in an answer's receipt (O02, 80ms),
+ * `after="line"` in a form's answer line (O04's "Now offering 10.", 60ms).
+ * Under reduced motion it is simply there.
+ */
+export function DrawnCheckIcon({
+  after,
+  className,
+  ...props
+}: IconProps & { after: "receipt" | "line" }) {
+  return (
+    <Icon
+      className={cn(
+        "motion-tick",
+        after === "receipt" ? "motion-tick-receipt" : "motion-tick-line",
+        className,
+      )}
+      {...props}
+    >
+      <path d="m5 12 5 5 9-10" pathLength={1} />
+    </Icon>
+  );
+}
+
 export function ZapIcon(props: IconProps) {
   return (
     <Icon {...props}>

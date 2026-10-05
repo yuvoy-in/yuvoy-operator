@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 
 vi.mock("./actions", () => ({
   withdrawMedia: vi.fn(async () => ({})),
@@ -41,5 +42,33 @@ describe("taking a clip down", () => {
     expect(screen.getByText("Why is it coming down?")).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "Not now" }));
     expect(screen.getByRole("button", { name: "Take it down" })).toHaveFocus();
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026): the question fades in where the words were,
+  and Not now fades a held copy of it out as they come back
+  (`useStillConfirm`).
+*/
+describe("arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
+  it("fades the question in, and Not now fades a held copy out as the words come back", async () => {
+    const user = userEvent.setup();
+    render(<WithdrawForm mediaAssetId="med_1" attachedTo="Wall dive" />);
+    await user.click(screen.getByRole("button", { name: "Take it down" }));
+    const question = screen.getByText("Why is it coming down?");
+    expect(motion.fadeOf(question.closest("form"))).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Not now" }));
+    const trigger = screen.getByRole("button", { name: "Take it down" });
+    expect(motion.fadeOf(trigger.parentElement)).toBeDefined();
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Why is it coming down?");
+    expect(motion.exitOf(copy)).toBeDefined();
   });
 });

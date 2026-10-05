@@ -15,6 +15,7 @@ import { Chip } from "@/components/ui/chip";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { Panel } from "@/components/ui/panel";
 import { inputClass } from "@/components/ui/input";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { withFrom } from "@/lib/site/back-to";
 
 type Act = "time" | "seats" | "stop" | "off";
@@ -40,7 +41,11 @@ type Act = "time" | "seats" | "stop" | "off";
  *
  * Both confirms are the ones the Calendar and the departure's own screen use,
  * opened straight on their question: one confirm per act, so the sentence
- * that stopping cancels nobody cannot drift between two screens.
+ * that stopping cancels nobody cannot drift between two screens. They arrive
+ * and leave as they do there (O06 B, `useStillConfirm`): this row is what
+ * opens them and takes them away, so it draws the two fades around them, the
+ * confirm fading in under the act that asked for it and, put away, fading
+ * out as a held copy.
  *
  * ## What a suspended business keeps
  *
@@ -85,8 +90,11 @@ export function DepartureRow({
   };
   const manageable = canManage && !calledOff;
   const choose = (act: Act) => setOpen(open === act ? null : act);
+  const { root, frame } = useStillConfirm(
+    open === "stop" || open === "off" ? `confirm:${open}` : "none",
+  );
 
-  return (
+  return frame(
     <li className="border-paper-line border-t pt-3 first:border-t-0 first:pt-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-base font-bold tabular-nums">{time}</span>
@@ -229,7 +237,7 @@ export function DepartureRow({
       ) : null}
 
       {open === "stop" ? (
-        <div className="mt-3">
+        <div ref={root} className="mt-3">
           <CloseDeparture
             slotId={slot.id}
             title={slot.title}
@@ -243,20 +251,22 @@ export function DepartureRow({
       ) : null}
 
       {open === "off" ? (
-        <CallOffPanel
-          slotId={slot.id}
-          alreadyCalledOff={calledOff}
-          canManage={canManage}
-          time={time}
-          title={slot.title}
-          day={shortDate(marketDayOf(slot.startsAt, slot.timezone) ?? "")}
-          startOpen
-          onKeep={() => setOpen(null)}
-          onBusyChange={setBusy}
-          className="mt-3"
-        />
+        <div ref={root} className="mt-3">
+          <CallOffPanel
+            slotId={slot.id}
+            alreadyCalledOff={calledOff}
+            canManage={canManage}
+            time={time}
+            title={slot.title}
+            day={shortDate(marketDayOf(slot.startsAt, slot.timezone) ?? "")}
+            startOpen
+            onKeep={() => setOpen(null)}
+            onBusyChange={setBusy}
+            className=""
+          />
+        </div>
       ) : null}
-    </li>
+    </li>,
   );
 }
 
@@ -345,9 +355,10 @@ function MoveTime({
           type="submit"
           block={false}
           className="flex-1"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Moving"
         >
-          {pending ? "Moving…" : "Move it"}
+          Move it
         </Button>
         <Button
           variant="secondary"

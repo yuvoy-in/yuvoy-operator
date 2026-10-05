@@ -19,7 +19,7 @@ const VARIANT: Record<Variant, string> = {
 };
 
 const BASE =
-  "inline-flex size-11 shrink-0 items-center justify-center rounded-full transition-[transform,background-color,color] duration-200 ease-interaction active:scale-[0.96] disabled:pointer-events-none disabled:opacity-55";
+  "motion-disc inline-flex size-11 shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:pointer-events-none disabled:opacity-55";
 
 export function IconButton({
   label,

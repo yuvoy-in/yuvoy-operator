@@ -153,8 +153,12 @@ export function MessageCard({
 
       {phase === "closed" || phase === "opening" ? (
         <div className="mt-4">
-          <Button onClick={open} disabled={phase === "opening"}>
-            {phase === "opening" ? "Opening…" : "Read and reply"}
+          <Button
+            onClick={open}
+            pending={phase === "opening"}
+            pendingLabel="Opening"
+          >
+            Read and reply
           </Button>
         </div>
       ) : null}
@@ -251,9 +255,11 @@ export function MessageCard({
               <div className="mt-3">
                 <Button
                   type="submit"
-                  disabled={sending || text.trim().length === 0}
+                  pending={sending}
+                  pendingLabel="Sending"
+                  disabled={text.trim().length === 0}
                 >
-                  {sending ? "Sending…" : "Send"}
+                  Send
                 </Button>
               </div>
             </form>

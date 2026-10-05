@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { setCapacity, type CapacityState } from "./actions";
 import { CloseDeparture } from "./close-departure";
@@ -10,7 +10,13 @@ import { seatsUnconfirmed } from "@/lib/day/off-sale";
 import { marketTime } from "@/lib/format/market-time";
 import { helpHref } from "@/lib/help/types";
 import { Button } from "@/components/ui/button";
+import { DrawnCheckIcon } from "@/components/ui/icons";
 import { inputClass } from "@/components/ui/input";
+import { followersOf, slideFrom, topsOf } from "@/lib/motion/flip";
+import { MeasureBefore } from "@/lib/motion/measure-before";
+import { cn } from "@/lib/cn";
+import { useNoteSeatsSaved } from "./inspector-sheet";
+import { forgetSeatsSent, noteSeatsSent } from "./seats-sent";
 import { withFrom } from "@/lib/site/back-to";
 
 /**
@@ -64,10 +70,27 @@ export function DepartureControls({
   const calledOff = slot.status === "cancelled";
   const time = marketTime(slot.startsAt, slot.timezone);
 
+  /*
+    What is sold, faded in when a save changes it under the operator (O08 A:
+    the sheet's own line arrives with the receipt), and simply there when
+    the inspector opens.
+  */
+  const line = `${slot.sold} of ${slot.seats} sold`;
+  const [drawnLine, setDrawnLine] = useState(line);
+  const [lineChanges, setLineChanges] = useState(0);
+  if (line !== drawnLine) {
+    setDrawnLine(line);
+    setLineChanges((n) => n + 1);
+  }
+
   return (
     <div className="space-y-4">
       <div className="space-y-1.5 text-sm">
-        <p className="text-forest/80">
+        <p
+          key={lineChanges}
+          data-motion={lineChanges > 0 ? "" : undefined}
+          className={cn("text-forest/80", lineChanges > 0 && "motion-in")}
+        >
           {slot.sold} of {slot.seats} sold · {slot.remaining} left
           {/*
             Why six seats read as four (yuvoy-api#226). The count is already
@@ -175,12 +198,8 @@ export function ConfirmDepartureSeats({ slot }: { slot: OperatorSlot }) {
       <input type="hidden" name="slotId" value={slot.id} />
       <input type="hidden" name="seats" value={slot.seats} />
       <input type="hidden" name="sold" value={slot.sold} />
-      <Button type="submit" disabled={pending}>
-        {pending
-          ? "Confirming…"
-          : slot.seats === 1
-            ? "Confirm 1 seat"
-            : `Confirm ${slot.seats} seats`}
+      <Button type="submit" pending={pending} pendingLabel="Confirming">
+        {slot.seats === 1 ? "Confirm 1 seat" : `Confirm ${slot.seats} seats`}
       </Button>
       {/*
         What confirming means is not obvious from the word, and it is not a
@@ -209,81 +228,131 @@ export function ConfirmDepartureSeats({ slot }: { slot: OperatorSlot }) {
  * already sold." The floor is said under the box, and the API's own 409
  * copy is rendered verbatim when it refuses, because it says what to do
  * instead.
+ *
+ * ## The answer arrives, it is not dropped in (O04 A, approved 4 Oct 2026)
+ *
+ * "Set seats" keeps its colour while it saves (Button's `pending`). The line
+ * that answers, "Now offering 10." with a tick that draws or the refusal,
+ * rises 4px as it fades in (150ms), and whatever follows the form on the
+ * sheet eases down to make room for it (200ms) instead of being pushed in
+ * one frame. The room is measured before the commit that draws the line, so
+ * it is shown, not guessed. Under reduced motion the line fades in 120ms,
+ * nothing slides and the tick is simply there.
+ *
+ * The count is noted before it is sent (`noteSeatsSent`), so the desktop
+ * board's fill bar grows when the board it re-reads draws it (O08 A), and
+ * only then.
  */
 export function SeatsForm({ slot }: { slot: OperatorSlot }) {
   const [state, act, saving] = useActionState<CapacityState, FormData>(
-    setCapacity,
+    async (prev, form) => {
+      const seats = Number(form.get("seats"));
+      if (Number.isInteger(seats)) noteSeatsSent(slot.id, seats);
+      return setCapacity(prev, form);
+    },
     {},
   );
+  const form = useRef<HTMLFormElement>(null);
+
+  // Saved in the calendar's inspector: its row is marked as the sheet goes.
+  const noteSaved = useNoteSeatsSaved();
+  const saved = state.seats !== undefined && !state.message;
+  useEffect(() => {
+    if (saved) noteSaved(slot.id);
+  }, [saved, state, noteSaved, slot.id]);
+  // Refused: the board will not draw what was sent.
+  useEffect(() => {
+    if (state.message) forgetSeatsSent(slot.id);
+  }, [state, slot.id]);
 
   return (
-    <form action={act}>
-      <input type="hidden" name="slotId" value={slot.id} />
-      {/*
+    <MeasureBefore
+      watch={state}
+      capture={() =>
+        form.current ? topsOf(followersOf(form.current)) : new Map()
+      }
+      apply={slideFrom}
+    >
+      <form ref={form} action={act}>
+        <input type="hidden" name="slotId" value={slot.id} />
+        {/*
         The sold count is sent so the floor can be checked before the round
         trip. The API enforces it regardless; this only saves an operator on a
         jetty from waiting to be told.
       */}
-      <input type="hidden" name="sold" value={slot.sold} />
+        <input type="hidden" name="sold" value={slot.sold} />
 
-      <label htmlFor={`seats-${slot.id}`} className="label text-forest/75">
-        Seats offered
-      </label>
-      <div className="mt-2 flex gap-2">
-        <input
-          id={`seats-${slot.id}`}
-          name="seats"
-          type="number"
-          inputMode="numeric"
-          /*
+        <label htmlFor={`seats-${slot.id}`} className="label text-forest/75">
+          Seats offered
+        </label>
+        <div className="mt-2 flex gap-2">
+          <input
+            id={`seats-${slot.id}`}
+            name="seats"
+            type="number"
+            inputMode="numeric"
+            /*
             Deliberately NOT `min={slot.sold}`. Native constraint validation
             would block the submit with a browser tooltip ("Value must be
             greater than or equal to 5") and the operator would never see the
             reason. The contract asks clients to render its refusal copy
             verbatim, because that copy says what to do instead.
           */
-          min={0}
-          max={200}
-          defaultValue={state.seats ?? slot.seats}
-          required
-          aria-describedby={
-            slot.sold > 0 ? `seats-floor-${slot.id}` : undefined
-          }
-          className={inputClass("bg-paper w-28 text-lg")}
-        />
-        <Button
-          type="submit"
-          disabled={saving}
-          variant="outline"
-          block={false}
-          className="flex-1"
-        >
-          {saving ? "Saving…" : "Set seats"}
-        </Button>
-      </div>
-      {/*
+            min={0}
+            max={200}
+            defaultValue={state.seats ?? slot.seats}
+            required
+            aria-describedby={
+              slot.sold > 0 ? `seats-floor-${slot.id}` : undefined
+            }
+            className={inputClass("bg-paper w-28 text-lg")}
+          />
+          <Button
+            type="submit"
+            pending={saving}
+            pendingLabel="Saving"
+            variant="outline"
+            block={false}
+            className="flex-1"
+          >
+            Set seats
+          </Button>
+        </div>
+        {/*
         The floor, because it changes the number somebody types. The rest of
         what this box used to say is in help.
       */}
-      {slot.sold > 0 ? (
-        <p
-          id={`seats-floor-${slot.id}`}
-          className="text-forest/70 mt-1.5 text-xs"
-        >
-          {slot.sold} already sold, so it cannot go lower.
-        </p>
-      ) : null}
+        {slot.sold > 0 ? (
+          <p
+            id={`seats-floor-${slot.id}`}
+            className="text-forest/70 mt-1.5 text-xs"
+          >
+            {slot.sold} already sold, so it cannot go lower.
+          </p>
+        ) : null}
 
-      {state.message ? (
-        <p role="alert" className="text-terra-deep mt-2 text-sm font-bold">
-          {state.message}
-        </p>
-      ) : null}
-      {state.seats !== undefined && !state.message ? (
-        <p role="status" className="text-forest/80 mt-2 text-sm font-bold">
-          Now offering {state.seats}.
-        </p>
-      ) : null}
-    </form>
+        {state.message ? (
+          <p
+            key={state.message}
+            role="alert"
+            data-motion=""
+            className="motion-rise-in text-terra-deep mt-2 text-sm font-bold"
+          >
+            {state.message}
+          </p>
+        ) : null}
+        {state.seats !== undefined && !state.message ? (
+          <p
+            key={state.seats}
+            role="status"
+            data-motion=""
+            className="motion-rise-in text-forest/80 mt-2 flex items-center gap-1.5 text-sm font-bold"
+          >
+            <DrawnCheckIcon after="line" className="size-4" />
+            Now offering {state.seats}.
+          </p>
+        ) : null}
+      </form>
+    </MeasureBefore>
   );
 }

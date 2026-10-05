@@ -6,6 +6,7 @@ import {
   UNKNOWN_OUTCOME,
   type AnswerActions,
 } from "./answer-store";
+import { takeAnswersSent } from "./answered";
 
 const VIEW: RequestView = {
   id: "req_1",
@@ -41,6 +42,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  // The marks are module state: none outlives its test.
+  takeAnswersSent(Number.MAX_SAFE_INTEGER);
 });
 
 /*
@@ -179,5 +182,60 @@ describe("an answer held for five seconds", () => {
     stop();
     store.hold("accept", { ...VIEW, id: "req_2" });
     expect(heard).toHaveBeenCalledTimes(3);
+  });
+});
+
+/*
+  O02 A (approved 4 Oct 2026): "the Bookings count rolls down" when the
+  operator answers, and only then. Each answer is marked just before it is
+  sent, and one that did not go through takes its mark back.
+*/
+describe("the mark each answer leaves for the Bookings count", () => {
+  it("is set before the answer is sent, for the fall that follows", async () => {
+    const api = actions();
+    let markedFirst = false;
+    api.accept.mockImplementation(async () => {
+      markedFirst = takeAnswersSent(0);
+      return { granted: true };
+    });
+    const store = createAnswerStore(api);
+    store.hold("accept", VIEW);
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    expect(markedFirst).toBe(true);
+  });
+
+  it("is still there once an accept and a decline have gone through", async () => {
+    const store = createAnswerStore(actions());
+    store.hold("accept", VIEW);
+    store.hold("decline", { ...VIEW, id: "req_2" }, "weather");
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    expect(takeAnswersSent(2)).toBe(true);
+    expect(takeAnswersSent(1)).toBe(false);
+  });
+
+  it("is never set by an Undo, which sends nothing", async () => {
+    const store = createAnswerStore(actions());
+    store.hold("accept", VIEW);
+    store.undo("req_1");
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    expect(takeAnswersSent(1)).toBe(false);
+  });
+
+  it("is taken back when the API refused the answer", async () => {
+    const api = actions();
+    api.decline.mockResolvedValue({ message: "Already answered." });
+    const store = createAnswerStore(api);
+    store.hold("decline", VIEW, "weather");
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    expect(takeAnswersSent(1)).toBe(false);
+  });
+
+  it("is taken back when nobody knows whether it went through", async () => {
+    const api = actions();
+    api.accept.mockRejectedValue(new Error("Failed to fetch"));
+    const store = createAnswerStore(api);
+    store.hold("accept", VIEW);
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    expect(takeAnswersSent(1)).toBe(false);
   });
 });

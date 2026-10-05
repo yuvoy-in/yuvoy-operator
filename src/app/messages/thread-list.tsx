@@ -85,10 +85,11 @@ export function ThreadList({
           <Button
             variant="secondary"
             block={false}
-            disabled={loading}
+            pending={loading}
+            pendingLabel="Loading"
             onClick={more}
           >
-            {loading ? "Loading…" : "Show more"}
+            Show more
           </Button>
         </div>
       ) : null}

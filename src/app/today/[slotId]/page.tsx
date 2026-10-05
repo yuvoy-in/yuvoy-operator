@@ -21,6 +21,7 @@ import { dayWords } from "@/lib/home/words";
 import { Problem } from "@/components/ui/states";
 import { PartyRow } from "./party-row";
 import { RelayPanel } from "./relay-panel";
+import { Arrival } from "@/components/ui/arrival";
 import { CallOffPanel } from "./call-off-panel";
 import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
@@ -256,14 +257,16 @@ export default async function ManifestPage({
         who paid at the counter got nothing back from us, and a message counts
         only the people we could reach. What is true is what the call-off did.
       */}
-        {manifest.calledOff ? (
-          <div className="mt-6">
-            <Problem
-              title="This departure is called off"
-              body="Every booking on it is cancelled, and everything paid online goes back in full."
-            />
-          </div>
-        ) : null}
+        {/*
+          Faded in when the call-off made it while the page was open (O06 B),
+          simply there when the page opens on a departure already off.
+        */}
+        <Arrival when={Boolean(manifest.calledOff)} className="mt-6">
+          <Problem
+            title="This departure is called off"
+            body="Every booking on it is cancelled, and everything paid online goes back in full."
+          />
+        </Arrival>
 
         {/*
         Money the business is holding that is not theirs, above everything

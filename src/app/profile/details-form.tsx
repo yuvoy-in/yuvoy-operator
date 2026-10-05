@@ -250,8 +250,13 @@ export function DetailsForm({
           </p>
         ) : null}
 
-        <Button type="submit" disabled={pending} variant="primary">
-          {pending ? "Saving…" : "Save these details"}
+        <Button
+          type="submit"
+          pending={pending}
+          pendingLabel="Saving"
+          variant="primary"
+        >
+          Save these details
         </Button>
       </form>
     </Panel>

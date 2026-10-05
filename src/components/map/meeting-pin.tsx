@@ -358,9 +358,10 @@ export function MeetingPin({ initial }: { initial: Pin | null }) {
           size="md"
           block={false}
           onClick={locate}
-          disabled={locating}
+          pending={locating}
+          pendingLabel="Finding you"
         >
-          {locating ? "Finding you…" : "Use my location"}
+          Use my location
         </Button>
         {pin ? (
           <Button variant="outline" size="md" block={false} onClick={remove}>

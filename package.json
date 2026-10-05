@@ -17,12 +17,13 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:future": "VITEST_A_WEEK_AHEAD=1 vitest run",
     "test:e2e": "playwright test",
     "codegen": "openapi-typescript contracts/operator-openapi.yaml -o src/lib/api/schema.gen.ts && prettier --write src/lib/api/schema.gen.ts",
     "contract:check": "node scripts/check-contract-drift.mjs",
     "tokens:check": "node scripts/check-tokens.mjs",
     "qa": "node scripts/qa.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm qa && pnpm tokens:check && pnpm test && pnpm contract:check && pnpm build && CI=1 pnpm test:e2e",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm qa && pnpm tokens:check && pnpm test && pnpm test:future && pnpm contract:check && pnpm build && CI=1 pnpm test:e2e",
     "prepare": "husky"
   },
   "dependencies": {

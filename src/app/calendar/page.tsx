@@ -37,6 +37,7 @@ import { BoardGrid } from "./board-grid";
 import { DaySection } from "./day-section";
 import { DepartureForm } from "./departure-form";
 import { DepartureInspector } from "./inspector";
+import { InspectorPresence } from "./inspector-sheet";
 import { WeekNav } from "./week-nav";
 import { WeekStrip } from "./week-strip";
 
@@ -285,21 +286,27 @@ export default async function CalendarPage({
           )}
         </section>
 
-        {opened ? (
-          <DepartureInspector
-            slot={opened}
-            day={openedDay}
-            manifest={manifest}
-            requests={(requests ?? [])
-              .filter((r) => r.slotId === opened.id)
-              .map((r) => requestView(r, { at, today, tomorrow }))}
-            here={here}
-            closeHref={closeHref}
-            canManage={me.canManage}
-            canWrite={canWrite}
-            canSellAtCounter={canSellAtCounter}
-          />
-        ) : null}
+        {/*
+          Always rendered, so the inspector can leave the way it came after
+          the address has let it go (O08 A; see `InspectorPresence`).
+        */}
+        <InspectorPresence>
+          {opened ? (
+            <DepartureInspector
+              slot={opened}
+              day={openedDay}
+              manifest={manifest}
+              requests={(requests ?? [])
+                .filter((r) => r.slotId === opened.id)
+                .map((r) => requestView(r, { at, today, tomorrow }))}
+              here={here}
+              closeHref={closeHref}
+              canManage={me.canManage}
+              canWrite={canWrite}
+              canSellAtCounter={canSellAtCounter}
+            />
+          ) : null}
+        </InspectorPresence>
       </ReadOnlyWhenOffline>
     </Screen>
   );

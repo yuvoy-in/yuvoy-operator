@@ -1,6 +1,7 @@
 import type { RequestActionState } from "@/app/bookings/actions";
 import type { DeclineReason } from "@/lib/day/request-types";
 import type { RequestView } from "@/lib/day/request-view";
+import { markAnswerSent, unmarkAnswerSent } from "./answered";
 
 /**
  * Answers to seat requests, held for five seconds before they leave the phone.
@@ -26,6 +27,13 @@ import type { RequestView } from "@/lib/day/request-view";
  * Kept outside React (a tiny store read through `useSyncExternalStore`) so a
  * timer and a page-hide listener both see the current answers, and so the
  * whole life of an answer is tested without rendering anything.
+ *
+ * ## The count it lowers rolls down (O02 A, approved 4 Oct 2026)
+ *
+ * Each answer is marked just before it is sent (`markAnswerSent`), so the
+ * Bookings count rolls down when the re-read lowers it, rather than
+ * cross-fading as it does for a request answered elsewhere. An answer that
+ * did not go through takes its mark back.
  */
 
 /** How long an answer waits for an Undo. */
@@ -133,6 +141,7 @@ export function createAnswerStore(
     }
 
     let next: Answer;
+    const mark = markAnswerSent();
     try {
       const answer =
         kind === "accept"
@@ -175,6 +184,9 @@ export function createAnswerStore(
         message: UNKNOWN_OUTCOME,
       };
     }
+    // Refused, or not known to have landed: whatever the count does next
+    // was not seen to be this answer.
+    if (next.phase === "failed") unmarkAnswerSent(mark);
     set(id, next);
     settled?.();
   }

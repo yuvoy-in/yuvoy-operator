@@ -186,9 +186,11 @@ function StoryRound({
       */}
       <Button
         type="submit"
-        disabled={pending || Boolean(aboutProblem) || Boolean(langsProblem)}
+        pending={pending}
+        pendingLabel="Saving"
+        disabled={Boolean(aboutProblem) || Boolean(langsProblem)}
       >
-        {pending ? "Saving…" : "Save"}
+        Save
       </Button>
     </form>
   );

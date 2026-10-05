@@ -564,15 +564,12 @@ function DepartureRound({
       <div className="mt-4 flex gap-2">
         <Button
           type="submit"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Adding"
           block={false}
           className="flex-1"
         >
-          {pending
-            ? "Adding…"
-            : problem
-              ? "Add departures"
-              : `Add ${departureCount(count)}`}
+          {problem ? "Add departures" : `Add ${departureCount(count)}`}
         </Button>
         <Button
           onClick={() => setOpen(false)}

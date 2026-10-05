@@ -158,10 +158,11 @@ export function Conversation({
           <Button
             variant="secondary"
             block={false}
-            disabled={loading}
+            pending={loading}
+            pendingLabel="Loading"
             onClick={showEarlier}
           >
-            {loading ? "Loading…" : "Show earlier messages"}
+            Show earlier messages
           </Button>
         </div>
       ) : null}
@@ -206,9 +207,11 @@ export function Conversation({
           <div className="mt-3">
             <Button
               type="submit"
-              disabled={sending || text.trim().length === 0}
+              pending={sending}
+              pendingLabel="Sending"
+              disabled={text.trim().length === 0}
             >
-              {sending ? "Sending…" : "Send"}
+              Send
             </Button>
           </div>
         </form>

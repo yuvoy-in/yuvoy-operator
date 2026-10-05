@@ -4,6 +4,7 @@ import { shortDate } from "@/lib/home/words";
 import { withFrom } from "@/lib/site/back-to";
 import { cn } from "@/lib/cn";
 import { BoardKeys } from "./board-keys";
+import { FillBar } from "./fill-bar";
 import { departureName, requestsWord } from "./day-section";
 
 /**
@@ -13,8 +14,9 @@ import { departureName, requestsWord } from "./day-section";
  *
  * A real table, so a screen reader can walk it by row and column and hear
  * each header. Each departure is a link that opens the inspector beside the
- * board, its time and its seats written out and a fill under them, and its
- * state as the calendar's word. The listing's name opens its hub, where its
+ * board, its time and its seats written out and a fill under them (which
+ * grows when the operator sets the seats, `FillBar`), and its state as the
+ * calendar's word. The listing's name opens its hub, where its
  * weekly schedule and Pause are. A day's header opens that day below, with
  * the day's own actions.
  *
@@ -129,10 +131,6 @@ export function BoardGrid({
                     >
                       <ul className="space-y-1">
                         {cell.departures.map((dep) => {
-                          const fill =
-                            dep.seats > 0
-                              ? Math.min(100, (dep.people / dep.seats) * 100)
-                              : 0;
                           return (
                             <li key={dep.id}>
                               <Link
@@ -143,6 +141,7 @@ export function BoardGrid({
                                 scroll={false}
                                 data-row={r}
                                 data-col={c}
+                                data-departure={dep.id}
                                 aria-label={departureName(
                                   dep,
                                   shortDate(cell.day),
@@ -169,15 +168,11 @@ export function BoardGrid({
                                     {dep.people}/{dep.seats}
                                   </span>
                                 </span>
-                                <span
-                                  aria-hidden="true"
-                                  className="bg-paper-line mt-1 block h-1 overflow-hidden rounded-full"
-                                >
-                                  <span
-                                    className="bg-forest block h-1 rounded-full"
-                                    style={{ width: `${fill}%` }}
-                                  />
-                                </span>
+                                <FillBar
+                                  departure={dep.id}
+                                  people={dep.people}
+                                  seats={dep.seats}
+                                />
                                 {dep.chip ? (
                                   <span
                                     className={cn(

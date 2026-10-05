@@ -12,6 +12,7 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { ClockIcon, TicketIcon } from "@/components/ui/icons";
+import type { RowRef } from "./answer-rows";
 
 /**
  * One seat request, answered on the card it arrives on: Home and Bookings
@@ -44,6 +45,7 @@ export function RequestCard({
   message,
   seeBusiness,
   focus,
+  rowRef,
 }: {
   view: RequestView;
   /** "Seat request", on a list that holds other kinds of card. */
@@ -65,6 +67,8 @@ export function RequestCard({
   seeBusiness?: boolean;
   /** The button to put focus back on, after an Undo brought the card back. */
   focus?: "accept" | "decline";
+  /** The card's `<li>`, for the list that plays a swap to and from it. */
+  rowRef?: RowRef;
 }) {
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState<DeclineReason | null>(view.preset);
@@ -101,6 +105,7 @@ export function RequestCard({
 
   return (
     <li
+      ref={rowRef}
       aria-label={`Seat request from ${view.name}`}
       className={cn(
         "rounded-card bg-paper-deep border p-4 sm:p-5",

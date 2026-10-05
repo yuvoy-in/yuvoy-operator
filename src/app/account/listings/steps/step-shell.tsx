@@ -59,8 +59,13 @@ export function StepShell({
         ) : null}
 
         <div className="flex items-center gap-3 pt-1">
-          <Button type="submit" block={false} disabled={pending}>
-            {pending ? "Saving…" : nextLabel}
+          <Button
+            type="submit"
+            block={false}
+            pending={pending}
+            pendingLabel="Saving"
+          >
+            {nextLabel}
           </Button>
           {back ? (
             <Link

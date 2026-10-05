@@ -40,8 +40,13 @@ export function RemovePhoto({
     <form action={act} className="space-y-2">
       <input type="hidden" name="photoId" value={photoId} />
       <p className="text-sm font-bold">Take it off your page?</p>
-      <Button type="submit" variant="danger" disabled={pending}>
-        {pending ? "Removing…" : "Remove it"}
+      <Button
+        type="submit"
+        variant="danger"
+        pending={pending}
+        pendingLabel="Removing"
+      >
+        Remove it
       </Button>
       <Button
         onClick={() => setArmed(false)}

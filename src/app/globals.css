@@ -165,13 +165,23 @@
 
   /*
     Respect users who prefer less motion. This neutralises every animation and
-    transition globally, which is why individual components never need their
-    own reduced-motion branch.
+    transition globally.
+
+    Reduced motion SWAPS travel for a fade rather than deleting meaning (S01,
+    approved 4 Oct 2026, the same rule as the traveller app's): an element
+    that ships its own reduced version (a 120ms crossfade in place of a slide,
+    a tint that is colour and not motion, a countdown that steps once a
+    second) carries `data-motion` and is left to it; everything unmarked is
+    made instant, exactly as before. The reduced versions are written once,
+    in the "motion" sections at the foot of this file and in `lib/motion`, so
+    no component writes the branch by hand. `::backdrop` was missed by the old
+    rule; it is covered now.
   */
   @media (prefers-reduced-motion: reduce) {
-    *,
-    ::before,
-    ::after {
+    *:not([data-motion]),
+    *:not([data-motion])::before,
+    *:not([data-motion])::after,
+    :not([data-motion])::backdrop {
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
@@ -391,4 +401,275 @@
 
 [data-sun="on"] .border-b {
   border-bottom-width: 2px;
+}
+
+/* ---------------------------------------------------- motion: presses */
+
+/*
+  The portal's motion system (approved 4 Oct 2026, yuvoy/motion-lab; the
+  rules in yuvoy-app/docs/DESIGN_SYSTEM.md, v3.1). Productive, not
+  cinematic: 200ms is the ceiling for anything but progress, 150ms for what
+  is done dozens of times a shift, no spatial journeys, and a
+  change is marked and said rather than moved. `palette.test.ts` holds every
+  duration here and in the components to that ceiling.
+
+  Press feedback (the defect found by the study, in both apps): Tailwind 4
+  writes `active:scale-*` to the standalone `scale` property, and every
+  transition list here named only `transform`, so every press in the portal
+  snapped in and snapped back. These name `scale`: 100ms in, 150ms out.
+  `palette.test.ts` fails an `active:scale-` with no list that does.
+  `motion-control` is a Button's set, `motion-disc` a disc's (no opacity: a
+  disabled disc has always dimmed at once). The same two utilities as the
+  traveller app's, so a press reads the same in both products.
+
+  Reduced motion: a press changes the control's ground instead of its size.
+*/
+@utility motion-control {
+  transition:
+    scale 150ms var(--ease-interaction),
+    transform 200ms var(--ease-interaction),
+    background-color 200ms var(--ease-interaction),
+    border-color 200ms var(--ease-interaction),
+    color 200ms var(--ease-interaction),
+    opacity 200ms var(--ease-interaction);
+
+  &:active {
+    transition-duration: 100ms, 200ms, 200ms, 200ms, 200ms, 200ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      scale: 1 !important;
+      opacity: 0.85;
+    }
+  }
+}
+
+@utility motion-disc {
+  transition:
+    scale 150ms var(--ease-interaction),
+    transform 200ms var(--ease-interaction),
+    background-color 200ms var(--ease-interaction),
+    color 200ms var(--ease-interaction),
+    border-color 200ms var(--ease-interaction),
+    box-shadow 200ms var(--ease-interaction);
+
+  &:active {
+    transition-duration: 100ms, 200ms, 200ms, 200ms, 200ms, 200ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      scale: 1 !important;
+      opacity: 0.85;
+    }
+  }
+}
+
+/*
+  A press, and nothing else: for a control whose colour must change in the
+  frame it is tapped. The Bookings pills (O05 B): the tapped pill fills at
+  once, before the server has answered, because that fill IS the answer to
+  the finger; a 200ms fade there reads as a tap that has not landed.
+*/
+@utility motion-press {
+  transition: scale 150ms var(--ease-interaction);
+
+  &:active {
+    transition-duration: 100ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      scale: 1 !important;
+      opacity: 0.85;
+    }
+  }
+}
+
+/* -------------------------------- motion: marks, arrivals and waiting */
+
+/*
+  The pieces every portal motion is made of, written once so each screen
+  moves the same way. Each element that wears one carries `data-motion`,
+  which is how the reduced versions below survive the global rule at the top
+  of this file (S01 A): under reduced motion nothing rises or travels,
+  crossfades take 120ms on a linear curve, and colour and opacity stay,
+  because they are not motion (WCAG 2.3.3) and they carry the meaning.
+
+  Every arrival fills `backwards` only: once it has played, the element is
+  drawn by its own styles again, so a later `disabled:opacity-55` or a dim
+  is never overridden by a finished fade.
+*/
+@layer components {
+  /*
+    The mark (O01, O03, O08): a forest tint over what changed, fading out
+    over 1.2s on a linear curve. Longer than the 200ms ceiling on purpose: it
+    is a mark that decays, not a motion, and it is opacity, so it plays the
+    same under reduced motion. `lib/motion/mark.ts` draws it.
+  */
+  .motion-mark {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background-color: color-mix(in srgb, var(--color-forest) 14%, transparent);
+    animation: motion-mark 1200ms linear forwards;
+  }
+
+  /* Arriving where it stands: words, a receipt, a row in its new place. */
+  .motion-in {
+    animation: motion-in 150ms var(--ease-interaction) backwards;
+  }
+
+  /* A line arriving under the thing it is about, rising 4px (O04). */
+  .motion-rise-in {
+    animation: motion-rise-in 150ms var(--ease-interaction) backwards;
+  }
+
+  /* Leaving where it stood: the words a label had a moment ago. */
+  .motion-out {
+    animation: motion-out 150ms var(--ease-exit) forwards;
+  }
+
+  /*
+    The waiting ring (O04): 16px, held back for the show delay (300ms) so a
+    fast answer never flashes it, then faded in, and turning once a second,
+    which is honest progress: it turns only while a save is out. It keeps its
+    room from the first frame of the wait, so the button changes width once,
+    with its words, and never again when the ring appears.
+  */
+  .motion-busy-ring {
+    display: inline-block;
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
+    animation:
+      motion-in 150ms var(--ease-interaction) 300ms backwards,
+      motion-spin 1s linear infinite;
+  }
+
+  /*
+    A tick that draws itself (O02's receipt, O04's "Now offering 10."), on a
+    path given `pathLength="1"`: 200ms, the portal's ceiling, a breath after
+    the line it sits in has arrived. The breath is each experiment's own
+    (yuvoy/motion-lab): 80ms in an answer's receipt (O02,
+    `motion-tick-receipt`), 60ms in a form's answer line (O04,
+    `motion-tick-line`). `DrawnCheckIcon` always wears one of the two.
+  */
+  .motion-tick path {
+    stroke-dasharray: 1;
+    animation: motion-tick 200ms var(--ease-interaction) backwards;
+  }
+
+  .motion-tick-receipt path {
+    animation-delay: 80ms;
+  }
+
+  .motion-tick-line path {
+    animation-delay: 60ms;
+  }
+
+  /*
+    The undo window (O02, O07): a bar that empties across the five seconds
+    in which Undo still works, the one long motion in the portal, because it
+    is the information. Its length and where it starts are set from the
+    store's own constant (`--window`, and a negative `--window-delay` for a
+    row drawn part way through), so the bar and the words "Sending in 3
+    seconds" can never disagree. Under reduced motion it keeps running and
+    steps once a second, in time with the words.
+  */
+  .motion-drain {
+    transform-origin: left center;
+    animation: motion-drain var(--window, 5000ms) linear
+      var(--window-delay, 0ms) forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .motion-in,
+    .motion-rise-in {
+      animation: motion-in 120ms linear backwards;
+    }
+
+    .motion-out {
+      animation: motion-out 120ms linear forwards;
+    }
+
+    .motion-busy-ring {
+      animation: motion-in 120ms linear 300ms backwards;
+    }
+
+    .motion-tick path {
+      animation: none;
+    }
+
+    .motion-drain {
+      animation-timing-function: steps(var(--window-steps, 5), end);
+    }
+  }
+}
+
+@keyframes motion-mark {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes motion-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes motion-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes motion-tick {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes motion-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }

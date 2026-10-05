@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from "react";
+import type { HTMLAttributes, Ref } from "react";
 import { cn } from "@/lib/cn";
 
 /**
@@ -29,6 +29,10 @@ export function Panel({
   tone = "raised",
   className,
   ...props
-}: { tone?: PanelTone } & HTMLAttributes<HTMLDivElement>) {
+}: {
+  tone?: PanelTone;
+  /** A prop since React 19, passed to the `<div>` with the rest. */
+  ref?: Ref<HTMLDivElement>;
+} & HTMLAttributes<HTMLDivElement>) {
   return <div className={panelClass(tone, className)} {...props} />;
 }
