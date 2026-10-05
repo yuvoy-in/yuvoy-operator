@@ -187,7 +187,7 @@ export function MemberRow({
           catches it a day later, which is when somebody actually looks
           (yuvoy-api#62).
         */
-        <p className="text-forest/80 tracking-ref mt-2 font-mono text-sm">
+        <p className="text-forest/80 mt-2 font-mono text-sm">
           {/*
             "Invited on", not "Sent to". Nothing is sent to a phone: there is
             no WhatsApp sender, and an invitation goes by email or by hand
