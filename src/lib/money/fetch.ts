@@ -2,6 +2,10 @@ import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
 import { toChangeRequest, type ChangeRequest } from "@/lib/account/change-kind";
 import { toCommission, type Commission } from "./commission";
+import type {
+  CommissionPayTo,
+  CommissionStatement,
+} from "./commission-statements";
 import type { Settlement } from "./settlements";
 import { toCounts, type Counts } from "@/lib/bookings/list";
 import { byDeparture, toBookingLine, type BookingLine } from "./bookings";
@@ -190,12 +194,15 @@ export async function searchBookings(
 }
 
 /**
- * What is owed on cash already taken — yuvoy-operator#40 §2.
+ * Yuvoy's share on cash already taken (yuvoy-operator#40 §2).
  *
  * Hard-failing, unlike the two soft reads above. This IS the screen: there is
  * nothing else on it to keep up, and a balance that quietly renders as zero
- * because a request failed is the one wrong answer that must never appear —
- * an operator who reads "nothing owed" stops expecting a bill.
+ * because a request failed is the one wrong answer that must never appear.
+ *
+ * Since D-043 this is every completed cash trip, "billed or not, paid or
+ * not". What is still to pay is on the statements (`readCommissionStatements`),
+ * so no screen calls this figure "owed".
  */
 export async function getCommissionOwed(token: string): Promise<Commission> {
   const { data, error } = await operatorApi(token).GET("/commission-owed", {});
@@ -210,7 +217,7 @@ export async function getCommissionOwed(token: string): Promise<Commission> {
  * SOFT-failing, where `getCommissionOwed` is hard, and for the reason that one
  * is hard: on `/cash` the balance IS the screen, while on Money a failed read
  * must cost the cash figures and nothing else. `null` is "we could not read
- * it", and the caller draws no owed figure at all rather than a ₹0.
+ * it", and the caller draws no cash figure at all rather than a ₹0.
  */
 export async function readCommissionOwed(
   token: string,
@@ -220,6 +227,103 @@ export async function readCommissionOwed(
   } catch {
     return null;
   }
+}
+
+/* --------------------------------------- commission statements (op#121) -- */
+
+export interface CommissionStatements {
+  /** Every statement read, newest first, as the API sends them. */
+  items: CommissionStatement[];
+  /**
+   * Whether that is all of them. A total built on a list cut short
+   * understates a bill, so `totalOwed` answers nothing without it.
+   */
+  complete: boolean;
+  payTo: CommissionPayTo;
+}
+
+/**
+ * Every weekly commission statement, and where to pay them (D-043).
+ *
+ * HARD-failing, for the one screen whose subject this is: the list of
+ * statements. Paged to the end, because what is owed is the sum over all of
+ * them and a statement left unread is a bill left out of it. Ten pages of 200
+ * is about forty years of weeks; past that, `complete` stays false and the
+ * screens say they could not add it up rather than draw a smaller number.
+ */
+export async function getCommissionStatements(
+  token: string,
+): Promise<CommissionStatements> {
+  const items: CommissionStatement[] = [];
+  let payTo: CommissionPayTo | undefined;
+  let complete = false;
+  let cursor: string | undefined;
+
+  for (let page = 0; page < 10; page += 1) {
+    const { data, error } = await operatorApi(token).GET(
+      "/commission-statements",
+      { params: { query: { limit: 200, ...(cursor ? { cursor } : {}) } } },
+    );
+    if (error) throw error;
+    items.push(...(data.items ?? []));
+    payTo ??= data.payTo;
+
+    /*
+      Told rather than inferred: "`false` means there is more to read with
+      `nextCursor`". A page that says there is more and gives no way to it
+      leaves the list incomplete, never quietly finished.
+    */
+    const more =
+      data.complete === false ||
+      (data.complete === undefined && Boolean(data.nextCursor));
+    if (!more) {
+      complete = true;
+      break;
+    }
+    if (!data.nextCursor) break;
+    cursor = data.nextCursor;
+  }
+
+  // Required by the contract. Absent, it is not the API this was built
+  // against, and nobody is offered somewhere to pay that it never named.
+  return { items, complete, payTo: payTo ?? { available: false } };
+}
+
+/**
+ * The same read, for the screens where commission is one part among several:
+ * Money, Cash and Today.
+ *
+ * SOFT-failing, where `getCommissionStatements` is hard, for the reason
+ * `readCommissionOwed` is soft: a failed read costs what is owed and nothing
+ * else on the screen. `null` is "we could not read it", and every caller says
+ * so rather than draw a ₹0, which tells an operator with a bill that they owe
+ * nothing.
+ */
+export async function readCommissionStatements(
+  token: string,
+): Promise<CommissionStatements | null> {
+  try {
+    return await getCommissionStatements(token);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One statement, with its trips, its payments and where to pay it.
+ *
+ * Hard-failing: a bill with no trips on it is a blank page pretending to be a
+ * statement. Another business's statement answers `404`, exactly as one that
+ * does not exist, and reaches the caller as an `OperatorApiError` so the route
+ * answers with the not-found screen.
+ */
+export async function getCommissionStatement(token: string, id: string) {
+  const { data, error } = await operatorApi(token).GET(
+    "/commission-statements/{id}",
+    { params: { path: { id } } },
+  );
+  if (error) throw error;
+  return data;
 }
 
 /* ---------------------------------------------------- settlements (op#47) -- */

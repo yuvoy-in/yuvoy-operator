@@ -333,7 +333,39 @@ path=contracts/operator-openapi.yaml
 #   - #246 and #247 change no line of this document.
 #
 # `git ls-remote` read master as fb9245eb118a immediately before pinning.
+#
+# 5 Oct 2026. Forward from fb9245eb118a to febd9a1e3abe, yuvoy-api #250 to
+# #256. Nothing this portal reads is removed or changes shape.
+#
+# Removals, read by set difference as before:
+#   - None. Two operations are new, `GET /commission-statements` and
+#     `GET /commission-statements/{id}` (#256), with four new schemas:
+#     `CommissionStatement`, `CommissionStatementLine`, `CommissionPayment`,
+#     `CommissionPayTo`. #250 to #255 change no line of this document.
+#
+# Consumed in this change (yuvoy-operator#121, owner decision D-043):
+#   - Yuvoy's commission on cash trips is billed weekly and paid by UPI. The
+#     Money tab lists the statements with what is owed in total, each opens
+#     on its trips and payments, and one with something owed offers "Pay by
+#     UPI" (`payTo.upiLink`, checked to be a `upi://pay` link) beside the UPI
+#     ID and payee as text. `payTo.message` is shown as given, de-dashed.
+#   - `/commission-owed` now says it counts every completed cash trip,
+#     "billed or not, paid or not". So every screen that said "owed" from it
+#     (Money's cash block, Cash, Today's money line) reads the statements'
+#     `owedPaise` for what is owed, and calls the other figure what it is:
+#     Yuvoy's share on completed trips.
+#
+# Read and deliberately not taken at face value:
+#   - `upiLink` is drawn only when it is a `upi://pay` link. Anything else is
+#     not a button, and the UPI ID and payee stay on screen as text.
+#   - `available: true` promises both `upiId` and `payee`; one missing is
+#     treated as not set up rather than drawn half-empty.
+#
+# Verified live before building: an unauthenticated `GET` of both new paths
+# on api.yuvoy.in answers 401, where a path that does not exist answers 404.
+#
+# `git ls-remote` read master as febd9a1e3abe immediately before pinning.
 
-ref=fb9245eb118ac01156d1506b5f2dac951d7ae1f7
+ref=febd9a1e3abe2c16b4891dfc64a0f8776226147b
 branch=master
-pinned_on=2026-10-02
+pinned_on=2026-10-05

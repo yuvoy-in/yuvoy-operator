@@ -214,7 +214,8 @@ export const FOCUSED_ROUTE_PREFIXES = [
   // One booking, opened from the list and closed back to it. The list itself
   // is a tab root; `/bookings/` with the slash is a booking.
   "/bookings/",
-  // One settlement. `/earnings` without the slash is the Money tab root.
+  // One settlement, or the commission statements and one of them (op#121).
+  // `/earnings` without the slash is the Money tab root.
   "/earnings/",
   "/cash",
   "/payouts",

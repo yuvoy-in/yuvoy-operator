@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Commission } from "./commission";
+import type { CommissionStatement } from "./commission-statements";
 import {
   cashHasMoney,
   cashLead,
   cashOnTheTab,
+  commissionOnTheTab,
   latestStatement,
   moneyBlocks,
   pageCursor,
@@ -60,6 +62,52 @@ const COMMISSION: Commission = {
   unrecorded: { bookings: 1, farePaise: 450_000, lines: [] },
 };
 
+/** One weekly commission statement, as `GET /commission-statements` lists it. */
+function statement(
+  over: Partial<CommissionStatement> = {},
+): CommissionStatement {
+  return {
+    id: "cst_1",
+    reference: "YC-7KQ2MZ9P",
+    weekStart: "2026-09-21",
+    weekEnd: "2026-09-27",
+    state: "issued",
+    bookings: 2,
+    farePaise: 1_500_000,
+    commissionPaise: 225_000,
+    paidPaise: 0,
+    owedPaise: 225_000,
+    issuedAt: "2026-09-29T03:30:00Z",
+    ...over,
+  };
+}
+
+/** Two statements still to pay, one paid, one settled: ₹3,550 owed. */
+const OWING = commissionOnTheTab({
+  items: [
+    statement(),
+    statement({
+      id: "cst_2",
+      state: "part_paid",
+      commissionPaise: 330_000,
+      paidPaise: 200_000,
+      owedPaise: 130_000,
+    }),
+    statement({ id: "cst_3", state: "paid", paidPaise: 225_000, owedPaise: 0 }),
+    statement({ id: "cst_4", state: "waived", owedPaise: 0 }),
+  ],
+  complete: true,
+});
+
+/** Statements, every one of them paid or settled. */
+const SETTLED = commissionOnTheTab({
+  items: [statement({ state: "paid", paidPaise: 225_000, owedPaise: 0 })],
+  complete: true,
+});
+
+/** No statement yet: a read that answered with nothing to bill. */
+const NO_BILL = commissionOnTheTab({ items: [], complete: true });
+
 /** A business with no cash at all, whose owed read ANSWERED. */
 const ZERO_COMMISSION: Commission = {
   bookings: 0,
@@ -104,7 +152,7 @@ describe("the cash the Money tab summarises", () => {
     const cash = cashOnTheTab(COUNTER, COMMISSION);
     // Owed-now collected (27,000) plus held collected (15,000).
     expect(cash.inHand).toBe(4_200_000);
-    expect(cash.owedNow).toBe(450_000);
+    expect(cash.completedShare).toBe(450_000);
     expect(cash.heldShare).toBe(225_000);
     expect(cash.toRun).toEqual({
       bookings: 3,
@@ -112,25 +160,25 @@ describe("the cash the Money tab summarises", () => {
       // From the overview, so it survives the owed read failing.
       takenPaise: 1_500_000,
     });
-    expect(cash.owedKnown).toBe(true);
+    expect(cash.cashKnown).toBe(true);
     expect(cash.unrecorded).toEqual({ bookings: 1, farePaise: 450_000 });
     expect(cashHasMoney(cash)).toBe(true);
   });
 
-  it("says nothing about owing when the cash read failed, rather than ₹0", () => {
+  it("says nothing about the share when the cash read failed, rather than ₹0", () => {
     /*
       `GET /commission-owed` is read softly on this screen. A failed read must
-      leave the owed figure unsaid: "₹0 owed" drawn from silence tells an
-      operator with a balance that they owe nothing.
+      leave its figures unsaid: a ₹0 drawn from silence is a figure nobody can
+      tell from a real one.
     */
     const cash = cashOnTheTab(COUNTER, null);
     expect(cash.inHand).toBeNull();
-    expect(cash.owedNow).toBeNull();
+    expect(cash.completedShare).toBeNull();
     expect(cash.heldShare).toBeNull();
     // What the overview itself carries still stands, held cash included.
     expect(cash.toRun?.bookings).toBe(3);
     expect(cash.toRun?.takenPaise).toBe(1_500_000);
-    expect(cash.owedKnown).toBe(false);
+    expect(cash.cashKnown).toBe(false);
     expect(cash.unrecorded).toEqual({ bookings: 1, farePaise: 450_000 });
     expect(cashHasMoney(cash)).toBe(true);
   });
@@ -200,7 +248,11 @@ describe("the figure the cash block leads with", () => {
     });
   });
 
-  it("is what is owed when that is the only real figure", () => {
+  it("is Yuvoy's share on completed trips when that is the only real figure", () => {
+    /*
+      Never called owed: `/commission-owed` counts every completed trip,
+      billed or not and paid or not (op#121).
+    */
     expect(
       cashLead(
         cashOnTheTab(NO_CASH, {
@@ -209,7 +261,7 @@ describe("the figure the cash block leads with", () => {
           commissionPaise: 450_000,
         }),
       ),
-    ).toEqual({ kind: "owed", paise: 450_000 });
+    ).toEqual({ kind: "share", paise: 450_000 });
   });
 
   it("is nothing when every figure is zero or unknown, never a ₹0", () => {
@@ -228,7 +280,7 @@ describe("what the Money tab leads with", () => {
   const FAILED = cashOnTheTab(NO_CASH, null);
 
   it("leads with the payout when it has money in it", () => {
-    expect(moneyBlocks(PAYOUT, BOOKED, CASH)).toEqual([
+    expect(moneyBlocks(PAYOUT, BOOKED, CASH, NO_BILL)).toEqual([
       "payout",
       "booked",
       "cash",
@@ -240,29 +292,113 @@ describe("what the Money tab leads with", () => {
       Production's own screen: a ₹0 payout on top, and the only real figure,
       the cash, third and smallest. The empty card goes below, in words.
     */
-    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, CASH)).toEqual([
+    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, CASH, NO_BILL)).toEqual([
       "cash",
       "payout-quiet",
     ]);
-    expect(moneyBlocks(EMPTY_WEEK, BOOKED, NONE)).toEqual([
+    expect(moneyBlocks(EMPTY_WEEK, BOOKED, NONE, NO_BILL)).toEqual([
       "booked",
       "payout-quiet",
     ]);
   });
 
   it("says an empty week once, rather than three times as ₹0", () => {
-    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, NONE)).toEqual(["nothing-yet"]);
+    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, NONE, NO_BILL)).toEqual([
+      "nothing-yet",
+    ]);
   });
 
   it("never says nothing is owed when the owed read failed", () => {
-    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, FAILED)).toEqual([
+    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, FAILED, NO_BILL)).toEqual([
       "cash",
       "payout-quiet",
     ]);
   });
 
   it("never draws an empty block", () => {
-    expect(moneyBlocks(PAYOUT, NOT_BOOKED, NONE)).toEqual(["payout"]);
+    expect(moneyBlocks(PAYOUT, NOT_BOOKED, NONE, NO_BILL)).toEqual(["payout"]);
+  });
+
+  /*
+    The weekly commission bill (op#121, D-043). What is owed on it is the one
+    thing on the tab to do, and the email with each statement sends people
+    here, so it leads.
+  */
+  it("leads with commission to pay, above even a payout", () => {
+    expect(moneyBlocks(PAYOUT, BOOKED, CASH, OWING)).toEqual([
+      "commission",
+      "payout",
+      "booked",
+      "cash",
+    ]);
+    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, NONE, OWING)).toEqual([
+      "commission",
+      "payout-quiet",
+    ]);
+  });
+
+  it("lists settled statements below everything, with nothing to pay", () => {
+    expect(moneyBlocks(PAYOUT, BOOKED, CASH, SETTLED)).toEqual([
+      "payout",
+      "booked",
+      "cash",
+      "commission-quiet",
+    ]);
+    // Nothing owed either way is still true when every bill is paid.
+    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, NONE, SETTLED)).toEqual([
+      "nothing-yet",
+      "commission-quiet",
+    ]);
+  });
+
+  it("never says nothing is owed when the statements did not load", () => {
+    const failed = commissionOnTheTab(null);
+    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, NONE, failed)).toEqual([
+      "commission-unknown",
+      "payout-quiet",
+    ]);
+    // Said after the payout and what is booked, before cash.
+    expect(moneyBlocks(PAYOUT, BOOKED, CASH, failed)).toEqual([
+      "payout",
+      "booked",
+      "commission-unknown",
+      "cash",
+    ]);
+  });
+
+  it("draws a total it cannot add up as a bill, never as settled", () => {
+    // A list cut short understates the bill: the rows are still drawn.
+    const cutShort = commissionOnTheTab({
+      items: [statement({ state: "paid", owedPaise: 0 })],
+      complete: false,
+    });
+    expect(cutShort.owedPaise).toBeNull();
+    expect(moneyBlocks(EMPTY_WEEK, NOT_BOOKED, NONE, cutShort)).toEqual([
+      "commission",
+      "payout-quiet",
+    ]);
+  });
+});
+
+describe("what the Money tab knows about the commission bill", () => {
+  it("adds up what is owed across every statement", () => {
+    expect(OWING).toEqual({
+      read: true,
+      owedPaise: 355_000,
+      statements: OWING.statements,
+    });
+  });
+
+  it("is unknown, never zero, when the read failed", () => {
+    expect(commissionOnTheTab(null)).toEqual({
+      read: false,
+      owedPaise: null,
+      statements: [],
+    });
+  });
+
+  it("is nothing owed with no statements at all", () => {
+    expect(NO_BILL).toEqual({ read: true, owedPaise: 0, statements: [] });
   });
 });
 

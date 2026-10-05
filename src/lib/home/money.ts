@@ -4,9 +4,9 @@ import { daysBetween, shortDate } from "./words";
 /**
  * Money today, in one line (yuvoy-operator#96 block 4).
  *
- * "This week ₹X · next payout Mon 28 Sep · cash owed to Yuvoy ₹2,250", from
- * `GET /settlements/overview` and `GET /commission-owed`. Managers only: every
- * money read refuses STAFF, so a staff login never asks.
+ * "This week ₹X · next payout Mon 28 Sep · commission owed to Yuvoy ₹2,250",
+ * from `GET /settlements/overview` and `GET /commission-statements`. Managers
+ * only: every money read refuses STAFF, so a staff login never asks.
  *
  * ## What each part is, exactly
  *
@@ -18,8 +18,11 @@ import { daysBetween, shortDate } from "./words";
  *     it is said as "from": three people at Yuvoy send it on that day or
  *     after, and a bank decides when it lands. Once that day has come it is
  *     "due".
- *   - Cash owed is `commissionPaise`: what is owed NOW, on completed cash
- *     trips whose cash was recorded. Zero is not news and is left out.
+ *   - Commission owed is what is still to pay on the weekly commission
+ *     statements (yuvoy-operator#121), summed. It was `/commission-owed`'s
+ *     `commissionPaise`, which counts every completed cash trip "billed or
+ *     not, paid or not", so a business that had paid every statement still
+ *     read as owing. Zero is not news and is left out.
  *
  * ## What is deliberately not here
  *
@@ -61,7 +64,7 @@ function weekName(week: MoneyWeek, today: string): string {
 export function moneyLine(input: {
   /** `null` when the overview did not answer. */
   week: MoneyWeek | null;
-  /** What is owed on cash now; `null` when it did not answer. */
+  /** What is owed on the commission statements; `null` when not known. */
   owedPaise: number | null;
   /** The market's today, `YYYY-MM-DD`. */
   today: string;
@@ -72,7 +75,7 @@ export function moneyLine(input: {
   /*
     One failed: it is named, never left out. Leaving it out read as nothing
     to say: "Nothing owed on cash" with the payout gone looked like the whole
-    of the money, and a week with no cash figure looked like nothing owed.
+    of the money, and a week with no owed figure looked like nothing owed.
   */
   const parts: string[] = [];
   let owedBack = false;
@@ -92,12 +95,12 @@ export function moneyLine(input: {
   }
 
   if (input.owedPaise === null) {
-    parts.push("cash owed did not load");
+    parts.push("commission owed did not load");
   } else if (input.owedPaise > 0) {
-    parts.push(`cash owed to Yuvoy ${formatPaise(input.owedPaise)}`);
+    parts.push(`commission owed to Yuvoy ${formatPaise(input.owedPaise)}`);
   } else if (!input.week) {
     // Zero is not news beside a week, and is the only news without one.
-    parts.push("nothing owed on cash");
+    parts.push("no commission owed");
   }
 
   const text = parts.join(" · ");
