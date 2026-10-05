@@ -111,13 +111,15 @@ export function ReelSheet({
             {declineLine(item.rejection?.code) ?? "This one was not accepted."}
           </p>
           {item.rejection?.note ? (
-            <p className="text-forest/70 mt-1 text-sm">{item.rejection.note}</p>
+            <p className="text-forest/70 leading-body mt-1 text-sm text-pretty">
+              {item.rejection.note}
+            </p>
           ) : null}
         </div>
       ) : null}
 
       {suspended ? (
-        <p className="text-forest/70 mt-5 text-sm">
+        <p className="text-forest/70 leading-body mt-5 text-sm text-pretty">
           Nothing can be changed while the account is on hold.
         </p>
       ) : (
@@ -168,7 +170,7 @@ export function ReelSheet({
                 Replace it
               </Button>
               {replaceNote(item.situation) ? (
-                <p className="text-forest/70 mt-2 text-sm">
+                <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
                   {replaceNote(item.situation)}
                 </p>
               ) : null}

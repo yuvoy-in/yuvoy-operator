@@ -49,7 +49,7 @@ export function CashBack({
   if (state.done || state.alreadyReturned) {
     return (
       <Panel tone="done" role="status" className="mt-4 p-4">
-        <p className="text-base font-bold">
+        <p className="text-base font-bold text-balance">
           {state.done
             ? `${formatPaise(state.done.returnedPaise)} recorded as given back`
             : "This was already recorded"}
@@ -85,12 +85,12 @@ export function CashBack({
   return (
     <form action={act} className="mt-4">
       <input type="hidden" name="bookingId" value={bookingId} />
-      <p className="text-sm font-bold">
+      <p className="text-sm font-bold text-balance">
         {amountPaise === null
           ? "Record that you gave this cash back?"
           : `Record that you gave ${formatPaise(amountPaise)} back?`}
       </p>
-      <p className="text-forest/80 mt-1.5 text-sm">
+      <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
         This cannot be undone. Record it once you have actually handed the money
         over, not before.
       </p>

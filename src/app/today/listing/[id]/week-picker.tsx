@@ -84,7 +84,9 @@ export function WeekPicker({
           onToggle={(day) => onChange(toggleDay(plan, day))}
         />
         {plan.days.length === 0 ? (
-          <p className="text-forest/70 mt-2 text-sm">No weekly schedule.</p>
+          <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
+            No weekly schedule.
+          </p>
         ) : null}
       </div>
 

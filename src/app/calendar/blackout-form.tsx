@@ -137,7 +137,7 @@ function BlackoutRound({
     const owed = state.result.existingBookings;
     return frame(
       <Panel ref={root} tone={owed > 0 ? "alert" : "done"}>
-        <p className="text-base font-bold">
+        <p className="text-base font-bold text-balance">
           {day
             ? `${day.label} is closed to new bookings`
             : "Those dates are closed to new bookings"}
@@ -148,13 +148,13 @@ function BlackoutRound({
               You still owe {owed} {owed === 1 ? "booking" : "bookings"}.
               Closing the calendar did not cancel them.
             </p>
-            <p className="text-forest/90 mt-2 text-sm">
+            <p className="text-forest/90 leading-body mt-2 text-sm text-pretty">
               {state.result.note ||
                 "That includes anybody mid-checkout. Their hold predates the closure and can still complete. Run them, or call each one off from its own departure."}
             </p>
           </>
         ) : (
-          <p className="text-forest/80 mt-2 text-sm">
+          <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
             {day
               ? "Nothing was booked on it, so nobody is owed anything."
               : "Nothing was booked on them, so nobody is owed anything."}
@@ -175,7 +175,7 @@ function BlackoutRound({
       which stopped being true when the day gained Reopen beside its closure.
     */
     return frame(
-      <p ref={root} className="text-forest/80 text-sm">
+      <p ref={root} className="text-forest/80 leading-body text-sm text-pretty">
         {`${day.label} is already closed to new bookings.`}
       </p>,
     );
@@ -203,14 +203,14 @@ function BlackoutRound({
       <p
         ref={question}
         tabIndex={-1}
-        className="text-base font-bold outline-none"
+        className="text-base font-bold text-balance outline-none"
       >
         {day
           ? `Close ${spoken} to new bookings`
           : "Close dates to new bookings"}
       </p>
       {children ?? (
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           This stops new sales. It does <strong>not</strong> cancel bookings you
           already have.
         </p>

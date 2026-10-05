@@ -62,6 +62,8 @@ const VIEW: RequestView = {
   guests: 3,
   title: "Reuben Mathai, 3 people",
   trip: "Snorkel trip · Sat 09:00",
+  experience: "Snorkel trip",
+  when: "Sat 09:00",
   asked: "Asked 2 h ago · Answer by 07:20",
   clock: "1h 20m left",
   urgent: false,
@@ -86,6 +88,8 @@ const MESSAGE: Need = {
   reference: "YV-CARD6N7P",
   unread: "2 new",
   trip: "Try-dive at Nemo Reef · Today at 11:30",
+  experience: "Try-dive at Nemo Reef",
+  when: "Today at 11:30",
 };
 
 const CASH: Need = {
@@ -94,6 +98,8 @@ const CASH: Need = {
   slotId: "slot_9",
   text: "Collect ₹4,500 on the 11:30",
   detail: "Try-dive at Nemo Reef · 1 party",
+  experience: "Try-dive at Nemo Reef",
+  partyCount: "1 party",
   timezone: "Asia/Kolkata",
   parties: [
     {

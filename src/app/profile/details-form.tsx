@@ -91,7 +91,7 @@ export function DetailsForm({
               .join(", ")}
           />
         </dl>
-        <p className="text-forest/70 mt-4 text-sm">
+        <p className="text-forest/70 leading-body mt-4 text-sm text-pretty">
           Only an owner, an admin or a manager can change these.
         </p>
       </Panel>
@@ -107,8 +107,10 @@ export function DetailsForm({
     */
     return (
       <Panel tone="done" role="status">
-        <p className="text-base font-bold">Sent to us for a check</p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-base font-bold text-balance">
+          Sent to us for a check
+        </p>
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           Your account is live, so we compare a change to your registered name
           or address with the documents we verified. What is on file stays in
           place until we have.
@@ -127,8 +129,8 @@ export function DetailsForm({
   if (receipt?.saved) {
     return (
       <Panel tone="done" role="status">
-        <p className="text-base font-bold">Saved</p>
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-base font-bold text-balance">Saved</p>
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           We have what an invoice and a payout need. Nothing goes live on this
           alone. The documents are the other half.
         </p>

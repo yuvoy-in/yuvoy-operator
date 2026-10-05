@@ -75,7 +75,7 @@ export function DiscardDraft({
       <p
         ref={question}
         tabIndex={-1}
-        className="text-base font-bold outline-none"
+        className="text-base font-bold text-balance outline-none"
       >
         {name ? <>Discard &ldquo;{name}&rdquo;?</> : "Discard this draft?"}
       </p>
@@ -84,7 +84,7 @@ export function DiscardDraft({
         its departures go too (yuvoy-api#249). Nobody else holds anything on a
         draft, so that is all of it.
       */}
-      <p className="text-forest/80 mt-1.5 text-sm">
+      <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
         It is deleted, with any departures saved on it. This cannot be undone.
       </p>
 

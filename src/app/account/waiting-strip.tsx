@@ -29,7 +29,7 @@ export function WaitingStrip({ items }: { items: readonly WaitingItem[] }) {
         href="/account/verification"
         className="ease-interaction hover:bg-paper flex items-center justify-between gap-4 p-4 transition-colors duration-200 focus-visible:-outline-offset-2"
       >
-        <span className="text-base font-bold">
+        <span className="text-base font-bold text-balance">
           {items.length === 1
             ? "1 thing waiting on you"
             : `${items.length} things waiting on you`}
@@ -54,7 +54,7 @@ export function WaitingStrip({ items }: { items: readonly WaitingItem[] }) {
               */
               <div className="min-h-12 px-4 py-3">
                 <p className="text-base">{item.text}</p>
-                <p className="text-forest/70 mt-0.5 text-sm">
+                <p className="text-forest/70 leading-body mt-0.5 text-sm text-pretty">
                   An owner, admin or manager can do this.
                 </p>
               </div>

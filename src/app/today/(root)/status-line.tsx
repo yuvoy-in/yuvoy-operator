@@ -41,7 +41,7 @@ export function StatusLine({ status }: { status: SellingStatus }) {
       />
       <span
         className={cn(
-          "min-w-0 flex-1 text-base font-bold",
+          "min-w-0 flex-1 text-base font-bold text-balance",
           blocked && "text-terra-deep",
         )}
       >
@@ -103,7 +103,7 @@ function Reason({ reason }: { reason: StatusReason }) {
 
   return (
     <li className="text-sm">
-      <p className="text-forest/80">{reason.text}</p>
+      <p className="text-forest/80 leading-body text-pretty">{reason.text}</p>
       {action}
     </li>
   );

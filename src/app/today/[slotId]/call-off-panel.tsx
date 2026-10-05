@@ -126,13 +126,13 @@ export function CallOffPanel({
           panel is the receipt, so it leads with what the action DID rather
           than repeating the state.
         */}
-        <h2 className="text-base font-bold">What that did</h2>
+        <h2 className="text-base font-bold text-balance">What that did</h2>
         {/*
           It said "Everybody has been told and refunded in full". Neither half
           is the call-off's to promise: the refund is everything paid ONLINE,
           and a traveller who paid at the counter gets nothing back from us.
         */}
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           Every booking on it is cancelled, and everything paid online goes back
           in full.
         </p>
@@ -150,10 +150,10 @@ export function CallOffPanel({
         </dl>
         {r.giveBack ? (
           <div className="border-paper-line mt-4 border-t pt-4">
-            <p className="text-terra-deep text-base font-bold">
+            <p className="text-terra-deep text-base font-bold text-balance">
               You are holding {formatPaise(r.giveBack.totalPaise)} in cash
             </p>
-            <p className="text-forest/80 mt-1.5 text-sm">
+            <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
               {r.giveBack.parties.length === 1
                 ? "1 party paid you at the counter, so nothing of theirs reached us to refund."
                 : `${r.giveBack.parties.length} parties paid you at the counter, so nothing of theirs reached us to refund.`}{" "}
@@ -175,7 +175,13 @@ export function CallOffPanel({
   */
   if (!canManage) {
     return frame(
-      <p ref={root} className={cn("text-forest/70 text-sm", className)}>
+      <p
+        ref={root}
+        className={cn(
+          "text-forest/70 leading-body text-sm text-pretty",
+          className,
+        )}
+      >
         Calling off a departure needs an owner, an admin or a manager.
       </p>,
     );
@@ -207,7 +213,7 @@ export function CallOffPanel({
       <h2
         ref={question}
         tabIndex={-1}
-        className="text-base font-bold outline-none"
+        className="text-base font-bold text-balance outline-none"
       >
         {/*
           Named, all of it (owner ruling, 3 Oct 2026: a named confirm
@@ -221,7 +227,7 @@ export function CallOffPanel({
         part the call-off does not do: cash taken at the counter goes back
         from the operator's hand, not from us (op#95).
       */}
-      <p className="text-forest/80 mt-2 text-sm">
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
         Everyone booked is cancelled, and everything paid online is refunded{" "}
         <strong>in full</strong>. Anyone who paid you in cash gets it back from
         you. We message everyone booked. This cannot be undone.
@@ -316,7 +322,9 @@ function Figure({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className="label text-forest/70">{label}</dt>
-      <dd className="font-display mt-1 text-2xl leading-none">{value}</dd>
+      <dd className="font-board mt-1 text-2xl leading-none tabular-nums">
+        {value}
+      </dd>
     </div>
   );
 }

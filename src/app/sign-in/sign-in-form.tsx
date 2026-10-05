@@ -95,7 +95,12 @@ export function SignInForm({ next }: { next?: string | null }) {
             a message nobody wrote.
           */}
           <p className="text-forest/70 mt-2 text-sm">
-            For {formatE164(state.phone ?? "")}. It lasts a few minutes.
+            For{" "}
+            {/* The number read back as a reference: every digit checkable. */}
+            <span className="tracking-ref slashed-zero tabular-nums">
+              {formatE164(state.phone ?? "")}
+            </span>
+            . It lasts a few minutes.
           </p>
           {state.existing ? null : (
             <div className="mt-2">

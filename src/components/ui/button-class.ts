@@ -24,7 +24,7 @@ const VARIANT: Record<ButtonVariant, string> = {
 const SIZE: Record<ButtonSize, string> = {
   dock: "dock-target px-5",
   md: "h-11 px-5",
-  sm: "h-9 px-4 text-[11px]",
+  sm: "h-9 px-4",
 };
 
 export function buttonClass({
@@ -46,7 +46,7 @@ export function buttonClass({
   className?: string;
 } = {}): string {
   return cn(
-    "inline-flex shrink-0 items-center justify-center gap-2 rounded-full label font-bold whitespace-nowrap select-none",
+    "inline-flex shrink-0 items-center justify-center gap-2 rounded-full text-button font-bold whitespace-nowrap select-none",
     // The press eases in and out (globals.css, "motion: presses"): both name
     // `scale`, which is the property `active:scale-*` writes.
     motion === "press"

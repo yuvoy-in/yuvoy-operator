@@ -73,7 +73,7 @@ export default async function EditListingPage({
           back: { href: `/account/listings/${id}`, label: "the listing" },
         }}
       >
-        <h1 className="font-display tracking-display text-3xl leading-tight">
+        <h1 className="font-display tracking-display leading-display text-3xl text-balance">
           Edit
         </h1>
         <div className="mt-6">
@@ -116,10 +116,13 @@ export default async function EditListingPage({
   if (!isDraft(listing)) {
     return (
       <Screen nav={{ back }}>
-        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        <h1 className="font-display tracking-display leading-display text-4xl text-balance">
           Edit
         </h1>
-        <p className="text-forest/70 mt-3 text-base">{listing.title}</p>
+        {/* The listing's own name, in the host's voice (v3.2). */}
+        <p className="voice-host text-forest/70 mt-3 text-base text-balance">
+          {listing.title}
+        </p>
 
         {/*
           A list of one. `ListingRow` is an `<li>` — it was written for the list
@@ -189,7 +192,17 @@ export default async function EditListingPage({
 
   return (
     <Screen nav={{ back }}>
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      {/*
+        The listing's name in its host's words. The "Your listing" standing in
+        for a draft with none is ours, so it keeps Yuvoy's headline (v3.2).
+      */}
+      <h1
+        className={
+          listing.title
+            ? "voice-host leading-display text-4xl text-balance"
+            : "font-display tracking-display leading-display text-4xl text-balance"
+        }
+      >
         {listing.title || "Your listing"}
       </h1>
 

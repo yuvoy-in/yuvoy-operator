@@ -53,7 +53,7 @@ export default async function SettingsPage() {
 
   return (
     <Screen nav={{ back: { href: "/account", label: "your business" } }}>
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Settings
       </h1>
 

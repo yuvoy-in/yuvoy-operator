@@ -101,7 +101,7 @@ export function WithdrawForm({
         <legend
           ref={question}
           tabIndex={-1}
-          className="text-sm font-bold outline-none"
+          className="text-sm font-bold text-balance outline-none"
         >
           Why is it coming down?
         </legend>
@@ -111,7 +111,7 @@ export function WithdrawForm({
           looking at, and taking it down empties that card.
         */}
         {attachedTo ? (
-          <p className="text-forest/80 mt-1.5 text-sm">
+          <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
             It is on {attachedTo}. That listing loses this video.
           </p>
         ) : null}

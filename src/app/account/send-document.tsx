@@ -176,7 +176,10 @@ export function SendDocument({
       service that can.
     */
     return (
-      <p role="status" className="text-forest/80 mt-3 text-sm">
+      <p
+        role="status"
+        className="text-forest/80 leading-body mt-3 text-sm text-pretty"
+      >
         {phase.message}
       </p>
     );
@@ -185,8 +188,8 @@ export function SendDocument({
   if (phase.name === "done") {
     return (
       <div role="status" className="mt-3 text-sm">
-        <p className="font-bold">{phase.filename} is with us</p>
-        <p className="text-forest/80 mt-1">
+        <p className="font-bold text-balance">{phase.filename} is with us</p>
+        <p className="text-forest/80 leading-body mt-1 text-pretty">
           {/*
             Nothing here says the document is verified, because it is not:
             "nothing here verifies the document. It still waits for somebody at

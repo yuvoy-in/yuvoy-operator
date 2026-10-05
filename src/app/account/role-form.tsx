@@ -112,7 +112,7 @@ export function RoleForm({
         drawn at all.
       */}
       {isCover ? (
-        <p className="text-forest/70 mt-2 text-sm">
+        <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
           Moving it to the gallery leaves this listing with no cover until you
           make another one the cover.
         </p>

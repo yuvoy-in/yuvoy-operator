@@ -41,7 +41,9 @@ test("a departure opens boarding, and Done boarding comes back to it", async ({
   await page.getByRole("link", { name: "Start boarding" }).click();
 
   await page.waitForURL(`**/today/${BOAT}/boarding?from=*`);
-  await expect(page.getByText(/^Boarding · 10:00/)).toBeVisible();
+  // \s, not a space: the kicker's dots follow a no-break space, so that no
+  // line ever starts with one.
+  await expect(page.getByText(/^Boarding\s·\s10:00/)).toBeVisible();
   // The number read at arm's length, said in words a screen reader can read.
   await expect(page.getByText(/^\d+ of \d+ aboard$/)).toBeVisible();
   // A phone's bar is hidden: this is a screen to go into. (A desktop keeps
@@ -146,7 +148,7 @@ test("a boat that has left is closed out, not boarded", async ({ page }) => {
   await page.getByRole("link", { name: "Close out the boat" }).click();
   await page.waitForURL("**/today/slot_dawn/boarding?from=*");
 
-  await expect(page.getByText(/^Closing out · /)).toBeVisible();
+  await expect(page.getByText(/^Closing out\s·\s/)).toBeVisible();
   await expect(
     page.getByRole("button", { name: /^Aboard: check in/ }),
   ).toHaveCount(0);

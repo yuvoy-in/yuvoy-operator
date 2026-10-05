@@ -22,6 +22,8 @@ const VIEW: RequestView = {
   guests: 4,
   title: "Ingrid Sorensen, 4 people",
   trip: "Snorkel trip to Elephant Beach · Today at 23:30",
+  experience: "Snorkel trip to Elephant Beach",
+  when: "Today at 23:30",
   asked: "Asked 2 h ago · Answer by 10:00",
   clock: "2h 55m left",
   urgent: false,

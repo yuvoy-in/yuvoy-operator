@@ -31,10 +31,10 @@ export function NothingBooked({
 
   return (
     <div className="mt-8">
-      <p className="text-base font-bold">Nothing booked yet.</p>
+      <p className="text-base font-bold text-balance">Nothing booked yet.</p>
       {suspended ? (
         <>
-          <p className="text-forest/80 mt-1 text-base">
+          <p className="text-forest/80 leading-body mt-1 text-base text-pretty">
             Your account is on hold, so nothing new can go on sale.
           </p>
           <a href={SUPPORT_PHONE_HREF} className={way}>
@@ -46,7 +46,7 @@ export function NothingBooked({
           Open Calendar to put seats on sale.
         </Link>
       ) : (
-        <p className="text-forest/80 mt-1 text-base">
+        <p className="text-forest/80 leading-body mt-1 text-base text-pretty">
           An owner, an admin or a manager puts seats on sale in Calendar.
         </p>
       )}

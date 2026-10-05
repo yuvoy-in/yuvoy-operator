@@ -69,8 +69,10 @@ const ROWS = [
 
 const props = {
   slotId: "slot_dawn",
-  kicker: "Boarding · 07:00 · Beach 3 dive hut",
-  title: "07:00 Try-dive at Nemo Reef",
+  mode: "Boarding",
+  time: "07:00",
+  where: "Beach 3 dive hut",
+  experience: "Try-dive at Nemo Reef",
   departed: false,
   calledOff: false,
   seats: "5 of 8 seats sold",

@@ -12,10 +12,10 @@ import { ButtonLink } from "@/components/ui/button";
 export default function NotFound() {
   return (
     <Screen nav="none" width="sm">
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         There is nothing at that address
       </h1>
-      <p className="text-forest/70 mt-3 text-base">
+      <p className="text-forest/70 leading-body mt-3 text-base text-pretty">
         The link may have changed, or the address may have a typo in it.
       </p>
       <ButtonLink href="/today" className="mt-8">

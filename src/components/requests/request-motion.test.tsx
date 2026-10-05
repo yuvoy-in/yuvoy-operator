@@ -23,6 +23,8 @@ const VIEW: RequestView = {
   guests: 2,
   title: "Asha Menon, 2 people",
   trip: "Try-dive at Nemo Reef · Tomorrow at 07:00",
+  experience: "Try-dive at Nemo Reef",
+  when: "Tomorrow at 07:00",
   asked: "Asked 2 h ago · Answer by 08:04",
   clock: "24 min left",
   urgent: true,

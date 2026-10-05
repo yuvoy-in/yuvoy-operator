@@ -37,6 +37,12 @@ export interface DraftField {
   step: Step | null;
   /** Whether the API says this one stops the listing being published. */
   missing: boolean;
+  /**
+   * Whether the value is the operator's own words (the name, the summary,
+   * where to meet), which a traveller reads as the host speaking, so it is set
+   * in the host's voice (v3.2). A vocabulary word, a price or a count is ours.
+   */
+  ownWords: boolean;
 }
 
 export interface DraftSection {
@@ -71,6 +77,15 @@ export interface DraftContext {
   categoryLabel?: string;
   destinationLabel?: string;
 }
+
+/** The fields an operator writes in their own words. */
+const OWN_WORDS = new Set([
+  "title",
+  "summary",
+  "description",
+  "meetingPoint",
+  "meetingLandmark",
+]);
 
 /** A value worth printing, or nothing. Trimmed, because "  " says nothing. */
 function said(value: string | null | undefined): string | null {
@@ -116,6 +131,7 @@ export function draftSections(
     value: blocked.has(key) ? null : value,
     step: stepOwning(key),
     missing: blocked.has(key),
+    ownWords: OWN_WORDS.has(key),
   });
 
   const sections: DraftSection[] = [
@@ -211,6 +227,7 @@ export function draftSections(
         value: null,
         step: stepOwning(key),
         missing: true,
+        ownWords: false,
       })),
     });
   }

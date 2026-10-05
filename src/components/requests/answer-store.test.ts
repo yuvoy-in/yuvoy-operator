@@ -15,6 +15,8 @@ const VIEW: RequestView = {
   guests: 3,
   title: "Reuben Mathai, 3 people",
   trip: "Snorkel trip · Tomorrow at 09:00",
+  experience: "Snorkel trip",
+  when: "Tomorrow at 09:00",
   asked: "Asked 2 h ago · Answer by 07:20",
   clock: "1h 20m left",
   urgent: false,

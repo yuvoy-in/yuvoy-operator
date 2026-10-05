@@ -32,7 +32,7 @@ export default async function NotificationsPage() {
         below carries the API's own description of what it covers, which is
         the part that tells somebody anything.
       */}
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Notifications
       </h1>
 

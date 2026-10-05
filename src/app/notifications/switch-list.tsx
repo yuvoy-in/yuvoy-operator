@@ -108,7 +108,9 @@ export function SwitchList({
 
       {settings.alwaysSent ? (
         <Panel tone="outline" className="mt-6 p-4">
-          <p className="text-forest/80 text-sm">{settings.alwaysSent}</p>
+          <p className="text-forest/80 leading-body text-sm text-pretty">
+            {settings.alwaysSent}
+          </p>
         </Panel>
       ) : null}
     </>

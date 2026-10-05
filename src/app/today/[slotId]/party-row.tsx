@@ -211,14 +211,14 @@ export function PartyRow({
       )}
     >
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-lg font-bold">{party.name}</p>
+        <p className="text-lg font-bold text-balance">{party.name}</p>
         <p className="text-forest/70 text-sm">
           {party.guests} {party.guests === 1 ? "guest" : "guests"}
         </p>
       </div>
 
       <div className="mt-1 flex items-center justify-between gap-3">
-        <p className="text-forest/70 text-sm tracking-wider slashed-zero tabular-nums">
+        <p className="text-forest/70 tracking-ref text-sm slashed-zero tabular-nums">
           {party.reference}
         </p>
         {bookingHref ? (
@@ -289,7 +289,8 @@ export function PartyRow({
           <dl className="mt-2 space-y-2 text-sm">
             {answers.map((question) => (
               <div key={question.questionId}>
-                <dt className="text-forest/75">{question.text}</dt>
+                {/* The listing's own question, in the host's voice (v3.2). */}
+                <dt className="voice-host text-forest/75">{question.text}</dt>
                 <dd className="font-bold">{answerFor(question)}</dd>
               </div>
             ))}
@@ -377,7 +378,7 @@ export function PartyRow({
 
           {departed && armed ? (
             <div className="border-paper-line mt-1 flex w-full flex-wrap gap-2 border-t pt-3">
-              <p className="text-forest/80 w-full text-sm">
+              <p className="text-forest/80 leading-body w-full text-sm text-pretty">
                 {armed === "no_show"
                   ? `Mark ${party.name} as a no-show? This cannot be changed afterwards.`
                   : `Mark ${party.name} as completed? This cannot be changed afterwards.`}

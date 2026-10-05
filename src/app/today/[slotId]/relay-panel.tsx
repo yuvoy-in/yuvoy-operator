@@ -81,7 +81,7 @@ function RelayRound({
           going to, not bookings written (yuvoy-api#200, op#89): this panel
           said "Told 1 person" about a departure nobody heard from.
         */}
-        <p className="text-sm font-bold">
+        <p className="text-sm font-bold text-balance">
           {relayHeadline(
             {
               intent: state.intent,
@@ -92,7 +92,7 @@ function RelayRound({
           )}
         </p>
         {state.intent === "note" ? (
-          <p className="text-forest/80 mt-1.5 text-sm">
+          <p className="text-forest/80 leading-body mt-1.5 text-sm text-pretty">
             Its words were not sent to a phone.
           </p>
         ) : null}

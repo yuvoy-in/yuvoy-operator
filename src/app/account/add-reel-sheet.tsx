@@ -44,15 +44,17 @@ export function AddReelSheet({
       {note ? <p className="mb-5 text-sm font-bold">{note}</p> : null}
 
       {listings.length === 0 ? (
-        <p className="text-forest/80 text-sm">
+        <p className="text-forest/80 leading-body text-sm text-pretty">
           A reel goes on a listing, so there is nowhere to put one yet. Add a
           listing first.
         </p>
       ) : (
         <div className="space-y-8">
           <section>
-            <h3 className="font-display text-xl">A clip</h3>
-            <p className="text-forest/70 mt-2 text-sm">
+            <h3 className="font-display tracking-display leading-display text-xl text-balance">
+              A clip
+            </h3>
+            <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
               Upright, up to 60 seconds. Choose the listing first, then the
               file. Losing signal pauses the upload instead of starting it
               again.
@@ -66,8 +68,10 @@ export function AddReelSheet({
           </section>
 
           <section>
-            <h3 className="font-display text-xl">A photograph</h3>
-            <p className="text-forest/70 mt-2 text-sm">
+            <h3 className="font-display tracking-display leading-display text-xl text-balance">
+              A photograph
+            </h3>
+            <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
               For a listing that has no footage yet, or to show what a clip
               cannot. Reviewed by a person, exactly like a reel.
             </p>

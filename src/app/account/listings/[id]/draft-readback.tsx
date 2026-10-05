@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cn } from "@/lib/cn";
 import { draftSections, type DraftListing } from "@/lib/services/draft";
 import { Panel } from "@/components/ui/panel";
 import { ChevronRightIcon } from "@/components/ui/icons";
@@ -67,7 +68,16 @@ export function DraftReadback({
                         Still needed
                       </span>
                     ) : field.value ? (
-                      <span className="mt-0.5 block text-base wrap-break-word">
+                      /*
+                        The operator's own words in the host's voice, and ours
+                        (a price, a count) in Yuvoy's (v3.2).
+                      */
+                      <span
+                        className={cn(
+                          "mt-0.5 block text-base wrap-break-word",
+                          field.ownWords && "voice-host",
+                        )}
+                      >
                         {field.value}
                       </span>
                     ) : (

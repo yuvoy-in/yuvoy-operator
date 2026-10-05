@@ -81,10 +81,10 @@ export default async function CashPage() {
   if (!me.canManage) {
     return (
       <Screen nav={{ back: BACK }}>
-        <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+        <h1 className="font-display tracking-display leading-display text-4xl text-balance">
           Cash you&rsquo;ve collected
         </h1>
-        <p className="text-forest/80 mt-4 text-base">
+        <p className="text-forest/80 leading-body mt-4 text-base text-pretty">
           This one is for whoever handles the money. Ask an owner, an admin or a
           manager at your business.
         </p>
@@ -117,7 +117,7 @@ export default async function CashPage() {
         staff member's takings (op#87 t3), and then an eyebrow that said "The
         money" over a heading that already did (op#80 t2).
       */}
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Cash you&rsquo;ve collected
       </h1>
 
@@ -150,7 +150,8 @@ export default async function CashPage() {
             screen is what it was, rather than a total missing a half.
           */}
           <Panel className="mt-8">
-            <p className="text-4xl font-bold tabular-nums">
+            {/* The figure on the board, as the Money tab draws it (v3.2). */}
+            <p className="font-board text-4xl tabular-nums">
               {formatPaise(inHand ?? commission.farePaise)}
             </p>
             <p className="text-forest/80 mt-1 text-base">
@@ -257,7 +258,7 @@ export default async function CashPage() {
               Completed trips
             </h2>
             {commission.bookings === 0 ? (
-              <p className="text-forest/70 mt-3 text-sm">
+              <p className="text-forest/70 leading-body mt-3 text-sm text-pretty">
                 No completed cash trips yet.
               </p>
             ) : (
@@ -347,7 +348,9 @@ function StatementsDoor({
       )}
     >
       <span className="min-w-0">
-        <span className="block text-base font-bold">Commission statements</span>
+        <span className="block text-base font-bold text-balance">
+          Commission statements
+        </span>
         <span className="text-forest/80 mt-0.5 block text-sm tabular-nums">
           {detail}
         </span>
@@ -383,7 +386,7 @@ function guestsLabel(guests: number): string {
 function TripHead({ line }: { line: CommissionLine }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <p className="text-base font-bold slashed-zero tabular-nums">
+      <p className="tracking-ref text-base font-bold slashed-zero tabular-nums">
         {line.bookingReference || "-"}
       </p>
       <p className="text-forest/70 shrink-0 text-sm">
@@ -424,7 +427,7 @@ function TripList({ lines }: { lines: CommissionLine[] }) {
           */}
           {line.collectedPaise !== undefined &&
           line.collectedPaise !== line.farePaise ? (
-            <p className="text-forest/70 mt-1.5 text-sm">
+            <p className="text-forest/70 leading-body mt-1.5 text-sm text-pretty">
               You recorded taking {formatPaise(line.collectedPaise)}. The share
               is worked out on the fare.
             </p>

@@ -143,23 +143,42 @@ export default async function BookingPage({
 
   return (
     <Screen nav={{ back }}>
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      {/*
+        The time on the board and the experience in its host's words (v3.2),
+        as on the departure. The "Booking" standing in for a missing name is
+        ours, so it keeps Yuvoy's headline face.
+      */}
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         {time ? (
           <>
-            <span className="tabular-nums">{time}</span>{" "}
-            <span className="text-3xl">{trip}</span>
+            <span className="font-board tracking-normal tabular-nums">
+              {time}
+            </span>{" "}
+            {booking.experience ? (
+              <span className="voice-host leading-display text-3xl text-balance">
+                {trip}
+              </span>
+            ) : (
+              <span className="leading-display text-3xl text-balance">
+                {trip}
+              </span>
+            )}
           </>
+        ) : booking.experience ? (
+          <span className="voice-host">{trip}</span>
         ) : (
           trip
         )}
       </h1>
       {dayLabel ? (
-        <p className="text-forest/80 mt-2 text-base">{dayLabel}</p>
+        <p className="text-forest/80 mt-2 text-base tabular-nums">{dayLabel}</p>
       ) : null}
 
       <div className="mt-5 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xl font-bold wrap-break-word">{who}</p>
+          <p className="text-xl font-bold text-balance wrap-break-word">
+            {who}
+          </p>
           <p className="text-forest/70 mt-1 text-sm">
             {booking.guests === 1 ? "1 guest" : `${booking.guests} guests`}
             {/*
@@ -170,7 +189,7 @@ export default async function BookingPage({
             {booking.name && booking.reference ? (
               <>
                 {" · "}
-                <span className="tracking-wider slashed-zero tabular-nums">
+                <span className="tracking-ref slashed-zero tabular-nums">
                   {booking.reference}
                 </span>
               </>
@@ -209,7 +228,7 @@ export default async function BookingPage({
       */}
       {ended ? (
         <Panel tone="alert" className="mt-6 p-4">
-          <p className="text-sm font-bold">{ended}</p>
+          <p className="text-sm font-bold text-balance">{ended}</p>
         </Panel>
       ) : null}
 
@@ -297,7 +316,7 @@ export default async function BookingPage({
           answer has captured nothing — so the absence stays an absence rather
           than becoming a row of zeroes somebody tries to reconcile.
         */
-        <p className="text-forest/70 mt-8 text-sm">
+        <p className="text-forest/70 leading-body mt-8 text-sm text-pretty">
           No money has moved on this one yet.
         </p>
       )}
@@ -316,7 +335,9 @@ export default async function BookingPage({
           )}
         >
           <span className="min-w-0 flex-1">
-            <span className="block text-base font-bold">The departure</span>
+            <span className="block text-base font-bold text-balance">
+              The departure
+            </span>
             <span className="text-forest/70 block text-sm">
               Everyone on it, check-in, and a message to them all
             </span>
@@ -339,7 +360,8 @@ export default async function BookingPage({
               {questions.map((question) => (
                 <div key={question.questionId} className="px-5 py-4">
                   <dt className="text-forest/75">
-                    {question.text}
+                    {/* The listing's own question, in the host's voice (v3.2). */}
+                    <span className="voice-host">{question.text}</span>
                     {/*
                       "Only an answered question appears with `current: false`",
                       and it is kept "so an answer to a reworded question stays
@@ -396,7 +418,7 @@ export default async function BookingPage({
         >
           <h2
             id="conversation-heading"
-            className="font-display tracking-display text-2xl leading-tight"
+            className="font-display tracking-display leading-display text-2xl text-balance"
           >
             Conversation
           </h2>
@@ -405,7 +427,7 @@ export default async function BookingPage({
             this booking, and an operator who acts on it walks to a jetty without
             the thing the traveller asked for.
           */}
-          <p className="text-forest/70 mt-2 text-sm">
+          <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
             The conversation did not load. Reload the page to try again.
           </p>
         </section>

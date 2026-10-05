@@ -70,6 +70,14 @@ export interface MessageNeed {
   unread: string;
   /** "Snorkel trip to Elephant Beach · Today at 23:30". */
   trip: string;
+  /**
+   * The two halves of `trip`, for a card that sets each in its own voice: the
+   * host's own name for the experience (null when the thread carries none,
+   * because the "A trip" standing in for it is ours), and when it leaves (""
+   * when the thread carries no start).
+   */
+  experience: string | null;
+  when: string;
 }
 
 /** One party's cash on today's departure, as the card takes it. */
@@ -91,6 +99,12 @@ export interface CashNeed {
   text: string;
   /** "Reef dive · 2 parties". */
   detail: string;
+  /**
+   * The two halves of `detail`, for a card that sets each in its own voice:
+   * the departure's name as the day sheet shows it, and "2 parties".
+   */
+  experience: string;
+  partyCount: string;
   timezone: string;
   parties: CashParty[];
 }
@@ -178,6 +192,7 @@ export function cashNeed(cash: TodayCash): CashNeed | null {
   const parties = cash.parties.filter((p) => !p.cash.collected);
   if (parties.length === 0) return null;
   const time = marketTime(cash.startsAt, cash.timezone);
+  const partyCount = count(parties.length, "party", "parties");
   const total = parties.reduce<number | null>(
     (sum, p) =>
       sum === null || p.cash.collectPaise === null
@@ -193,7 +208,9 @@ export function cashNeed(cash: TodayCash): CashNeed | null {
       total === null
         ? `Collect cash on the ${time}`
         : `Collect ${formatPaise(total)} on the ${time}`,
-    detail: `${cash.title} · ${count(parties.length, "party", "parties")}`,
+    detail: `${cash.title} · ${partyCount}`,
+    experience: cash.title,
+    partyCount,
     timezone: cash.timezone,
     parties,
   };
@@ -382,19 +399,20 @@ export function needsYou(input: {
     const shown = input.inbox.unread.slice(0, MESSAGE_ROWS);
     for (const row of shown) {
       const day = row.startsAt ? marketDayOf(row.startsAt, row.timezone) : null;
-      const trip = [row.experience.trim() || "A trip"];
-      if (day && row.startsAt) {
-        trip.push(
-          `${dayCaption(day, input.today, input.tomorrow, row.timezone)} at ${marketTime(row.startsAt, row.timezone)}`,
-        );
-      }
+      const experience = row.experience.trim() || null;
+      const when =
+        day && row.startsAt
+          ? `${dayCaption(day, input.today, input.tomorrow, row.timezone)} at ${marketTime(row.startsAt, row.timezone)}`
+          : "";
       const need: MessageNeed = {
         kind: "message",
         key: `message-${row.bookingId}`,
         bookingId: row.bookingId,
         reference: row.reference,
         unread: `${row.unreadCount} new`,
-        trip: trip.join(" · "),
+        trip: [experience ?? "A trip", ...(when ? [when] : [])].join(" · "),
+        experience,
+        when,
       };
       /*
         A guest writing about a boat that leaves later today ("I am running

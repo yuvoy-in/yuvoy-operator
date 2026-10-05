@@ -91,7 +91,7 @@ export default async function VerificationPage() {
   return (
     <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>
       {/* One title (op#80 t2): no eyebrow over it, no caption in the bar. */}
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Verification
       </h1>
 
@@ -107,12 +107,12 @@ export default async function VerificationPage() {
         name and the other is what it means. So the chip and this sentence stay
         together as one status block.
       */}
-      <p className="mt-4 text-lg font-bold">
+      <p className="mt-4 text-lg font-bold text-balance">
         {standing
           ? headline(standing).title
           : "We cannot tell you where you stand"}
       </p>
-      <p className="text-forest/70 mt-2 text-base">
+      <p className="text-forest/70 leading-body mt-2 text-base text-pretty">
         {standing
           ? headline(standing).body
           : unreadable
@@ -133,9 +133,10 @@ export default async function VerificationPage() {
             /*
               `self-start`: the sheet lays its children out in a column, which
               stretched this pill across the whole screen, where it read as a
-              bar rather than a state.
+              bar rather than a state. A chip, so the pill's own 11px at the
+              label's weight, in sentence case (v3.2).
             */
-            "label mt-4 self-start",
+            "mt-4 self-start font-medium",
             standing.bookable
               ? "bg-forest text-paper"
               : "border-terra-deep text-terra-deep border bg-transparent",
@@ -240,7 +241,9 @@ function Outstanding({
                     gatesSale(b) === false ? undefined : "alert",
                   )}
                 >
-                  <p className="text-base font-bold">{blockerText(b)}</p>
+                  <p className="text-base font-bold text-balance">
+                    {blockerText(b)}
+                  </p>
                   {/*
                     WHETHER IT IS COSTING THEM ANYTHING — yuvoy-operator#38.
 
@@ -273,7 +276,7 @@ function Outstanding({
                     </ButtonLink>
                   ) : null}
                   {action && !mayAct ? (
-                    <p className="text-forest/70 mt-2 text-sm">
+                    <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
                       An owner, admin or manager can do this.
                     </p>
                   ) : null}
@@ -285,7 +288,7 @@ function Outstanding({
             What to do about a refusal, which the rows cannot say: the reason
             is not in any response. Who checks, and why, is in Help.
           */}
-          <p className="text-forest/70 mt-3 text-sm">
+          <p className="text-forest/70 leading-body mt-3 text-sm text-pretty">
             If one was turned down and you do not know why, call us.
           </p>
         </section>
@@ -299,8 +302,10 @@ function Outstanding({
           <ul className="mt-3 space-y-3">
             {yuvoy.map((b, i) => (
               <li key={`${b.code}-${i}`} className={panelClass()}>
-                <p className="text-base font-bold">{blockerText(b)}</p>
-                <p className="text-forest/70 mt-2 text-sm">
+                <p className="text-base font-bold text-balance">
+                  {blockerText(b)}
+                </p>
+                <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
                   {/*
                     Both halves are true and the second one changes what an
                     operator does with their morning: something of ours that
@@ -361,7 +366,9 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
       <h2 id="documents" className="label text-forest/75">
         Your documents
       </h2>
-      {count ? <p className="mt-2 text-base font-bold">{count}</p> : null}
+      {count ? (
+        <p className="mt-2 text-base font-bold text-balance">{count}</p>
+      ) : null}
 
       {/*
         Every required document that is NOT met. Above the list of what we
@@ -382,7 +389,7 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
                   tone="alert"
                   className="flex items-baseline justify-between gap-3 p-4"
                 >
-                  <p className="text-sm font-bold">
+                  <p className="text-sm font-bold text-balance">
                     {credentialTypeLabel(doc.type)}
                   </p>
                   <p className="text-terra-deep shrink-0 text-sm">Needed</p>
@@ -395,7 +402,7 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
         <Panel tone="alert" className="mt-3">
           <ul className="space-y-2">
             {expiring.map((line) => (
-              <li key={line} className="text-base font-bold">
+              <li key={line} className="text-base font-bold text-balance">
                 {line}
               </li>
             ))}
@@ -426,7 +433,7 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
                   and reaching back the other way for a value would make that a
                   runtime cycle.
                 */}
-                <p className="text-base font-bold">
+                <p className="text-base font-bold text-balance">
                   {credentialTypeLabel(c.type)}
                 </p>
                 {/*
@@ -512,7 +519,7 @@ function Credentials({ standing, at }: { standing: Standing; at: number }) {
                 document we cannot produce is our gap, not a fault of theirs.
               */}
               {noFile ? (
-                <p className="text-forest/80 mt-2 text-sm">
+                <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
                   A checked document cannot take a file from this screen. If you
                   have a copy, call us on{" "}
                   <a

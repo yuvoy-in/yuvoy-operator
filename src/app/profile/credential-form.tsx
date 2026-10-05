@@ -50,7 +50,7 @@ export function CredentialForm({
   if (state.sent) {
     return (
       <Panel tone="done" role="status">
-        <p className="text-base font-bold">
+        <p className="text-base font-bold text-balance">
           {credentialTypeLabel(state.sent.type)} is with us
         </p>
         {/*
@@ -58,7 +58,7 @@ export function CredentialForm({
           and the operator is now waiting on us rather than the other way
           round — which is the distinction `waitingOn` exists to make.
         */}
-        <p className="text-forest/80 mt-2 text-sm">
+        <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
           Somebody here will check it. Nothing about your account changes until
           they have, and you will see it move on this screen.
         </p>
@@ -71,7 +71,9 @@ export function CredentialForm({
 
   return (
     <Panel>
-      <h2 className="font-display text-2xl">Send us a document</h2>
+      <h2 className="font-display tracking-display leading-display text-2xl text-balance">
+        Send us a document
+      </h2>
 
       <form action={act} className="mt-5 space-y-5">
         <div>
@@ -174,7 +176,7 @@ export function CredentialForm({
             id="cred-notes"
             name="notes"
             rows={3}
-            className={inputClass("mt-2")}
+            className={inputClass("mt-2 h-auto py-3")}
           />
         </div>
 

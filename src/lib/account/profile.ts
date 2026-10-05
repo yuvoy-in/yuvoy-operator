@@ -41,6 +41,12 @@ export const TAB_LABEL: Record<Tab, string> = {
 };
 
 /**
+ * The stand-in for a business with no name on file. It is ours, so a heading
+ * that sets the business's own name in the host's voice sets this in ours.
+ */
+export const UNNAMED_BUSINESS = "Your business";
+
+/**
  * What the profile is called.
  *
  * `displayName`, then `legalName`, then a stand-in. Never blank: a profile with
@@ -56,7 +62,7 @@ export function businessName(
   const display = (profile?.displayName ?? "").trim();
   if (display) return display;
   const legal = (profile?.legalName ?? "").trim();
-  return legal || "Your business";
+  return legal || UNNAMED_BUSINESS;
 }
 
 /** "since 2014 · English, Hindi", or nothing when neither half is there. */

@@ -104,12 +104,13 @@ export function BoardGrid({
                     scope="row"
                     className="bg-paper border-paper-line sticky left-0 z-10 border-b px-4 py-3 align-top"
                   >
+                    {/* The listing's own name, in the host's voice (v3.2). */}
                     {row.listingId.startsWith("untitled:") ? (
-                      <span className="text-sm font-bold">{row.title}</span>
+                      <span className="voice-host text-sm">{row.title}</span>
                     ) : (
                       <Link
                         href={withFrom(`/today/listing/${row.listingId}`, here)}
-                        className="decoration-forest/40 hover:decoration-forest text-sm font-bold underline underline-offset-4"
+                        className="decoration-forest/40 hover:decoration-forest voice-host text-sm underline underline-offset-4"
                       >
                         {row.title}
                       </Link>

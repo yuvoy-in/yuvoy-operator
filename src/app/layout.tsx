@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { anek, anekDisplay } from "@/lib/fonts";
+import { anek, anekBoard, anekDisplay, gotu } from "@/lib/fonts";
 import { AppShell } from "@/components/chrome/app-shell";
 import { chromeData } from "@/lib/site/nav-badges";
 import { gateSession } from "@/lib/auth/session";
@@ -59,11 +59,14 @@ export default async function RootLayout({
     await chromeData();
 
   return (
-    <html lang="en" className={`${anekDisplay.variable} ${anek.variable}`}>
+    <html
+      lang="en"
+      className={`${anekDisplay.variable} ${anekBoard.variable} ${gotu.variable} ${anek.variable}`}
+    >
       <body className="bg-forest text-paper">
         <a
           href="#main"
-          className="label bg-paper text-forest sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-3"
+          className="bg-paper text-forest sr-only text-xs font-bold focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-3"
         >
           Skip to content
         </a>

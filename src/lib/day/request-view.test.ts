@@ -97,6 +97,24 @@ describe("a request, as its card says it", () => {
       requestView(request({ startsAt: "2026-09-22T18:00:00Z" }), DAYS).trip,
     ).toBe("Snorkel trip · Today at 23:30");
   });
+
+  /*
+    The card sets the host's name for the experience in the host's voice and
+    the time on our clock (v3.2), so it needs the halves, and it must know
+    when the name is ours ("A departure") rather than theirs.
+  */
+  it("gives the trip's two halves, and never passes our stand-in off as theirs", () => {
+    expect(requestView(request(), DAYS)).toMatchObject({
+      experience: "Snorkel trip",
+      when: "Tomorrow at 09:00",
+    });
+    const nameless = requestView(request({ experience: "  " }), DAYS);
+    expect(nameless.experience).toBeNull();
+    expect(nameless.trip).toBe("A departure · Tomorrow at 09:00");
+    const undated = requestView(request({ startsAt: undefined }), DAYS);
+    expect(undated.when).toBe("");
+    expect(undated.trip).toBe("Snorkel trip");
+  });
 });
 
 /*

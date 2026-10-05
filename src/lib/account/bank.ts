@@ -118,6 +118,11 @@ export interface OnFile {
   id: string | null;
   /** "HDFC0001234 · account ending 4412", or the summary as the API wrote it. */
   line: string;
+  /**
+   * The IFSC that `line` opens with, so a screen can set it as a reference
+   * (v3.2). `null` when the line is the API's own summary.
+   */
+  ifsc: string | null;
   /** "HDFC Bank", when the summary named one. */
   bankName: string | null;
 }
@@ -150,6 +155,7 @@ export function accountOnFile(requests: readonly BankRow[]): OnFile | null {
             account somebody is paid into is worse than the API's own words.
           */
           summary,
+    ifsc: ifsc && last4 ? ifsc : null,
     bankName: ifsc && last4 ? bankName : null,
   };
 }

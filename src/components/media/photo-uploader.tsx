@@ -284,7 +284,10 @@ export function PhotoUploader({
           </p>
 
           {phase.problems.map((p) => (
-            <p key={p.message} className="text-forest/80 mt-3 text-sm">
+            <p
+              key={p.message}
+              className="text-forest/80 leading-body mt-3 text-sm text-pretty"
+            >
               {p.message}
             </p>
           ))}

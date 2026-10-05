@@ -89,7 +89,7 @@ export default async function TeamPage() {
         One title (op#80 t2). The eyebrow and the line explaining the screen
         went; what each role may do is the disclosure below, said once.
       */}
-      <h1 className="font-display tracking-display text-4xl leading-[1.05]">
+      <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         Team access
       </h1>
 
@@ -104,7 +104,7 @@ export default async function TeamPage() {
         about their own account.
       */}
       {!canInvite ? (
-        <Panel className="mt-6 p-4 text-sm">
+        <Panel className="leading-body mt-6 p-4 text-sm text-pretty">
           Only an owner or an admin can change who is on this account.
         </Panel>
       ) : null}
@@ -159,7 +159,7 @@ export default async function TeamPage() {
             (yuvoy-operator#91). What is true of every row here is what an
             invitation is: a way in that grants nothing until it is used.
           */}
-          <p className="text-forest/70 mt-2 text-sm">
+          <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">
             An invitation grants nothing until they accept it with their own
             number, and it expires after seven days.
           </p>

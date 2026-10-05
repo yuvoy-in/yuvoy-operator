@@ -105,8 +105,12 @@ export function SignUpForm() {
             is true either way.
           */}
           <p className="text-forest/70 mt-2 text-sm">
-            Almost there. For {formatE164(state.phone ?? "")}. It lasts a few
-            minutes.
+            Almost there. For{" "}
+            {/* The number read back as a reference: every digit checkable. */}
+            <span className="tracking-ref slashed-zero tabular-nums">
+              {formatE164(state.phone ?? "")}
+            </span>
+            . It lasts a few minutes.
           </p>
           <div className="mt-2">
             <WhereTheCodeGoes id="signup-where" />
@@ -172,7 +176,8 @@ export function SignUpForm() {
           maxLength={120}
           placeholder="Reef Divers Havelock"
           aria-invalid={state.field === "businessName" || undefined}
-          className={inputClass("mt-2")}
+          // The name travellers read as the host's, in the host's voice (v3.2).
+          className={inputClass("voice-host mt-2")}
         />
         {/*
           "What travellers will see" — and nothing about the name being
@@ -327,7 +332,7 @@ export function SignUpForm() {
         Create the account
       </Button>
 
-      <p className="border-paper-line text-forest/70 border-t pt-5 text-sm">
+      <p className="border-paper-line text-forest/70 leading-body border-t pt-5 text-sm text-pretty">
         Already have an account?{" "}
         <Link
           href="/sign-in"

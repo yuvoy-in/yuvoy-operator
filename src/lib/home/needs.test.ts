@@ -169,6 +169,8 @@ describe("what needs the operator", () => {
       kind: "cash",
       text: "Collect ₹10,000 on the 09:00",
       detail: "Reef dive · 2 parties",
+      experience: "Reef dive",
+      partyCount: "2 parties",
       slotId: "slot_9",
     });
     expect(needs.find((n) => n.key === "message-bkg_card")).toEqual({
@@ -178,6 +180,8 @@ describe("what needs the operator", () => {
       reference: "YV-CARD6N7P",
       unread: "2 new",
       trip: "Reef dive · Today at 11:30",
+      experience: "Reef dive",
+      when: "Today at 11:30",
     });
     expect(needs.find((n) => n.key === "request-r1")).toMatchObject({
       kind: "request",
@@ -237,6 +241,31 @@ describe("what needs the operator", () => {
       text: "2 more guests wrote to you",
       href: "/messages",
     });
+  });
+
+  it("gives a guest's trip its two halves, and never passes our stand-in off as theirs", () => {
+    // 09:00 tomorrow in the market.
+    const startsAt = "2026-09-23T03:30:00Z";
+    const needs = needsYou({
+      ...base,
+      inbox: {
+        messages: 3,
+        conversations: 3,
+        unread: [
+          thread({ bookingId: "a", startsAt }),
+          thread({ bookingId: "b", experience: "  ", startsAt }),
+          thread({ bookingId: "c", startsAt: undefined }),
+        ],
+        unreadByBooking: {},
+      },
+    });
+    expect(
+      needs.map((n) => n.kind === "message" && [n.experience, n.when, n.trip]),
+    ).toEqual([
+      ["Reef dive", "Tomorrow at 09:00", "Reef dive · Tomorrow at 09:00"],
+      [null, "Tomorrow at 09:00", "A trip · Tomorrow at 09:00"],
+      ["Reef dive", "", "Reef dive"],
+    ]);
   });
 
   it("names a document about to take listings down, by the day it runs out", () => {
@@ -459,6 +488,8 @@ describe("what needs the operator", () => {
     expect(needs[0]).toMatchObject({
       text: "Collect cash on the 17:00",
       detail: "Sunset cruise · 1 party",
+      experience: "Sunset cruise",
+      partyCount: "1 party",
     });
   });
 });

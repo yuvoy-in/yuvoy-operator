@@ -56,10 +56,11 @@ const ICONS: Record<NavIcon, ComponentType<{ className?: string }>> = {
  * The bar used to open only the current stop into a named pill and leave the
  * rest as bare glyphs, so the one label on screen was the one place nobody
  * needed it. Every stop now carries its word under its glyph. Five of them
- * share the pill's width equally: on a 360px phone that is about 60px each,
- * which holds "Bookings" (about 48px at 11px) with room either side, and each
- * stop is still a 48px-tall target. No stop scrolls out of reach at any
- * common width.
+ * share the pill's width equally: a word gets (width - 60px) / 5 - 4px, which
+ * on a 360px phone is 56px and holds "Bookings" (48.8px in the 12px nav
+ * voice, measured) with room either side, and each stop is still a 48px-tall
+ * target. Below 21rem (336px) the bar steps down to 11px (44.7px) rather than
+ * cut the word. No stop scrolls out of reach at any common width.
  *
  * ## The two counts (yuvoy-operator#42)
  *
@@ -139,10 +140,9 @@ export function NavList({
               </span>
               <span
                 className={cn(
-                  "font-bold",
-                  bar
-                    ? "max-w-full truncate text-[11px] leading-none"
-                    : "label",
+                  "text-xs font-bold",
+                  bar &&
+                    "max-w-full truncate text-[11px] leading-none min-[21rem]:text-xs",
                 )}
               >
                 {item.label}
