@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useCallback, useState } from "react";
+import {
+  useActionState,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 import { confirmSeats, type ConfirmSeatsState } from "@/app/calendar/actions";
 import { helpHref } from "@/lib/help/types";
 import type {
@@ -12,8 +19,18 @@ import type {
   Need,
 } from "@/lib/home/needs";
 import type { RequestView } from "@/lib/day/request-view";
+import { changeSentences, needChanges } from "@/lib/home/changes";
+import {
+  DURATION,
+  EASE,
+  play,
+  prefersReducedMotion,
+  stopAnimations,
+} from "@/lib/motion";
+import { markChange } from "@/lib/motion/mark";
 import { sameOrder, stableOrder } from "@/lib/site/stable-order";
 import { cn } from "@/lib/cn";
+import { Announcer } from "@/components/ui/announcer";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { ChevronRightIcon, LayersIcon } from "@/components/ui/icons";
@@ -47,6 +64,18 @@ import { MessageCard } from "./message-card";
  *
  * When nothing is waiting it says so, and names what is next, rather than
  * drawing nothing (experiment A's end state).
+ *
+ * ## What a re-read changed is marked, not moved (O01 A, approved 4 Oct 2026)
+ *
+ * The list re-reads under the operator's thumb, so a request can arrive at
+ * the top or be answered on another phone while they look. Nothing moves to
+ * say so: a card that arrives carries a forest tint that fades over 1.2s; a
+ * card that leaves fades out where it is (100ms, and nothing on it can be
+ * tapped meanwhile) before the list closes up; the Bookings count in the bar
+ * cross-fades. Each is said once in a polite live region, in the owner's
+ * words ("Seat request from Kavya Iyer, 18 min left.", "Daniel Okafor's
+ * request is no longer waiting."). Only what the operator did not do counts:
+ * what they answered, opened or took cash on is kept, and never news.
  */
 export function NeedsYou({
   needs,
@@ -87,9 +116,57 @@ export function NeedsYou({
     setOpened((was) => (was[need.key] ? was : { ...was, [need.key]: need }));
   }, []);
 
-  const kept = new Set<string>([
+  const ours = new Set<string>([
     ...Object.keys(opened),
     ...Object.keys(answers).map((id) => `request-${id}`),
+  ]);
+
+  /*
+    What the last re-read changed, against the needs last drawn (React's
+    "storing information from previous renders"): the cards leaving, held
+    for their fade with the data they were drawn with; the cards arriving,
+    to mark; and what to say about both.
+  */
+  const [drawn, setDrawn] = useState(needs);
+  const [leaving, setLeaving] = useState<Record<string, Need>>({});
+  const [arrived, setArrived] = useState<{ keys: string[]; n: number }>({
+    keys: [],
+    n: 0,
+  });
+  const [said, setSaid] = useState({ text: "", n: 0 });
+  const change = needs !== drawn ? needChanges(drawn, needs, ours) : null;
+  if (change) {
+    setDrawn(needs);
+    if (change.gone.length > 0 || change.arrived.length > 0) {
+      setLeaving((was) => {
+        const next = { ...was };
+        for (const need of change.gone) next[need.key] = need;
+        // Back before its fade had ended: it is not leaving after all.
+        for (const need of change.arrived) delete next[need.key];
+        return next;
+      });
+    }
+    if (change.arrived.length > 0) {
+      setArrived((was) => ({
+        keys: change.arrived.map((need) => need.key),
+        n: was.n + 1,
+      }));
+    }
+    const lines = changeSentences(change.arrived, change.gone);
+    if (lines.length > 0) {
+      setSaid((was) => ({ text: lines.join(" "), n: was.n + 1 }));
+    }
+  }
+
+  /*
+    A leaving card keeps its place while it fades, as a kept one does: from
+    the render that finds it gone, before its fade is even in state, or the
+    order would let go of it first.
+  */
+  const kept = new Set<string>([
+    ...ours,
+    ...Object.keys(leaving),
+    ...(change?.gone.map((need) => need.key) ?? []),
   ]);
   const serverKeys = needs
     .filter(
@@ -100,11 +177,11 @@ export function NeedsYou({
   const nextOrder = stableOrder(order, serverKeys, kept);
   if (!sameOrder(nextOrder, order)) setOrder(nextOrder);
 
-  /** The request a key names, from the server or from its answer. */
+  /** The request a key names: from the server, its fade, or its answer. */
   function requestFor(
     key: string,
   ): { view: RequestView; answer?: Answer } | null {
-    const need = byKey.get(key);
+    const need = byKey.get(key) ?? leaving[key];
     if (need?.kind === "request") {
       return { view: need.view, answer: answers[need.view.id] };
     }
@@ -113,7 +190,7 @@ export function NeedsYou({
     return answer ? { view: answer.view, answer } : null;
   }
 
-  const rows = nextOrder.flatMap((key) => {
+  const rowsFor = (key: string): ReactElement[] => {
     const request = key.startsWith("request-") ? requestFor(key) : null;
     if (request) {
       const present = byKey.has(key);
@@ -139,7 +216,7 @@ export function NeedsYou({
       ];
     }
     const live = byKey.get(key);
-    const need = live ?? opened[key];
+    const need = live ?? opened[key] ?? leaving[key];
     if (!need) return [];
     switch (need.kind) {
       case "message":
@@ -155,7 +232,8 @@ export function NeedsYou({
         return [
           <CashCard
             key={key}
-            need={live ? need : { ...need, parties: [] }}
+            // A card fading out is drawn exactly as it was.
+            need={live || leaving[key] ? need : { ...need, parties: [] }}
             onTouch={() => touch(need)}
           />,
         ];
@@ -176,7 +254,80 @@ export function NeedsYou({
       default:
         return [];
     }
+  };
+  const items = nextOrder.flatMap((key) =>
+    rowsFor(key).map((node) => ({ key, node })),
+  );
+  const rows = items.map((item) => item.node);
+
+  /*
+    The cards drawn, by key, in the order they are on the page, for the marks
+    drawn after a commit: every row here is exactly one <li>, under the
+    receipt for confirming seats when there is one. A count that does not
+    agree is a list drawn some other way, and gets no motion rather than the
+    wrong card's.
+  */
+  const list = useRef<HTMLUListElement>(null);
+  const drawnKeys = useRef<string[]>([]);
+  useLayoutEffect(() => {
+    drawnKeys.current = items.map((item) => item.key);
   });
+  const rowOf = useCallback((key: string): HTMLElement | null => {
+    const el = list.current;
+    if (!el) return null;
+    const keys = drawnKeys.current;
+    const offset = el.children.length - keys.length;
+    if (offset < 0 || offset > 1) return null;
+    const at = keys.indexOf(key);
+    const row = at < 0 ? null : el.children[offset + at];
+    return row instanceof HTMLElement ? row : null;
+  }, []);
+
+  /*
+    A card that arrived is marked where it landed. One that came back before
+    its fade had ended is given back too: drawn, and answering, again.
+  */
+  useLayoutEffect(() => {
+    for (const key of arrived.keys) {
+      const row = rowOf(key);
+      if (row?.inert) {
+        row.inert = false;
+        stopAnimations(row);
+      }
+      markChange(row);
+    }
+  }, [arrived, rowOf]);
+
+  /*
+    A card that left is faded out where it is (100ms, accelerating away;
+    120ms when reduced) and cannot be tapped meanwhile; then the list closes
+    up over it, in one frame, as it always has.
+  */
+  const leavingKeys = Object.keys(leaving).join("\n");
+  useLayoutEffect(() => {
+    const keys = leavingKeys ? leavingKeys.split("\n") : [];
+    if (keys.length === 0) return;
+    const reduced = prefersReducedMotion();
+    const ms = reduced ? DURATION.reducedFade : DURATION.press;
+    for (const key of keys) {
+      const row = rowOf(key);
+      if (!row || row.inert) continue;
+      row.inert = true;
+      play(row, [{ opacity: 1 }, { opacity: 0 }], {
+        duration: ms,
+        easing: reduced ? "linear" : EASE.exit,
+        fill: "forwards",
+      });
+    }
+    const timer = setTimeout(() => {
+      setLeaving((was) => {
+        const next = { ...was };
+        for (const key of keys) delete next[key];
+        return next;
+      });
+    }, ms);
+    return () => clearTimeout(timer);
+  }, [leavingKeys, rowOf]);
 
   return (
     <section aria-labelledby="needs-you" className="mt-8">
@@ -184,6 +335,7 @@ export function NeedsYou({
         Needs you
       </h2>
       <AnswerAnnouncer answers={answers} />
+      <Announcer said={said} />
       {rows.length === 0 && seats.confirmed === undefined ? (
         <div className={panelClass("done", "mt-3")}>
           <p className="font-display text-2xl leading-tight">
@@ -194,7 +346,7 @@ export function NeedsYou({
           ) : null}
         </div>
       ) : (
-        <ul className="mt-3 space-y-3">
+        <ul ref={list} className="mt-3 space-y-3">
           {seats.confirmed !== undefined ? (
             <SeatsConfirmed n={seats.confirmed} />
           ) : null}
@@ -267,8 +419,13 @@ function ConfirmSeatsRow({
           Why?
         </Link>
         <div className="mt-3">
-          <Button type="submit" variant="secondary" disabled={pending}>
-            {pending ? "Confirming…" : "Confirm all"}
+          <Button
+            type="submit"
+            variant="secondary"
+            pending={pending}
+            pendingLabel="Confirming"
+          >
+            Confirm all
           </Button>
         </div>
       </form>

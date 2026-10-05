@@ -126,8 +126,8 @@ export function SignUpForm() {
           </p>
         ) : null}
 
-        <Button type="submit" disabled={pending}>
-          {pending ? "Working…" : "Finish"}
+        <Button type="submit" pending={pending} pendingLabel="Working">
+          Finish
         </Button>
 
         {/*
@@ -318,8 +318,13 @@ export function SignUpForm() {
         </p>
       ) : null}
 
-      <Button type="submit" disabled={pending || !complete}>
-        {pending ? "Working…" : "Create the account"}
+      <Button
+        type="submit"
+        pending={pending}
+        pendingLabel="Working"
+        disabled={!complete}
+      >
+        Create the account
       </Button>
 
       <p className="border-paper-line text-forest/70 border-t pt-5 text-sm">

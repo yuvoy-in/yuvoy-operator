@@ -208,11 +208,12 @@ function RelayRound({
       <div className="mt-4 flex gap-2">
         <Button
           type="submit"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Sending"
           block={false}
           className="flex-1"
         >
-          {pending ? "Sending…" : sendsToPhone ? "Send it" : "Leave the note"}
+          {sendsToPhone ? "Send it" : "Leave the note"}
         </Button>
         <Button
           onClick={() => setOpen(false)}

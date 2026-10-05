@@ -47,9 +47,17 @@ let online = true;
 beforeEach(() => {
   online = true;
   vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+  /*
+    The clock, a minute after the tap. A kept write older than a day is not
+    sent (MAX_AGE_MS), and TAPPED is a fixed moment, so on the real clock
+    these cases passed for a day and then failed for ever (5 Oct 2026, 06:30
+    IST, every gate). Only `Date` is pinned; timers and promises run as ever.
+  */
+  vi.useFakeTimers({ toFake: ["Date"], now: TAPPED + 60_000 });
   offlineWrites.forget();
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   refresh.mockReset();
   markAttendance.mockReset();

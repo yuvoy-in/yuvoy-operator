@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 
 const pauseListing = vi.fn();
 const resumeListing = vi.fn();
@@ -281,5 +282,70 @@ describe("focus in the pause and resume confirms", () => {
     ).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "Not yet" }));
     expect(screen.getByRole("button", { name: "Resume" })).toHaveFocus();
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026), for both confirms: each question fades in
+  where its words were, Not now and Not yet fade a held copy out as the words
+  come back, and each receipt fades in with no copy (`useStillConfirm`).
+*/
+describe("arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
+  it("fades the pause question in, and Not now fades a held copy out as Pause comes back", () => {
+    control();
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    const question = screen.getByText(/^Pause Snorkel trip at Coral Bay\?/);
+    expect(motion.fadeOf(question.closest("form"))).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    const pause = screen.getByRole("button", { name: "Pause" });
+    expect(motion.fadeOf(pause.parentElement)).toBeDefined();
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Pause Snorkel trip at Coral Bay?");
+    expect(motion.exitOf(copy)).toBeDefined();
+  });
+
+  it("fades the pause receipt in, then the resume receipt after it", async () => {
+    pauseListing.mockResolvedValue({
+      done: { upcomingDepartures: 1, bookingsToHonour: 0, guestsToHonour: 0 },
+    });
+    resumeListing.mockResolvedValue({
+      done: { state: "published", next: "It is back on sale." },
+    });
+    control();
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pause it" }));
+    const paused = await screen.findByText("Paused");
+    expect(motion.fadeOf(paused.parentElement)).toBeDefined();
+    expect(motion.copies()).toHaveLength(0);
+
+    // Resume's own confirm, inside the receipt, arrives still too.
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    const question = screen.getByText(
+      "Put Snorkel trip at Coral Bay back on sale?",
+    );
+    expect(motion.fadeOf(question.closest("form"))).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Yes, resume it" }));
+    const resumed = await screen.findByText("Resumed");
+    expect(motion.fadeOf(resumed.parentElement)).toBeDefined();
+    expect(motion.copies()).toHaveLength(0);
+  });
+
+  it("fades a held copy of the resume question out as Not yet puts Resume back", () => {
+    control("withdrawn");
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    fireEvent.click(screen.getByRole("button", { name: "Not yet" }));
+    const resume = screen.getByRole("button", { name: "Resume" });
+    expect(motion.fadeOf(resume.parentElement)).toBeDefined();
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent(
+      "Put Snorkel trip at Coral Bay back on sale?",
+    );
   });
 });

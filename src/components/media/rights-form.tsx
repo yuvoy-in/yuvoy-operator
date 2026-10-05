@@ -212,8 +212,13 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
         </p>
       ) : null}
 
-      <Button type="submit" disabled={pending || !hash}>
-        {pending ? "Recording…" : "I confirm this, and submit for review"}
+      <Button
+        type="submit"
+        pending={pending}
+        pendingLabel="Recording"
+        disabled={!hash}
+      >
+        I confirm this, and submit for review
       </Button>
 
       <p className="text-forest/70 text-xs">

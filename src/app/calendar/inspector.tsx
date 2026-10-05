@@ -61,7 +61,11 @@ export function DepartureInspector({
   const meeting = manifest?.meetingPoint?.trim();
 
   return (
-    <InspectorSheet title={`${time} ${slot.title}`} closeHref={closeHref}>
+    <InspectorSheet
+      dep={slot.id}
+      title={`${time} ${slot.title}`}
+      closeHref={closeHref}
+    >
       <p className="text-forest/80 -mt-3 text-sm">
         {shortDate(day)}
         {meeting ? ` · ${meeting}` : ""}

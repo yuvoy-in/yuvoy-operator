@@ -69,9 +69,10 @@ export function ReopenClosure({
         type="submit"
         variant="secondary"
         block={false}
-        disabled={pending}
+        pending={pending}
+        pendingLabel="Reopening"
       >
-        {pending ? "Reopening…" : "Reopen"}
+        Reopen
       </Button>
       {state.message ? (
         <p role="alert" className="text-terra-deep mt-2 text-sm font-bold">

@@ -18,6 +18,7 @@ import { WeekPicker } from "./week-picker";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 
 /**
  * The weekly schedule — yuvoy-operator#56 item 8.
@@ -53,6 +54,12 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
  * listing has, beside a way to put it back, and the screen's loudest thing
  * stays the departures above it. It waits, disabled, while anything on the
  * week would be refused, which is said where it is.
+ *
+ * ## The question arrives still (O06 B, approved 4 Oct 2026)
+ *
+ * It fades in where the save was, and put away (Keep it, Keep editing, or an
+ * edit to the week that makes it moot) it fades out as a held copy while
+ * what replaced it fades in. The receipt fades in (`useStillConfirm`).
  */
 type Row = ScheduleRow;
 
@@ -101,10 +108,13 @@ export function ScheduleForm({
   const closing = removingAll ? [] : removedTimes(weekly, rows);
   const asks = dirty && (removingAll || closing.length > 0);
   const { trigger, question } = useConfirmFocus(asks && confirming);
+  const { root, frame } = useStillConfirm(
+    state.done ? "receipt" : asks && confirming ? "confirm" : "text",
+  );
 
   if (state.done) {
-    return (
-      <Panel tone="done" role="status" className="mt-3 p-4">
+    return frame(
+      <Panel ref={root} tone="done" role="status" className="mt-3 p-4">
         <p className="text-base font-bold">The weekly schedule is saved</p>
         {/*
           The API's own sentence, verbatim: it says how many departures the save
@@ -124,11 +134,11 @@ export function ScheduleForm({
             {state.notOnSaleDetail}
           </p>
         ) : null}
-      </Panel>
+      </Panel>,
     );
   }
 
-  return (
+  return frame(
     <form action={act} className="mt-3">
       <input type="hidden" name="experienceId" value={experienceId} />
       {/*
@@ -174,7 +184,7 @@ export function ScheduleForm({
         removes (#81), and the one that closes is the loud one.
       */}
       {!dirty ? null : asks && confirming ? (
-        <Panel tone="alert" className="mt-4 p-4">
+        <Panel ref={root} tone="alert" className="mt-4 p-4">
           <p
             ref={question}
             tabIndex={-1}
@@ -193,15 +203,10 @@ export function ScheduleForm({
               variant="danger"
               block={false}
               className="flex-1"
-              disabled={pending}
+              pending={pending}
+              pendingLabel={removingAll ? "Removing" : "Saving"}
             >
-              {removingAll
-                ? pending
-                  ? "Removing…"
-                  : "Remove schedule"
-                : pending
-                  ? "Saving…"
-                  : "Save and close them"}
+              {removingAll ? "Remove schedule" : "Save and close them"}
             </Button>
             <Button
               variant="secondary"
@@ -215,7 +220,10 @@ export function ScheduleForm({
           </div>
         </Panel>
       ) : asks ? (
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div
+          ref={root}
+          className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2"
+        >
           {removingAll ? (
             <Button
               ref={trigger}
@@ -242,14 +250,19 @@ export function ScheduleForm({
           <UndoChanges onUndo={() => setPlan(planFromRows(weekly))} />
         </div>
       ) : (
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div
+          ref={root}
+          className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2"
+        >
           <Button
             type="submit"
             block={false}
-            disabled={pending || blocked}
+            pending={pending}
+            pendingLabel="Saving"
+            disabled={blocked}
             aria-describedby={blocked ? blockedId : undefined}
           >
-            {pending ? "Saving…" : "Save the schedule"}
+            Save the schedule
           </Button>
           <UndoChanges
             onUndo={() => setPlan(planFromRows(weekly))}
@@ -257,7 +270,7 @@ export function ScheduleForm({
           />
         </div>
       )}
-    </form>
+    </form>,
   );
 }
 

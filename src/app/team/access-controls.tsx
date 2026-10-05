@@ -280,7 +280,8 @@ function RoleForm({
 
       <Actions
         pending={pending}
-        submitLabel={pending ? "Saving…" : "Save role"}
+        submitLabel="Save role"
+        pendingLabel="Saving"
         onClose={onClose}
       />
       <Failure state={state} />
@@ -319,7 +320,8 @@ function HoldForm({
       </p>
       <Actions
         pending={pending}
-        submitLabel={pending ? "Pausing…" : "Pause access"}
+        submitLabel="Pause access"
+        pendingLabel="Pausing"
         onClose={onClose}
       />
       <Failure state={state} />
@@ -350,7 +352,8 @@ function RestoreForm({
       </p>
       <Actions
         pending={pending}
-        submitLabel={pending ? "Restoring…" : "Give access back"}
+        submitLabel="Give access back"
+        pendingLabel="Restoring"
         onClose={onClose}
       />
       <Failure state={state} />
@@ -362,17 +365,21 @@ function RestoreForm({
 function Actions({
   pending,
   submitLabel,
+  pendingLabel,
   onClose,
 }: {
   pending: boolean;
   submitLabel: string;
+  /** The working verb, while the change is on its way. */
+  pendingLabel: string;
   onClose: () => void;
 }) {
   return (
     <div className="mt-4 flex gap-2">
       <Button
         type="submit"
-        disabled={pending}
+        pending={pending}
+        pendingLabel={pendingLabel}
         variant="primary"
         block={false}
         className="flex-1"

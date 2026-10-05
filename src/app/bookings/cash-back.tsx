@@ -104,9 +104,10 @@ export function CashBack({
           type="submit"
           block={false}
           className="flex-1"
-          disabled={pending}
+          pending={pending}
+          pendingLabel="Recording"
         >
-          {pending ? "Recording…" : "Yes, I gave it back"}
+          Yes, I gave it back
         </Button>
         <Button
           variant="secondary"

@@ -125,12 +125,13 @@ export function Submitted({
           <div className="mt-4 flex gap-2">
             <Button
               type="submit"
-              disabled={pending}
+              pending={pending}
+              pendingLabel="Taking it down"
               variant="danger"
               block={false}
               className="flex-1"
             >
-              {pending ? "Taking it down…" : "Take it down"}
+              Take it down
             </Button>
             <Button
               onClick={() => setConfirming(false)}

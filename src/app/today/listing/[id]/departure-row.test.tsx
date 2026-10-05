@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 import type { OperatorSlot } from "@/lib/day/types";
 
 const moveDeparture = vi.fn();
@@ -353,5 +354,51 @@ describe("an act opened from Manage", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Seats" })).toBeEnabled(),
     );
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026) on the hub: the row opens both confirms and
+  takes them away, so the row draws the fades. Each confirm fades in under
+  the act that asked for it, once (the confirm opened straight on its
+  question does not fade a second time inside), and Keep it fades a held
+  copy of it out (`useStillConfirm`).
+*/
+describe("the hub's confirms, arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
+  it("fades stopping in under its act, once, and Keep selling fades a held copy out", () => {
+    row();
+    fireEvent.click(screen.getByRole("button", { name: /^Manage/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop selling" }));
+    const form = screen
+      .getByText("Stop selling 09:00 Snorkel trip at Coral Bay?")
+      .closest("form")!;
+    expect(motion.fadeOf(form.parentElement)).toBeDefined();
+    expect(motion.fadeOf(form)).toBeUndefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep selling" }));
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent(
+      "Stop selling 09:00 Snorkel trip at Coral Bay?",
+    );
+    expect(motion.exitOf(copy)).toBeDefined();
+  });
+
+  it("cross-fades one confirm into the other when the act changes", () => {
+    row();
+    fireEvent.click(screen.getByRole("button", { name: /^Manage/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Call off" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop selling" }));
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Call off the 09:00 Snorkel trip");
+    const form = screen
+      .getByText("Stop selling 09:00 Snorkel trip at Coral Bay?")
+      .closest("form")!;
+    expect(motion.fadeOf(form.parentElement)).toBeDefined();
   });
 });

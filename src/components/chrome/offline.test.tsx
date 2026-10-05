@@ -1,12 +1,14 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const refresh = vi.fn();
 const replace = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh, replace }),
+  // The address as the bar has it, which is what Next's own hook follows.
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 
 const { OnlineOnly } = await import("@/components/ui/online-only");
@@ -162,15 +164,28 @@ describe("re-reading the screen", () => {
 });
 
 describe("the inspector with no signal", () => {
-  function inspector(title = "07:00 Try-dive at Nemo Reef") {
+  function inspector(title = "07:00 Try-dive at Nemo Reef", dep = "slot_dawn") {
     return (
-      <InspectorSheet title={title} closeHref="/calendar?day=2026-10-15">
+      <InspectorSheet
+        dep={dep}
+        title={title}
+        closeHref="/calendar?day=2026-10-15"
+      >
         <button type="button">Stop selling it</button>
       </InspectorSheet>
     );
   }
+  /** The board opened on a departure, as its address names it. */
+  function opened(dep = "slot_dawn") {
+    window.history.replaceState(
+      null,
+      "",
+      `/calendar?day=2026-10-15&dep=${dep}`,
+    );
+  }
 
-  it("closes on the phone, with the same address in the bar", () => {
+  it("closes on the phone, with the same address in the bar", async () => {
+    opened();
     render(inspector());
     goOffline();
     expect(
@@ -178,33 +193,61 @@ describe("the inspector with no signal", () => {
     ).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(replace).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
     expect(window.location.pathname + window.location.search).toBe(
       "/calendar?day=2026-10-15",
     );
   });
 
-  it("closes by navigating, as before, with a signal", () => {
+  /*
+    O08 A (approved 4 Oct 2026): closing answers the tap. The address loses
+    the departure at once and the board re-reads behind the sheet, instead
+    of the sheet waiting on a navigation and vanishing when it landed.
+  */
+  it("leaves on the tap with a signal, the address follows at once, and the board re-reads", async () => {
+    opened();
     render(inspector());
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(replace).toHaveBeenCalledWith("/calendar?day=2026-10-15", {
-      scroll: false,
-    });
+    expect(window.location.pathname + window.location.search).toBe(
+      "/calendar?day=2026-10-15",
+    );
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(replace).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
-  it("shows a different departure opened where one was closed offline", () => {
+  it("shows a different departure opened where one was closed offline", async () => {
+    opened();
     const { rerender } = render(inspector());
     goOffline();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     goOnline();
-    rerender(inspector("09:00 Snorkel trip to Elephant Beach"));
+    opened("slot_snorkel");
+    rerender(inspector("09:00 Snorkel trip to Elephant Beach", "slot_snorkel"));
     expect(
       screen.getByRole("dialog", {
         name: "09:00 Snorkel trip to Elephant Beach",
       }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the same departure again once the address opens it again", async () => {
+    opened();
+    const { rerender } = render(inspector());
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // Gone until the address names it again: a re-render alone keeps it shut.
+    rerender(inspector());
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    opened();
+    rerender(inspector());
+    expect(
+      screen.getByRole("dialog", { name: "07:00 Try-dive at Nemo Reef" }),
     ).toBeInTheDocument();
   });
 });

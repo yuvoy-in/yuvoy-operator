@@ -96,11 +96,13 @@ export function DaySection({
         <ul
           className={panelClass(
             "raised",
-            "divide-paper-line mt-3 divide-y p-0 lg:hidden",
+            // Clipped, so a row's mark keeps the panel's rounded corners.
+            "divide-paper-line mt-3 divide-y overflow-hidden p-0 lg:hidden",
           )}
         >
           {cells.map((cell) => (
-            <li key={cell.id}>
+            // `data-departure`: the inspector marks a row whose seats it saved.
+            <li key={cell.id} data-departure={cell.id}>
               <Link
                 href={boardHref({ week, day, dep: cell.id }, today)}
                 scroll={false}

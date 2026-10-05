@@ -6,6 +6,7 @@ import { CLOSING_SENTENCE, alreadyConfirmedSentence } from "@/lib/day/calendar";
 import { closureLine, type Closure } from "@/lib/day/closures";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
+import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { BlackoutForm } from "./blackout-form";
 import { ReopenClosure } from "./reopen-closure";
 
@@ -47,6 +48,13 @@ interface DayReceipt {
  * Reopening hands its note up HERE (`onReopened`): a reopened closure drops
  * out of the list and its row unmounts on the re-read, and this panel does
  * not (op#89 f16).
+ *
+ * ## The day's confirm arrives still (O06 B, approved 4 Oct 2026)
+ *
+ * This panel opens the closing form and puts it away, so it draws the two
+ * fades the form's own words would: the question fades in where "Close this
+ * day" was, and Keep it open fades a held copy of it out as the words come
+ * back (`useStillConfirm`). The form fades its own receipt in.
  */
 export function DayPanel({
   day,
@@ -70,6 +78,9 @@ export function DayPanel({
   const [closing, setClosing] = useState(false);
   // The day's question is the closing form's; this holds the way back to here.
   const { trigger } = useConfirmFocus(closing);
+  const { root, frame } = useStillConfirm(
+    closing ? "confirm" : closed ? "none" : "text",
+  );
   const [receipts, setReceipts] = useState<DayReceipt[]>([]);
   const onDone = useCallback((receipt: DayReceipt) => {
     setReceipts((prev) =>
@@ -77,7 +88,7 @@ export function DayPanel({
     );
   }, []);
 
-  return (
+  return frame(
     <div className="space-y-5">
       {/*
         What reopening did, in the API's words: "it gives both counts in
@@ -137,31 +148,33 @@ export function DayPanel({
       ) : null}
 
       {closing ? (
-        <BlackoutForm
-          today={day}
-          day={{ date: day, label, closed }}
-          onCancel={() => setClosing(false)}
-        >
-          <p className="mt-2 text-sm font-bold">{CLOSING_SENTENCE}</p>
-          {guests === null ? (
-            <p className="text-terra-deep mt-2 text-sm font-bold">
-              Anybody already confirmed on this day stays booked. Closing
-              won&apos;t move them. Resolve each booking in Bookings.
-            </p>
-          ) : guests > 0 ? (
-            <p className="text-terra-deep mt-2 text-sm font-bold">
-              {alreadyConfirmedSentence(guests)}
-            </p>
-          ) : null}
-          <Link
-            href="/bookings"
-            className="text-forest decoration-forest/40 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
+        <div ref={root}>
+          <BlackoutForm
+            today={day}
+            day={{ date: day, label, closed }}
+            onCancel={() => setClosing(false)}
           >
-            Open Bookings
-          </Link>
-        </BlackoutForm>
+            <p className="mt-2 text-sm font-bold">{CLOSING_SENTENCE}</p>
+            {guests === null ? (
+              <p className="text-terra-deep mt-2 text-sm font-bold">
+                Anybody already confirmed on this day stays booked. Closing
+                won&apos;t move them. Resolve each booking in Bookings.
+              </p>
+            ) : guests > 0 ? (
+              <p className="text-terra-deep mt-2 text-sm font-bold">
+                {alreadyConfirmedSentence(guests)}
+              </p>
+            ) : null}
+            <Link
+              href="/bookings"
+              className="text-forest decoration-forest/40 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
+            >
+              Open Bookings
+            </Link>
+          </BlackoutForm>
+        </div>
       ) : closed ? null : (
-        <div>
+        <div ref={root}>
           <Button
             ref={trigger}
             variant="danger-quiet"
@@ -179,6 +192,6 @@ export function DayPanel({
           </Button>
         </div>
       )}
-    </div>
+    </div>,
   );
 }

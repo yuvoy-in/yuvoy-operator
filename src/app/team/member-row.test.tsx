@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 import type { Removability, TeamPerson } from "@/lib/team/members";
 
 /*
@@ -248,5 +249,42 @@ describe("focus in the remove confirm", () => {
     expect(
       screen.getByRole("button", { name: "Remove Arun Biswas" }),
     ).toHaveFocus();
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026): the question fades in where "Remove" was,
+  Back fades a held copy of it out as the words come back, and the row's
+  receipt fades in with no copy (`useStillConfirm`).
+*/
+describe("arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
+  it("fades the question in, and Back fades a held copy out as the words come back", () => {
+    row(ARUN);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Arun Biswas" }));
+    const question = screen.getByText("Remove Arun Biswas?");
+    expect(motion.fadeOf(question.closest("form"))).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    const trigger = screen.getByRole("button", { name: "Remove Arun Biswas" });
+    expect(motion.fadeOf(trigger.parentElement)).toBeDefined();
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Remove Arun Biswas?");
+    expect(motion.exitOf(copy)).toBeDefined();
+  });
+
+  it("fades the row's receipt in, with no copy of the question", async () => {
+    removeMember.mockResolvedValue({ removed: true });
+    row(ARUN);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Arun Biswas" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const receipt = await screen.findByText("Arun Biswas removed");
+    expect(motion.fadeOf(receipt.closest("li"))).toBeDefined();
+    expect(motion.copies()).toHaveLength(0);
   });
 });

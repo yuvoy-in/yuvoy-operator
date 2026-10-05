@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 import type { Closure } from "@/lib/day/closures";
 
 /*
@@ -207,5 +208,57 @@ describe("focus in the close-a-day confirm", () => {
     expect(
       screen.getByRole("button", { name: /^Close this day/ }),
     ).toHaveFocus();
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026): the day opens its closing form and puts it
+  away, so the day draws the two fades. The question fades in where "Close
+  this day" was, Keep it open fades a held copy of it out as the words come
+  back, and the form fades its receipt in with no copy (`useStillConfirm`).
+*/
+describe("the day's confirm, arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
+  const fades = (el: Element | null) =>
+    motion.played.filter((p) => p.el === el && p.frames[0]?.opacity === 0)
+      .length;
+
+  it("fades the question in, and Keep it open fades a held copy out as the words come back", () => {
+    render(panel([]));
+    fireEvent.click(screen.getByRole("button", { name: /^Close this day/ }));
+    const question = screen.getByText(
+      "Close Sunday 27 September to new bookings",
+    );
+    const slot = question.closest("form")!.parentElement;
+    expect(fades(slot)).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep it open" }));
+    const trigger = screen.getByRole("button", { name: /^Close this day/ });
+    // The same place in the panel, drawn again: it fades in a second time.
+    expect(trigger.parentElement).toBe(slot);
+    expect(fades(slot)).toBe(2);
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Close Sunday 27 September to new bookings");
+    expect(motion.exitOf(copy)).toBeDefined();
+  });
+
+  it("fades the form's receipt in, with no copy of the question", async () => {
+    addBlackout.mockResolvedValue({ result: { existingBookings: 0 } });
+    render(panel([]));
+    fireEvent.click(screen.getByRole("button", { name: /^Close this day/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Weather" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close Sunday 27 September" }),
+    );
+    const receipt = await screen.findByText(
+      "Sunday 27 September is closed to new bookings",
+    );
+    expect(fades(receipt.parentElement)).toBe(1);
+    expect(motion.copies()).toHaveLength(0);
   });
 });

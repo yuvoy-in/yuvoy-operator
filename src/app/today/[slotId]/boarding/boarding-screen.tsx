@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { markAttendance } from "../actions";
 import { PartyRow } from "../party-row";
 import {
@@ -26,7 +32,20 @@ import { useOnline } from "@/components/ui/use-online";
 import { useChrome } from "@/components/chrome/chrome-context";
 import { KeptOnThisPhone } from "@/components/chrome/kept-on-this-phone";
 import { offlineWrites, writesFor } from "@/lib/site/offline-writes";
-import { createCheckInStore, type CheckIn } from "./check-in-store";
+import { DURATION } from "@/lib/motion";
+import {
+  dropLifted,
+  fadeIn,
+  lift,
+  slideFrom,
+  topsOf,
+  type Lifted,
+  type Tops,
+} from "@/lib/motion/flip";
+import { MeasureBefore } from "@/lib/motion/measure-before";
+import { Roll } from "@/components/ui/roll";
+import { UndoWindow } from "@/components/ui/undo-window";
+import { createCheckInStore, HOLD_MS, type CheckIn } from "./check-in-store";
 import { SwipeRow } from "./swipe-row";
 
 /** One party, as the server hands it to boarding. */
@@ -62,6 +81,21 @@ const NONE: Readonly<Record<string, CheckIn>> = {};
  * API makes both safe to send twice). The strip says what is kept and, once
  * sent, when, and who had already been done from somewhere else. Closing out,
  * messages and cancelling wait for the signal. See `KeptOnThisPhone`.
+ *
+ * ## Where the party went (O07 A, approved 4 Oct 2026)
+ *
+ * A tap on Aboard (or the swipe) used to move the row into Aboard in one
+ * frame, from under the thumb into a list usually below the fold. Now the
+ * eye can follow it: the row fades out of To come (100ms, a held copy drawn
+ * where it was) while the rows under it close up, it fades in at its place
+ * in Aboard (150ms, from 100ms) while the rows there make room (each slide
+ * 200ms on `--ease-move`, measured before the commit), and the headcount
+ * rolls up (`Roll`). Undo plays the same the other way. A hairline under
+ * Undo empties across the five seconds in which it still works. What
+ * arrives from the server (a party checked in on another phone) lands as it
+ * always has. Under reduced motion nothing slides or rolls: the row and the
+ * count cross-fade in 120ms, and the hairline steps once a second. Sun mode
+ * is untouched.
  */
 export function BoardingScreen({
   slotId,
@@ -174,15 +208,37 @@ export function BoardingScreen({
   // With no signal it is kept on the phone, as the person signed in.
   const canCheckIn = (online || Boolean(userId)) && !departed && !calledOff;
 
+  /*
+    The party the operator just moved between the lists, and a count of
+    moves, which is what the motion watches: a move is the one change here
+    that is shown travelling (see above).
+  */
+  const [moved, setMoved] = useState<{ id: string; n: number } | null>(null);
+  const move = useCallback((id: string) => {
+    setMoved((was) => ({ id, n: (was?.n ?? 0) + 1 }));
+  }, []);
+
   const checkIn = useCallback(
     (id: string) => {
-      if (canCheckIn) store.hold(id);
+      if (!canCheckIn) return;
+      // Already on its way: a second tap moves nothing, so nothing is shown moving.
+      const phase = store.get()[id]?.phase;
+      if (phase === "sending" || phase === "sent") return;
+      move(id);
+      store.hold(id);
     },
-    [canCheckIn, store],
+    [canCheckIn, store, move],
   );
 
+  const board = useRef<HTMLDivElement>(null);
+  /** The row a party is drawn in now, in whichever list. */
+  const rowOf = (id: string | undefined) =>
+    Array.from(
+      board.current?.querySelectorAll<HTMLElement>("li[data-party]") ?? [],
+    ).find((li) => li.dataset.party === id) ?? null;
+
   return (
-    <div data-sun={sun ? "on" : "off"} className="pb-28 lg:pb-0">
+    <div ref={board} data-sun={sun ? "on" : "off"} className="pb-28 lg:pb-0">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="label text-forest/75">{kicker}</p>
@@ -217,7 +273,7 @@ export function BoardingScreen({
       */}
         <p aria-live="polite" className="mt-6 flex items-baseline gap-2">
           <span className="font-display text-7xl leading-none tabular-nums">
-            {count.aboard}
+            <Roll value={count.aboard} />
           </span>{" "}
           <span className="text-forest/80 text-2xl">of</span>{" "}
           <span className="font-display text-7xl leading-none tabular-nums">
@@ -288,41 +344,161 @@ export function BoardingScreen({
           </p>
         ) : null}
 
-        {toCome.length > 0 ? (
-          <section aria-labelledby="boarding-to-come" className="mt-6">
-            <h2 id="boarding-to-come" className="label text-forest/75">
-              {departed ? "To close out" : "To come"} · {toCome.length}
-            </h2>
-            <ul className="mt-2 space-y-2">
-              {toCome.filter(shown).map((party) => {
-                const failed = checkIns[party.bookingId];
-                const flags = boardingFlags(party);
-                const spoken = [
-                  party.name,
-                  party.guests === 1 ? "1 guest" : `${party.guests} guests`,
-                  `reference ${party.reference}`,
-                  ...flags,
-                ].join(", ");
-                const can = canCheckIn && boardable(party);
-                return (
-                  <li key={party.bookingId}>
-                    <SwipeRow
-                      enabled={can}
-                      onCommit={() => checkIn(party.bookingId)}
+        <MeasureBefore<{ tops: Tops; lifted: Lifted | null }>
+          watch={moved?.n ?? 0}
+          capture={() => ({
+            tops: topsOf(
+              board.current?.querySelectorAll<HTMLElement>("[data-flip]") ?? [],
+            ),
+            lifted: lift(rowOf(moved?.id)),
+          })}
+          apply={({ tops, lifted }) => {
+            slideFrom(tops);
+            if (lifted && board.current) {
+              dropLifted(lifted, board.current, DURATION.press);
+            }
+            // In after the copy has gone out, so it never lands on rows
+            // still closing up.
+            const row = rowOf(moved?.id);
+            if (row) fadeIn(row, DURATION.press);
+          }}
+        >
+          {toCome.length > 0 ? (
+            <section aria-labelledby="boarding-to-come" className="mt-6">
+              <h2
+                id="boarding-to-come"
+                data-flip=""
+                className="label text-forest/75"
+              >
+                {departed ? "To close out" : "To come"} · {toCome.length}
+              </h2>
+              <ul className="mt-2 space-y-2">
+                {toCome.filter(shown).map((party) => {
+                  const failed = checkIns[party.bookingId];
+                  const flags = boardingFlags(party);
+                  const spoken = [
+                    party.name,
+                    party.guests === 1 ? "1 guest" : `${party.guests} guests`,
+                    `reference ${party.reference}`,
+                    ...flags,
+                  ].join(", ");
+                  const can = canCheckIn && boardable(party);
+                  return (
+                    <li
+                      key={party.bookingId}
+                      data-party={party.bookingId}
+                      data-flip=""
                     >
-                      <div
-                        className={panelClass(
-                          "raised",
-                          "flex min-h-[4.5rem] items-center gap-3 px-4 py-2",
-                        )}
+                      <SwipeRow
+                        enabled={can}
+                        onCommit={() => checkIn(party.bookingId)}
                       >
-                        <button
-                          type="button"
-                          onClick={() => setOpen(party.bookingId)}
-                          aria-label={`${spoken}. Open`}
-                          className="min-w-0 flex-1 py-1 text-left"
+                        <div
+                          className={panelClass(
+                            "raised",
+                            "flex min-h-[4.5rem] items-center gap-3 px-4 py-2",
+                          )}
                         >
-                          <span className="block text-lg leading-tight font-bold">
+                          <button
+                            type="button"
+                            onClick={() => setOpen(party.bookingId)}
+                            aria-label={`${spoken}. Open`}
+                            className="min-w-0 flex-1 py-1 text-left"
+                          >
+                            <span className="block text-lg leading-tight font-bold">
+                              {party.name}
+                            </span>
+                            <span className="text-forest/80 block text-sm">
+                              {party.guests === 1
+                                ? "1 guest"
+                                : `${party.guests} guests`}
+                              {" · "}
+                              <span className="tracking-wider slashed-zero tabular-nums">
+                                {party.reference}
+                              </span>
+                            </span>
+                            {flags.length > 0 ? (
+                              <span className="text-terra-deep mt-0.5 block text-sm font-bold">
+                                {flags.join(" · ")}
+                              </span>
+                            ) : null}
+                          </button>
+                          {departed ? (
+                            <button
+                              type="button"
+                              onClick={() => setOpen(party.bookingId)}
+                              aria-label={`Close out ${party.name}`}
+                              className={buttonClass({
+                                variant: "secondary",
+                                block: false,
+                                className: "h-16 shrink-0",
+                              })}
+                            >
+                              Close out
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => checkIn(party.bookingId)}
+                              disabled={!can}
+                              aria-label={`Aboard: check in ${party.name}`}
+                              className={buttonClass({
+                                block: false,
+                                className: "h-16 shrink-0 gap-1.5",
+                              })}
+                            >
+                              <CheckIcon className="size-5" />
+                              Aboard
+                            </button>
+                          )}
+                        </div>
+                      </SwipeRow>
+                      {failed?.phase === "failed" ? (
+                        <p
+                          role="alert"
+                          className="text-terra-deep mt-1 px-1 text-sm font-bold"
+                        >
+                          {party.name}: {failed.message}
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
+
+          {aboard.length > 0 ? (
+            <section aria-labelledby="boarding-aboard" className="mt-8">
+              <h2
+                id="boarding-aboard"
+                data-flip=""
+                className="label text-forest/75"
+              >
+                Aboard · {aboard.length}
+              </h2>
+              <ul className="mt-2 space-y-2">
+                {aboard.filter(shown).map((party) => {
+                  const state = checkIns[party.bookingId];
+                  const holding = state?.phase === "holding";
+                  return (
+                    <li
+                      key={party.bookingId}
+                      data-party={party.bookingId}
+                      data-flip=""
+                      className={panelClass(
+                        "done",
+                        "flex min-h-16 items-center gap-3 px-4 py-2",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setOpen(party.bookingId)}
+                        className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left"
+                      >
+                        <CheckIcon className="size-6 shrink-0" />
+                        <span className="min-w-0">
+                          <span className="block text-base leading-tight font-bold">
                             {party.name}
                           </span>
                           <span className="text-forest/80 block text-sm">
@@ -330,118 +506,45 @@ export function BoardingScreen({
                               ? "1 guest"
                               : `${party.guests} guests`}
                             {" · "}
-                            <span className="tracking-wider slashed-zero tabular-nums">
-                              {party.reference}
-                            </span>
+                            {holding
+                              ? "Checking in"
+                              : state?.phase === "sending"
+                                ? "Sending…"
+                                : keptHere.has(party.bookingId)
+                                  ? "Saved on this phone"
+                                  : "Aboard"}
                           </span>
-                          {flags.length > 0 ? (
-                            <span className="text-terra-deep mt-0.5 block text-sm font-bold">
-                              {flags.join(" · ")}
-                            </span>
-                          ) : null}
-                        </button>
-                        {departed ? (
-                          <button
-                            type="button"
-                            onClick={() => setOpen(party.bookingId)}
-                            aria-label={`Close out ${party.name}`}
-                            className={buttonClass({
-                              variant: "secondary",
-                              block: false,
-                              className: "h-16 shrink-0",
-                            })}
-                          >
-                            Close out
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => checkIn(party.bookingId)}
-                            disabled={!can}
-                            aria-label={`Aboard: check in ${party.name}`}
-                            className={buttonClass({
-                              block: false,
-                              className: "h-16 shrink-0 gap-1.5",
-                            })}
-                          >
-                            <CheckIcon className="size-5" />
-                            Aboard
-                          </button>
-                        )}
-                      </div>
-                    </SwipeRow>
-                    {failed?.phase === "failed" ? (
-                      <p
-                        role="alert"
-                        className="text-terra-deep mt-1 px-1 text-sm font-bold"
-                      >
-                        {party.name}: {failed.message}
-                      </p>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ) : null}
-
-        {aboard.length > 0 ? (
-          <section aria-labelledby="boarding-aboard" className="mt-8">
-            <h2 id="boarding-aboard" className="label text-forest/75">
-              Aboard · {aboard.length}
-            </h2>
-            <ul className="mt-2 space-y-2">
-              {aboard.filter(shown).map((party) => {
-                const state = checkIns[party.bookingId];
-                const holding = state?.phase === "holding";
-                return (
-                  <li
-                    key={party.bookingId}
-                    className={panelClass(
-                      "done",
-                      "flex min-h-16 items-center gap-3 px-4 py-2",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setOpen(party.bookingId)}
-                      className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left"
-                    >
-                      <CheckIcon className="size-6 shrink-0" />
-                      <span className="min-w-0">
-                        <span className="block text-base leading-tight font-bold">
-                          {party.name}
                         </span>
-                        <span className="text-forest/80 block text-sm">
-                          {party.guests === 1
-                            ? "1 guest"
-                            : `${party.guests} guests`}
-                          {" · "}
-                          {holding
-                            ? "Checking in"
-                            : state?.phase === "sending"
-                              ? "Sending…"
-                              : keptHere.has(party.bookingId)
-                                ? "Saved on this phone"
-                                : "Aboard"}
-                        </span>
-                      </span>
-                    </button>
-                    {holding ? (
-                      <button
-                        type="button"
-                        onClick={() => store.undo(party.bookingId)}
-                        className="border-forest/25 hover:border-forest dock-target label shrink-0 rounded-full border px-5 font-bold"
-                      >
-                        Undo
                       </button>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ) : null}
+                      {holding ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (store.undo(party.bookingId)) {
+                              move(party.bookingId);
+                            }
+                          }}
+                          className="border-forest/25 hover:border-forest dock-target label relative shrink-0 rounded-full border px-5 font-bold"
+                        >
+                          Undo
+                          {/*
+                          The five seconds in which Undo still works, as a
+                          hairline that empties under the word (O07 A).
+                        */}
+                          <UndoWindow
+                            until={state.until}
+                            hold={HOLD_MS}
+                            className="inset-x-5 bottom-2 h-0.5"
+                          />
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
+        </MeasureBefore>
 
         {/* The way off this screen is at the foot, under the thumb. */}
         <div className="bg-paper border-paper-line fixed inset-x-0 bottom-0 z-30 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:static lg:mt-10 lg:border-0 lg:bg-transparent lg:p-0">

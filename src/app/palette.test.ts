@@ -176,6 +176,285 @@ describe("palette", () => {
     }
   });
 
+  describe("motion (the system approved 4 Oct 2026, yuvoy/motion-lab)", () => {
+    /**
+     * Each class-ish string literal in component source, so a `duration-` is
+     * only ever read with the curve written in the SAME className.
+     */
+    function literals(): { where: string; text: string }[] {
+      return FILES.filter((f) => /\.tsx?$/.test(f)).flatMap((file) =>
+        [...read(file).matchAll(/"[^"\n]*"|`[^`\n]*`/g)].map(([text]) => ({
+          where: rel(file),
+          text,
+        })),
+      );
+    }
+
+    /** `150ms`, `1.6s` and `0.001ms`, as milliseconds. */
+    const ms = (value: string, unit: string) =>
+      unit === "s" ? Number(value) * 1000 : Number(value);
+
+    /**
+     * Every duration the stylesheet declares, item by item: the first time in
+     * a `transition` or `animation` item is its duration (a second one is its
+     * delay), and a `-duration` longhand lists them outright. A `var()` is
+     * set from script (the undo window's length is the store's own constant)
+     * and is not a literal to read.
+     */
+    function cssDurations(): {
+      where: string;
+      ms: number;
+      progress: boolean;
+      name: string;
+    }[] {
+      const css = read(join(SRC, "app/globals.css"));
+      const out: {
+        where: string;
+        ms: number;
+        progress: boolean;
+        name: string;
+      }[] = [];
+      for (const [whole, property, longhand, value] of css.matchAll(
+        /\b(transition|animation)(-duration)?\s*:\s*([^;{}]+);/g,
+      )) {
+        // Split on the commas between items, not those inside a function.
+        const items: string[] = [];
+        let depth = 0;
+        let item = "";
+        for (const ch of value) {
+          if (ch === "(") depth += 1;
+          if (ch === ")") depth -= 1;
+          if (ch === "," && depth === 0) {
+            items.push(item);
+            item = "";
+          } else item += ch;
+        }
+        items.push(item);
+        for (const one of items) {
+          const times = [...one.matchAll(/(-?\d*\.?\d+)(ms|s)\b/g)];
+          const durations = longhand ? times : times.slice(0, 1);
+          for (const [, n, unit] of durations) {
+            out.push({
+              where: `${property}${longhand ?? ""}: ${whole.trim()}`,
+              ms: ms(n, unit),
+              progress: /\blinear\b|\bsteps\(/.test(one),
+              name: property === "animation" && !longhand ? one.trim() : "",
+            });
+          }
+        }
+      }
+      return out;
+    }
+
+    /*
+      The one motion the study left running past the ceiling on a curve: the
+      skeleton's sweep, a loading loop. No operator experiment changed loading
+      (the traveller's T11 did, for the traveller). A Map, so an exemption
+      cannot be added without writing down why.
+    */
+    const LOOPS_LEFT_AS_THEY_WERE = new Map([
+      [
+        "skeleton-sweep",
+        "The route skeletons' light sweep: loading, left as it was. No operator experiment changed loading.",
+      ],
+    ]);
+
+    it("keeps every motion inside the portal's 200ms ceiling, but progress", () => {
+      /*
+        The portal's budget (motion-system.md, section 14): 200ms for
+        anything but progress, because an operator does each of these
+        dozens of times a shift with a queue at the boat. Progress is what
+        is allowed to be long, and it is the information: the five-second
+        undo window draining, a spinner turning, the mark fading on a
+        linear curve. So a long duration is allowed only beside `linear` or
+        `steps()`, in the same className or the same CSS item.
+
+        Read where the rule can actually be broken: the Tailwind classes in
+        component source, the durations written by hand in globals.css, and
+        an inline style that names one.
+      */
+      let checked = 0;
+      for (const { where, text } of literals()) {
+        const progress = /\bease-linear\b/.test(text);
+        for (const [, n] of text.matchAll(/\bduration-(\d+)\b/g)) {
+          checked += 1;
+          if (progress) continue;
+          expect(
+            Number(n),
+            `${where}: duration-${n} is over the portal's 200ms ceiling`,
+          ).toBeLessThanOrEqual(200);
+        }
+        for (const [, n, unit] of text.matchAll(
+          /\bduration-\[(\d*\.?\d+)(ms|s)\]/g,
+        )) {
+          checked += 1;
+          if (progress) continue;
+          expect(
+            ms(n, unit),
+            `${where}: duration-[${n}${unit}] is over the ceiling`,
+          ).toBeLessThanOrEqual(200);
+        }
+        /*
+          A Tailwind animation names no duration in its class: `pulse` is 2s
+          and `bounce` 1s on a curve, and neither is progress. `spin` is a
+          linear turn, which is.
+        */
+        const named = /\banimate-(?!spin\b|none\b)([a-z-]+)/.exec(text);
+        expect(
+          named,
+          `${where}: animate-${named?.[1]} carries a duration over the ceiling`,
+        ).toBeNull();
+      }
+      for (const file of FILES.filter((f) => f.endsWith(".tsx"))) {
+        for (const [, n, unit] of read(file).matchAll(
+          /(?:transition|animation)Duration:\s*["'`](\d*\.?\d+)(ms|s)/g,
+        )) {
+          checked += 1;
+          expect(
+            ms(n, unit),
+            `${rel(file)}: an inline duration over the ceiling`,
+          ).toBeLessThanOrEqual(200);
+        }
+      }
+      for (const { where, ms: duration, progress, name } of cssDurations()) {
+        checked += 1;
+        if (progress) continue;
+        const loop = [...LOOPS_LEFT_AS_THEY_WERE.keys()].find((key) =>
+          new RegExp(`^${key}\\b`).test(name),
+        );
+        if (loop) continue;
+        expect(
+          duration,
+          `globals.css ${where} is over the portal's 200ms ceiling`,
+        ).toBeLessThanOrEqual(200);
+      }
+      expect(
+        checked,
+        "no durations found to check: the scan is looking in the wrong place",
+      ).toBeGreaterThan(20);
+    });
+
+    it("runs every script motion through lib/motion, on its named durations", () => {
+      /*
+        A Web Animations call cannot read the stylesheet, so its timing is
+        script, and script is where a 400ms "it felt nicer" goes unseen.
+        Every call goes through `play()` in lib/motion, whose durations are
+        pinned by motion.test.ts, and nothing outside it writes a number of
+        milliseconds into one.
+      */
+      let scanned = 0;
+      for (const file of FILES) {
+        if (/[/\\]lib[/\\]motion[/\\]/.test(file)) continue;
+        const src = read(file);
+        scanned += 1;
+        expect(
+          /\.animate\(/.test(src),
+          `${rel(file)}: calls animate() directly. Use play() from lib/motion.`,
+        ).toBe(false);
+        if (!/\bplay\(/.test(src)) continue;
+        expect(
+          /\bduration:\s*\d/.test(src),
+          `${rel(file)}: writes a duration by hand. Use DURATION from lib/motion.`,
+        ).toBe(false);
+      }
+      expect(
+        scanned,
+        "no files found to check: the scan is looking in the wrong place",
+      ).toBeGreaterThan(50);
+    });
+
+    it("lets every press animate the property it presses with", () => {
+      /*
+        Tailwind 4 writes `active:scale-*` to the standalone `scale` property.
+        Every press in the portal used to sit beside a transition list naming
+        only `transform`, so all of them snapped in and snapped back, and no
+        test noticed because each class string looked right on its own
+        (found by the motion study, 4 Oct 2026). A press must share its
+        string with a list that names `scale`: one of the motion utilities,
+        `transition-transform` (which covers translate, scale and rotate in
+        Tailwind 4), or an explicit list.
+      */
+      let presses = 0;
+      for (const { where, text } of literals()) {
+        if (!/\bactive:scale-/.test(text)) continue;
+        presses += 1;
+        const animates =
+          /\bmotion-(control|disc|press)\b/.test(text) ||
+          /\btransition-transform\b/.test(text) ||
+          /\btransition-\[[^\]]*\bscale\b/.test(text);
+        expect(
+          animates,
+          `${where}: "${text.slice(1, 80)}" presses with a scale nothing animates`,
+        ).toBe(true);
+      }
+      expect(
+        presses,
+        "no presses found: the scan is looking in the wrong place",
+      ).toBeGreaterThan(2);
+    });
+
+    /**
+     * Every piece of text a `pendingLabel` can draw, from one file's code: a
+     * string, the strings of an expression (a branch between two verbs), and
+     * the words in a fragment (an icon beside the verb).
+     */
+    function pendingLabels(src: string): string[] {
+      const out: string[] = [];
+      for (const m of src.matchAll(/\bpendingLabel(?:=|\s*:\s*)/g)) {
+        let i = m.index + m[0].length;
+        while (/\s/.test(src[i] ?? "")) i += 1;
+        const open = src[i];
+        if (open === '"' || open === "'" || open === "`") {
+          out.push(src.slice(i + 1, src.indexOf(open, i + 1)));
+          continue;
+        }
+        if (open !== "{") continue;
+        let depth = 0;
+        let end = i;
+        for (; end < src.length; end += 1) {
+          if (src[end] === "{") depth += 1;
+          if (src[end] === "}" && --depth === 0) break;
+        }
+        const expression = src.slice(i + 1, end);
+        for (const [, , text] of expression.matchAll(
+          /(["'`])((?:(?!\1)[^\n])*)\1/g,
+        )) {
+          out.push(text);
+        }
+        for (const [, text] of expression.matchAll(/>([^<>{}]+)</g)) {
+          if (text.trim()) out.push(text.trim());
+        }
+      }
+      return out;
+    }
+
+    it("names a busy button's working verb with no ellipsis (O04 A)", () => {
+      /*
+        The approved label is "Saving", with no ellipsis (O04 A, approved
+        4 Oct 2026; yuvoy/motion-lab, experiments/o04-forms.js): the button
+        keeps its colour and says it is busy, and the ring that turns beside
+        the verb after 300ms is what says it is still going. Three dots said
+        it a second time, in type. Read from every way a label reaches the
+        busy button, so a branch or a fragment cannot slip one past.
+      */
+      let labels = 0;
+      const offenders: string[] = [];
+      for (const file of FILES.filter((f) => f.endsWith(".tsx"))) {
+        for (const label of pendingLabels(read(file))) {
+          labels += 1;
+          if (/(?:…|\.\.\.)\s*$/.test(label)) {
+            offenders.push(`${rel(file)}: "${label}"`);
+          }
+        }
+      }
+      expect(offenders).toEqual([]);
+      expect(
+        labels,
+        "no working verbs found: the scan is looking in the wrong place",
+      ).toBeGreaterThan(40);
+    });
+  });
+
   it("never puts text below the documented opacity floor", () => {
     const offenders = FILES.filter((f) =>
       /text-forest\/(0|5|10|15|20|25|30|35|40|45|50|55|60|65)\b|text-paper\/(0|5|10|15|20|25|30|35|40|45|50|55)\b/.test(

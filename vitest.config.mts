@@ -6,7 +6,15 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
-    setupFiles: ["./vitest.setup.ts"],
+    /*
+      `pnpm test:future` runs the same suite with the clock a week ahead, and
+      that has to be first, so the mocks' own clocks start from it too. See
+      test/a-week-ahead.ts.
+    */
+    setupFiles: [
+      ...(process.env.VITEST_A_WEEK_AHEAD ? ["./test/a-week-ahead.ts"] : []),
+      "./vitest.setup.ts",
+    ],
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
   },

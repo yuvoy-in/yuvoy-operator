@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { watchMotion } from "@/lib/motion/testing";
 
 const discardDraft = vi.fn();
 
@@ -98,5 +99,35 @@ describe("discarding a draft", () => {
     );
 
     expect(screen.getByText("Discard this draft?")).toHaveFocus();
+  });
+});
+
+/*
+  O06 B (approved 4 Oct 2026): the question fades in where the words were,
+  and Keep it fades a held copy of it out as they come back
+  (`useStillConfirm`).
+*/
+describe("arriving and leaving still", () => {
+  let motion: ReturnType<typeof watchMotion>;
+  beforeEach(() => {
+    motion = watchMotion();
+  });
+  afterEach(() => motion.restore());
+
+  it("fades the question in, and Keep it fades a held copy out as the words come back", async () => {
+    const user = userEvent.setup();
+    render(<DiscardDraft experienceId="exp_draft" title="Wall dive" />);
+    await user.click(
+      screen.getByRole("button", { name: "Discard this draft" }),
+    );
+    const question = screen.getByText("Discard “Wall dive”?");
+    expect(motion.fadeOf(question.closest("form"))).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+    const trigger = screen.getByRole("button", { name: "Discard this draft" });
+    expect(motion.fadeOf(trigger.parentElement)).toBeDefined();
+    const [copy] = motion.copies();
+    expect(copy).toHaveTextContent("Discard “Wall dive”?");
+    expect(motion.exitOf(copy)).toBeDefined();
   });
 });

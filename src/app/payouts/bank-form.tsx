@@ -199,7 +199,8 @@ export function BankForm({
           </p>
         ) : (
           <Button
-            disabled={sending}
+            pending={sending}
+            pendingLabel="Sending"
             onClick={async () => {
               setSending(true);
               setStep(await requestStepUp());
@@ -208,7 +209,7 @@ export function BankForm({
             variant="outline"
             className="mt-4"
           >
-            {sending ? "Sending…" : "Send the code"}
+            Send the code
           </Button>
         )}
 
@@ -240,8 +241,13 @@ export function BankForm({
       </p>
 
       <div className="flex flex-col gap-2">
-        <Button type="submit" disabled={pending || !step.sent}>
-          {pending ? "Raising…" : "Raise the change"}
+        <Button
+          type="submit"
+          pending={pending}
+          pendingLabel="Raising"
+          disabled={!step.sent}
+        >
+          Raise the change
         </Button>
         {onCancel ? (
           <Button variant="secondary" onClick={onCancel} disabled={pending}>

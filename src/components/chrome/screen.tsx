@@ -107,7 +107,14 @@ export function Screen({
           </div>
         </header>
 
-        <div className="sheet rounded-t-sheet lg:rounded-sheet flex flex-1 flex-col">
+        {/*
+          `data-motion-scope`: a change on this sheet moves what follows it on
+          this sheet and nothing beyond (lib/motion/flip.ts).
+        */}
+        <div
+          data-motion-scope=""
+          className="sheet rounded-t-sheet lg:rounded-sheet flex flex-1 flex-col"
+        >
           <div
             className={cn(
               "container-page flex flex-1 flex-col pt-6",

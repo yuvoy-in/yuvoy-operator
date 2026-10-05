@@ -203,21 +203,20 @@ export function JoinTokenForm({
       {state.step === "phone" || step.askForCode ? (
         <Button
           type="submit"
+          pending={pending}
+          pendingLabel="Working"
           disabled={
-            pending ||
             (state.step === "phone" && !complete) ||
             // Nothing may be sent while an unanswered "this removes you from
             // somewhere" is on screen.
             (askingToLeave && !agreed)
           }
         >
-          {pending
-            ? "Working…"
-            : state.step === "code"
-              ? askingToLeave
-                ? `Join and leave ${leaving}`
-                : "Join"
-              : "Continue"}
+          {state.step === "code"
+            ? askingToLeave
+              ? `Join and leave ${leaving}`
+              : "Join"
+            : "Continue"}
         </Button>
       ) : null}
     </form>
