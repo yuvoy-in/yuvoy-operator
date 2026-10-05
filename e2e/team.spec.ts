@@ -140,7 +140,7 @@ test("the team is two lists: people, and invitations nobody has used", async ({
   */
   const arun = page.locator("li").filter({ hasText: "Arun Biswas" });
   await expect(
-    arun.locator("span.label").filter({ hasText: /^Staff$/ }),
+    arun.locator("[data-chip]").filter({ hasText: /^Staff$/ }),
   ).toHaveCount(1);
   await expect(
     arun.getByText(
@@ -149,7 +149,7 @@ test("the team is two lists: people, and invitations nobody has used", async ({
   ).toHaveCount(0);
   const dev = page.locator("li").filter({ hasText: "Dev Kapoor" });
   await expect(
-    dev.locator("span.label").filter({ hasText: /^Manager$/ }),
+    dev.locator("[data-chip]").filter({ hasText: /^Manager$/ }),
   ).toHaveCount(1);
   await expect(
     dev.getByText(
@@ -301,7 +301,7 @@ test("an owner changes a role, pauses access and gives it back", async ({
     could satisfy would not be testing the list at all.
   */
   const devAfter = page.locator("li").filter({ hasText: who });
-  const chips = devAfter.locator("span.label");
+  const chips = devAfter.locator("[data-chip]");
   await expect(chips.filter({ hasText: /^Staff$/ })).toHaveCount(1);
   await expect(chips.filter({ hasText: /^Manager$/ })).toHaveCount(0);
 
@@ -450,7 +450,7 @@ test("inviting an owner says Owner on the receipt and on the pending row", async
 
   const row = page.locator("li").filter({ hasText: who.name });
   await expect(
-    row.locator("span.label").filter({ hasText: /^Owner$/ }),
+    row.locator("[data-chip]").filter({ hasText: /^Owner$/ }),
   ).toHaveCount(1);
 });
 
