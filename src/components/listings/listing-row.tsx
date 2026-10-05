@@ -364,7 +364,7 @@ export function ListingRow({
               name="description"
               rows={4}
               defaultValue={defaults.description}
-              className={inputClass("voice-host mt-2")}
+              className={inputClass("voice-host mt-2 h-auto py-3")}
             />
           </div>
 
@@ -521,7 +521,7 @@ export function ListingRow({
               name="inclusions"
               rows={3}
               defaultValue={defaults.inclusions}
-              className={inputClass("voice-host mt-2")}
+              className={inputClass("voice-host mt-2 h-auto py-3")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
               One per line. Leave it empty if nothing is included.
@@ -540,7 +540,7 @@ export function ListingRow({
               name="requirements"
               rows={3}
               defaultValue={defaults.requirements}
-              className={inputClass("voice-host mt-2")}
+              className={inputClass("voice-host mt-2 h-auto py-3")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
               What to bring, and what they need to be able to do, one per line.
@@ -560,7 +560,7 @@ export function ListingRow({
               name="safetyNotes"
               rows={3}
               defaultValue={defaults.safetyNotes}
-              className={inputClass("voice-host mt-2")}
+              className={inputClass("voice-host mt-2 h-auto py-3")}
             />
             {/*
               The one field where an operator can over-claim. Said here rather

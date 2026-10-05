@@ -176,7 +176,7 @@ export function CredentialForm({
             id="cred-notes"
             name="notes"
             rows={3}
-            className={inputClass("mt-2")}
+            className={inputClass("mt-2 h-auto py-3")}
           />
         </div>
 

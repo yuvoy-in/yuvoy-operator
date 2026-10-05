@@ -298,7 +298,7 @@ export function PauseResume({
           id={`pause-note-${experienceId}`}
           name="note"
           rows={2}
-          className={inputClass("mt-2")}
+          className={inputClass("mt-2 h-auto py-3")}
         />
         <p className="text-forest/70 mt-1.5 text-xs">Optional. We read it.</p>
       </div>
