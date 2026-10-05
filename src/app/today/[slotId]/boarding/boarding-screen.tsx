@@ -254,13 +254,14 @@ export function BoardingScreen({
         <div className="min-w-0">
           {/*
             Pretty, so a meeting point that runs onto a second line takes
-            more than its last word with it (sun mode sets this larger).
+            more than its last word with it (sun mode sets this larger). A
+            no-break space before each dot, so no line ever starts with one.
           */}
           <p className="label text-forest/75 text-pretty tabular-nums">
-            {[mode, time].filter(Boolean).join(" · ")}
+            {[mode, time].filter(Boolean).join("\u00a0· ")}
             {where ? (
               <>
-                {" · "}
+                {"\u00a0· "}
                 <span className="voice-host">{where}</span>
               </>
             ) : null}
@@ -316,23 +317,31 @@ export function BoardingScreen({
         {/*
         Joined with real separators, not a flex gap: a gap is space to the
         eye and nothing to a screen reader, which read "2 parties to
-        come₹9,000 to take".
+        come₹9,000 to take". Each fact holds together and the line breaks
+        only after a dot (a no-break space sits before it), so a wrap never
+        strands "sold" or opens a line with "·".
       */}
-        <p className="text-forest/80 mt-3 text-base text-pretty">
+        <p className="text-forest/80 mt-3 text-base">
           {[
-            <span key="come">
+            <span key="come" className="whitespace-nowrap">
               <b className="text-forest">{toCome.length}</b>{" "}
               {toCome.length === 1 ? "party to come" : "parties to come"}
             </span>,
             ...(cash !== null && cash > 0
               ? [
-                  <span key="cash">
+                  <span key="cash" className="whitespace-nowrap">
                     <b className="text-forest">{formatPaise(cash)}</b> to take
                   </span>,
                 ]
               : []),
-            ...(seats ? [<span key="seats">{seats}</span>] : []),
-          ].flatMap((part, i) => (i === 0 ? [part] : [" · ", part]))}
+            ...(seats
+              ? [
+                  <span key="seats" className="whitespace-nowrap">
+                    {seats}
+                  </span>,
+                ]
+              : []),
+          ].flatMap((part, i) => (i === 0 ? [part] : ["\u00a0· ", part]))}
         </p>
 
         {calledOff ? (
