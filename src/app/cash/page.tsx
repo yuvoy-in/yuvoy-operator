@@ -2,18 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { requireOperator } from "@/lib/auth/session";
-import { getCommissionOwed } from "@/lib/money/fetch";
+import { getCommissionOwed, readCommissionStatements } from "@/lib/money/fetch";
 import {
   cashInHand,
   linesReconcile,
   type CommissionLine,
 } from "@/lib/money/commission";
+import { totalOwed } from "@/lib/money/commission-statements";
 import { formatPaise } from "@/lib/format/money";
 import { marketDateLabel } from "@/lib/format/market-time";
 import { helpHref } from "@/lib/help";
 import { Empty, Problem } from "@/components/ui/states";
 import { Screen } from "@/components/chrome/screen";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { ChevronRightIcon } from "@/components/ui/icons";
 import { SUPPORT_PHONE } from "@/lib/site/contact";
 
 export const metadata: Metadata = { title: "Cash you've collected" };
@@ -28,7 +30,7 @@ export const dynamic = "force-dynamic";
 const BACK = { href: "/earnings", label: "Money" };
 
 /**
- * What the operator owes Yuvoy on cash we never handled — yuvoy-operator#40 §2.
+ * The cash the operator took, and Yuvoy's share of it (yuvoy-operator#40 §2).
  *
  * ## Why this screen exists at all
  *
@@ -53,13 +55,15 @@ const BACK = { href: "/earnings", label: "Money" };
  * Nothing here may imply Yuvoy is holding the fare. We are not, and the ledger
  * says so: `capturedAmountPaise` is `0` on these bookings for their whole life.
  *
- * ## There is no "pay now" button, deliberately
+ * ## What is owed is on the statements, not here
  *
- * Settling a balance is money moving back to us, which is the same class of
- * act as money leaving, and the payout run spends two tables and three
- * signatures getting that right. Half of that machinery would be worse than a
- * number a person can read. The balance is visible; settlement happens between
- * people.
+ * Since D-043 (yuvoy-operator#121) Yuvoy bills its share weekly, on a
+ * commission statement paid by UPI from its own page. `GET /commission-owed`
+ * still counts every completed cash trip, "billed or not, paid or not", so
+ * this screen calls that figure Yuvoy's share on completed trips, never owed,
+ * and what is still to pay comes from the statements, one tap away. There is
+ * still no pay button here: a bill is paid against its reference, and only a
+ * statement has one.
  *
  * ## Read-only, and OWNER/MANAGER
  *
@@ -88,10 +92,17 @@ export default async function CashPage() {
     );
   }
 
-  const commission = await getCommissionOwed(token);
+  /*
+    The share is HARD: it is the screen. The statements are soft, and a
+    failed read costs only the door that says what is owed.
+  */
+  const [commission, statements] = await Promise.all([
+    getCommissionOwed(token),
+    readCommissionStatements(token),
+  ]);
   const { held, unrecorded } = commission;
   const inHand = cashInHand(commission);
-  const owedAddsUp = linesReconcile(commission);
+  const completedAddsUp = linesReconcile(commission);
   const heldAddsUp = held ? linesReconcile(held) : true;
   const nothingAtAll =
     commission.bookings === 0 &&
@@ -116,9 +127,15 @@ export default async function CashPage() {
           trip settled, or none taken yet. Said in words rather than shown as
           ₹0 across a table, which reads as a screen that failed to load.
         */
-        <div className="mt-8">
-          <Empty title="Nothing owed" body="Everything's settled." />
-        </div>
+        <>
+          <div className="mt-8">
+            <Empty
+              title="No cash taken yet"
+              body="Cash you record taking from travellers shows here, trip by trip."
+            />
+          </div>
+          <StatementsDoor statements={statements} />
+        </>
       ) : (
         <>
           {/*
@@ -143,8 +160,14 @@ export default async function CashPage() {
             </p>
 
             <dl className="border-paper-line mt-5 space-y-3 border-t pt-4">
+              {/*
+                Every completed trip, billed or not and paid or not: never
+                "owed" (op#121). What is still to pay is the door below.
+              */}
               <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-sm">Yuvoy&rsquo;s share, owed now</dt>
+                <dt className="text-sm">
+                  Yuvoy&rsquo;s share on completed trips
+                </dt>
                 <dd className="text-base font-bold tabular-nums">
                   {formatPaise(commission.commissionPaise)}
                 </dd>
@@ -166,6 +189,8 @@ export default async function CashPage() {
             */}
             <HelpLink id="cash-owed">When Yuvoy&rsquo;s share is owed</HelpLink>
           </Panel>
+
+          <StatementsDoor statements={statements} />
 
           {/*
             Trips that ran with no cash recorded (yuvoy-api#221). Nothing says
@@ -221,13 +246,20 @@ export default async function CashPage() {
             </section>
           ) : null}
 
-          {/* ------------------------------------------------ owed now -- */}
-          <section className="mt-8" aria-labelledby="owed">
-            <h2 id="owed" className="label text-forest/75">
-              Owed now
+          {/* ----------------------------------------- completed trips -- */}
+          <section className="mt-8" aria-labelledby="completed">
+            {/*
+              "Completed trips", not "Owed now": the list is every completed
+              cash trip, billed or not and paid or not (op#121), and what is
+              still to pay is on the statements.
+            */}
+            <h2 id="completed" className="label text-forest/75">
+              Completed trips
             </h2>
             {commission.bookings === 0 ? (
-              <p className="text-forest/70 mt-3 text-sm">Nothing owed yet.</p>
+              <p className="text-forest/70 mt-3 text-sm">
+                No completed cash trips yet.
+              </p>
             ) : (
               <>
                 {/*
@@ -235,11 +267,11 @@ export default async function CashPage() {
                   do not, say so rather than let an operator find it with a
                   calculator and stop trusting the number.
                 */}
-                {!owedAddsUp ? (
+                {!completedAddsUp ? (
                   <div className="mt-4">
                     <Problem
                       title="These lines do not add up to the total"
-                      body={`The trips listed below do not account for the share shown above. Do not settle against this. Call us on ${SUPPORT_PHONE} with the dates and we will find it.`}
+                      body={`The trips listed below do not account for the share shown above. Call us on ${SUPPORT_PHONE} with the dates and we will find it.`}
                     />
                   </div>
                 ) : null}
@@ -269,16 +301,59 @@ export default async function CashPage() {
       )}
 
       {/*
-        No "pay now", and the reason is one tap away rather than a paragraph
-        at the foot of every visit: "Cash ends with 'There is nothing to tap
-        here.' An operator reads none of it after the first week" (op#80 t4).
+        How paying works is one tap away rather than a paragraph at the foot
+        of every visit: "An operator reads none of it after the first week"
+        (op#80 t4).
       */}
       <div className="border-paper-line mt-10 border-t pt-4">
-        <HelpLink id="settling-cash">
-          How to settle Yuvoy&rsquo;s share
-        </HelpLink>
+        <HelpLink id="settling-cash">How to pay Yuvoy&rsquo;s share</HelpLink>
       </div>
     </Screen>
+  );
+}
+
+/**
+ * The way to the commission statements, saying what is owed on them
+ * (op#121): the one "owed" this screen may say, because `/commission-owed`
+ * counts paid trips too.
+ *
+ * A failed read is said on the door rather than drawn as nothing owed, and
+ * the list behind it reads again when opened.
+ */
+function StatementsDoor({
+  statements,
+}: {
+  statements: Awaited<ReturnType<typeof readCommissionStatements>>;
+}) {
+  const owed = statements
+    ? totalOwed(statements.items, statements.complete)
+    : null;
+  const detail =
+    statements === null
+      ? "Did not load. Open them to try again."
+      : statements.items.length === 0
+        ? "None yet. Yuvoy bills its share weekly."
+        : owed === null
+          ? "Each says what is left to pay on it."
+          : owed > 0
+            ? `${formatPaise(owed)} owed`
+            : "Nothing owed";
+  return (
+    <Link
+      href="/earnings/commission"
+      className={panelClass(
+        statements !== null && (owed ?? 0) > 0 ? "alert" : "raised",
+        "ease-interaction hover:bg-paper mt-3 flex min-h-14 items-center justify-between gap-4 p-4 transition-colors duration-200",
+      )}
+    >
+      <span className="min-w-0">
+        <span className="block text-base font-bold">Commission statements</span>
+        <span className="text-forest/80 mt-0.5 block text-sm tabular-nums">
+          {detail}
+        </span>
+      </span>
+      <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+    </Link>
   );
 }
 

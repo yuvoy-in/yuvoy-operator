@@ -293,9 +293,11 @@ test("money today is one line for a login that can manage", async ({
   page,
 }) => {
   /*
-    #96 block 4: the payout week, when it can be paid, and what is owed on
-    cash. The owner owes on three cash trips; the manager's figures owe
-    nothing, so the cash half is left out rather than said as zero.
+    #96 block 4: the payout week, when it can be paid, and what is owed.
+    What is owed is the commission statements' since op#121: ₹3,550 on two of
+    the owner's four, never `/commission-owed`'s ₹4,500, which counts paid
+    trips too. The manager has no statement, so that half is left out rather
+    than said as zero.
   */
   await signIn(page);
   const owner = page.getByRole("region", { name: "Money" }).getByRole("link");
@@ -303,14 +305,15 @@ test("money today is one line for a login that can manage", async ({
   await expect(owner).toContainText(
     /payout (due|from [A-Z][a-z]{2} \d+ [A-Z][a-z]{2})/,
   );
-  await expect(owner).toContainText("cash owed to Yuvoy ₹4,500");
+  await expect(owner).toContainText("commission owed to Yuvoy ₹3,550");
+  await expect(owner).not.toContainText("₹4,500");
   await expect(owner).toHaveAttribute("href", "/earnings");
 
   await page.context().clearCookies();
   await signIn(page, MANAGER);
   const manager = page.getByRole("region", { name: "Money" }).getByRole("link");
   await expect(manager).toContainText("₹40,150");
-  await expect(manager).not.toContainText("cash owed");
+  await expect(manager).not.toContainText("owed");
 });
 
 test("past cash trips nobody recorded are a row, opening what closes them", async ({

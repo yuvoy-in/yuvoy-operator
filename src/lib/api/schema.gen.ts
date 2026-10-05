@@ -1067,6 +1067,8 @@ export interface paths {
          *     Trips finish on their own: six hours after a departure ends, every booking on it still confirmed is completed, or marked a no-show where you marked the party absent. You can still mark attendance yourself before then.
          *
          *     **Unrecorded** sits beside both, in the `unrecorded` fields: cash bookings whose trip ended more than six hours ago with no cash recorded. These trips have happened and nothing says whether you were paid, so none of it is held or owed. A trip does not finish on its own while its cash is unrecorded. Record the cash and it is owed once the trip is complete; mark the party a no-show and nothing is owed.
+         *
+         *     **What is owed here is every such trip, billed or not, paid or not.** We bill it weekly and you pay against the bill: what is still to pay is `owedPaise` on `GET /commission-statements`.
          */
         get: operations["getCommissionOwed"];
         put?: never;
@@ -1485,6 +1487,60 @@ export interface paths {
          *     Requires OWNER, ADMIN or MANAGER.
          */
         get: operations["downloadSettlementStatement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/commission-statements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your weekly commission statements, and where to pay them
+         * @description Travellers who pay at the counter pay you, so you hold our commission on those trips. Once a week we bill it: a statement for each Monday to Sunday week, in your market's clock, listing the cash trips of that week that are complete and whose cash you recorded. A trip is billed once. A trip completed or recorded after its own week was billed goes on the next week's statement. A week with nothing owed has no statement.
+         *
+         *     Statements are issued from the Tuesday after the week ends, and the people who answer for the business are told by email, pointing here. The commission on each trip is the one frozen on the booking when it was made, the same figure `GET /commission-owed` shows.
+         *
+         *     `payTo` says where to pay: our UPI ID and payee name. When we have not set them up yet, `payTo.available` is false and `payTo.message` says so in a sentence to show as it is.
+         *
+         *     **Paged**, the most recent statement first. Pass `nextCursor` back as `cursor` to continue; its absence, with `complete: true`, is the end.
+         *
+         *     Requires OWNER, ADMIN or MANAGER.
+         */
+        get: operations["listCommissionStatements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/commission-statements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One commission statement, with its trips and payments
+         * @description The lines are the cash trips on the statement as they were when it was issued, by trip day. The payments are what we have recorded receiving against it, oldest first. `owedPaise` is `commissionPaise - paidPaise`, and 0 once the statement is `waived`.
+         *
+         *     When something is still owed and our UPI details are set, `payTo` carries `upiLink`, a `upi://pay` link with the amount owed and the statement's reference as the note, which opens a UPI app ready to pay.
+         *
+         *     Another business's statement answers **404**, exactly as one that does not exist.
+         *
+         *     Requires OWNER, ADMIN or MANAGER.
+         */
+        get: operations["getCommissionStatement"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2346,6 +2402,90 @@ export interface components {
             refundedPaise: number;
             /** @description `grossPaise - commissionPaise - refundedPaise`. */
             netPaise: number;
+        };
+        /** @description One week's bill for the commission on your cash trips. Its figures are fixed when it is issued; only what has been paid, and its state, move. */
+        CommissionStatement: {
+            id: string;
+            /** @description Like `YC-7KQ2MZ9P`. Put it in the UPI payment note, so we can match the payment to the statement. */
+            reference: string;
+            /**
+             * Format: date
+             * @description The Monday of the week it bills, in your market's clock.
+             */
+            weekStart: string;
+            /**
+             * Format: date
+             * @description The Sunday of that week.
+             */
+            weekEnd: string;
+            /**
+             * @description `issued`: nothing paid yet. `part_paid`: some of it paid. `paid`: all of it paid. `waived`: we decided not to collect what was left, and nothing more is owed on it.
+             * @enum {string}
+             */
+            state: "issued" | "part_paid" | "paid" | "waived";
+            /** @description How many cash trips it bills. */
+            bookings: number;
+            /** @description The fares on those trips, which travellers paid you. */
+            farePaise: number;
+            /** @description Our commission on those fares, what the statement bills. */
+            commissionPaise: number;
+            /** @description What we have recorded receiving against it. */
+            paidPaise: number;
+            /** @description What is still to pay: `commissionPaise - paidPaise`, and 0 once the statement is waived. */
+            owedPaise: number;
+            /** Format: date-time */
+            issuedAt: string;
+            /**
+             * Format: date-time
+             * @description When it was waived. Absent unless it was.
+             */
+            waivedAt?: string;
+        };
+        /** @description One cash trip on a statement, as it was when the statement was issued. */
+        CommissionStatementLine: {
+            bookingReference: string;
+            /**
+             * Format: date
+             * @description The day of its departure, in your market's clock.
+             */
+            tripDate: string;
+            guests: number;
+            /** @description The fare on the booking. */
+            farePaise: number;
+            /** @description What you recorded taking, which can be short of the fare. The commission is on the fare. */
+            collectedPaise: number;
+            /** @description The rate frozen on the booking, in basis points: 1500 is 15 percent. */
+            commissionRateBps: number;
+            /** @description Our commission on this trip, frozen on the booking. */
+            commissionPaise: number;
+        };
+        /** @description A payment we recorded receiving from you against a statement. */
+        CommissionPayment: {
+            amountPaise: number;
+            /** @description The UPI transaction reference of the payment. */
+            utr: string;
+            /**
+             * Format: date
+             * @description The day the money reached us.
+             */
+            receivedOn: string;
+            /**
+             * Format: date-time
+             * @description When our staff recorded it.
+             */
+            recordedAt: string;
+        };
+        /** @description Where to pay us the commission on cash trips. With `available` true, `upiId` and `payee` are set. With it false, they are absent and `message` says, in a sentence to show as it is, that our details are not set up yet. */
+        CommissionPayTo: {
+            available: boolean;
+            /** @description Our UPI ID, like `name@okaxis`. */
+            upiId?: string;
+            /** @description The name a UPI app shows for that ID. */
+            payee?: string;
+            /** @description On one statement with something still owed: a `upi://pay` link with our UPI ID, the payee, the amount owed in rupees and the statement's reference as the note. Open it, or show it as a QR code. */
+            upiLink?: string;
+            /** @description Present when `available` is false. */
+            message?: string;
         };
         /** @description One allowed value and the word a person uses for it. Both, always — `andaman/havelock` is an identifier and "Havelock (Swaraj Dweep)" is what an operator calls the place; a picker showing only the key asks somebody to recognise one. */
         VocabularyTerm: {
@@ -6579,6 +6719,69 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    listCommissionStatements: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description From a previous response's `nextCursor`. Opaque; do not construct one. A cursor this list did not issue is a `400`. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your statements, the most recent first, and where to pay. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["CommissionStatement"][];
+                        /** @description Told rather than inferred. `false` means there is more to read with `nextCursor`. */
+                        complete: boolean;
+                        /** @description Absent when there is nothing after this page. */
+                        nextCursor?: string | null;
+                        payTo: components["schemas"]["CommissionPayTo"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getCommissionStatement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The statement, its trips, its payments and where to pay. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionStatement"] & {
+                        lines: components["schemas"]["CommissionStatementLine"][];
+                        payments: components["schemas"]["CommissionPayment"][];
+                        payTo: components["schemas"]["CommissionPayTo"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getCatalogVocabulary: {

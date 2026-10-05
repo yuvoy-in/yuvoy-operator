@@ -2,7 +2,12 @@ import "server-only";
 import { operatorApi } from "@/lib/api/server-client";
 import { getManifest, listMedia } from "@/lib/day/manifest";
 import type { Manifest, OperatorSlot } from "@/lib/day/types";
-import { getCommissionOwed, getSettlementOverview } from "@/lib/money/fetch";
+import {
+  getCommissionOwed,
+  getSettlementOverview,
+  readCommissionStatements,
+} from "@/lib/money/fetch";
+import { totalOwed } from "@/lib/money/commission-statements";
 import { toHomeListing, type HomeListing } from "./listings";
 import type { MoneyWeek } from "./money";
 
@@ -15,7 +20,7 @@ import type { MoneyWeek } from "./money";
  * the block it feeds says in its own words, and the rest of Home stands.
  *
  * None of these is asked per listing. The listings are one read, the money is
- * two, and the only per-row read is one manifest for each of TODAY's
+ * three, and the only per-row read is one manifest for each of TODAY's
  * departures that has somebody on it, which is where the cash and the
  * arrivals are.
  */
@@ -60,25 +65,33 @@ export async function readManifests(
 
 export interface MoneyToday {
   week: MoneyWeek | null;
-  /** Owed to Yuvoy now on cash already taken. */
+  /**
+   * Owed to Yuvoy now across the commission statements (op#121), or `null`
+   * when that cannot be said.
+   */
   owedPaise: number | null;
   /** Past cash trips nobody recorded (yuvoy-api#221). */
   unrecorded: number | null;
 }
 
 /**
- * The week, what is owed on cash, and the cash trips nobody recorded: two
- * reads, both OWNER, ADMIN or MANAGER. The caller asks only for a login that
- * can manage; a staff login would be refused both.
+ * The week, what is owed to Yuvoy, and the cash trips nobody recorded: three
+ * reads, all OWNER, ADMIN or MANAGER. The caller asks only for a login that
+ * can manage; a staff login would be refused every one.
+ *
+ * What is owed is the statements' (`totalOwed`), never `/commission-owed`'s,
+ * which counts every completed cash trip "billed or not, paid or not". That
+ * read is still made, for its unrecorded count.
  *
  * `unrecorded` is `/commission-owed`'s count, and the overview's "same count"
  * stands in when only that one answered. Either figure read as optional: an
  * older API sends neither, and "0 unrecorded" from silence would be a claim.
  */
 export async function readMoneyToday(token: string): Promise<MoneyToday> {
-  const [overview, owed] = await Promise.all([
+  const [overview, owed, statements] = await Promise.all([
     getSettlementOverview(token).catch(() => null),
     getCommissionOwed(token).catch(() => null),
+    readCommissionStatements(token),
   ]);
 
   const next = overview?.nextSettlement;
@@ -105,7 +118,9 @@ export async function readMoneyToday(token: string): Promise<MoneyToday> {
 
   return {
     week,
-    owedPaise: owed ? owed.commissionPaise : null,
+    owedPaise: statements
+      ? totalOwed(statements.items, statements.complete)
+      : null,
     unrecorded,
   };
 }

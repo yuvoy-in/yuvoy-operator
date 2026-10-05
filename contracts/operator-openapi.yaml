@@ -2917,6 +2917,11 @@ paths:
         paid, so none of it is held or owed. A trip does not finish on its own
         while its cash is unrecorded. Record the cash and it is owed once the
         trip is complete; mark the party a no-show and nothing is owed.
+
+
+        **What is owed here is every such trip, billed or not, paid or not.**
+        We bill it weekly and you pay against the bill: what is still to pay
+        is `owedPaise` on `GET /commission-statements`.
       operationId: getCommissionOwed
       responses:
         "200":
@@ -4118,6 +4123,117 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /commission-statements:
+    get:
+      tags: [money]
+      summary: Your weekly commission statements, and where to pay them
+      description: >
+        Travellers who pay at the counter pay you, so you hold our commission
+        on those trips. Once a week we bill it: a statement for each Monday to
+        Sunday week, in your market's clock, listing the cash trips of that week
+        that are complete and whose cash you recorded. A trip is billed once. A
+        trip completed or recorded after its own week was billed goes on the
+        next week's statement. A week with nothing owed has no statement.
+
+
+        Statements are issued from the Tuesday after the week ends, and the
+        people who answer for the business are told by email, pointing here.
+        The commission on each trip is the one frozen on the booking when it
+        was made, the same figure `GET /commission-owed` shows.
+
+
+        `payTo` says where to pay: our UPI ID and payee name. When we have not
+        set them up yet, `payTo.available` is false and `payTo.message` says so
+        in a sentence to show as it is.
+
+
+        **Paged**, the most recent statement first. Pass `nextCursor` back as
+        `cursor` to continue; its absence, with `complete: true`, is the end.
+
+
+        Requires OWNER, ADMIN or MANAGER.
+      operationId: listCommissionStatements
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          description: >-
+            From a previous response's `nextCursor`. Opaque; do not construct
+            one. A cursor this list did not issue is a `400`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Your statements, the most recent first, and where to pay.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, complete, payTo]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/CommissionStatement" }
+                  complete:
+                    type: boolean
+                    description: >-
+                      Told rather than inferred. `false` means there is more to
+                      read with `nextCursor`.
+                  nextCursor:
+                    type: [string, 'null']
+                    description: Absent when there is nothing after this page.
+                  payTo: { $ref: "#/components/schemas/CommissionPayTo" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /commission-statements/{id}:
+    get:
+      tags: [money]
+      summary: One commission statement, with its trips and payments
+      description: >
+        The lines are the cash trips on the statement as they were when it was
+        issued, by trip day. The payments are what we have recorded receiving
+        against it, oldest first. `owedPaise` is `commissionPaise - paidPaise`,
+        and 0 once the statement is `waived`.
+
+
+        When something is still owed and our UPI details are set, `payTo`
+        carries `upiLink`, a `upi://pay` link with the amount owed and the
+        statement's reference as the note, which opens a UPI app ready to pay.
+
+
+        Another business's statement answers **404**, exactly as one that does
+        not exist.
+
+
+        Requires OWNER, ADMIN or MANAGER.
+      operationId: getCommissionStatement
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The statement, its trips, its payments and where to pay.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/CommissionStatement" }
+                  - type: object
+                    required: [lines, payments, payTo]
+                    properties:
+                      lines:
+                        type: array
+                        items: { $ref: "#/components/schemas/CommissionStatementLine" }
+                      payments:
+                        type: array
+                        items: { $ref: "#/components/schemas/CommissionPayment" }
+                      payTo: { $ref: "#/components/schemas/CommissionPayTo" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /catalog/vocabulary:
     get:
@@ -6636,6 +6752,89 @@ components:
           description: 0 on a cancelled booking, because we take no commission on a booking that did not happen.
         refundedPaise: { type: integer }
         netPaise: { type: integer, description: "`grossPaise - commissionPaise - refundedPaise`." }
+
+    CommissionStatement:
+      type: object
+      description: >-
+        One week's bill for the commission on your cash trips. Its figures are
+        fixed when it is issued; only what has been paid, and its state, move.
+      required: [id, reference, weekStart, weekEnd, state, bookings, farePaise,
+                 commissionPaise, paidPaise, owedPaise, issuedAt]
+      properties:
+        id: { type: string }
+        reference:
+          type: string
+          description: >-
+            Like `YC-7KQ2MZ9P`. Put it in the UPI payment note, so we can match
+            the payment to the statement.
+        weekStart: { type: string, format: date, description: "The Monday of the week it bills, in your market's clock." }
+        weekEnd: { type: string, format: date, description: The Sunday of that week. }
+        state:
+          type: string
+          enum: [issued, part_paid, paid, waived]
+          description: >-
+            `issued`: nothing paid yet. `part_paid`: some of it paid.
+            `paid`: all of it paid. `waived`: we decided not to collect what
+            was left, and nothing more is owed on it.
+        bookings: { type: integer, description: How many cash trips it bills. }
+        farePaise: { type: integer, description: "The fares on those trips, which travellers paid you." }
+        commissionPaise: { type: integer, description: "Our commission on those fares, what the statement bills." }
+        paidPaise: { type: integer, description: What we have recorded receiving against it. }
+        owedPaise:
+          type: integer
+          description: >-
+            What is still to pay: `commissionPaise - paidPaise`, and 0 once the
+            statement is waived.
+        issuedAt: { type: string, format: date-time }
+        waivedAt: { type: string, format: date-time, description: When it was waived. Absent unless it was. }
+
+    CommissionStatementLine:
+      type: object
+      description: One cash trip on a statement, as it was when the statement was issued.
+      required: [bookingReference, tripDate, guests, farePaise, collectedPaise,
+                 commissionRateBps, commissionPaise]
+      properties:
+        bookingReference: { type: string }
+        tripDate: { type: string, format: date, description: "The day of its departure, in your market's clock." }
+        guests: { type: integer }
+        farePaise: { type: integer, description: The fare on the booking. }
+        collectedPaise:
+          type: integer
+          description: >-
+            What you recorded taking, which can be short of the fare. The
+            commission is on the fare.
+        commissionRateBps: { type: integer, description: "The rate frozen on the booking, in basis points: 1500 is 15 percent." }
+        commissionPaise: { type: integer, description: "Our commission on this trip, frozen on the booking." }
+
+    CommissionPayment:
+      type: object
+      description: A payment we recorded receiving from you against a statement.
+      required: [amountPaise, utr, receivedOn, recordedAt]
+      properties:
+        amountPaise: { type: integer }
+        utr: { type: string, description: The UPI transaction reference of the payment. }
+        receivedOn: { type: string, format: date, description: The day the money reached us. }
+        recordedAt: { type: string, format: date-time, description: When our staff recorded it. }
+
+    CommissionPayTo:
+      type: object
+      description: >-
+        Where to pay us the commission on cash trips. With `available` true,
+        `upiId` and `payee` are set. With it false, they are absent and
+        `message` says, in a sentence to show as it is, that our details are not
+        set up yet.
+      required: [available]
+      properties:
+        available: { type: boolean }
+        upiId: { type: string, description: "Our UPI ID, like `name@okaxis`." }
+        payee: { type: string, description: The name a UPI app shows for that ID. }
+        upiLink:
+          type: string
+          description: >-
+            On one statement with something still owed: a `upi://pay` link with
+            our UPI ID, the payee, the amount owed in rupees and the statement's
+            reference as the note. Open it, or show it as a QR code.
+        message: { type: string, description: Present when `available` is false. }
 
     VocabularyTerm:
       type: object

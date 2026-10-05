@@ -1,5 +1,6 @@
 import { formatPaise } from "@/lib/format/money";
 import { cashInHand, type Commission } from "./commission";
+import { totalOwed, type CommissionStatement } from "./commission-statements";
 import {
   hasStatement,
   seasonStartLabel,
@@ -23,6 +24,11 @@ import {
  * in words. Nothing here adds one block's figure to another's: the pipeline is
  * never earned and cash never passes through a payout, and a total built
  * across them would say both.
+ *
+ * What the business owes is the weekly commission statements' (op#121,
+ * D-043), never `GET /commission-owed`'s, which counts every completed cash
+ * trip "billed or not, paid or not". So the cash block says what Yuvoy's
+ * share is, and only the commission block says what is owed.
  */
 
 /**
@@ -50,20 +56,23 @@ export function pipelineHasMoney(
  * and `GET /commission-owed` (read softly; `null` when it failed).
  *
  * Every field that depends on a read that did not answer is `null`, never
- * zero: "₹0 owed" drawn from a failed read tells an operator with a balance
- * that they owe nothing.
+ * zero: a ₹0 drawn from a failed read is a figure nobody can tell from a real
+ * one.
  */
 export interface CashOnTheTab {
   /**
-   * Whether `GET /commission-owed` answered. When it did not, what is owed is
-   * UNKNOWN and the screen says so: it used to fall through to "Nothing owed
-   * either way yet" for an operator who owed ₹4,500 (the audit, M3).
+   * Whether `GET /commission-owed` answered. When it did not, the cash
+   * figures are UNKNOWN and the screen says so: a failed read used to fall
+   * through to "Nothing owed either way yet" (the audit, M3).
    */
-  owedKnown: boolean;
-  /** All the cash recorded taken, owed and held together, as Cash leads with it. */
+  cashKnown: boolean;
+  /** All the cash recorded taken, on completed trips and held, as Cash leads with it. */
   inHand: number | null;
-  /** Yuvoy's share on completed cash trips, owed now. */
-  owedNow: number | null;
+  /**
+   * Yuvoy's share on completed cash trips, every one of them, billed or not
+   * and paid or not. Never "owed": what is still to pay is the statements'.
+   */
+  completedShare: number | null;
   /** Yuvoy's share on cash taken for trips still to run: owed once they run. */
   heldShare: number | null;
   /**
@@ -114,9 +123,9 @@ export function cashOnTheTab(
 
   const apiCountsToRunApart = Number.isInteger(counter.unrecordedBookings);
   return {
-    owedKnown: commission !== null,
+    cashKnown: commission !== null,
     inHand: commission ? cashInHand(commission) : null,
-    owedNow: commission ? commission.commissionPaise : null,
+    completedShare: commission ? commission.commissionPaise : null,
     heldShare: commission?.held ? commission.held.commissionPaise : null,
     toRun: apiCountsToRunApart
       ? {
@@ -142,7 +151,7 @@ export function cashOnTheTab(
 export type CashLead =
   | { kind: "in-hand"; paise: number }
   | { kind: "to-take"; paise: number }
-  | { kind: "owed"; paise: number };
+  | { kind: "share"; paise: number };
 
 export function cashLead(cash: CashOnTheTab): CashLead | null {
   if ((cash.inHand ?? 0) > 0) return { kind: "in-hand", paise: cash.inHand! };
@@ -150,20 +159,22 @@ export function cashLead(cash: CashOnTheTab): CashLead | null {
     ? cash.toRun.farePaise - (cash.toRun.takenPaise ?? 0)
     : 0;
   if (toTake > 0) return { kind: "to-take", paise: toTake };
-  if ((cash.owedNow ?? 0) > 0) return { kind: "owed", paise: cash.owedNow! };
+  if ((cash.completedShare ?? 0) > 0) {
+    return { kind: "share", paise: cash.completedShare! };
+  }
   return null;
 }
 
 /**
  * Whether the cash block has anything to say: a figure above zero, trips to
- * run or unrecorded, OR an owed read that failed, which it must say rather
- * than let the screen conclude nothing is owed.
+ * run or unrecorded, OR a cash read that failed, which it must say rather
+ * than let the screen conclude there is nothing.
  */
 export function cashHasMoney(cash: CashOnTheTab): boolean {
   return (
-    !cash.owedKnown ||
+    !cash.cashKnown ||
     (cash.inHand ?? 0) > 0 ||
-    (cash.owedNow ?? 0) > 0 ||
+    (cash.completedShare ?? 0) > 0 ||
     (cash.heldShare ?? 0) > 0 ||
     (cash.toRun?.bookings ?? 0) > 0 ||
     cash.unrecorded !== null
@@ -171,33 +182,93 @@ export function cashHasMoney(cash: CashOnTheTab): boolean {
 }
 
 /**
+ * What the Money tab knows about the weekly commission bill (op#121).
+ *
+ *   - `read`        whether `GET /commission-statements` answered at all
+ *   - `owedPaise`   what is owed now across every statement, or `null` when
+ *                   it cannot be said: the read failed, the list was cut
+ *                   short, or a statement would not say what it owes
+ *   - `statements`  every statement read, newest first; empty when it failed
+ */
+export interface CommissionOnTheTab {
+  read: boolean;
+  owedPaise: number | null;
+  statements: readonly CommissionStatement[];
+}
+
+export function commissionOnTheTab(
+  read: {
+    items: readonly CommissionStatement[];
+    complete: boolean;
+  } | null,
+): CommissionOnTheTab {
+  if (read === null) return { read: false, owedPaise: null, statements: [] };
+  return {
+    read: true,
+    owedPaise: totalOwed(read.items, read.complete),
+    statements: read.items,
+  };
+}
+
+/**
  * The top of the Money tab, in the order it is drawn.
  *
- *   - `payout`       the next payout's card, with its arithmetic
- *   - `booked`       card bookings still to run, never earned
- *   - `cash`         cash held and owed, with the door to Cash
- *   - `payout-quiet` the next payout said in words, below the real blocks,
- *                    when it has nothing in it ("keep the settlement card, but
- *                    below")
- *   - `nothing-yet`  one sentence, when not one block has money in it
+ *   - `commission`         what is owed on the commission statements, with
+ *                          the ones still to pay; first, because it is the
+ *                          one thing on the tab to do, and the weekly email
+ *                          sends people here for it
+ *   - `payout`             the next payout's card, with its arithmetic
+ *   - `booked`             card bookings still to run, never earned
+ *   - `commission-unknown` the statements did not load: said, in the place a
+ *                          failure costs nothing above it
+ *   - `cash`               cash taken and Yuvoy's share, with the door to Cash
+ *   - `payout-quiet`       the next payout said in words, below the real
+ *                          blocks, when it has nothing in it ("keep the
+ *                          settlement card, but below")
+ *   - `nothing-yet`        one sentence, when not one block has money in it
+ *   - `commission-quiet`   statements, every one of them settled: listed
+ *                          below, with nothing to pay
  *
- * The real blocks keep their order among themselves: what Yuvoy will pay,
- * then what is booked, then cash. An empty block is never drawn as a ₹0.
+ * The real blocks keep their order among themselves: what is owed to Yuvoy,
+ * what Yuvoy will pay, what is booked, then cash. An empty block is never
+ * drawn as a ₹0, and a total that could not be added up is a `commission`
+ * block that says so, never a quiet one.
  */
 export type MoneyBlock =
-  "payout" | "booked" | "cash" | "payout-quiet" | "nothing-yet";
+  | "commission"
+  | "payout"
+  | "booked"
+  | "commission-unknown"
+  | "cash"
+  | "payout-quiet"
+  | "nothing-yet"
+  | "commission-quiet";
 
 export function moneyBlocks(
   week: Pick<SettlementWeek, "bookings" | "netPaise">,
   pipeline: Pick<SettlementPipeline, "bookings" | "netPaise">,
   cash: CashOnTheTab,
+  commission: CommissionOnTheTab,
 ): MoneyBlock[] {
+  const { owedPaise, statements } = commission;
   const blocks: MoneyBlock[] = [];
+  if (
+    commission.read &&
+    (owedPaise === null ? statements.length > 0 : owedPaise > 0)
+  ) {
+    blocks.push("commission");
+  }
   if (payoutHasMoney(week)) blocks.push("payout");
   if (pipelineHasMoney(pipeline)) blocks.push("booked");
+  if (!commission.read) blocks.push("commission-unknown");
   if (cashHasMoney(cash)) blocks.push("cash");
-  if (blocks.length === 0) return ["nothing-yet"];
-  if (!blocks.includes("payout")) blocks.push("payout-quiet");
+
+  if (blocks.length === 0) blocks.push("nothing-yet");
+  else if (!blocks.includes("payout")) blocks.push("payout-quiet");
+
+  if (owedPaise === 0 && statements.length > 0) {
+    blocks.push("commission-quiet");
+  }
   return blocks;
 }
 

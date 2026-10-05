@@ -1242,6 +1242,183 @@ export const COMMISSION_OWED = {
   ],
 };
 
+/**
+ * Where to pay the commission statements (yuvoy-operator#121).
+ *
+ * A UPI ID on a handle no UPI app knows (`@example`), on purpose: somebody
+ * tapping "Pay by UPI" in a development build must never be one confirm away
+ * from paying a stranger who happens to own a real-looking ID.
+ */
+export const COMMISSION_PAY_TO = {
+  available: true,
+  upiId: "yuvoy.dev@example",
+  payee: "Yuvoy (development)",
+};
+
+/**
+ * Reef Divers' weekly commission statements, newest first, one in each
+ * state, because each is a different promise: `issued` and `part_paid` have
+ * something to pay, `paid` does not, and `waived` is settled without being
+ * paid, which is the one most easily drawn as a debt.
+ *
+ * The figures close the way the contract says: `owedPaise` is
+ * `commissionPaise - paidPaise`, 0 once waived, and each statement's lines
+ * and payments add up to it, so the screen's "does not add up" check runs on
+ * a passing case. One line took less than the fare and one week carries a
+ * second rate, so neither the shortfall note nor `rateLabel` is only ever
+ * read at 15%. ₹3,550 is owed across them.
+ */
+export const COMMISSION_STATEMENTS = [
+  {
+    id: "cst_issued",
+    reference: "YC-7KQ2MZ9P",
+    weekStart: "2026-09-21",
+    weekEnd: "2026-09-27",
+    state: "issued" as const,
+    bookings: 2,
+    farePaise: 1_500_000,
+    commissionPaise: 225_000,
+    paidPaise: 0,
+    owedPaise: 225_000,
+    issuedAt: "2026-09-29T03:30:00Z",
+    lines: [
+      {
+        bookingReference: "YV-4QX7LM",
+        tripDate: "2026-09-22",
+        guests: 2,
+        farePaise: 1_000_000,
+        collectedPaise: 1_000_000,
+        commissionRateBps: 1500,
+        commissionPaise: 150_000,
+      },
+      {
+        bookingReference: "YV-9RT2KD",
+        tripDate: "2026-09-26",
+        guests: 1,
+        farePaise: 500_000,
+        // Took ₹1,000 less than the fare. The commission is on the fare.
+        collectedPaise: 400_000,
+        commissionRateBps: 1500,
+        commissionPaise: 75_000,
+      },
+    ],
+    payments: [],
+  },
+  {
+    id: "cst_part_paid",
+    reference: "YC-3HD8WQ4N",
+    weekStart: "2026-09-14",
+    weekEnd: "2026-09-20",
+    state: "part_paid" as const,
+    bookings: 3,
+    farePaise: 2_400_000,
+    commissionPaise: 330_000,
+    paidPaise: 200_000,
+    owedPaise: 130_000,
+    issuedAt: "2026-09-22T03:30:00Z",
+    lines: [
+      {
+        bookingReference: "YV-6MB3ZP",
+        tripDate: "2026-09-15",
+        guests: 4,
+        farePaise: 1_200_000,
+        collectedPaise: 1_200_000,
+        commissionRateBps: 1500,
+        commissionPaise: 180_000,
+      },
+      {
+        bookingReference: "YV-2KW9TJ",
+        tripDate: "2026-09-17",
+        guests: 2,
+        farePaise: 800_000,
+        collectedPaise: 800_000,
+        commissionRateBps: 1250,
+        commissionPaise: 100_000,
+      },
+      {
+        bookingReference: "YV-8NC5VR",
+        tripDate: "2026-09-19",
+        guests: 1,
+        farePaise: 400_000,
+        collectedPaise: 400_000,
+        commissionRateBps: 1250,
+        commissionPaise: 50_000,
+      },
+    ],
+    payments: [
+      {
+        amountPaise: 200_000,
+        utr: "425918736201",
+        receivedOn: "2026-09-24",
+        recordedAt: "2026-09-24T10:15:00Z",
+      },
+    ],
+  },
+  {
+    /*
+      August, and a gap before the next: "a week with nothing owed has no
+      statement". Also no week a payout fixture uses, so a week label on the
+      Money tab is never two things at once.
+    */
+    id: "cst_paid",
+    reference: "YC-9TP2XK6B",
+    weekStart: "2026-08-10",
+    weekEnd: "2026-08-16",
+    state: "paid" as const,
+    bookings: 1,
+    farePaise: 900_000,
+    commissionPaise: 135_000,
+    paidPaise: 135_000,
+    owedPaise: 0,
+    issuedAt: "2026-08-18T03:30:00Z",
+    lines: [
+      {
+        bookingReference: "YV-5JH7QS",
+        tripDate: "2026-08-13",
+        guests: 2,
+        farePaise: 900_000,
+        collectedPaise: 900_000,
+        commissionRateBps: 1500,
+        commissionPaise: 135_000,
+      },
+    ],
+    payments: [
+      {
+        amountPaise: 135_000,
+        utr: "425311902447",
+        receivedOn: "2026-08-19",
+        recordedAt: "2026-08-19T08:40:00Z",
+      },
+    ],
+  },
+  {
+    id: "cst_waived",
+    reference: "YC-1WV6RM3D",
+    weekStart: "2026-08-03",
+    weekEnd: "2026-08-09",
+    state: "waived" as const,
+    bookings: 1,
+    farePaise: 300_000,
+    commissionPaise: 45_000,
+    paidPaise: 0,
+    owedPaise: 0,
+    issuedAt: "2026-08-11T03:30:00Z",
+    waivedAt: "2026-08-25T06:00:00Z",
+    lines: [
+      {
+        bookingReference: "YV-3GF8NA",
+        tripDate: "2026-08-05",
+        guests: 1,
+        farePaise: 300_000,
+        collectedPaise: 300_000,
+        commissionRateBps: 1500,
+        commissionPaise: 45_000,
+      },
+    ],
+    payments: [],
+  },
+];
+
 export const CHANGE_REQUESTS = [
   {
     id: "chg_bank_1",

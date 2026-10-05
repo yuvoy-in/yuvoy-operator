@@ -66,6 +66,8 @@ const BACK_TO: readonly (readonly [RegExp, string])[] = [
   [/^\/bookings\/[\w-]+$/, "the booking"],
   [/^\/calendar$/, "calendar"],
   [/^\/earnings$/, "money"],
+  [/^\/earnings\/commission$/, "your statements"],
+  [/^\/earnings\/commission\/[\w-]+$/, "the statement"],
   [/^\/cash$/, "cash"],
   [/^\/payouts$/, "payout details"],
   [/^\/logo$/, "your logo"],

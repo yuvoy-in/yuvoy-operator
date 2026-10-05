@@ -72,7 +72,7 @@ test("it leads with what was collected, and the share reads as a share", async (
   */
   const share = (label: RegExp) =>
     page.locator("dl > div").filter({ hasText: label }).locator("dd");
-  await expect(share(/owed now/)).toHaveText("₹4,500");
+  await expect(share(/on completed trips/)).toHaveText("₹4,500");
   await expect(share(/trips still to run/)).toHaveText("₹2,250");
 
   /*
@@ -101,26 +101,25 @@ test("every trip behind the number is listed and checkable", async ({
   await page.goto("/cash");
 
   // Reference, date, guests, fare and share: the five things that let an
-  // operator check a line against their own book.
-  const owed = page.getByRole("region", { name: "Owed now" });
-  await expect(owed.getByText("YV-8F3K2A")).toBeVisible();
-  await expect(owed.getByText("YV-2M9QX1")).toBeVisible();
-  await expect(owed.getByText("YV-7T4WPZ")).toBeVisible();
-  await expect(owed.getByText("2 guests")).toBeVisible();
-  await expect(owed.getByText("1 guest", { exact: true })).toBeVisible();
+  // operator check a line against their own book. "Completed trips", not
+  // "Owed now": the list counts paid trips too (op#121).
+  const completed = page.getByRole("region", { name: "Completed trips" });
+  await expect(completed.getByText("YV-8F3K2A")).toBeVisible();
+  await expect(completed.getByText("YV-2M9QX1")).toBeVisible();
+  await expect(completed.getByText("YV-7T4WPZ")).toBeVisible();
+  await expect(completed.getByText("2 guests")).toBeVisible();
+  await expect(completed.getByText("1 guest", { exact: true })).toBeVisible();
 
   // Most recent first, so two loads do not disagree about the top row. A
   // waiting assertion: a bare read can land on the loading skeleton.
   // The references are found by what they are, not by a styling class: the
   // class they used to be found by went with the v3.0 type change.
-  await expect(owed.locator("li p").filter({ hasText: /^YV-/ })).toHaveText([
-    "YV-8F3K2A",
-    "YV-2M9QX1",
-    "YV-7T4WPZ",
-  ]);
+  await expect(
+    completed.locator("li p").filter({ hasText: /^YV-/ }),
+  ).toHaveText(["YV-8F3K2A", "YV-2M9QX1", "YV-7T4WPZ"]);
 });
 
-test("cash taken for trips still to run is shown apart from what is owed", async ({
+test("cash taken for trips still to run is shown apart from completed trips", async ({
   page,
 }) => {
   /*
@@ -139,7 +138,7 @@ test("cash taken for trips still to run is shown apart from what is owed", async
     "YV-H3LD0B2",
   ]);
   await expect(
-    page.getByRole("region", { name: "Owed now" }),
+    page.getByRole("region", { name: "Completed trips" }),
   ).not.toContainText("YV-H3LD0A1");
 });
 
@@ -181,40 +180,48 @@ test("a shortfall is explained rather than left looking like an error", async ({
   await expect(row.getByText(/worked out on the fare/)).toBeVisible();
 });
 
-test("owing nothing is a sentence, not a table of zeroes", async ({ page }) => {
-  // Real and common: every cash trip settled, or none taken yet. Not an error
-  // and not a spinner.
+test("no cash at all is a sentence, not a table of zeroes", async ({
+  page,
+}) => {
+  // Real and common: no cash taken yet. Not an error and not a spinner.
   await signIn(page, MANAGER);
   await page.goto("/cash");
 
-  await expect(page.getByText("Nothing owed")).toBeVisible();
-  await expect(page.getByText(/Everything.{1,3}s settled/)).toBeVisible();
+  await expect(page.getByText("No cash taken yet")).toBeVisible();
   await expect(page.getByText("₹0")).toHaveCount(0);
+  // And no statement yet is said as that, never as nothing owed in ₹.
+  await expect(
+    page.getByRole("link", { name: /Commission statements/ }),
+  ).toContainText("None yet");
 });
 
-test("there is no way to pay from this screen, and why is one tap away", async ({
+test("what is owed is the statements', one tap away, and paid there", async ({
   page,
 }) => {
   /*
-    Deliberate. Settling is money moving back to us, the same class of act as
-    money leaving, and the payout run spends two tables and three signatures
-    getting that right. The reason used to close every visit as a paragraph
-    ("There is nothing to tap here", op#80 t4); it is an answer in Help now,
-    one tap from the foot of the screen.
+    yuvoy-operator#121, D-043. `/commission-owed` counts every completed cash
+    trip, billed or not and paid or not, so this screen never calls it owed:
+    the door to the statements says what is, and paying happens on a
+    statement, against its reference. Nothing here is a pay button.
   */
   await signIn(page, OWNER);
   await page.goto("/cash");
 
+  const door = page.getByRole("link", { name: /Commission statements/ });
+  await expect(door).toContainText("₹3,550 owed");
+  await expect(door).toHaveAttribute("href", "/earnings/commission");
+  await expect(page.getByText(/owed now/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: /pay|settle/i })).toHaveCount(
     0,
   );
   await expect(page.getByText(/nothing to tap here/i)).toHaveCount(0);
 
-  await page.getByRole("link", { name: /How to settle Yuvoy.s share/ }).click();
+  await page.getByRole("link", { name: /How to pay Yuvoy.s share/ }).click();
   await page.waitForURL(/\/account\/help\?from=%2Fcash#settling-cash$/);
   const answer = page.locator("#settling-cash");
   await expect(answer).toHaveAttribute("open", "");
-  await expect(answer.getByText(/There is no pay button/)).toBeVisible();
+  await expect(answer.getByText(/tap Pay by UPI/)).toBeVisible();
+  await expect(answer.getByText(/There is no pay button/)).toHaveCount(0);
 });
 
 test("staff are told, not refused into the error boundary", async ({
