@@ -20,6 +20,8 @@ import {
   AWAITING_ID,
   CHANGE_REQUESTS,
   COMMISSION_OWED,
+  COMMISSION_PAY_TO,
+  COMMISSION_STATEMENTS,
   DEV_CODE,
   CONTENDED_ID,
   DROPPING_ID,
@@ -136,6 +138,17 @@ function businessOf(request: Request): string {
  */
 function isNewBusiness(request: Request): boolean {
   return sessionUser(request)?.id === NEW_BUSINESS_ID;
+}
+
+/**
+ * Whether this session sees no commission statements (yuvoy-operator#121):
+ * the manager, who owes nothing on `/commission-owed` either, and the
+ * business with nothing on it yet, which has taken no cash to be billed for.
+ */
+function ownsNoStatements(request: Request): boolean {
+  return (
+    sessionUser(request)?.id === "usr_manager_dev" || isNewBusiness(request)
+  );
 }
 
 /**
@@ -7042,6 +7055,76 @@ export const handlers = [
     }
 
     return HttpResponse.json(COMMISSION_OWED);
+  }),
+
+  /*
+    THE WEEKLY COMMISSION STATEMENTS (yuvoy-operator#121, D-043).
+
+    Reef Divers has four, one in each state (see `COMMISSION_STATEMENTS`).
+    Dev Kapoor (MANAGER) and the business with nothing on it yet have none,
+    as they owe nothing on `/commission-owed`: the zero case, which the Money
+    tab must draw as no commission block at all rather than a ₹0.
+
+    `complete: true` and no cursor: paging is exercised by the unit tests
+    rather than by a fixture that would make every e2e read two pages.
+  */
+  http.get(url("/commission-statements"), async ({ request }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    const items = ownsNoStatements(request)
+      ? []
+      : COMMISSION_STATEMENTS.map((s) => {
+          /* The list carries no trips or payments; one statement's read does. */
+          const statement: Record<string, unknown> = { ...s };
+          delete statement.lines;
+          delete statement.payments;
+          return statement;
+        });
+    return HttpResponse.json({
+      items,
+      complete: true,
+      nextCursor: null,
+      payTo: COMMISSION_PAY_TO,
+    });
+  }),
+
+  /*
+    One statement. Another business's answers 404 exactly as one that does
+    not exist, which is what the screen's `notFound()` is tested against.
+
+    `upiLink` only while something is owed, as the contract says, with the
+    amount in rupees and the reference as the note: built here from the
+    statement, so the button's amount and the link's can never drift apart in
+    a fixture. Encoded as the API's `upiLink` encodes it (yuvoy-api
+    internal/handler/commission_statements.go): escaped, spaces as `%20`.
+  */
+  http.get(url("/commission-statements/:id"), async ({ request, params }) => {
+    const failed = requireManager(request, "Requires OWNER, ADMIN or MANAGER.");
+    if (failed) return failed;
+
+    const found = ownsNoStatements(request)
+      ? undefined
+      : COMMISSION_STATEMENTS.find((s) => s.id === params.id);
+    if (!found) return envelope("not_found", "No such statement.", 404);
+
+    const rupees = (found.owedPaise / 100).toFixed(2);
+    /* `url.QueryEscape` escapes !'()* too, which `encodeURIComponent` leaves bare. */
+    const enc = (value: string) =>
+      encodeURIComponent(value).replace(
+        /[!'()*]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+      );
+    const upiLink =
+      found.owedPaise > 0
+        ? `upi://pay?pa=${enc(COMMISSION_PAY_TO.upiId)}` +
+          `&pn=${enc(COMMISSION_PAY_TO.payee)}&am=${rupees}` +
+          `&cu=INR&tn=${enc(found.reference)}`
+        : undefined;
+    return HttpResponse.json({
+      ...found,
+      payTo: { ...COMMISSION_PAY_TO, ...(upiLink ? { upiLink } : {}) },
+    });
   }),
 
   /*

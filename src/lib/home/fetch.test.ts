@@ -17,6 +17,7 @@ const getManifest = vi.fn();
 const listMedia = vi.fn();
 const getCommissionOwed = vi.fn();
 const getSettlementOverview = vi.fn();
+const readCommissionStatements = vi.fn();
 
 vi.mock("@/lib/api/server-client", () => ({
   operatorApi: () => ({ GET: get }),
@@ -28,6 +29,8 @@ vi.mock("@/lib/day/manifest", () => ({
 vi.mock("@/lib/money/fetch", () => ({
   getCommissionOwed: (...args: unknown[]) => getCommissionOwed(...args),
   getSettlementOverview: (...args: unknown[]) => getSettlementOverview(...args),
+  readCommissionStatements: (...args: unknown[]) =>
+    readCommissionStatements(...args),
 }));
 
 const {
@@ -44,7 +47,26 @@ beforeEach(() => {
   listMedia.mockReset();
   getCommissionOwed.mockReset();
   getSettlementOverview.mockReset();
+  readCommissionStatements.mockReset();
+  // No statement yet, unless a test says otherwise: nothing owed.
+  readCommissionStatements.mockResolvedValue(statements([]));
 });
+
+/** `readCommissionStatements` answering with these figures. */
+function statements(
+  owed: number[],
+  complete = true,
+): { items: unknown[]; complete: boolean; payTo: { available: boolean } } {
+  return {
+    items: owed.map((owedPaise, i) => ({
+      id: `cst_${i}`,
+      state: owedPaise > 0 ? "issued" : "paid",
+      owedPaise,
+    })),
+    complete,
+    payTo: { available: false },
+  };
+}
 
 const slot = (over: Partial<OperatorSlot> = {}): OperatorSlot => ({
   id: "slot_1",
@@ -126,17 +148,48 @@ describe("the manifests of today's departures", () => {
 });
 
 describe("money today", () => {
-  it("carries the week, what is owed on cash, and the unrecorded count", async () => {
+  it("carries the week, what is owed on the statements, and the unrecorded count", async () => {
     getSettlementOverview.mockResolvedValue({ nextSettlement: WEEK });
     getCommissionOwed.mockResolvedValue({
       commissionPaise: 450_000,
       unrecorded: { bookings: 3, farePaise: 900_000, lines: [] },
     });
+    readCommissionStatements.mockResolvedValue(
+      statements([225_000, 130_000, 0]),
+    );
     expect(await readMoneyToday("tok")).toEqual({
       week: WEEK,
-      owedPaise: 450_000,
+      owedPaise: 355_000,
       unrecorded: 3,
     });
+  });
+
+  it("never calls the share on every completed trip owed", async () => {
+    /*
+      yuvoy-operator#121: `/commission-owed` counts every completed cash trip
+      "billed or not, paid or not", so a business that has paid every
+      statement still read as owing ₹4,500 on Home.
+    */
+    getSettlementOverview.mockResolvedValue({ nextSettlement: WEEK });
+    getCommissionOwed.mockResolvedValue({
+      commissionPaise: 450_000,
+      unrecorded: null,
+    });
+    readCommissionStatements.mockResolvedValue(statements([0, 0]));
+    expect((await readMoneyToday("tok")).owedPaise).toBe(0);
+  });
+
+  it("is unknown, never a smaller bill, when the statements cannot be added up", async () => {
+    getSettlementOverview.mockResolvedValue({ nextSettlement: WEEK });
+    getCommissionOwed.mockResolvedValue({
+      commissionPaise: 0,
+      unrecorded: null,
+    });
+    readCommissionStatements.mockResolvedValue(statements([225_000], false));
+    expect((await readMoneyToday("tok")).owedPaise).toBeNull();
+
+    readCommissionStatements.mockResolvedValue(null);
+    expect((await readMoneyToday("tok")).owedPaise).toBeNull();
   });
 
   it("keeps each half when the other did not answer", async () => {
@@ -153,6 +206,7 @@ describe("money today", () => {
 
     getSettlementOverview.mockResolvedValue({ nextSettlement: WEEK });
     getCommissionOwed.mockRejectedValue(new Error("403"));
+    readCommissionStatements.mockResolvedValue(null);
     expect(await readMoneyToday("tok")).toEqual({
       week: WEEK,
       owedPaise: null,
@@ -160,9 +214,10 @@ describe("money today", () => {
     });
   });
 
-  it("is every figure unknown when both reads were refused", async () => {
+  it("is every figure unknown when every read was refused", async () => {
     getSettlementOverview.mockRejectedValue(new Error("403"));
     getCommissionOwed.mockRejectedValue(new Error("403"));
+    readCommissionStatements.mockResolvedValue(null);
     expect(await readMoneyToday("tok")).toEqual({
       week: null,
       owedPaise: null,

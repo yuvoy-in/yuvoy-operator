@@ -7,6 +7,7 @@ import {
   getSettlementOverview,
   listSettlements,
   readCommissionOwed,
+  readCommissionStatements,
 } from "@/lib/money/fetch";
 import {
   payoutDestination,
@@ -28,12 +29,18 @@ import {
 import {
   cashLead,
   cashOnTheTab,
+  commissionOnTheTab,
   latestStatement,
   moneyBlocks,
   pageCursor,
   seasonLine,
   type CashOnTheTab,
+  type CommissionOnTheTab,
 } from "@/lib/money/overview";
+import {
+  statementsForMoney,
+  statementsOwing,
+} from "@/lib/money/commission-statements";
 import { formatPaise } from "@/lib/format/money";
 import { helpHref } from "@/lib/help";
 import { Empty, Problem } from "@/components/ui/states";
@@ -46,6 +53,7 @@ import {
 } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { DownloadStatement } from "@/app/earnings/[id]/download-statement";
+import { StatementRow } from "@/app/earnings/commission/statement-row";
 
 export const metadata: Metadata = { title: "Money" };
 
@@ -60,9 +68,9 @@ export const dynamic = "force-dynamic";
  *
  * "Money is three taps away (Business, Settings, Money), next to Logo and
  * Notifications. For the operator it is the second reason to open the app."
- * This is the tab: what Yuvoy will pay, what is booked and not yet earned,
- * the cash held and owed, past payouts, the latest statement, and the way to
- * the bank details.
+ * This is the tab: what is owed to Yuvoy on the weekly commission statements
+ * (op#121), what Yuvoy will pay, what is booked and not yet earned, the cash
+ * taken, past payouts, the latest statement, and the way to the bank details.
  *
  * ## What it leads with
  *
@@ -84,7 +92,8 @@ export const dynamic = "force-dynamic";
  * ## Read-only
  *
  * The only control is downloading the statement of a payout already sent.
- * Nothing on this screen can change what anybody is paid.
+ * Nothing on this screen can change what anybody is paid. A commission
+ * statement is paid from its own page, in the operator's own UPI app.
  */
 export default async function MoneyPage({
   searchParams,
@@ -125,22 +134,25 @@ export default async function MoneyPage({
     The overview is HARD: it is the top of the screen, and four figures that
     quietly render as zero because a request failed is the one wrong answer
     that must never appear. Everything else is soft and costs only its own
-    section: the hold warning, the history, and the cash summary.
+    section: the hold warning, the history, the cash summary, and the
+    commission statements.
   */
-  const [overview, changes, past, commission] = await Promise.all([
+  const [overview, changes, past, cashTaken, statements] = await Promise.all([
     getSettlementOverview(token),
     getChangeRequests(token),
     listSettlements(token, cursor),
     readCommissionOwed(token),
+    readCommissionStatements(token),
   ]);
 
   const hold = payoutHold(changes);
   // The bank details, said on their door: "account ending 4412" (op#96).
   const onFile = accountOnFile(changes);
   const { nextSettlement, pipeline, paidAtCounter, seasonToDate } = overview;
-  const cash = cashOnTheTab(paidAtCounter, commission);
+  const cash = cashOnTheTab(paidAtCounter, cashTaken);
+  const bill = commissionOnTheTab(statements);
   // What is real is drawn first; see `moneyBlocks` for the order and why.
-  const blocks = moneyBlocks(nextSettlement, pipeline, cash);
+  const blocks = moneyBlocks(nextSettlement, pipeline, cash, bill);
 
   const season = seasonLine(seasonToDate);
   // The newest statement, offered on the first page only: a later page's
@@ -163,6 +175,23 @@ export default async function MoneyPage({
 
       {blocks.map((block) => {
         switch (block) {
+          case "commission":
+            return <CommissionToPay key={block} bill={bill} />;
+          case "commission-unknown":
+            /*
+              Said, never drawn as nothing owed, and in the place a failure
+              costs nothing above it: the figures around it are still right.
+            */
+            return (
+              <div key={block} className="mt-4">
+                <Problem
+                  title="We could not load your commission statements"
+                  body="The other figures here are still correct. Try again in a moment."
+                />
+              </div>
+            );
+          case "commission-quiet":
+            return <SettledStatements key={block} bill={bill} />;
           case "nothing-yet":
             /*
               Said once, in words. Three panels opening on ₹0 read as a screen
@@ -468,12 +497,15 @@ function BookedNotRun({ pipeline }: { pipeline: SettlementPipeline }) {
 }
 
 /**
- * Cash held and owed, summarised (op#96): the figures Cash leads with, what is
- * still to run, the trips nobody recorded, and the door to all of it.
+ * Cash taken and Yuvoy's share of it, summarised (op#96): the figures Cash
+ * leads with, what is still to run, the trips nobody recorded, and the door to
+ * all of it.
  *
  * Each figure is drawn only when its read answered. `GET /commission-owed` is
  * soft here, and a figure from a failed read is left unsaid rather than
- * drawn as ₹0.
+ * drawn as ₹0. Nothing here is "owed": the share on completed trips counts
+ * every one of them, billed or not and paid or not (op#121), so what is owed
+ * is the commission block's alone.
  */
 function CashSection({ cash }: { cash: CashOnTheTab }) {
   const { unrecorded, toRun } = cash;
@@ -502,28 +534,28 @@ function CashSection({ cash }: { cash: CashOnTheTab }) {
                 ? "recorded as taken from travellers"
                 : lead.kind === "to-take"
                   ? "to take on cash trips still to run"
-                  : "Yuvoy's share, owed now"}
+                  : "Yuvoy's share on completed trips"}
             </p>
           </>
         ) : null}
         {/*
-          A failed read of what is owed is said, never drawn as ₹0 and never
-          left to become "Nothing owed either way yet" (the audit, M3).
+          A failed read is said, never drawn as ₹0 and never left to become
+          "Nothing owed either way yet" (the audit, M3).
         */}
-        {!cash.owedKnown ? (
+        {!cash.cashKnown ? (
           <p className="text-forest/80 mt-3 text-sm">
-            We could not check what you owe on cash just now. Open Cash to try
+            We could not load your cash figures just now. Open Cash to try
             again.
           </p>
         ) : null}
         <dl className="mt-4 space-y-2 text-sm">
           {/* Zero is not news, so no row is drawn for it. */}
-          {cash.owedNow !== null &&
-          cash.owedNow > 0 &&
-          lead?.kind !== "owed" ? (
+          {cash.completedShare !== null &&
+          cash.completedShare > 0 &&
+          lead?.kind !== "share" ? (
             <Row
-              label="Yuvoy's share, owed now"
-              value={formatPaise(cash.owedNow)}
+              label="Yuvoy's share on completed trips"
+              value={formatPaise(cash.completedShare)}
             />
           ) : null}
           {cash.heldShare !== null && cash.heldShare > 0 ? (
@@ -592,19 +624,115 @@ function CashSection({ cash }: { cash: CashOnTheTab }) {
   );
 }
 
-/** The newest statement, one tap from the tab rather than two. */
+/**
+ * What is owed to Yuvoy on the weekly commission statements (op#121, D-043),
+ * with the statements behind it: every one with something still to pay,
+ * however old, then the newest settled (`statementsForMoney`). Each opens on
+ * its trips and the way to pay it.
+ *
+ * First on the tab when it is drawn. It is the one thing here that needs
+ * doing, and the email that comes with each statement sends people here.
+ */
+function CommissionToPay({ bill }: { bill: CommissionOnTheTab }) {
+  const { shown, more } = statementsForMoney(bill.statements, 3);
+  const owing = statementsOwing(bill.statements);
+  return (
+    <section className="mt-6" aria-labelledby="commission-to-pay">
+      <div className={panelClass("raised")}>
+        <h2 id="commission-to-pay" className="label text-forest/75">
+          Commission to pay
+        </h2>
+        {bill.owedPaise !== null ? (
+          <>
+            <p className="font-display tracking-display mt-3 text-4xl leading-none">
+              {formatPaise(bill.owedPaise)}
+            </p>
+            <p className="text-forest/70 mt-2 text-sm">
+              {owing === 1
+                ? "owed to Yuvoy on 1 statement"
+                : `owed to Yuvoy on ${owing} statements`}
+            </p>
+          </>
+        ) : (
+          /*
+            A total over a list cut short, or over a statement that will not
+            say what it owes, understates the bill. Each row still says.
+          */
+          <p className="text-forest/80 mt-3 text-sm">
+            We could not add up what is owed. Each statement below says what is
+            left to pay on it.
+          </p>
+        )}
+        <HelpLink id="settling-cash">How to pay a statement</HelpLink>
+      </div>
+      <ul className="mt-2 space-y-2">
+        {shown.map((statement) => (
+          <li key={statement.id}>
+            <StatementRow statement={statement} />
+          </li>
+        ))}
+      </ul>
+      {more > 0 ? <AllStatements /> : null}
+    </section>
+  );
+}
+
+/**
+ * Statements with nothing left to pay on any of them: below the blocks,
+ * because a bill already paid is a record rather than news, and said in
+ * words rather than as a ₹0.
+ */
+function SettledStatements({ bill }: { bill: CommissionOnTheTab }) {
+  const { shown, more } = statementsForMoney(bill.statements, 3);
+  return (
+    <section className="mt-10" aria-labelledby="commission-statements">
+      <h2
+        id="commission-statements"
+        className="font-display tracking-display text-2xl leading-tight"
+      >
+        Commission statements
+      </h2>
+      <p className="text-forest/80 mt-2 text-sm">Nothing to pay.</p>
+      <ul className="mt-4 space-y-3">
+        {shown.map((statement) => (
+          <li key={statement.id}>
+            <StatementRow statement={statement} />
+          </li>
+        ))}
+      </ul>
+      {more > 0 ? <AllStatements /> : null}
+    </section>
+  );
+}
+
+function AllStatements() {
+  return (
+    <Link
+      href="/earnings/commission"
+      className="text-terra-deep mt-3 inline-flex min-h-11 items-center text-sm underline underline-offset-4"
+    >
+      All statements
+    </Link>
+  );
+}
+
+/**
+ * The newest payout statement, one tap from the tab rather than two. Named a
+ * payout statement since the commission statements share the tab (op#121):
+ * one is what Yuvoy paid, the other what the business owes.
+ */
 function LatestStatement({ settlement }: { settlement: Settlement }) {
   return (
     <Panel className="mt-6" role="region" aria-labelledby="latest-statement">
       <h2 id="latest-statement" className="label text-forest/75">
-        Latest statement
+        Latest payout statement
       </h2>
       <p className="mt-1 text-base font-bold">
         {weekLabel(settlement.periodStart, settlement.periodEnd)}
       </p>
       <DownloadStatement id={settlement.id} className="mt-4" />
       <p className="text-forest/70 mt-3 text-sm">
-        Older statements are on each paid week&rsquo;s page.
+        Older payout statements are on each paid week&rsquo;s page.
       </p>
     </Panel>
   );

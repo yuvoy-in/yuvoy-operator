@@ -55,7 +55,7 @@ export const ACCOUNT_HELP: readonly HelpTopic[] = [
     question: "Why is cash not in my payout?",
     answer: [
       "A traveller who pays in cash pays you on the day, so that money never passes through a payout.",
-      "Yuvoy's share of it is a balance instead, listed trip by trip on Cash you've collected.",
+      "Yuvoy bills its share of it instead, once a week, on a commission statement you pay by UPI. Every trip is listed on Cash you've collected.",
     ],
   },
   {
@@ -66,6 +66,7 @@ export const ACCOUNT_HELP: readonly HelpTopic[] = [
       "Once the trip is done and you have recorded the cash. A trip finishes on its own six hours after it ends.",
       "Cash you take for a trip that has not run yet is held. It is yours, and Yuvoy's share of it becomes owed when the trip is done.",
       "The share is worked out on the fare, not on what you chose to take. A discount you gave is yours to have given.",
+      "Yuvoy's share on completed trips, on Cash you've collected, counts every completed trip, billed or not and paid or not. What is still to pay is on your commission statements.",
     ],
   },
   {
@@ -82,8 +83,19 @@ export const ACCOUNT_HELP: readonly HelpTopic[] = [
     area: "Money",
     question: "How do I pay Yuvoy's share of cash?",
     answer: [
-      "There is no pay button, on purpose. You took this money directly, so there is no payout for Yuvoy's share to come out of. It is a balance instead, with every trip behind it listed so every rupee is checkable.",
-      "Settling up happens between you and a person at Yuvoy, not through the portal, so the number is never a surprise when it does.",
+      "Yuvoy bills it once a week. From the Tuesday after each Monday to Sunday week with cash trips in it, a commission statement lists those trips and what is owed on them, and the people who answer for your business are told by email.",
+      "Open the statement on Money and tap Pay by UPI. It opens your UPI app with Yuvoy's UPI ID, the amount and the statement's reference filled in.",
+      "Paying from another phone or a computer, send the amount to the UPI ID on the statement and put the statement's reference in the payment note, so Yuvoy can match your payment to it.",
+      "A payment shows on the statement once it has reached Yuvoy and been recorded, not the moment you send it.",
+    ],
+  },
+  {
+    id: "statement-states",
+    area: "Money",
+    question: "What do the states on a commission statement mean?",
+    answer: [
+      "To pay: nothing has been received against it yet. Part paid: some of it has been received, and the rest is still to pay. Paid: all of it has been received.",
+      "Settled: Yuvoy decided not to collect what was left on it. Nothing more is owed on a settled statement.",
     ],
   },
   {

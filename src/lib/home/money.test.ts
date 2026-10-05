@@ -12,14 +12,15 @@ const thisWeek: MoneyWeek = {
 
 /*
   yuvoy-operator#96 block 4: "This week ₹X · next payout Mon 28 Sep · cash
-  owed to Yuvoy ₹2,250".
+  owed to Yuvoy ₹2,250". What is owed is the commission statements' since
+  yuvoy-operator#121, so the line names it as commission.
 */
 describe("money today, in one line", () => {
-  it("says the week, when it can be paid, and what is owed on cash", () => {
+  it("says the week, when it can be paid, and what is owed on the statements", () => {
     expect(
       moneyLine({ week: thisWeek, owedPaise: 225_000, today: TODAY }),
     ).toEqual({
-      text: "This week ₹40,150 · payout from Mon 28 Sep · cash owed to Yuvoy ₹2,250",
+      text: "This week ₹40,150 · payout from Mon 28 Sep · commission owed to Yuvoy ₹2,250",
       owedBack: false,
       missing: false,
     });
@@ -57,7 +58,7 @@ describe("money today, in one line", () => {
         today: "2026-09-22",
       })?.text,
     ).toBe(
-      "Week of Mon 7 Sep ₹40,150 · payout due · cash owed to Yuvoy ₹4,500",
+      "Week of Mon 7 Sep ₹40,150 · payout due · commission owed to Yuvoy ₹4,500",
     );
   });
 
@@ -80,21 +81,21 @@ describe("money today, in one line", () => {
   it("names the half that did not load, never leaving it out", () => {
     /*
       "Nothing owed on cash" with the payout gone read as the whole of the
-      money, and a week with no cash figure read as nothing owed.
+      money, and a week with no owed figure read as nothing owed.
     */
     expect(moneyLine({ week: null, owedPaise: 225_000, today: TODAY })).toEqual(
       {
-        text: "Payout did not load · cash owed to Yuvoy ₹2,250",
+        text: "Payout did not load · commission owed to Yuvoy ₹2,250",
         owedBack: false,
         missing: true,
       },
     );
     expect(moneyLine({ week: null, owedPaise: 0, today: TODAY })?.text).toBe(
-      "Payout did not load · nothing owed on cash",
+      "Payout did not load · no commission owed",
     );
-    const noCash = moneyLine({ week: thisWeek, owedPaise: null, today: TODAY });
-    expect(noCash?.text).toMatch(/ · cash owed did not load$/);
-    expect(noCash?.missing).toBe(true);
+    const noOwed = moneyLine({ week: thisWeek, owedPaise: null, today: TODAY });
+    expect(noOwed?.text).toMatch(/ · commission owed did not load$/);
+    expect(noOwed?.missing).toBe(true);
   });
 
   it("is nothing at all when neither read answered", () => {

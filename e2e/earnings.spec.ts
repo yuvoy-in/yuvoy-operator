@@ -160,7 +160,13 @@ test("cash is summarised apart, with the way to every trip behind it", async ({
   */
   await expect(cash).toContainText("₹42,000");
   await expect(cash).toContainText("recorded as taken from travellers");
-  await expect(cash).toContainText("Yuvoy's share, owed now");
+  /*
+    Never "owed": `/commission-owed` counts every completed cash trip, billed
+    or not and paid or not, so what is owed is the commission block's alone
+    (op#121).
+  */
+  await expect(cash).toContainText("Yuvoy's share on completed trips");
+  await expect(cash).not.toContainText(/owed/i);
   await expect(cash).toContainText("₹4,500");
   await expect(cash).toContainText("Cash trips still to run");
   await expect(cash).toContainText("3 · ₹27,000");
@@ -310,7 +316,8 @@ test("the latest statement downloads from the tab itself", async ({ page }) => {
   await signIn(page);
   await page.goto("/earnings");
 
-  const latest = page.getByRole("region", { name: "Latest statement" });
+  // A payout statement, named so beside the commission statements (op#121).
+  const latest = page.getByRole("region", { name: "Latest payout statement" });
   await expect(latest).toContainText("Mon 31 Aug to Sun 6 Sep");
 
   const download = page.waitForEvent("download");
