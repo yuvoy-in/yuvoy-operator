@@ -252,7 +252,11 @@ export function BoardingScreen({
     <div ref={board} data-sun={sun ? "on" : "off"} className="pb-28 lg:pb-0">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="label text-forest/75 tabular-nums">
+          {/*
+            Pretty, so a meeting point that runs onto a second line takes
+            more than its last word with it (sun mode sets this larger).
+          */}
+          <p className="label text-forest/75 text-pretty tabular-nums">
             {[mode, time].filter(Boolean).join(" · ")}
             {where ? (
               <>
@@ -314,7 +318,7 @@ export function BoardingScreen({
         eye and nothing to a screen reader, which read "2 parties to
         come₹9,000 to take".
       */}
-        <p className="text-forest/80 mt-3 text-base">
+        <p className="text-forest/80 mt-3 text-base text-pretty">
           {[
             <span key="come">
               <b className="text-forest">{toCome.length}</b>{" "}
