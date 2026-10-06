@@ -161,6 +161,25 @@ describe("loading boundaries", () => {
   });
 
   /*
+    Off the bar but tapped all the same, and none of them can answer 404:
+    Team from Settings, Add a listing from Business, and the invitation door
+    from a message. Each held the old screen on the glass with nothing to say
+    the tap had landed (the stability audit, P2-1). `/team` and `/join` sit
+    in a `(root)` group so the boundary is theirs alone, because a child of
+    each calls `notFound()`.
+  */
+  it("cover the screens a button or a message leads to", () => {
+    const TAPPED = ["/team", "/join", "/account/listings/new"];
+    const found = PAGES.map(routeOf).filter((r) => TAPPED.includes(r));
+    expect(found.sort()).toEqual([...TAPPED].sort());
+
+    const uncovered = PAGES.filter((p) => TAPPED.includes(routeOf(p)))
+      .filter((p) => boundaryFor(p) === null)
+      .map(rel);
+    expect(uncovered).toEqual([]);
+  });
+
+  /*
     THE ONE THAT CAUGHT THIS. A boundary above a `notFound()` streams a 200
     shell and the status can never be corrected. Re-adding a root
     `loading.tsx`, or one on a detail segment, would put every affected route
