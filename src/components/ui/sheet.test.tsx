@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { Sheet } from "./sheet";
 
 /*
@@ -148,6 +148,110 @@ describe("a sheet that leaves", () => {
     unmount();
     expect(opener).toHaveFocus();
     opener.remove();
+  });
+});
+
+/*
+  The stability audit, P3-5. The sheet says `aria-modal` and is a `div`, so
+  Tab past its last control walked into the page behind; and closing it gave
+  focus back to what opened it even when that had gone from the screen, so
+  focus went nowhere.
+*/
+describe("the page behind an open sheet", () => {
+  function page(props: Partial<Parameters<typeof Sheet>[0]> = {}) {
+    return (
+      <main>
+        <header>
+          <a href="/messages">Messages</a>
+        </header>
+        <section>
+          <button type="button">Aboard</button>
+          {sheet(props)}
+        </section>
+      </main>
+    );
+  }
+
+  it("cannot be reached while the sheet is open, and is given back after", () => {
+    const { unmount } = render(page());
+    const outside = [
+      screen.getByRole("link", { name: "Messages", hidden: true }),
+      screen.getByRole("button", { name: "Aboard", hidden: true }),
+    ];
+    for (const el of outside) expect(el.closest("[inert]")).not.toBeNull();
+    // The sheet itself, and the backdrop that closes it, stay live.
+    expect(screen.getByRole("dialog").closest("[inert]")).toBeNull();
+
+    unmount();
+    expect(document.querySelector("[inert]")).toBeNull();
+  });
+
+  it("keeps what the page draws behind it while it is open out of reach too", async () => {
+    const { container, unmount } = render(page());
+    // The page puts up a section behind the sheet after it opened.
+    const later = document.createElement("section");
+    later.innerHTML = '<button type="button">Aboard · 1</button>';
+    container.querySelector("main")!.append(later);
+    await act(async () => {});
+    expect(later).toHaveAttribute("inert");
+
+    unmount();
+    expect(later).not.toHaveAttribute("inert");
+  });
+
+  it("is given back the moment the sheet starts to leave", () => {
+    const { rerender } = render(page({ motion: "rise" }));
+    rerender(page({ motion: "rise", leaving: true }));
+    const aboard = screen.getByRole("button", { name: "Aboard", hidden: true });
+    expect(aboard.closest("[inert]")).toBeNull();
+  });
+
+  it("leaves alone what was inert before the sheet opened", () => {
+    const { rerender } = render(
+      <main>
+        <section inert>
+          <button type="button">Aboard</button>
+        </section>
+        {sheet()}
+      </main>,
+    );
+    rerender(
+      <main>
+        <section inert>
+          <button type="button">Aboard</button>
+        </section>
+      </main>,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Aboard", hidden: true })
+        .closest("[inert]"),
+    ).not.toBeNull();
+  });
+
+  it("gives focus to what stands in for an opener that has gone", () => {
+    const opener = document.createElement("button");
+    const row = document.createElement("button");
+    document.body.append(opener, row);
+    opener.focus();
+    const { unmount } = render(sheet({ returnTo: () => row }));
+    // The row that opened it moves while the sheet is open.
+    opener.remove();
+    unmount();
+    expect(row).toHaveFocus();
+    row.remove();
+  });
+
+  it("still gives focus back to its opener when that is on the screen", () => {
+    const opener = document.createElement("button");
+    const row = document.createElement("button");
+    document.body.append(opener, row);
+    opener.focus();
+    const { unmount } = render(sheet({ returnTo: () => row }));
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+    row.remove();
   });
 });
 

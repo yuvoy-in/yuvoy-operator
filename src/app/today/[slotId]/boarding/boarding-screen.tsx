@@ -612,6 +612,14 @@ export function BoardingScreen({
         {opened ? (
           <Sheet
             title={opened.party.name}
+            /*
+              Its row, in whichever list it is in by then: a check-in kept on
+              this phone moves it to Aboard while its sheet is still open, and
+              the row that opened the sheet is gone.
+            */
+            returnTo={() =>
+              rowOf(opened.party.bookingId)?.querySelector("button")
+            }
             onClose={() => {
               setOpen(null);
               // What was done in the sheet (cash, a check-in) is on the API;
