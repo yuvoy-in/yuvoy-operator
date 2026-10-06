@@ -110,7 +110,7 @@ export function CloseDeparture({
   */
   useEffect(() => {
     if (!state.done) return;
-    router.refresh();
+    if (navigator.onLine) router.refresh();
     // `done` flips once; the rest is fixed for this departure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.done]);

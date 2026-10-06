@@ -199,6 +199,33 @@ for (const f of files) {
   }
 }
 
+/* ------------------- 4d. no refresh is asked for with no signal --------- */
+
+/*
+  A refresh that cannot be fetched is not an error on the screen: Next falls
+  back to loading the page, and with no signal that is the browser's "no
+  internet" page in place of the portal. Every refresh the portal asks for on
+  its own (after an answer, on closing a sheet) checks for a signal first, on
+  the same line. A Refresh or Try again the operator taps is theirs to ask
+  for, and the schedule checks inside itself (production readiness, 6 Oct
+  2026).
+*/
+for (const f of files) {
+  if (/\.test\.tsx?$/.test(f) || /refresh-schedule\.ts$/.test(f)) continue;
+  const lines = code(f).split("\n");
+  for (const line of lines) {
+    if (!/\brouter\.refresh\(\)/.test(line)) continue;
+    if (/navigator\.onLine/.test(line)) continue;
+    if (/onClick=\{\(\) => router\.refresh\(\)\}/.test(line)) continue;
+    problems.push(
+      `${rel(f)}: router.refresh() with no signal check; with none, Next ` +
+        `loads the page and the browser shows its "no internet" page. ` +
+        `Write \`if (navigator.onLine) router.refresh();\`.`,
+    );
+    break;
+  }
+}
+
 /* ======================================================================== */
 /*  The four that are specific to this repo. Each guards the same thing.     */
 /* ======================================================================== */
