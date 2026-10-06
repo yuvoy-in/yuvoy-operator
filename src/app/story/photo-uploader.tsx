@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { addStoryPhoto, createPhotoIntent } from "./actions";
 import { formatBytes } from "@/lib/media/preflight";
 import { Panel } from "@/components/ui/panel";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * Choose a photograph, send it to the image host, put it on the page —
@@ -52,7 +53,14 @@ export function PhotoUploader({ remaining }: { remaining: number }) {
     }
 
     setPhase({ name: "preparing" });
-    const started = await createPhotoIntent();
+    /*
+      Both calls go through `callAction`: a request that never came back says
+      the actions' own no-signal sentence, rather than leaving "preparing"
+      on screen for good.
+    */
+    const started = await callAction(createPhotoIntent, () => ({
+      message: "No signal. Nothing was added. Try again.",
+    }));
     if (!started.intent) {
       setPhase({
         name: "failed",
@@ -99,7 +107,11 @@ export function PhotoUploader({ remaining }: { remaining: number }) {
       the traveller's page.
     */
     setPhase({ name: "saving" });
-    const saved = await addStoryPhoto(started.intent.imageId);
+    const imageId = started.intent.imageId;
+    const saved = await callAction(
+      () => addStoryPhoto(imageId),
+      () => ({ message: "No signal. Nothing was added. Try again." }),
+    );
     if (saved.message) {
       setPhase({
         name: "failed",
