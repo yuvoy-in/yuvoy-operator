@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const { OnlineOnly } = await import("@/components/ui/online-only");
+const { SETTLE_MS } = await import("@/components/ui/use-online");
 const { ReadOnlyWhenOffline } = await import("./read-only-when-offline");
 const { RefreshOnFocus } = await import("./refresh-on-focus");
 const { resetSchedule } = await import("./refresh-schedule");
@@ -88,6 +89,20 @@ describe("controls that change something", () => {
 });
 
 describe("a screen that is read-only with no signal", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Long enough for a change of signal to be said (`useSettledOnline`). */
+  function settle() {
+    act(() => {
+      vi.advanceTimersByTime(SETTLE_MS);
+    });
+  }
+
   function board() {
     return render(
       <ReadOnlyWhenOffline what="The calendar">
@@ -111,6 +126,7 @@ describe("a screen that is read-only with no signal", () => {
   it("says it is read-only, and holds a link that needs the server", () => {
     board();
     goOffline();
+    settle();
     expect(screen.getByRole("status")).toHaveTextContent(
       "No signal The calendar is read-only until you are back online. What it shows may be out of date.",
     );
@@ -136,9 +152,57 @@ describe("a screen that is read-only with no signal", () => {
     goOffline();
     fireEvent.click(screen.getByRole("link", { name: "Next week" }));
     goOnline();
+    settle();
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
     goOffline();
+    settle();
+    expect(screen.getByRole("status")).toHaveTextContent("No signal");
     expect(screen.getByRole("status")).not.toHaveTextContent(
+      "That opens once you are back online.",
+    );
+  });
+
+  /*
+    The notice sits in the flow, above the board: on a connection that drops
+    and comes back inside a couple of seconds, each blip used to push the
+    whole board down and pull it back under the thumb (the stability audit,
+    P3-1). Controls still switch off at once; only the words wait.
+  */
+  it("does not move the board for a blip, and still switches writes off at once", () => {
+    render(
+      <ReadOnlyWhenOffline what="The calendar">
+        <OnlineOnly>
+          <button type="button">Close this day</button>
+        </OnlineOnly>
+      </ReadOnlyWhenOffline>,
+    );
+    goOffline();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(
+      screen.getByRole("button", { name: "Close this day" }),
+    ).toBeDisabled();
+
+    act(() => {
+      vi.advanceTimersByTime(SETTLE_MS - 500);
+    });
+    goOnline();
+    settle();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(
+      screen.getByRole("button", { name: "Close this day" }),
+    ).toBeEnabled();
+  });
+
+  it("says why a held link did nothing at once, before the drop has settled", () => {
+    board();
+    goOffline();
+    expect(
+      fireEvent.click(screen.getByRole("link", { name: "Next week" })),
+    ).toBe(false);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No signal The calendar is read-only until you are back online.",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
       "That opens once you are back online.",
     );
   });

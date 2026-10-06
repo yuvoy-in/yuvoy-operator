@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore, type ReactNode } from "react";
-import { useOnline } from "@/components/ui/use-online";
+import { useOnline, useSettledOnline } from "@/components/ui/use-online";
 import { panelClass } from "@/components/ui/panel";
 import { marketTime } from "@/lib/format/market-time";
 import {
@@ -31,6 +31,12 @@ import { useHeldLinks } from "./read-only-when-offline";
  * A link to another page of this app is held while offline, as on the
  * Calendar: Next would otherwise fall back to the browser's "no internet"
  * page and take this screen, and the strip, with it.
+ *
+ * The strip says the signal has gone, or come back, once the change has held
+ * for a moment (`useSettledOnline`), as the Calendar's notice does: it sits
+ * above the manifest, so a flapping connection moved every row under the
+ * thumb at the jetty. The check-ins and cash it describes follow the phone's
+ * own answer at once, and a held link is said at once.
  */
 export function KeptOnThisPhone({
   slotId,
@@ -50,6 +56,7 @@ export function KeptOnThisPhone({
   const online = useOnline();
   const { userId } = useChrome();
   const { held, onClickCapture } = useHeldLinks(online);
+  const offline = !useSettledOnline() || held;
   const list = useSyncExternalStore(
     offlineWrites.subscribe,
     offlineWrites.list,
@@ -77,7 +84,7 @@ export function KeptOnThisPhone({
       : null;
 
   let strip: ReactNode = null;
-  if (!online) {
+  if (offline) {
     strip = (
       <div className={panelClass("alert", "p-4")}>
         <p className="text-terra-deep text-base font-bold text-balance">
