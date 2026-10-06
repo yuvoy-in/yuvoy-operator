@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { watchMotion } from "@/lib/motion/testing";
 
@@ -326,5 +326,55 @@ describe("the confirm, arriving and leaving", () => {
     await screen.findByRole("heading", { name: "What that did" });
     expect(motion.fadeOf(container.querySelector("section"))).toBeDefined();
     expect(motion.copies()).toHaveLength(0);
+  });
+});
+
+/*
+  The stability audit, P1-1. React resets a form when its action resolves,
+  refusals included, so "No signal. Nothing was cancelled." came back over an
+  unanswered "Why?" and an empty note, on the screen a storm is handled from.
+*/
+describe("a refused call-off", () => {
+  async function callItOff() {
+    render(
+      <CallOffPanel
+        slotId="slot_dawn"
+        alreadyCalledOff={false}
+        canManage
+        startOpen
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Weather" }));
+    fireEvent.change(screen.getByLabelText("Anything to add (optional)"), {
+      target: { value: "Swell over the reef" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Call it off" }));
+    });
+  }
+
+  it("keeps the reason and the note", async () => {
+    callOffDeparture.mockResolvedValue({
+      message: "No signal. Nothing was cancelled.",
+    });
+    await callItOff();
+
+    expect(
+      await screen.findByText("No signal. Nothing was cancelled."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Weather" })).toBeChecked();
+    expect(screen.getByLabelText("Anything to add (optional)")).toHaveValue(
+      "Swell over the reef",
+    );
+  });
+
+  it("says no signal in place when the request never came back", async () => {
+    callOffDeparture.mockRejectedValue(new TypeError("Failed to fetch"));
+    await callItOff();
+
+    expect(
+      await screen.findByText("No signal. Nothing was cancelled."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Weather" })).toBeChecked();
   });
 });

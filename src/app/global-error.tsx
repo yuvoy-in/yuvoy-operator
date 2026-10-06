@@ -1,11 +1,12 @@
 "use client";
 
 import "./globals.css";
+import { useRetry } from "@/components/chrome/use-retry";
 
 /**
  * The boundary for a failure in the root layout itself.
  *
- * It replaces the layout, so it owns `<html>` and `<body>` — and it is the one
+ * It replaces the layout, so it owns `<html>` and `<body>`, and it is the one
  * screen in this portal that cannot assume the stylesheet arrived, because a
  * layout that failed is exactly the thing that would have brought it. The
  * token classes are here for the ordinary case; the inline colours are the
@@ -14,8 +15,13 @@ import "./globals.css";
  *
  * That is the only place in this repo where a colour is not a token, and the
  * reason is the failure mode this file exists for.
+ *
+ * Try again reads the page again, and with no signal keeps the tap until the
+ * signal is back (`useRetry`), as the error screen does.
  */
-export default function GlobalError({ reset }: { reset: () => void }) {
+export default function GlobalError({ retry }: { retry: () => void }) {
+  const { tryAgain, retrying, waiting } = useRetry(retry);
+
   return (
     <html lang="en">
       <body
@@ -40,7 +46,9 @@ export default function GlobalError({ reset }: { reset: () => void }) {
           </p>
           <button
             type="button"
-            onClick={reset}
+            onClick={tryAgain}
+            aria-busy={retrying || undefined}
+            aria-disabled={retrying || undefined}
             style={{
               marginTop: "2rem",
               minHeight: "3.5rem",
@@ -54,8 +62,17 @@ export default function GlobalError({ reset }: { reset: () => void }) {
               fontSize: "0.9375rem",
             }}
           >
-            Try again
+            {retrying ? "Trying again" : "Try again"}
           </button>
+          {/* Mounted from the start, so a screen reader hears it arrive. */}
+          <p
+            role="status"
+            style={{ marginTop: "1rem", fontSize: "0.875rem", fontWeight: 700 }}
+          >
+            {waiting
+              ? "No signal. It tries again once you are back online."
+              : null}
+          </p>
         </main>
       </body>
     </html>

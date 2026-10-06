@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const push = vi.fn();
 const refresh = vi.fn();
@@ -102,6 +102,30 @@ describe("the + on the business profile", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add a listing" }));
 
     expect(push).toHaveBeenCalledWith("/account/listings/new");
+  });
+
+  /*
+    It closed the menu and then asked for the builder, so on one bar of signal
+    the tap emptied the screen and painted nothing until the builder came (the
+    stability audit, P2-1). The router moves inside a transition; here the
+    navigation never lands, as on a slow answer.
+  */
+  it("keeps Add a listing on the screen, busy, until the builder is in", async () => {
+    push.mockImplementation(() => new Promise(() => {}));
+    render(<AddSheet canManage listings={LISTINGS} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add a listing or a reel" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add a listing" }));
+
+    expect(push).toHaveBeenCalledWith("/account/listings/new");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add a listing" }),
+      ).toHaveAttribute("aria-busy", "true"),
+    );
   });
 
   it("opens the reel sheet straight away for STAFF, who have one choice", () => {

@@ -17,6 +17,7 @@ import { Screen } from "@/components/chrome/screen";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
+import { LinkRing } from "@/components/ui/link-pending";
 import { SubmitButton } from "./submit-button";
 import { DraftReadback } from "./draft-readback";
 import { DiscardDraft } from "./discard-draft";
@@ -192,6 +193,7 @@ export default async function ListingPage({
             block={false}
           >
             Edit
+            <LinkRing button />
           </ButtonLink>
           {/*
             Counting and disabled while anything is outstanding (#85 s10). It
@@ -259,6 +261,7 @@ export default async function ListingPage({
           className="text-forest tap-target mt-4 block text-sm underline underline-offset-2"
         >
           Run it: departures, times and seats
+          <LinkRing />
         </Link>
       ) : null}
 

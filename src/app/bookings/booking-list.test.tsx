@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { BookingLine } from "@/lib/money/bookings";
 
-vi.mock("./list-actions", () => ({ loadMoreBookings: vi.fn() }));
+const loadMoreBookings = vi.fn();
+vi.mock("./list-actions", () => ({
+  loadMoreBookings: (params: unknown) => loadMoreBookings(params),
+}));
 
 /*
   A booking's state, seen to change on the list (O03 A, approved 4 Oct 2026;
@@ -106,5 +109,34 @@ describe("a list drawn afresh", () => {
     // operator's own change: nothing to say.
     expect(screen.getByText("Checked in")).not.toHaveClass("motion-in");
     expect(said()).toEqual([]);
+  });
+});
+
+/*
+  The stability audit, P2-3. A page of bookings that never came back rejected
+  the transition, and React handed that to the root error boundary: the rows
+  already loaded, the pill and the search all went for "That did not load".
+*/
+describe("Show more, when the page never comes back", () => {
+  it("says so under the rows it already has", async () => {
+    loadMoreBookings.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(
+      <BookingList
+        view="upcoming"
+        filters={{ q: "", experienceId: "", from: "", to: "" }}
+        initial={{ items: [ASHA], complete: false, nextCursor: "c_2" }}
+        today="2026-10-15"
+        tomorrow="2026-10-16"
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Those did not load. Try again.",
+    );
+    expect(screen.getByText("Asha Menon")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show more" })).toBeEnabled();
   });
 });

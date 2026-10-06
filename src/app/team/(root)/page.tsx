@@ -1,3 +1,10 @@
+/*
+  This page sits in a `(root)` route group for one reason: to SCOPE the
+  loading boundary beside it to `/team` alone. `/team/[id]/notifications`
+  calls `notFound()`, and a boundary above it would stream that 404 as a 200
+  (see `loading.test.ts`). The group is not part of the URL; the components
+  beside it stay in `app/team/` and are imported by their absolute path.
+*/
 import { SUPPORT_PHONE } from "@/lib/site/contact";
 import type { Metadata } from "next";
 import { requireOperator } from "@/lib/auth/session";
@@ -12,9 +19,9 @@ import {
 } from "@/lib/team/access";
 import { now } from "@/lib/format/market-time";
 import { Empty } from "@/components/ui/states";
-import { InviteForm } from "./invite-form";
-import { MemberRow } from "./member-row";
-import { RoleGuide } from "./role-guide";
+import { InviteForm } from "@/app/team/invite-form";
+import { MemberRow } from "@/app/team/member-row";
+import { RoleGuide } from "@/app/team/role-guide";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
 

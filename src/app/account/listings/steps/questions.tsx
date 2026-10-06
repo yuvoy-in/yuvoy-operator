@@ -1,11 +1,14 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { saveQuestions, type StepState } from "../builder-actions";
 import { Button } from "@/components/ui/button";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { panelClass } from "@/components/ui/panel";
-import { StepShell } from "./step-shell";
+import { sendForm } from "@/lib/actions/send-form";
+import { notSaved, StepShell } from "./step-shell";
 
 /**
  * Step 5 — what a traveller is asked when booking.
@@ -48,8 +51,8 @@ export function QuestionsStep({
   questions: Row[];
   back: string;
 }) {
-  const [state, act, pending] = useActionState<StepState, FormData>(
-    saveQuestions,
+  const [state, act, pending] = useActionState(
+    sendForm<StepState>(saveQuestions, notSaved),
     {},
   );
   const [rows, setRows] = useState<Row[]>(questions);
@@ -59,6 +62,27 @@ export function QuestionsStep({
       was.map((row, i) => (i === index ? { ...row, ...change } : row)),
     );
   }
+
+  /*
+    Edited before the page hydrated. What saves is the payload below, built
+    from these rows, so a question changed in that time would have saved as
+    it was before.
+  */
+  const list = useRef<HTMLUListElement>(null);
+  useChangedBeforeHydration(list, (changed) => {
+    for (const field of changed) {
+      const i = Number(field.dataset.row);
+      const part = field.dataset.question;
+      if (part === "text") update(i, { text: field.value });
+      if (part === "answerType") {
+        update(i, { answerType: field.value as AnswerType });
+      }
+      if (part === "required" && field instanceof HTMLInputElement) {
+        update(i, { required: field.checked });
+      }
+      if (part === "options") update(i, { options: field.value.split("\n") });
+    }
+  });
 
   const payload = JSON.stringify(
     rows
@@ -81,6 +105,14 @@ export function QuestionsStep({
       action={act}
       pending={pending}
       message={state.message}
+      /*
+        Every field here is held in state, and a reset puts a select and a
+        checkbox held in state out of step with it: a refused save showed
+        every question as "A short answer", and each "They must answer it"
+        box as it was when the step opened, while the next save would still
+        have sent what was chosen. Remounted instead, they draw the state.
+      */
+      attempt={state.attempt}
       back={back}
     >
       <input type="hidden" name="id" value={id} />
@@ -96,7 +128,7 @@ export function QuestionsStep({
           No questions yet.
         </p>
       ) : (
-        <ul className="space-y-4">
+        <ul ref={list} className="space-y-4">
           {rows.map((row, i) => (
             <li key={i} className={panelClass("outline", "p-4")}>
               <label htmlFor={`q-${i}`} className={fieldLabelClass()}>
@@ -104,6 +136,8 @@ export function QuestionsStep({
               </label>
               <input
                 id={`q-${i}`}
+                data-row={i}
+                data-question="text"
                 maxLength={200}
                 value={row.text}
                 onChange={(e) => update(i, { text: e.target.value })}
@@ -117,6 +151,8 @@ export function QuestionsStep({
                 <label className="text-sm">
                   <span className={fieldLabelClass("mr-2")}>Answer</span>
                   <select
+                    data-row={i}
+                    data-question="answerType"
                     value={row.answerType}
                     onChange={(e) =>
                       update(i, { answerType: e.target.value as AnswerType })
@@ -131,6 +167,8 @@ export function QuestionsStep({
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
+                    data-row={i}
+                    data-question="required"
                     checked={row.required}
                     onChange={(e) => update(i, { required: e.target.checked })}
                   />
@@ -146,8 +184,10 @@ export function QuestionsStep({
                   >
                     The choices
                   </label>
-                  <textarea
+                  <Textarea
                     id={`q-${i}-options`}
+                    data-row={i}
+                    data-question="options"
                     rows={3}
                     value={row.options.join("\n")}
                     onChange={(e) =>

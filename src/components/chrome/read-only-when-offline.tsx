@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type MouseEvent, type ReactNode } from "react";
-import { useOnline } from "@/components/ui/use-online";
+import { useOnline, useSettledOnline } from "@/components/ui/use-online";
 import { panelClass } from "@/components/ui/panel";
 
 /**
@@ -19,6 +19,12 @@ import { panelClass } from "@/components/ui/panel";
  * Writes are switched off by `OnlineOnly` around them; this only explains,
  * in a status region that is always mounted so a screen reader hears the
  * change, and stays in view while the page scrolls.
+ *
+ * The notice follows the signal once it has held for a moment
+ * (`useSettledOnline`): it sits in the flow, so a connection that flapped
+ * moved the whole board under the operator's thumb with each blip. A link
+ * held for no signal is said at once, settled or not: a tap that does nothing
+ * must say why.
  */
 export function ReadOnlyWhenOffline({
   what,
@@ -30,14 +36,15 @@ export function ReadOnlyWhenOffline({
 }) {
   const online = useOnline();
   const { held, onClickCapture } = useHeldLinks(online);
+  const offline = !useSettledOnline() || held;
 
   return (
     <div onClickCapture={onClickCapture}>
       <div
         role="status"
-        className={online ? "sr-only" : "sticky top-2 z-20 mt-6"}
+        className={offline ? "sticky top-2 z-20 mt-6" : "sr-only"}
       >
-        {!online ? (
+        {offline ? (
           <div className={panelClass("alert", "p-4")}>
             <p className="text-terra-deep text-base font-bold text-balance">
               No signal

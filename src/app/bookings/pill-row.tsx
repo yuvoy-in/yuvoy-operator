@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -36,19 +37,44 @@ export interface Pill {
 }
 
 /**
- * Whether a pill's tap is still waiting on its answer, shared by the row and
- * the rows it chooses (`PillPanel`), so the list under a lit pill can say
- * it is on its way. The page wraps both in `PillSwap`.
+ * Whether the rows are waiting on an answer, shared by the row, the search
+ * and filters, and the rows they choose (`PillPanel`), so the list can say it
+ * is on its way. The page wraps all three in `PillSwap`.
+ *
+ * Two things make the rows wait: a pill's tap, which the row says it is
+ * waiting on and clears when the address answers, and a search or filter,
+ * whose navigation runs in a transition held here (`filter`) and waits for
+ * exactly as long as that navigation does. A search used to replace the
+ * address outside any transition, so the rows sat unchanged for as long as
+ * the server took, with no sign anything had been asked (the stability
+ * audit, P3-2).
  */
 const Waiting = createContext<{
   waiting: boolean;
   setWaiting: (waiting: boolean) => void;
+  filter: (navigate: () => void) => void;
 } | null>(null);
 
 export function PillSwap({ children }: { children: ReactNode }) {
-  const [waiting, setWaiting] = useState(false);
-  const value = useMemo(() => ({ waiting, setWaiting }), [waiting]);
+  const [tapped, setWaiting] = useState(false);
+  const [filtering, filter] = useTransition();
+  const waiting = tapped || filtering;
+  const value = useMemo(
+    () => ({ waiting, setWaiting, filter }),
+    [waiting, filter],
+  );
   return <Waiting value={value}>{children}</Waiting>;
+}
+
+/**
+ * Runs a navigation that changes the rows and not the pill (the search, the
+ * filters, Clear), so the rows wait for it as they wait for a pill. Outside
+ * a `PillSwap` it is still a transition, with nothing watching it.
+ */
+export function useRowsNavigation(): (navigate: () => void) => void {
+  const swap = useContext(Waiting);
+  const [, start] = useTransition();
+  return swap?.filter ?? start;
 }
 
 /**
@@ -94,12 +120,18 @@ export function PillRow({
 
   /*
     The pill tapped and not yet answered. Cleared the moment the address
-    changes, to whatever it changes to: the address is the truth.
+    changes, to whatever it changes to: the address is the truth. "The
+    address" is the lit pill's own link, which carries the search and the
+    filters as well as the pill: a search that lands while a pill is waiting
+    has replaced the pill's navigation (the router keeps the newer of two),
+    so the pill it asked for is never coming, and keeping it lit stranded it
+    over the old rows for good (the stability audit, P3-2).
   */
+  const here = pills.find((pill) => pill.key === selected)?.href ?? selected;
   const [pending, setPending] = useState<string | null>(null);
-  const [answered, setAnswered] = useState(selected);
-  if (selected !== answered) {
-    setAnswered(selected);
+  const [answered, setAnswered] = useState(here);
+  if (here !== answered) {
+    setAnswered(here);
     setPending(null);
   }
   const lit = pending ?? selected;
@@ -135,8 +167,12 @@ export function PillRow({
   useEffect(() => {
     centre(selected, opened.current);
     opened.current = true;
+  }, [selected, centre]);
+
+  // Any new address answers a waiting tap, the pill's own or a search's.
+  useEffect(() => {
     setWaiting?.(false);
-  }, [selected, centre, setWaiting]);
+  }, [here, setWaiting]);
 
   // A finger on the row outranks the row scrolling itself.
   useEffect(() => {

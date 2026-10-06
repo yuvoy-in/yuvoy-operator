@@ -2,6 +2,7 @@ import Link from "next/link";
 import { boardHref, type BoardRow } from "@/lib/day/board";
 import { shortDate } from "@/lib/home/words";
 import { withFrom } from "@/lib/site/back-to";
+import { LinkRing } from "@/components/ui/link-pending";
 import { cn } from "@/lib/cn";
 import { BoardKeys } from "./board-keys";
 import { FillBar } from "./fill-bar";
@@ -113,6 +114,7 @@ export function BoardGrid({
                         className="decoration-forest/40 hover:decoration-forest voice-host text-sm underline underline-offset-4"
                       >
                         {row.title}
+                        <LinkRing />
                       </Link>
                     )}
                     {row.occupancy ? (

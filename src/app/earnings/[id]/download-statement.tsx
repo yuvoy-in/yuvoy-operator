@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { downloadStatement } from "./actions";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * The only control on the earnings screens (yuvoy-operator#47 item 7).
@@ -32,7 +33,14 @@ export function DownloadStatement({
   function save() {
     setFailure(null);
     start(async () => {
-      const result = await downloadStatement(id);
+      // A download that never came back is said under the button (`callAction`).
+      const result = await callAction(
+        () => downloadStatement(id),
+        () => ({
+          ok: false as const,
+          message: "The statement did not download. Try again in a moment.",
+        }),
+      );
       if (!result.ok) {
         setFailure(result.message);
         return;

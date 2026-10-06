@@ -1,5 +1,6 @@
 "use server";
 
+import { refresh } from "next/cache";
 import { requireOperator } from "@/lib/auth/session";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
@@ -22,6 +23,9 @@ import type { BookingThread, ThreadMessage } from "@/lib/messages/thread";
  * message is appended to a list the client is already holding, and re-rendering
  * the whole booking screen would throw away the scroll position, the half-typed
  * reply, and the earlier pages somebody just loaded.
+ *
+ * The read marker is the one exception, and it is a `refresh()` rather than a
+ * revalidation: see `markThreadRead`.
  */
 
 /** What the composer gets back. `ok` decides whether the text is cleared. */
@@ -122,6 +126,17 @@ export async function sendMessage(
  * the operator did not ask for; a failure means a count stays high for a while,
  * and putting an error on screen for it would interrupt somebody reading a
  * message to tell them about a marker they never knew existed.
+ *
+ * ## The count catches up in the same answer
+ *
+ * The unread count beside the inbox is drawn by the root layout, which a
+ * soft navigation does not re-render, so after reading a message the badge
+ * still said it was unread until something re-read the whole screen (the
+ * stability audit, P2-5). `refresh()` makes this action's own answer carry
+ * the screen re-read with the marker moved: one round trip, no second one
+ * from the browser, and like any refresh it keeps what the client holds
+ * (the reply being typed, the earlier pages, the scroll). Only when the
+ * marker moved: a failure changed no count.
  */
 export async function markThreadRead(
   bookingId: string,
@@ -136,7 +151,9 @@ export async function markThreadRead(
     if (error) throw error;
   } catch {
     // Deliberately silent. See above.
+    return;
   }
+  refresh();
 }
 
 /** One page of older messages, for "Show earlier messages". */

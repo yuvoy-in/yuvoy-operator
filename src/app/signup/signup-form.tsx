@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import {
   createAccount,
@@ -11,10 +11,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass } from "@/components/ui/input";
 import { PhoneField } from "@/components/ui/phone-field";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { formatE164 } from "@/lib/auth/phone";
 import { EMAIL_REQUIRED_AT_SIGNUP } from "@/lib/auth/signup";
 import { EMAIL_MAX_LENGTH } from "@/lib/auth/email";
 import { WhereTheCodeGoes } from "@/app/sign-in/where-the-code-goes";
+import { callAction } from "@/lib/actions/call-action";
+import { fieldsOf } from "@/lib/actions/send-form";
+import { UNREACHABLE } from "@/lib/api/errors";
 
 /**
  * Owning it and running it, and what each one actually gets you.
@@ -47,14 +51,36 @@ const RELATIONSHIPS = [
  */
 export function SignUpForm() {
   const [state, act, pending] = useActionState<SignUpState, FormData>(
-    async (prev, form) => {
-      if (prev.step === "code") {
-        return form.get("intent") === "resend"
-          ? resendCode(prev)
-          : finishSignUp(prev, form);
-      }
-      return createAccount(prev, form);
-    },
+    (prev, form) =>
+      callAction(
+        () => {
+          if (prev.step === "code") {
+            return form.get("intent") === "resend"
+              ? resendCode(prev)
+              : finishSignUp(prev, form);
+          }
+          return createAccount(prev, form);
+        },
+        /*
+          A request that never came back is refused the way the actions
+          refuse, on the step it was on: the details handed back with the
+          attempt they remount on, and a code typed again.
+        */
+        () =>
+          prev.step === "code"
+            ? { ...prev, message: UNREACHABLE }
+            : {
+                message: "No signal. Nothing was sent. Try again.",
+                values: fieldsOf(form, [
+                  "businessName",
+                  "name",
+                  "phone",
+                  "email",
+                  "relationship",
+                ]),
+                attempt: (prev.attempt ?? 0) + 1,
+              },
+      ),
     { step: "details" },
   );
   /** The submit waits for a whole number. See `PhoneField`. */
@@ -68,6 +94,11 @@ export function SignUpForm() {
    * somebody's own access is the one thing this screen must not print.
    */
   const [relationship, setRelationship] = useState("");
+  // Chosen before the page hydrated: the choice is marked, and its note shown.
+  const relationshipGroup = useRef<HTMLFieldSetElement>(null);
+  useChangedBeforeHydration(relationshipGroup, ([chosen]) =>
+    setRelationship(chosen.value),
+  );
 
   if (state.step === "code") {
     return (
@@ -194,7 +225,10 @@ export function SignUpForm() {
         owner on this account" is the screen contradicting itself about the one
         thing somebody is here to set up.
       */}
-      <fieldset aria-invalid={state.field === "relationship" || undefined}>
+      <fieldset
+        ref={relationshipGroup}
+        aria-invalid={state.field === "relationship" || undefined}
+      >
         <legend className="label text-forest/75">
           Do you own this business, or run it for the owner?
         </legend>

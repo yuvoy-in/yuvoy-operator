@@ -17,6 +17,8 @@ import { Panel } from "@/components/ui/panel";
 import { inputClass } from "@/components/ui/input";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { withFrom } from "@/lib/site/back-to";
+import { sendForm } from "@/lib/actions/send-form";
+import { LinkRing } from "@/components/ui/link-pending";
 
 type Act = "time" | "seats" | "stop" | "off";
 
@@ -126,6 +128,7 @@ export function DepartureRow({
           block={false}
         >
           Who is booked
+          <LinkRing button />
         </ButtonLink>
 
         {manageable ? (
@@ -281,8 +284,10 @@ function MoveTime({
   time: string;
   onClose: () => void;
 }) {
-  const [state, act, pending] = useActionState<DepartureState, FormData>(
-    moveDeparture,
+  const [state, act, pending] = useActionState(
+    sendForm<DepartureState>(moveDeparture, () => ({
+      message: "No signal. Nothing was moved.",
+    })),
     {},
   );
   const [to, setTo] = useState(time);

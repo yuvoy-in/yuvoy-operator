@@ -11,6 +11,7 @@ import {
 } from "@/lib/media/rights";
 import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass } from "@/components/ui/input";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * The last step, and the one the whole screen exists to get right.
@@ -27,10 +28,13 @@ import { choiceClass, inputClass } from "@/components/ui/input";
  * the substitution the field exists to prevent.
  */
 export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
-  const [state, act, pending] = useActionState<AttestState, FormData>(
-    attestRights,
+  const [state, act, pending] = useActionState(
+    sendForm<AttestState>(attestRights, () => ({
+      message: "No signal. Nothing was recorded. Try again.",
+    })),
     {},
   );
+  const typed = state.typed;
   const [hash, setHash] = useState("");
   const [rightsType, setRightsType] = useState<string>("owned");
 
@@ -49,7 +53,14 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
   }
 
   return (
-    <form action={act} className="space-y-6">
+    /*
+      Remounted per refusal (`sendForm`), onto what was typed. Where the
+      footage came from is a choice held in state, which a reset in place
+      showed as "owned" beside the licence field for the one still chosen,
+      and the consent question came back unanswered, the one answer this form
+      exists to have given on purpose.
+    */
+    <form key={state.attempt ?? 0} action={act} className="space-y-6">
       <input type="hidden" name="mediaAssetId" value={mediaAssetId} />
       <input type="hidden" name="statementVersion" value={STATEMENT_VERSION} />
       <input type="hidden" name="statementSha256" value={hash} />
@@ -115,6 +126,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
             name="licenceRef"
             type="text"
             required
+            defaultValue={typed?.licenceRef ?? ""}
             className={inputClass("mt-2")}
           />
           <p className="text-forest/70 mt-1.5 text-xs">
@@ -133,6 +145,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
             name="thirdPartyRef"
             type="text"
             required
+            defaultValue={typed?.thirdPartyRef ?? ""}
             className={inputClass("mt-2")}
           />
         </div>
@@ -160,6 +173,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
               name="peopleConsentConfirmed"
               value="yes"
               required
+              defaultChecked={typed?.peopleConsentConfirmed === "yes"}
               className="accent-terra-deep size-5 shrink-0"
             />
             <span className="text-sm">Yes, they knew and agreed</span>
@@ -170,6 +184,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
               name="peopleConsentConfirmed"
               value="no"
               required
+              defaultChecked={typed?.peopleConsentConfirmed === "no"}
               className="accent-terra-deep size-5 shrink-0"
             />
             <span className="text-sm">
@@ -192,6 +207,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
             id="filmedOn"
             name="filmedOn"
             type="date"
+            defaultValue={typed?.filmedOn ?? ""}
             className={inputClass("mt-2")}
           />
         </div>
@@ -203,6 +219,7 @@ export function RightsForm({ mediaAssetId }: { mediaAssetId: string }) {
             id="filmedAtLocation"
             name="filmedAtLocation"
             type="text"
+            defaultValue={typed?.filmedAtLocation ?? ""}
             className={inputClass("mt-2")}
           />
         </div>

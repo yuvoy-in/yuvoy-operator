@@ -23,6 +23,7 @@ import { ListingPicker } from "./listing-picker";
 import type { ListingOption } from "./attach-form";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * The four steps, as one screen that never loses its place.
@@ -208,7 +209,12 @@ export function Uploader({
       // moves.
       let intent = slot.current?.intent;
       if (!intent) {
-        const started = await createUploadIntent(file.size, experienceId, role);
+        // A request that never came back says so, rather than "checking"
+        // for good (`callAction`).
+        const started = await callAction(
+          () => createUploadIntent(file.size, experienceId, role),
+          () => ({ message: "No signal. Nothing was started." }),
+        );
         if (!started.intent) {
           setPhase({
             name: "failed",
@@ -369,7 +375,13 @@ export function Uploader({
       finished asset. `202 ready:false` is the normal first answer.
     */
     for (let i = 0; i < 40; i++) {
-      const result = await confirmUpload(intent.intentId);
+      const id = intent.intentId;
+      const result = await callAction(
+        () => confirmUpload(id),
+        () => ({
+          message: "No signal. The upload is safe. Try again shortly.",
+        }),
+      );
       if (result.message) {
         setPhase({ name: "failed", message: result.message });
         return;

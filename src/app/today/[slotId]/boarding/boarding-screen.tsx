@@ -26,6 +26,7 @@ import { cn } from "@/lib/cn";
 import { buttonClass } from "@/components/ui/button";
 import { CheckIcon, SunIcon } from "@/components/ui/icons";
 import { inputClass } from "@/components/ui/input";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { panelClass } from "@/components/ui/panel";
 import { Sheet } from "@/components/ui/sheet";
 import { useOnline } from "@/components/ui/use-online";
@@ -140,6 +141,12 @@ export function BoardingScreen({
   const { userId } = useChrome();
   const [sun, setSun] = useState(true);
   const [query, setQuery] = useState("");
+  /*
+    A name typed before the page hydrated, which on a jetty's one bar can be
+    seconds after the list appears: the list is found by it.
+  */
+  const findBox = useRef<HTMLInputElement>(null);
+  useChangedBeforeHydration(findBox, ([field]) => setQuery(field.value));
   const [open, setOpen] = useState<string | null>(null);
   const [store] = useState(() => createCheckInStore(slotId, markAttendance));
   // Kept as the person signed in; with nobody known, it fails instead.
@@ -355,6 +362,7 @@ export function BoardingScreen({
             Find a party by name or the last four of their reference
           </label>
           <input
+            ref={findBox}
             id="boarding-find"
             type="search"
             value={query}
@@ -612,6 +620,14 @@ export function BoardingScreen({
         {opened ? (
           <Sheet
             title={opened.party.name}
+            /*
+              Its row, in whichever list it is in by then: a check-in kept on
+              this phone moves it to Aboard while its sheet is still open, and
+              the row that opened the sheet is gone.
+            */
+            returnTo={() =>
+              rowOf(opened.party.bookingId)?.querySelector("button")
+            }
             onClose={() => {
               setOpen(null);
               // What was done in the sheet (cash, a check-in) is on the API;

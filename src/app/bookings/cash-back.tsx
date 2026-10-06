@@ -9,6 +9,7 @@ import {
 import { formatPaise } from "@/lib/format/money";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * "I gave the cash back" — yuvoy-operator#43 item 5.
@@ -40,8 +41,10 @@ export function CashBack({
   refreshLabel?: string;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const [state, act, pending] = useActionState<CashBackState, FormData>(
-    recordCashReturned,
+  const [state, act, pending] = useActionState(
+    sendForm<CashBackState>(recordCashReturned, () => ({
+      message: "No signal. Nothing was recorded. Try again.",
+    })),
     {},
   );
   const router = useRouter();

@@ -12,6 +12,7 @@ import {
   type AllowedType,
 } from "@/lib/account/documents";
 import { Button } from "@/components/ui/button";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * Send the file behind one pending document — yuvoy-operator#46 item 3.
@@ -79,11 +80,23 @@ export function SendDocument({
     }
 
     setPhase({ name: "working", what: "Preparing…" });
-    const intent = await startDocumentUpload(
-      credentialId,
-      file.name,
-      file.type as AllowedType,
-      file.size,
+    /*
+      Both calls go through `callAction`: a request that never came back says
+      the actions' own no-signal sentence, rather than leaving "Preparing…" on
+      screen for good.
+    */
+    const intent = await callAction(
+      () =>
+        startDocumentUpload(
+          credentialId,
+          file.name,
+          file.type as AllowedType,
+          file.size,
+        ),
+      () => ({
+        ok: false as const,
+        message: "No signal. Nothing was sent. Try again.",
+      }),
     );
     if (!intent.ok) {
       setPhase(
@@ -140,7 +153,14 @@ export function SendDocument({
     }
 
     setPhase({ name: "working", what: "Checking…" });
-    const done = await completeDocumentUpload(credentialId, intent.intentId);
+    const intentId = intent.intentId;
+    const done = await callAction(
+      () => completeDocumentUpload(credentialId, intentId),
+      () => ({
+        ok: false as const,
+        message: "No signal, so we could not check. Try again in a moment.",
+      }),
+    );
     if (!done.ok) {
       setPhase(
         done.unavailable

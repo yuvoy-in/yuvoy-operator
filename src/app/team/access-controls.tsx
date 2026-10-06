@@ -14,6 +14,7 @@ import type { TeamPerson } from "@/lib/team/members";
 import { Button } from "@/components/ui/button";
 import { choiceClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Changing somebody's access from the row they are on — yuvoy-operator#25 §3.
@@ -186,8 +187,10 @@ function RoleForm({
   iAmOnlyAdmin: boolean;
   onClose: () => void;
 }) {
-  const [state, act, pending] = useActionState<AccessState, FormData>(
-    setMemberRole,
+  const [state, act, pending] = useActionState(
+    sendForm<AccessState>(setMemberRole, () => ({
+      message: "No signal. Nothing changed: change it again when you have one.",
+    })),
     {},
   );
   useCloseOnDone(state, onClose);
@@ -215,12 +218,18 @@ function RoleForm({
                 key={role}
                 className={choiceClass(role === chosen, "items-start py-4")}
               >
+                {/*
+                  Ticked from what was sent after a refusal (`sendForm`). A
+                  reset in place went back to the role they hold while the
+                  Owner warning, drawn from `chosen`, stayed for the role
+                  still picked: two answers to "what are they getting".
+                */}
                 <input
                   type="radio"
                   name="role"
                   value={role}
                   required
-                  defaultChecked={role === current}
+                  defaultChecked={role === (state.typed?.role ?? current)}
                   onChange={() => setChosen(role)}
                   className="accent-terra-deep mt-0.5 size-5 shrink-0"
                 />
@@ -306,8 +315,11 @@ function HoldForm({
   member: TeamPerson;
   onClose: () => void;
 }) {
-  const [state, act, pending] = useActionState<AccessState, FormData>(
-    holdMember,
+  const [state, act, pending] = useActionState(
+    sendForm<AccessState>(holdMember, () => ({
+      message:
+        "No signal. Nothing changed: pause them again when you have one.",
+    })),
     {},
   );
   useCloseOnDone(state, onClose);
@@ -341,8 +353,11 @@ function RestoreForm({
   member: TeamPerson;
   onClose: () => void;
 }) {
-  const [state, act, pending] = useActionState<AccessState, FormData>(
-    restoreMember,
+  const [state, act, pending] = useActionState(
+    sendForm<AccessState>(restoreMember, () => ({
+      message:
+        "No signal. Nothing changed: restore them again when you have one.",
+    })),
     {},
   );
   useCloseOnDone(state, onClose);

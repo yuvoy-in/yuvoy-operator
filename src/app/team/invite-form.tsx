@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { inviteMember, type InviteState } from "./actions";
 import { JoinLink } from "./join-link";
@@ -9,6 +9,9 @@ import { EMAIL_MAX_LENGTH } from "@/lib/auth/email";
 import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
+import { callAction } from "@/lib/actions/call-action";
+import { fieldsOf } from "@/lib/actions/send-form";
 
 /**
  * Adding the new skipper before the 6am boat.
@@ -39,7 +42,18 @@ export function InviteForm() {
   const router = useRouter();
   const [state, act, pending] = useActionState<InviteState, FormData>(
     async (prev, form) => {
-      const next = await inviteMember(prev, form);
+      /*
+        A request that never came back is refused the way the action refuses:
+        what was typed handed back, with the attempt the form remounts on.
+      */
+      const next = await callAction(
+        () => inviteMember(prev, form),
+        () => ({
+          message: "No signal. Nothing was sent. Try again.",
+          values: fieldsOf(form, ["name", "phone", "email", "role"]),
+          attempt: (prev.attempt ?? 0) + 1,
+        }),
+      );
       /*
         The pending list, made current as the receipt lands (yuvoy-operator#89
         f16: "the new invitation did not appear until a reload").
@@ -109,6 +123,9 @@ function InviteFields({ state }: { state: InviteState }) {
       ? was.role
       : "STAFF",
   );
+  // Chosen before the page hydrated: marked, and what it allows said.
+  const roleGroup = useRef<HTMLFieldSetElement>(null);
+  useChangedBeforeHydration(roleGroup, ([chosen]) => setRole(chosen.value));
   const describedBy = (field: InviteState["field"], help: string) =>
     state.field === field ? `invite-error ${help}` : help;
 
@@ -205,7 +222,7 @@ function InviteFields({ state }: { state: InviteState }) {
         </p>
       </div>
 
-      <fieldset>
+      <fieldset ref={roleGroup}>
         <legend className="label text-forest/75">What they can do</legend>
         <div className="mt-2 space-y-2">
           {INVITABLE_ROLES.map((option) => {

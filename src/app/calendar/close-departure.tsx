@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { choiceClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Stop selling ONE departure — yuvoy-operator#45 item 4.
@@ -74,8 +76,16 @@ export function CloseDeparture({
 }) {
   const [open, setOpen] = useState(startOpen);
   const { trigger, question } = useConfirmFocus(open);
-  const [state, act, pending] = useActionState<CloseDepartureState, FormData>(
-    closeDeparture,
+  /*
+    A refusal hands back what was chosen (`sendForm`), and the reason and the
+    note read it back in place: "No signal. It is still selling." used to come
+    back over an unanswered "Why" and an empty note. Not remounted, because
+    the question is this confirm's still frame and holds the focus.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<CloseDepartureState>(closeDeparture, () => ({
+      message: "No signal. It is still selling. Try again.",
+    })),
     {},
   );
   const router = useRouter();
@@ -165,6 +175,7 @@ export function CloseDeparture({
                 name="reasonCode"
                 value={reason.code}
                 required
+                defaultChecked={state.typed?.reasonCode === reason.code}
                 className="accent-terra-deep size-5 shrink-0"
               />
               <span>{reason.label}</span>
@@ -180,11 +191,12 @@ export function CloseDeparture({
         >
           A note <span className="text-forest/70">(optional)</span>
         </label>
-        <textarea
+        <Textarea
           id={`close-note-${slotId}`}
           name="note"
           rows={2}
           maxLength={500}
+          defaultValue={state.typed?.note ?? ""}
           className={textareaClass("bg-paper mt-2")}
         />
       </div>

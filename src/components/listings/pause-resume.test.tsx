@@ -6,7 +6,9 @@ import { watchMotion } from "@/lib/motion/testing";
 const pauseListing = vi.fn();
 const resumeListing = vi.fn();
 
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", async (original) => ({
+  // The real control flow helpers, which a dropped request goes through.
+  ...(await original<typeof import("next/navigation")>()),
   usePathname: () => "/today/listing/exp_snorkel",
 }));
 vi.mock("./actions", () => ({
@@ -347,5 +349,43 @@ describe("arriving and leaving still", () => {
     expect(copy).toHaveTextContent(
       "Put Snorkel trip at Coral Bay back on sale?",
     );
+  });
+});
+
+/*
+  The stability audit, P2-3: a pause or a resume that never came back took
+  the listing's screen to the error page.
+*/
+describe("a request that never came back", () => {
+  it("says the pause did not go, with the reason still chosen", async () => {
+    pauseListing.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    control();
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Not running this at the moment" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Pause it" }));
+
+    expect(
+      await screen.findByText(
+        "No signal. Nothing was sent. It is still on sale.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("radio", { name: "Not running this at the moment" }),
+    ).toBeChecked();
+  });
+
+  it("says the resume did not go", async () => {
+    resumeListing.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    control("withdrawn");
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, resume it" }));
+
+    expect(
+      await screen.findByText(
+        "No signal. Nothing changed. It is still paused.",
+      ),
+    ).toBeInTheDocument();
   });
 });

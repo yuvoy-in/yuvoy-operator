@@ -1,6 +1,8 @@
 "use client";
 
+import { useRef } from "react";
 import { inputClass } from "@/components/ui/input";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { describeStatus } from "@/lib/services/listings";
 import type { ListingOption } from "./attach-form";
 
@@ -67,6 +69,10 @@ export function ListingPicker({
    */
   fixedTitle?: string;
 }) {
+  // A listing chosen before the page hydrated.
+  const listingField = useRef<HTMLSelectElement>(null);
+  useChangedBeforeHydration(listingField, ([field]) => onChange(field.value));
+
   /*
     Decided already, so there is nothing to choose and the line says where it
     is going. The role radios stay: a cover and a gallery item are different
@@ -128,6 +134,7 @@ export function ListingPicker({
           Which listing this {noun} is for
         </label>
         <select
+          ref={listingField}
           id={`${id}-listing`}
           className={inputClass("mt-2")}
           value={value}
@@ -185,8 +192,13 @@ function RolePicker({
   onRoleChange: (role: "hero" | "gallery") => void;
   disabled?: boolean;
 }) {
+  // Chosen before the page hydrated.
+  const group = useRef<HTMLFieldSetElement>(null);
+  useChangedBeforeHydration(group, ([chosen]) =>
+    onRoleChange(chosen.value === "hero" ? "hero" : "gallery"),
+  );
   return (
-    <fieldset disabled={disabled}>
+    <fieldset ref={group} disabled={disabled}>
       <legend className="label">Where it appears</legend>
       <div className="mt-2 flex gap-5 text-sm">
         <label className="flex items-center gap-2">

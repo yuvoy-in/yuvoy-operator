@@ -6,6 +6,7 @@ import type {
   StatusTone,
 } from "@/lib/home/status";
 import { ChevronRightIcon } from "@/components/ui/icons";
+import { LinkRing } from "@/components/ui/link-pending";
 import { panelClass } from "@/components/ui/panel";
 
 /**
@@ -79,6 +80,7 @@ export function StatusLine({ status }: { status: SellingStatus }) {
           <li>
             <Link href={status.more.href} className={ACTION}>
               {status.more.action}
+              <LinkRing />
             </Link>
           </li>
         ) : null}
@@ -97,6 +99,7 @@ function Reason({ reason }: { reason: StatusReason }) {
       ) : (
         <Link href={reason.href} className={ACTION}>
           {reason.action}
+          <LinkRing />
         </Link>
       )
     ) : null;

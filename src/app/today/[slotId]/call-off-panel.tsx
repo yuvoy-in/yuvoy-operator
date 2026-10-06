@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { choiceClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { panelClass } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Calling a departure off: "Call this departure off", the words used
@@ -92,8 +94,17 @@ export function CallOffPanel({
    */
   className?: string;
 }) {
-  const [state, act, pending] = useActionState<CallOffState, FormData>(
-    callOffDeparture,
+  /*
+    A refusal hands back what was chosen (`sendForm`), and the reason and the
+    note read it back in place: "No signal. Nothing was cancelled." used to
+    come back over an unanswered "Why?" and an empty note, on the screen a
+    storm is handled from. Not remounted, because the confirm is this
+    panel's still frame and holds the focus.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<CallOffState>(callOffDeparture, () => ({
+      message: "No signal. Nothing was cancelled.",
+    })),
     {},
   );
   const [open, setOpen] = useState(startOpen);
@@ -249,6 +260,7 @@ export function CallOffPanel({
                 name="reasonCode"
                 value={reason.code}
                 required
+                defaultChecked={state.typed?.reasonCode === reason.code}
                 className="accent-terra-deep size-5"
               />
               <span className="text-sm">{reason.label}</span>
@@ -264,11 +276,12 @@ export function CallOffPanel({
         >
           Anything to add (optional)
         </label>
-        <textarea
+        <Textarea
           id={`call-off-note-${slotId}`}
           name="note"
           rows={2}
           maxLength={500}
+          defaultValue={state.typed?.note ?? ""}
           className={textareaClass("mt-2")}
         />
         <p className="text-forest/70 mt-1.5 text-xs">

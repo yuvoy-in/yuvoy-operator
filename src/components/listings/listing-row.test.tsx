@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { OperatorExperience } from "@/lib/services/listings";
+import type { Vocabulary } from "@/lib/services/vocabulary";
 
 const submitRevision = vi.fn();
 
@@ -219,5 +220,89 @@ describe("the pin on a live listing", () => {
     await user.click(row.getByRole("button", { name: "Propose a change" }));
     expect(row.getByRole("group", { name: "Pin on the map" })).toBeVisible();
     expect(row.getByText("No pin yet.")).toBeVisible();
+  });
+});
+
+/*
+  The stability audit, P1-1. React resets a form when its action resolves,
+  refusals included, so one refused field took all twelve back to what was on
+  file, and the operator typed the change again from the top.
+*/
+describe("a refused change", () => {
+  it("keeps every field as it was typed, and still sends only what changed", async () => {
+    submitRevision.mockResolvedValue({
+      message: "Most people per booking must be at least 1.",
+    });
+    const user = userEvent.setup();
+    render(
+      <ul>
+        <ListingRow
+          listing={{ ...LIVE, category: "adventure", activityType: "snorkel" }}
+          hasFootage
+          vocabulary={
+            {
+              activityTypes: [
+                { key: "snorkel", label: "Snorkelling", category: "adventure" },
+                { key: "scuba", label: "Scuba diving", category: "adventure" },
+              ],
+            } as unknown as Vocabulary
+          }
+        />
+      </ul>,
+    );
+    const row = within(screen.getByRole("listitem"));
+
+    await user.click(row.getByRole("button", { name: "Propose a change" }));
+    await user.clear(row.getByLabelText("Name"));
+    await user.type(row.getByLabelText("Name"), "Reef dive, two tanks");
+    await user.selectOptions(row.getByLabelText("Activity"), "scuba");
+    await user.clear(row.getByLabelText("Price"));
+    await user.type(row.getByLabelText("Price"), "5000");
+    await user.click(row.getByLabelText(/For the group/));
+    await user.clear(row.getByLabelText("Most people per booking"));
+    await user.type(row.getByLabelText("Most people per booking"), "0");
+    await user.click(row.getByRole("button", { name: "Send it to us" }));
+
+    expect(
+      await row.findByText("Most people per booking must be at least 1."),
+    ).toBeInTheDocument();
+    expect(row.getByLabelText("Name")).toHaveValue("Reef dive, two tanks");
+    expect(row.getByLabelText("Activity")).toHaveValue("scuba");
+    expect(row.getByLabelText("Price")).toHaveValue("5000");
+    expect(row.getByLabelText(/For the group/)).toBeChecked();
+    expect(row.getByLabelText("Most people per booking")).toHaveValue("0");
+    // Untouched, and still what is on file.
+    expect(row.getByLabelText("What happens on the day")).toHaveValue(
+      LIVE.description,
+    );
+
+    await user.clear(row.getByLabelText("Most people per booking"));
+    await user.type(row.getByLabelText("Most people per booking"), "8");
+    await user.click(row.getByRole("button", { name: "Send it to us" }));
+    const sent: FormData = submitRevision.mock.calls[1][1];
+    expect(Object.fromEntries(sent.entries())).toEqual({
+      id: "exp_reef",
+      title: "Reef dive, two tanks",
+      activityType: "scuba",
+      unitPrice: "5000",
+      pricingUnit: "per_group",
+      maxPartySize: "8",
+    });
+  });
+
+  it("says no signal on the row when the request never came back", async () => {
+    submitRevision.mockRejectedValue(new TypeError("Failed to fetch"));
+    const user = userEvent.setup();
+    const row = renderRow();
+
+    await user.click(row.getByRole("button", { name: "Propose a change" }));
+    await user.clear(row.getByLabelText("Price"));
+    await user.type(row.getByLabelText("Price"), "5000");
+    await user.click(row.getByRole("button", { name: "Send it to us" }));
+
+    expect(
+      await row.findByText("No signal. Nothing was sent. Try again."),
+    ).toBeInTheDocument();
+    expect(row.getByLabelText("Price")).toHaveValue("5000");
   });
 });

@@ -33,7 +33,8 @@ import { cn } from "@/lib/cn";
 import { Announcer } from "@/components/ui/announcer";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
-import { ChevronRightIcon, LayersIcon } from "@/components/ui/icons";
+import { LayersIcon } from "@/components/ui/icons";
+import { RowChevron } from "@/components/ui/link-pending";
 import { panelClass } from "@/components/ui/panel";
 import { AnswerAnnouncer } from "@/components/requests/answer-announcer";
 import type { Answer, AnswerKind } from "@/components/requests/answer-store";
@@ -41,6 +42,7 @@ import { RequestItem } from "@/components/requests/request-item";
 import { useAnswers } from "@/components/requests/use-answers";
 import { CashCard } from "./cash-card";
 import { MessageCard } from "./message-card";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * "Needs you" on Home: the rows the server worked out, in its order, each
@@ -98,10 +100,12 @@ export function NeedsYou({
   const router = useRouter();
   const refresh = useCallback(() => router.refresh(), [router]);
   const { answers, store } = useAnswers(refresh);
-  const [seats, confirmAll, confirming] = useActionState<
-    ConfirmSeatsState,
-    FormData
-  >(confirmSeats, {});
+  const [seats, confirmAll, confirming] = useActionState(
+    sendForm<ConfirmSeatsState>(confirmSeats, () => ({
+      message: "No signal. Nothing was confirmed. Try again.",
+    })),
+    {},
+  );
 
   /*
     The cards the operator opened, by key, with the last data the server sent
@@ -486,7 +490,7 @@ function LinkRow({ need }: { need: LinkNeed }) {
           {need.action}
         </span>
       </span>
-      <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+      <RowChevron className="text-terra-deep size-5 shrink-0" />
     </>
   );
 

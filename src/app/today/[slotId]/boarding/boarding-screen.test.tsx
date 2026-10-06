@@ -280,6 +280,44 @@ describe("boarding", () => {
     ).toBeInTheDocument();
   });
 
+  /*
+    The stability audit, P3-5. A party checked in from its own sheet with no
+    signal moves to Aboard while the sheet is still open, so the row that
+    opened it is gone by the time it closes. Focus went nowhere, and the next
+    Tab started again from the top of the page.
+  */
+  it("gives focus back to the party where it is now, once its sheet closes", async () => {
+    const { ChromeProvider } =
+      await import("@/components/chrome/chrome-context");
+    const { offlineWrites } = await import("@/lib/site/offline-writes");
+    offlineWrites.forget();
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    render(
+      <ChromeProvider
+        identity={{ businessName: null, canManage: true, userId: "usr_owner" }}
+      >
+        <BoardingScreen {...props} />
+      </ChromeProvider>,
+    );
+
+    const opener = screen.getByRole("button", {
+      name: /^Asha Menon, 2 guests/,
+    });
+    opener.focus();
+    fireEvent.click(opener);
+    const sheet = screen.getByRole("dialog", { name: "Asha Menon" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Check in" }));
+    await pass(0);
+    expect(opener).not.toBeInTheDocument();
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "Close" }));
+    const aboard = screen.getByRole("region", { name: "Aboard · 2" });
+    expect(document.activeElement).toBe(
+      within(aboard).getByRole("button", { name: /^Asha Menon/ }),
+    );
+    offlineWrites.forget();
+  });
+
   it("closes out, rather than boards, once the boat has left", () => {
     render(<BoardingScreen {...props} departed />);
     expect(

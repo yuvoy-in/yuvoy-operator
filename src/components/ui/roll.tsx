@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DURATION } from "@/lib/motion";
 import { rollFigure } from "@/lib/motion/figure";
+import { useHydrated } from "./use-hydrated";
 
 /**
  * A figure that rolls to its new value (O07 A, approved 4 Oct 2026): the
@@ -12,6 +13,13 @@ import { rollFigure } from "@/lib/motion/figure";
  * without reading it twice. The first number drawn simply appears
  * (`rollFigure`, which the Bookings count rolls with too).
  *
+ * So does the number the first client pass corrects the server's to. A hard
+ * load of boarding with check-ins kept on this phone drew the server's count,
+ * which cannot know them, and then rolled up to the phone's: the screen
+ * moving on its own after it had appeared, with nobody having touched it (the
+ * stability audit, P3-4). That correction is the screen arriving, so it lands
+ * still, with the rows it moves (`useHydrated`).
+ *
  * The old number is `aria-hidden`: the figure sits in its screen's polite
  * live region, which says the new number once. It is drawn from an attribute
  * (`content: attr()`), not as text, so for the moment it is on screen the
@@ -20,10 +28,15 @@ import { rollFigure } from "@/lib/motion/figure";
  * Reduced motion: nothing travels; the two numbers cross-fade in 120ms.
  */
 export function Roll({ value }: { value: number }) {
+  const hydrated = useHydrated();
+  const [arrived, setArrived] = useState(hydrated);
   const [shown, setShown] = useState(value);
   const [was, setWas] = useState<{ value: number; up: boolean } | null>(null);
   const [changes, setChanges] = useState(0);
-  if (value !== shown) {
+  if (hydrated !== arrived) {
+    setArrived(hydrated);
+    setShown(value);
+  } else if (value !== shown) {
     setWas({ value: shown, up: value > shown });
     setShown(value);
     setChanges((n) => n + 1);

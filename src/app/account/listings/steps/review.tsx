@@ -9,6 +9,7 @@ import {
 import { describeBlockers } from "@/lib/services/listings";
 import { credentialTypeLabel } from "@/lib/profile/credentials";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { LinkRing } from "@/components/ui/link-pending";
 import { SubmitButton } from "../[id]/submit-button";
 
 /**
@@ -102,6 +103,7 @@ export function ReviewStep({
                 className="text-forest tap-target shrink-0 text-sm underline underline-offset-4"
               >
                 Edit
+                <LinkRing />
               </Link>
             </div>
           </li>

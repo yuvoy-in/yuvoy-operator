@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { fileCredential, type CredentialState } from "./actions";
 import {
   CREDENTIAL_TYPES,
@@ -9,7 +9,10 @@ import {
 } from "@/lib/profile/credentials";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Sending Yuvoy a document.
@@ -41,11 +44,17 @@ export function CredentialForm({
   /** Kinds already with us, so the form can say what a resend replaces. */
   pendingTypes: readonly string[];
 }) {
-  const [state, act, pending] = useActionState<CredentialState, FormData>(
-    fileCredential,
+  const [state, act, pending] = useActionState(
+    sendForm<CredentialState>(fileCredential, () => ({
+      message: "No signal. Nothing was sent. We have not got it yet.",
+    })),
     {},
   );
+  const typed = state.typed;
   const [type, setType] = useState<string>(suggested ?? "");
+  // Chosen before the page hydrated: its hint and warning follow it.
+  const typeField = useRef<HTMLSelectElement>(null);
+  useChangedBeforeHydration(typeField, ([field]) => setType(field.value));
 
   if (state.sent) {
     return (
@@ -75,12 +84,19 @@ export function CredentialForm({
         Send us a document
       </h2>
 
-      <form action={act} className="mt-5 space-y-5">
+      {/*
+        Remounted per refusal (`sendForm`), onto what was typed. Which
+        document it is lives in state, and a reset in place showed "Choose
+        one" over the hint and the warning for the kind still chosen, while a
+        refused expiry date took the issuer, the number and the notes with it.
+      */}
+      <form key={state.attempt ?? 0} action={act} className="mt-5 space-y-5">
         <div>
           <label htmlFor="cred-type" className="label text-forest/75">
             Which document
           </label>
           <select
+            ref={typeField}
             id="cred-type"
             name="type"
             required
@@ -117,6 +133,7 @@ export function CredentialForm({
           <input
             id="cred-issuer"
             name="issuer"
+            defaultValue={typed?.issuer ?? ""}
             className={inputClass("mt-2")}
             placeholder="Directorate of Tourism, PADI, your insurer…"
           />
@@ -129,6 +146,7 @@ export function CredentialForm({
           <input
             id="cred-identifier"
             name="identifier"
+            defaultValue={typed?.identifier ?? ""}
             className={inputClass("mt-2")}
           />
         </div>
@@ -142,6 +160,7 @@ export function CredentialForm({
               id="cred-issued"
               name="issuedOn"
               type="date"
+              defaultValue={typed?.issuedOn ?? ""}
               className={inputClass("mt-2")}
             />
           </div>
@@ -153,6 +172,7 @@ export function CredentialForm({
               id="cred-expires"
               name="expiresOn"
               type="date"
+              defaultValue={typed?.expiresOn ?? ""}
               className={inputClass("mt-2")}
               aria-invalid={state.field === "expiresOn" || undefined}
               aria-describedby="cred-expires-hint"
@@ -172,10 +192,11 @@ export function CredentialForm({
           <label htmlFor="cred-notes" className="label text-forest/75">
             Anything we should know
           </label>
-          <textarea
+          <Textarea
             id="cred-notes"
             name="notes"
             rows={3}
+            defaultValue={typed?.notes ?? ""}
             className={inputClass("mt-2 h-auto py-3")}
           />
         </div>

@@ -4,6 +4,7 @@ import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { reopenClosure, type ReopenState } from "./actions";
 import { Button } from "@/components/ui/button";
+import { sendForm } from "@/lib/actions/send-form";
 
 /** Said when the API had no sentence: it was already reopened, or is gone. */
 export const STALE_REOPEN = "Reopened. What you were reading was out of date.";
@@ -36,8 +37,10 @@ export function ReopenClosure({
   /** Hands the note to the day's panel, where a refresh cannot reach it. */
   onReopened: (id: string, note: string) => void;
 }) {
-  const [state, act, pending] = useActionState<ReopenState, FormData>(
-    reopenClosure,
+  const [state, act, pending] = useActionState(
+    sendForm<ReopenState>(reopenClosure, () => ({
+      message: "No signal. Nothing was reopened. Try again.",
+    })),
     {},
   );
   const router = useRouter();

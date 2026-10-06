@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { ChromeProvider } from "./chrome-context";
 import { KeptOnThisPhone } from "./kept-on-this-phone";
 import { offlineWrites, replayWrites } from "@/lib/site/offline-writes";
+import { SETTLE_MS } from "@/components/ui/use-online";
 
 /*
   The strip on a departure's screens with no signal (boarding mode, operator
@@ -45,6 +46,20 @@ function goOffline() {
   });
 }
 
+function goOnline() {
+  online = true;
+  act(() => {
+    window.dispatchEvent(new Event("online"));
+  });
+}
+
+/** Long enough for a change of signal to be said (`useSettledOnline`). */
+function settle() {
+  act(() => {
+    vi.advanceTimersByTime(SETTLE_MS);
+  });
+}
+
 function keep() {
   act(() => {
     offlineWrites.add({
@@ -68,9 +83,17 @@ function keep() {
 }
 
 describe("with no signal", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("says what it does with no signal before anything is kept", () => {
     screenFor();
     goOffline();
+    settle();
     expect(screen.getByRole("status")).toHaveTextContent(
       "No signal Check-ins and cash you take are kept on this phone and sent when the signal is back. Closing out, messages and cancelling wait for the signal.",
     );
@@ -79,6 +102,7 @@ describe("with no signal", () => {
   it("says what is kept on this phone, and that it goes when the signal is back", () => {
     screenFor();
     goOffline();
+    settle();
     keep();
     expect(screen.getByRole("status")).toHaveTextContent(
       "1 check-in and ₹9,000 taken are saved on this phone. They send when the signal is back.",
@@ -88,6 +112,7 @@ describe("with no signal", () => {
   it("does not count what somebody else kept on this phone", () => {
     screenFor("usr_staff");
     goOffline();
+    settle();
     keep();
     expect(screen.getByRole("status")).not.toHaveTextContent(
       "saved on this phone",
@@ -106,6 +131,24 @@ describe("with no signal", () => {
     expect(
       fireEvent.click(screen.getByRole("link", { name: "Call Yuvoy" })),
     ).toBe(true);
+  });
+
+  /*
+    The strip sits above the manifest: on a connection that drops and comes
+    back inside a couple of seconds, each blip used to push every row down
+    and pull it back under the thumb at the jetty (the stability audit,
+    P3-1).
+  */
+  it("does not move the manifest for a blip", () => {
+    screenFor();
+    goOffline();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    act(() => {
+      vi.advanceTimersByTime(SETTLE_MS - 500);
+    });
+    goOnline();
+    settle();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 });
 

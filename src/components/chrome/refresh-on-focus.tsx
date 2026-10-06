@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import {
+  INTERVAL_MS,
+  onStarted,
+  useScheduledRefresh,
+} from "./refresh-schedule";
 
 /**
  * Re-reads the manifest when the operator comes back to it, and slowly while
@@ -20,36 +24,57 @@ import { useRouter } from "next/navigation";
  * `router.refresh()` re-runs the server render and reconciles — it does not
  * remount, so a half-typed state or a pending action is not thrown away.
  *
+ * **Once per return.** A tab coming back fires `focus` and
+ * `visibilitychange` together, and each used to re-read the whole screen
+ * while a tap waited behind both. Every trigger goes through the one
+ * schedule (`refresh-schedule.ts`): none while a re-read is on its way or
+ * within a few seconds of the last, and the minute counts from the last
+ * re-read from anywhere, the replayer's included.
+ *
  * **Never with no signal.** A refresh that cannot reach the server makes Next
  * fall back to a full browser navigation, and with no network that is the
  * browser's own "no internet" page in place of the screen the operator was
  * reading. So it waits while the phone says it is offline, and re-reads once
  * the moment the signal comes back.
  */
-const INTERVAL_MS = 60_000;
-
 export function RefreshOnFocus() {
-  const router = useRouter();
+  const refresh = useScheduledRefresh();
 
   useEffect(() => {
-    const refresh = () => {
+    const trigger = () => {
       if (document.visibilityState === "visible" && navigator.onLine) {
-        router.refresh();
+        refresh();
       }
     };
 
-    window.addEventListener("focus", refresh);
-    window.addEventListener("online", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    const timer = setInterval(refresh, INTERVAL_MS);
+    /*
+      The minute, armed again from every re-read that starts, so a re-read on
+      focus is not followed by the minute's own a second later.
+    */
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        trigger();
+        // Nothing re-read (hidden, offline, one on its way): wait a minute more.
+        arm();
+      }, INTERVAL_MS);
+    };
+    const stop = onStarted(arm);
+    arm();
+
+    window.addEventListener("focus", trigger);
+    window.addEventListener("online", trigger);
+    document.addEventListener("visibilitychange", trigger);
 
     return () => {
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("online", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-      clearInterval(timer);
+      window.removeEventListener("focus", trigger);
+      window.removeEventListener("online", trigger);
+      document.removeEventListener("visibilitychange", trigger);
+      stop();
+      clearTimeout(timer);
     };
-  }, [router]);
+  }, [refresh]);
 
   return null;
 }

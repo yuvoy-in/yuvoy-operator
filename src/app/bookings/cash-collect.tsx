@@ -142,7 +142,9 @@ export function CashCollect({
         const answer = await recordCashCollected(prev, form);
         return answer.retryable ? keep() : answer;
       } catch {
-        // It may or may not have reached the API; a repeat is safe.
+        // It may or may not have reached the API; a repeat is safe. A session
+        // that ended lands here too, after Next has followed its redirect to
+        // sign in, and the kept sale is sent once they are back.
         return keep();
       }
     },
