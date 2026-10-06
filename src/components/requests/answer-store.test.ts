@@ -173,6 +173,31 @@ describe("an answer held for five seconds", () => {
     expect(settled).toHaveBeenCalledTimes(1);
   });
 
+  it("does not re-read after a decline lands: the decline's own answer was the re-read", async () => {
+    const store = createAnswerStore(actions());
+    const settled = vi.fn();
+    store.onSettled(settled);
+    store.hold("decline", VIEW, "weather");
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    expect(store.get().req_1).toMatchObject({ phase: "declined" });
+    expect(settled).not.toHaveBeenCalled();
+  });
+
+  it("re-reads after a decline is refused, since the queue moved somewhere else", async () => {
+    const api = actions();
+    api.decline.mockResolvedValue({
+      requestId: "req_1",
+      message: "That request was answered on another phone.",
+    });
+    const store = createAnswerStore(api);
+    const settled = vi.fn();
+    store.onSettled(settled);
+    store.hold("decline", VIEW, "weather");
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    expect(store.get().req_1).toMatchObject({ phase: "failed" });
+    expect(settled).toHaveBeenCalledTimes(1);
+  });
+
   it("tells its listeners each step", async () => {
     const store = createAnswerStore(actions());
     const heard = vi.fn();

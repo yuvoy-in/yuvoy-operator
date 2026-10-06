@@ -53,7 +53,7 @@ export function ReopenClosure({
       which is that what they were reading is out of date.
     */
     onReopened(id, state.note ?? STALE_REOPEN);
-    router.refresh();
+    if (navigator.onLine) router.refresh();
     // `done` flips once; `id` and the callbacks are stable for this row.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.done]);

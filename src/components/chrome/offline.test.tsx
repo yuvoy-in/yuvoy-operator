@@ -1,6 +1,12 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 
 const refresh = vi.fn();
 const replace = vi.fn();
@@ -15,7 +21,8 @@ const { OnlineOnly } = await import("@/components/ui/online-only");
 const { SETTLE_MS } = await import("@/components/ui/use-online");
 const { ReadOnlyWhenOffline } = await import("./read-only-when-offline");
 const { RefreshOnFocus } = await import("./refresh-on-focus");
-const { resetSchedule } = await import("./refresh-schedule");
+const { resetSchedule, useScheduledRefresh } =
+  await import("./refresh-schedule");
 const { InspectorSheet } = await import("@/app/calendar/inspector-sheet");
 
 let online = true;
@@ -226,6 +233,22 @@ describe("re-reading the screen", () => {
     act(() => {
       window.dispatchEvent(new Event("focus"));
     });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops even a forced re-read while there is no signal", () => {
+    /*
+      The replayer's own re-read, after it sent what was kept, and the
+      signal can go again in between: a refresh that cannot be fetched
+      becomes the browser's "no internet" page.
+    */
+    const { result } = renderHook(() => useScheduledRefresh());
+    online = false;
+    act(() => result.current(true));
+    expect(refresh).not.toHaveBeenCalled();
+
+    online = true;
+    act(() => result.current(true));
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { operatorApi } from "@/lib/api/server-client";
 import { classifyMeFailure } from "@/lib/account/status";
 import {
   blockerAction,
@@ -24,7 +23,7 @@ import { SUPPORT_PHONE, SUPPORT_PHONE_HREF } from "@/lib/site/contact";
 import { documentCount, fileLine, takesFile } from "@/lib/account/documents";
 import { credentialTypeLabel } from "@/lib/profile/credentials";
 import { marketDateLabel, now } from "@/lib/format/market-time";
-import { readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
+import { readMe, readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
 import { Screen } from "@/components/chrome/screen";
 import { ButtonLink } from "@/components/ui/button";
 import { Panel, panelClass } from "@/components/ui/panel";
@@ -58,17 +57,23 @@ export default async function VerificationPage() {
   const token = await readSessionToken();
   if (!token) redirect(SIGN_IN_PATH);
 
-  const result = await operatorApi(token)
-    .GET("/me", {})
-    .catch(() => null);
-
   /*
     A `GET /me` that fails is not an account state. The same classification the
     Business screen applies, so the two cannot disagree about whether an
     operator is offboarded or the server simply had a bad minute.
+
+    The failure is the one thrown. The error middleware raises every non-2xx,
+    so a returned `error` never arrives, and reading only that turned an
+    expired session into "we cannot tell you where you stand" with a reload
+    that could never work (production readiness, 6 Oct 2026). `readMe` is the
+    layout's own read, so asking costs no second request.
   */
-  const failure = classifyMeFailure(result?.error);
-  if (failure === "signed-out") redirect(SIGN_IN_PATH);
+  let me: Awaited<ReturnType<typeof readMe>> | null = null;
+  try {
+    me = await readMe(token);
+  } catch (err) {
+    if (classifyMeFailure(err) === "signed-out") redirect(SIGN_IN_PATH);
+  }
 
   /*
     Two ways to have no standing, and they are not the same sentence. A read
@@ -76,16 +81,14 @@ export default async function VerificationPage() {
     contract is explicit about what it means: "Absent means unknown — never
     'everything is fine'." Both refuse to say anybody is fine.
   */
-  const unreadable = !result || Boolean(result.error);
-  const standing: Standing | null = unreadable
-    ? null
-    : standingOf(result.data?.account);
+  const unreadable = me === null;
+  const standing: Standing | null = unreadable ? null : standingOf(me?.account);
   /*
     The logo and the business details are OWNER, ADMIN or MANAGER in the API;
     documents are anybody's. Absent reads as the narrower, so a staff phone is
     never handed a button the server will refuse (the audit, M10).
   */
-  const canManage = Boolean(result?.data?.canManage);
+  const canManage = Boolean(me?.canManage);
   const at = await now();
 
   return (

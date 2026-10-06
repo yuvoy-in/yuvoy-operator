@@ -86,6 +86,10 @@ export function resetSchedule(): void {
  * `force` is for a re-read that has to happen whatever came before it: the
  * replayer's, after it has sent what was kept, since a re-read already on
  * its way was asked before those landed. It still counts as one.
+ *
+ * Never with no signal, forced or not: a refresh that cannot be fetched
+ * becomes the browser's "no internet" page, so it is dropped like a trigger
+ * that is not due.
  */
 export function useScheduledRefresh(): (force?: boolean) => void {
   const router = useRouter();
@@ -99,7 +103,7 @@ export function useScheduledRefresh(): (force?: boolean) => void {
   return useCallback(
     (force = false) => {
       const now = Date.now();
-      if (!force && !due(now)) return;
+      if (!navigator.onLine || (!force && !due(now))) return;
       started(now);
       start(() => router.refresh());
     },

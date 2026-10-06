@@ -156,7 +156,7 @@ export function AddSheet({
             setAdding(false);
             // The Reels tab is on the same screen, and a finished upload is a
             // new tile on it. Nothing revalidates: see `ReelsTab`.
-            router.refresh();
+            if (navigator.onLine) router.refresh();
           }}
         />
       ) : null}

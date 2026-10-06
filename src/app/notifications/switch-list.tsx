@@ -61,7 +61,7 @@ export function SwitchList({
           then wrong about more than one switch, so it is re-read rather than
           patched.
         */
-        if (result.gone) router.refresh();
+        if (result.gone && navigator.onLine) router.refresh();
         return;
       }
       setSettings(result.settings);

@@ -131,7 +131,7 @@ export function CancelBooking({
   useEffect(() => {
     if (!finished) return;
     onDone?.();
-    if (context === "booking") router.refresh();
+    if (context === "booking" && navigator.onLine) router.refresh();
     // `finished` flips once, from false to true; the rest are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finished]);
