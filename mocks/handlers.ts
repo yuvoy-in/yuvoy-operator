@@ -3315,7 +3315,17 @@ export const handlers = [
       return envelope("not_found", "No invitation for that number.", 404);
     }
     if (body.code !== DEV_CODE) {
-      return envelope("unauthorized", "That code did not work.", 401);
+      /*
+        A wrong or used-up code is `409 cannot_invite`, in the API's own words
+        (`AcceptJoin`, `ErrInviteFailed`). This answered `401`, which the API
+        never sends here, so the 409 the portal misread as "confirm you are
+        leaving" never reached it in a test (yuvoy-operator#145).
+      */
+      return envelope(
+        "cannot_invite",
+        "we could not accept that invitation. Check the code and try again",
+        409,
+      );
     }
 
     /*

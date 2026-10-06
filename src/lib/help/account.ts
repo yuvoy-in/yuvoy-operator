@@ -104,8 +104,8 @@ export const ACCOUNT_HELP: readonly HelpTopic[] = [
     question: "Why does changing the bank account take two days?",
     answer: [
       "It is slow on purpose. A stolen login plus one convincing phone call would otherwise be enough to redirect a season's takings.",
-      "Raising a change changes nothing that day. For 24 hours an owner or an admin can stop it from Payout details. A person at Yuvoy then reviews it, and it goes live 24 hours after they approve it, still stoppable the whole time.",
-      "Only an owner can raise one, and the code it needs is emailed to the owner, whoever asks. While a change is open, payouts wait until it is settled.",
+      "Raising a change puts payouts on hold until it settles. For 24 hours an owner or an admin can stop it from Payout details. A person at Yuvoy then reviews it, and it goes live 24 hours after they approve it, still stoppable the whole time.",
+      "Only an owner can raise one, and the code it needs is emailed to the owner, whoever asks.",
     ],
   },
   {

@@ -7,6 +7,7 @@ import { writeSessionToken } from "@/lib/auth/session-writes";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { codeSchema } from "@/lib/auth/code";
 import { dedash } from "@/lib/format/dedash";
+import { sentence } from "@/lib/format/sentence";
 
 /**
  * Joining a business from its link — yuvoy-operator#23.
@@ -25,7 +26,9 @@ import { dedash } from "@/lib/format/dedash";
  * number works with one business at a time. The previous membership is ended
  * and its sessions dropped." That is somebody losing access to their current
  * employer's manifest mid-shift, so it is never sent by default — the screen
- * asks, and `confirmLeaving` goes only after they have agreed.
+ * asks, and `confirmLeaving` goes only after they have agreed. It is known by
+ * that code: the route's other 409, `cannot_invite`, is a wrong or used-up
+ * code (yuvoy-operator#145).
  */
 
 const phoneSchema = z
@@ -195,8 +198,14 @@ export async function acceptJoin(
         not agreed to leave it — which the code step usually warns about, but
         this is the authoritative answer and the screen must handle it even
         when the warning did not appear.
+
+        Told apart by its code, never by its status. This route answers two
+        409s, and the other one, `cannot_invite`, is a wrong or used-up code.
+        Reading every 409 as this one drew "This will take you off another
+        business" for somebody in no business at all, and past the attempt
+        limit they went round that panel for good (yuvoy-operator#145).
       */
-      if (err.status === 409) {
+      if (err.code === "confirmation_required") {
         /*
           The authoritative "ask them first". The code step usually warns
           already, via `leavingBusiness` — but that warning is advisory and
@@ -211,6 +220,15 @@ export async function acceptJoin(
           step: "code",
           leavingBusiness: prev.leavingBusiness ?? "another business",
           message: undefined,
+        };
+      }
+      // Any other 409 is about the code: stay on it, in the API's sentence.
+      if (err.status === 409) {
+        return {
+          ...prev,
+          step: "code",
+          message:
+            sentence(err.message) || "That did not work. Try the code again.",
         };
       }
       if (err.status === 429) {
