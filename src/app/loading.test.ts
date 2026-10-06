@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import ts from "typescript";
 import { NAV, isBareRoute, isFocusedRoute } from "@/lib/site/nav";
+import { DOOR_LABEL } from "@/components/states/route-skeletons";
 
 /**
  * Every route reaches a loading boundary, and it is the right one.
@@ -209,15 +210,42 @@ function hinted(node: ts.Node): boolean {
   return ts.forEachChild(node, hinted) ?? false;
 }
 
-/** Each `<Link>` and `<ButtonLink>` in a file: its line, where it goes, its hint. */
-function linksIn(file: string) {
-  const tree = ts.createSourceFile(
+const treeOf = (file: string) =>
+  ts.createSourceFile(
     file,
     readFileSync(file, "utf8"),
     ts.ScriptTarget.Latest,
     true,
     ts.ScriptKind.TSX,
   );
+
+/** The written-out (string) props of every `<tag>` in a file. */
+function propsOf(file: string, tag: string): Record<string, string>[] {
+  const found: Record<string, string>[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      tagOf(node) === tag
+    ) {
+      const props: Record<string, string> = {};
+      for (const p of node.attributes.properties) {
+        if (ts.isJsxAttribute(p) && p.initializer) {
+          if (ts.isStringLiteral(p.initializer)) {
+            props[p.name.getText()] = p.initializer.text;
+          }
+        }
+      }
+      found.push(props);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(treeOf(file));
+  return found;
+}
+
+/** Each `<Link>` and `<ButtonLink>` in a file: its line, where it goes, its hint. */
+function linksIn(file: string) {
+  const tree = treeOf(file);
   const links: { line: number; to: string[]; hinted: boolean }[] = [];
   const visit = (node: ts.Node) => {
     const opening = ts.isJsxElement(node)
@@ -361,6 +389,37 @@ describe("loading boundaries", () => {
         ? null
         : `${route}: wears ${expected}, ${rel(boundary)} draws ${drawn}`;
     }).filter(Boolean);
+
+    expect(wrong).toEqual([]);
+  });
+
+  /*
+    A door's fallback is that door: the caption on its stage and the measure
+    of its sheet. It drew no caption and the narrow sheet for all three, so
+    the caption appeared when a door landed and sign up's sheet widened under
+    it (the stability audit, P3-3). Read from what each page and each
+    boundary write, so a door that changes either is named here.
+  */
+  it("draw a door's own caption and measure", () => {
+    const wrong = FILES.filter((f) => /\/loading\.tsx$/.test(f))
+      .filter((boundary) => chassisOf(boundary) === "door")
+      .flatMap((boundary) => {
+        const drawn = propsOf(boundary, "DoorSkeleton")[0] ?? {};
+        const width = drawn.width ?? "sm";
+        return FILES.filter((f) => /\/page\.tsx$/.test(f))
+          .filter((page) => boundaryFor(page) === boundary)
+          .flatMap((page) =>
+            propsOf(page, "Screen").map((screen) => {
+              // `Screen`'s own default measure is md.
+              const wears = screen.width ?? "md";
+              const caption = screen.stageLabel ?? "none";
+              return wears === width && caption === DOOR_LABEL
+                ? null
+                : `${routeOf(page)} wears ${wears} under "${caption}", ${rel(boundary)} draws ${width} under "${DOOR_LABEL}"`;
+            }),
+          );
+      })
+      .filter(Boolean);
 
     expect(wrong).toEqual([]);
   });
