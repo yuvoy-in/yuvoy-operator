@@ -484,10 +484,12 @@ function accessFailure(err: unknown, verb: string): AccessState {
 /**
  * Change what somebody can do.
  *
- * "The role is **replaced**, not added to" — the picker is a choice of one and
+ * "The role is **replaced**, not added to": the picker is a choice of one and
  * the endpoint's semantics match it, so there is nothing to reconcile here.
- * `OWNER` is not in `ASSIGNABLE_ROLES`, so it cannot be sent even by a hand
- * -crafted form post: the schema refuses it before the request exists.
+ * The schema refuses anything outside `ASSIGNABLE_ROLES` before the request
+ * exists, a hand-crafted form post included. `OWNER` is one of them (D31): an
+ * owner or an admin may make somebody already on the team an owner, and the
+ * API decides who may.
  */
 export async function setMemberRole(
   _prev: AccessState,
