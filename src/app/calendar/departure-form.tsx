@@ -16,6 +16,7 @@ import { MAX_SEATS } from "@/lib/day/capacity-types";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Adding departures — the one thing the capacity screen could not do.
@@ -72,10 +73,13 @@ function DepartureRound({
   today: string;
   onAgain: () => void;
 }) {
-  const [state, act, pending] = useActionState<DepartureState, FormData>(
-    addDepartures,
+  const [state, act, pending] = useActionState(
+    sendForm<DepartureState>(addDepartures, () => ({
+      message: "No signal. Nothing was added.",
+    })),
     {},
   );
+  const typed = state.typed;
   const [open, setOpen] = useState(false);
 
   const [fromDate, setFromDate] = useState(today);
@@ -265,7 +269,15 @@ function DepartureRound({
   }
 
   return (
-    <form action={act} className={panelClass()}>
+    /*
+      Remounted per refusal (`sendForm`), onto what was typed. A reset in
+      place took the listing back to "Choose a listing" and every number back
+      to its default, and it left a day chip the screen still showed ticked
+      unticked underneath: the count above the button said one batch and the
+      next tap would have sent another. Remounted, every field is drawn from
+      what this screen holds, so the two cannot disagree.
+    */
+    <form key={state.attempt ?? 0} action={act} className={panelClass()}>
       {/*
         No line explaining the form (yuvoy-operator#80 t4). The count before
         the button says what it will make, which is the sentence that matters.
@@ -298,7 +310,7 @@ function DepartureRound({
             id="experienceId"
             name="experienceId"
             required
-            defaultValue=""
+            defaultValue={typed?.experienceId ?? ""}
             className={inputClass("mt-2 px-3")}
           >
             <option value="" disabled>
@@ -467,7 +479,7 @@ function DepartureRound({
           inputMode="numeric"
           min={1}
           max={MAX_SEATS}
-          defaultValue={6}
+          defaultValue={typed?.seats ?? 6}
           required
           className={inputClass("mt-2 w-28 text-lg")}
         />
@@ -490,6 +502,7 @@ function DepartureRound({
               inputMode="numeric"
               min={1}
               max={MAX_SEATS}
+              defaultValue={typed?.capacity}
               className={inputClass("mt-2 w-28 text-lg")}
             />
             <p className="text-forest/70 mt-2 text-xs">
@@ -508,7 +521,7 @@ function DepartureRound({
               inputMode="numeric"
               min={15}
               max={1440}
-              defaultValue={DEFAULT_DURATION_MINUTES}
+              defaultValue={typed?.durationMinutes ?? DEFAULT_DURATION_MINUTES}
               className={inputClass("mt-2 w-28 text-lg")}
             />
           </div>
@@ -523,7 +536,7 @@ function DepartureRound({
               inputMode="numeric"
               min={0}
               max={168}
-              defaultValue={DEFAULT_CUTOFF_HOURS}
+              defaultValue={typed?.cutoffHours ?? DEFAULT_CUTOFF_HOURS}
               className={inputClass("mt-2 w-28 text-lg")}
             />
           </div>

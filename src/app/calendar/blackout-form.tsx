@@ -8,6 +8,7 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Closing dates to new bookings.
@@ -103,10 +104,20 @@ function BlackoutRound({
   again: boolean;
   children?: ReactNode;
 }) {
-  const [state, act, pending] = useActionState<BlackoutState, FormData>(
-    addBlackout,
+  /*
+    A refusal hands back what was chosen (`sendForm`), and the dates, the
+    reason and the note read it back in place: a range refused for its last
+    day came back as today to today, with no reason and no note. Not
+    remounted, because the question is this confirm's still frame and holds
+    the focus.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<BlackoutState>(addBlackout, () => ({
+      message: "No signal. Nothing was closed.",
+    })),
     {},
   );
+  const typed = state.typed;
   // A day's form is already inside the panel somebody opened to reach it.
   const [open, setOpen] = useState(Boolean(day));
   const { trigger, question } = useConfirmFocus(open);
@@ -232,7 +243,7 @@ function BlackoutRound({
               name="from"
               type="date"
               min={today}
-              defaultValue={today}
+              defaultValue={typed?.from ?? today}
               required
               className={inputClass("bg-paper mt-2 px-3")}
             />
@@ -246,7 +257,7 @@ function BlackoutRound({
               name="to"
               type="date"
               min={today}
-              defaultValue={today}
+              defaultValue={typed?.to ?? today}
               required
               className={inputClass("bg-paper mt-2 px-3")}
             />
@@ -264,6 +275,7 @@ function BlackoutRound({
                 name="reasonCode"
                 value={reason.code}
                 required
+                defaultChecked={typed?.reasonCode === reason.code}
                 className="accent-terra-deep size-5"
               />
               <span className="text-sm">{reason.label}</span>
@@ -281,6 +293,7 @@ function BlackoutRound({
           name="note"
           rows={2}
           maxLength={500}
+          defaultValue={typed?.note ?? ""}
           className={textareaClass("bg-paper mt-2")}
         />
       </div>

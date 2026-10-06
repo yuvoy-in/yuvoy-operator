@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { watchMotion } from "@/lib/motion/testing";
 import type { OperatorSlot } from "@/lib/day/types";
@@ -8,7 +14,11 @@ const refresh = vi.fn();
 const setCapacity = vi.fn();
 const closeDeparture = vi.fn();
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+vi.mock("next/navigation", async (original) => ({
+  // The real control flow helpers, which a dropped request goes through.
+  ...(await original<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh }),
+}));
 vi.mock("./actions", () => ({
   setCapacity: (prev: unknown, form: FormData) => setCapacity(prev, form),
   recordOfflineSale: vi.fn(async () => ({})),
@@ -360,5 +370,84 @@ describe("the stop-selling confirm, arriving and leaving still", () => {
     const receipt = await screen.findByText(/is closed to new bookings$/);
     expect(motion.fadeOf(receipt.parentElement)).toBeDefined();
     expect(motion.copies()).toHaveLength(0);
+  });
+});
+
+/*
+  The stability audit, P1-1. React resets a form when its action resolves,
+  refusals included: the seat box went back to what the departure offers
+  under a refusal that was about the number in it, and the stop-selling
+  confirm came back with no reason and no note.
+*/
+describe("a refused seat count", () => {
+  async function sendWithGo(value: string) {
+    render(<DepartureControls slot={slot()} canManage canSellAtCounter />);
+    const box = screen.getByLabelText("Seats offered") as HTMLInputElement;
+    fireEvent.change(box, { target: { value } });
+    // The keyboard's Go, which leaves the focus in the box.
+    box.focus();
+    await act(async () => {
+      box.form?.requestSubmit();
+    });
+  }
+
+  it("keeps the number that was typed, sent with Go from the box", async () => {
+    setCapacity.mockResolvedValue({
+      slotId: "slot_1",
+      message: "2 seats are already sold. You cannot go below that.",
+    });
+    await sendWithGo("1");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "2 seats are already sold",
+    );
+    expect(screen.getByLabelText("Seats offered")).toHaveValue(1);
+  });
+
+  it("says no signal under the box when the request never came back", async () => {
+    setCapacity.mockRejectedValue(new TypeError("Failed to fetch"));
+    await sendWithGo("9");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No signal. Seats were not changed.",
+    );
+    expect(screen.getByLabelText("Seats offered")).toHaveValue(9);
+  });
+});
+
+describe("a refused stop", () => {
+  async function stopIt() {
+    render(<DepartureControls slot={slot()} canManage canSellAtCounter />);
+    fireEvent.click(screen.getByRole("button", { name: "Stop selling" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Weather" }));
+    fireEvent.change(screen.getByLabelText(/A note/), {
+      target: { value: "Engine out" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop selling it" }));
+    });
+  }
+
+  it("keeps the reason and the note", async () => {
+    closeDeparture.mockResolvedValue({
+      message: "This departure has already left.",
+    });
+    await stopIt();
+
+    expect(
+      await screen.findByText("This departure has already left."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Weather" })).toBeChecked();
+    expect(screen.getByLabelText(/A note/)).toHaveValue("Engine out");
+  });
+
+  it("says no signal in place when the request never came back", async () => {
+    closeDeparture.mockRejectedValue(new TypeError("Failed to fetch"));
+    await stopIt();
+
+    expect(
+      await screen.findByText("No signal. It is still selling. Try again."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Weather" })).toBeChecked();
   });
 });
