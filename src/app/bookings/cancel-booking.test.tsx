@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { watchMotion } from "@/lib/motion/testing";
 
@@ -16,7 +22,11 @@ import { watchMotion } from "@/lib/motion/testing";
 const refresh = vi.fn();
 const cancelBooking = vi.fn();
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+vi.mock("next/navigation", async (original) => ({
+  // The real control flow helpers, which a dropped request goes through.
+  ...(await original<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh }),
+}));
 vi.mock("@/app/bookings/cancel-actions", () => ({
   cancelBooking: (prev: unknown, form: FormData) => cancelBooking(prev, form),
 }));
@@ -261,5 +271,55 @@ describe("arriving and leaving still", () => {
     await cancelIt();
     expect(motion.fadeOf(screen.getByRole("status"))).toBeDefined();
     expect(motion.copies()).toHaveLength(0);
+  });
+});
+
+/*
+  The stability audit, P1-1. React resets a form when its action resolves,
+  refusals included, so a refused cancel came back over an unanswered "Why
+  they cannot go" and an empty note.
+*/
+describe("a refused cancel", () => {
+  async function sendIt() {
+    render(<CancelBooking bookingId="bkg_1" reference="YV-TEST0001" isCash />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel this booking" }),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Weather" }));
+    fireEvent.change(screen.getByLabelText(/A note/), {
+      target: { value: "Rang them at nine" },
+    });
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Cancel the booking" }),
+      );
+    });
+  }
+
+  it("keeps the reason and the note", async () => {
+    cancelBooking.mockResolvedValue({
+      message: "That booking has already left. Nothing was cancelled.",
+    });
+    await sendIt();
+
+    expect(
+      await screen.findByText(
+        "That booking has already left. Nothing was cancelled.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Weather" })).toBeChecked();
+    expect(screen.getByLabelText(/A note/)).toHaveValue("Rang them at nine");
+  });
+
+  it("says no signal in place when the request never came back", async () => {
+    cancelBooking.mockRejectedValue(new TypeError("Failed to fetch"));
+    await sendIt();
+
+    expect(
+      await screen.findByText(
+        "No signal. Nothing was cancelled and nothing was refunded. Try again.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/A note/)).toHaveValue("Rang them at nine");
   });
 });
