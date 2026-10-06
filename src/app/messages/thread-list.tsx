@@ -13,9 +13,9 @@ import {
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { panelClass } from "@/components/ui/panel";
-import { ChevronRightIcon } from "@/components/ui/icons";
 import { withFrom } from "@/lib/site/back-to";
 import { callAction } from "@/lib/actions/call-action";
+import { RowChevron } from "@/components/ui/link-pending";
 
 /**
  * The conversations list — yuvoy-operator#52 item 5.
@@ -195,7 +195,7 @@ function ThreadRowLink({ row, now }: { row: ThreadRow; now: number }) {
           </span>
         ) : null}
       </span>
-      <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+      <RowChevron className="text-terra-deep size-5 shrink-0" />
     </Link>
   );
 }

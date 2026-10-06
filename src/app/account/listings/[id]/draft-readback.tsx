@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { draftSections, type DraftListing } from "@/lib/services/draft";
 import { Panel } from "@/components/ui/panel";
-import { ChevronRightIcon } from "@/components/ui/icons";
+import { RowChevron } from "@/components/ui/link-pending";
 
 /**
  * A draft listing, as it stands — yuvoy-operator#85 s10.
@@ -107,7 +107,7 @@ export function DraftReadback({
                         className="hover:bg-paper-deep flex min-h-14 items-center justify-between gap-3 py-3 transition-colors duration-200"
                       >
                         {said}
-                        <ChevronRightIcon className="text-forest/70 size-4 shrink-0" />
+                        <RowChevron className="text-forest/70 size-4 shrink-0" />
                       </Link>
                     ) : (
                       <div className="flex min-h-14 items-center py-3">

@@ -2,8 +2,8 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import type { RunDay, RunRow, RunTone } from "@/lib/home/day";
 import { ButtonLink } from "@/components/ui/button";
-import { ChevronRightIcon } from "@/components/ui/icons";
 import { panelClass } from "@/components/ui/panel";
+import { RowChevron } from "@/components/ui/link-pending";
 
 /**
  * Today's departures, with Tomorrow one tap away (yuvoy-operator#96 block 3).
@@ -209,7 +209,7 @@ function DepartureRow({ row }: { row: RunRow }) {
           {row.sold} of {row.seats} seats sold
         </span>
       </span>
-      <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+      <RowChevron className="text-terra-deep size-5 shrink-0" />
     </Link>
   );
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
+import ts from "typescript";
 import { NAV, isBareRoute, isFocusedRoute } from "@/lib/site/nav";
 
 /**
@@ -136,6 +137,113 @@ function chassisOf(boundary: string): "tabs" | "focused" | "door" {
 const chassisFor = (route: string) =>
   isBareRoute(route) ? "door" : isFocusedRoute(route) ? "focused" : "tabs";
 
+/*
+  The links into the screens that keep no boundary. Read from the syntax tree
+  (the TypeScript parser the typecheck already runs), not with patterns: a
+  link's address is an expression, its children are JSX, and both hold
+  words, quotes and comments a pattern would trip on.
+*/
+const SRC = join(process.cwd(), "src");
+
+/** The pending hints a link can carry (`components/ui/link-pending.tsx`). */
+const HINTS = new Set(["RowChevron", "LinkRing"]);
+
+/**
+ * Links that go to one of those screens and carry no ring, on purpose. The
+ * builder's step bar moves between the builder's own steps, drawn as seven
+ * 4px bars: there is no room in one for a 16px ring.
+ */
+const NO_ROOM = ["src/app/account/listings/steps/stepper.tsx"];
+
+/** A route or an address with every dynamic part made alike: `/bookings/[]`. */
+const shapeOf = (route: string) => route.replace(/\[[^\]]*\]/g, "[]");
+
+/** An address as written: a template's substitutions are its dynamic parts. */
+function written(expr: ts.Expression): string | null {
+  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
+    return expr.text;
+  }
+  if (ts.isTemplateExpression(expr)) {
+    return expr.templateSpans.reduce(
+      (text, span) => `${text}[]${span.literal.text}`,
+      expr.head.text,
+    );
+  }
+  return null;
+}
+
+/**
+ * Where a link's `href` can go, as written at the link: the address itself,
+ * either side of a choice, or the first argument of `withFrom` (its second is
+ * where the screen goes back to). An address made anywhere else (a party's
+ * `bookingHref`, a need's `href`) cannot be read here, and those links were
+ * given their ring by hand.
+ */
+function addressesOf(expr: ts.Expression): string[] {
+  if (ts.isParenthesizedExpression(expr)) return addressesOf(expr.expression);
+  if (ts.isConditionalExpression(expr)) {
+    return [...addressesOf(expr.whenTrue), ...addressesOf(expr.whenFalse)];
+  }
+  if (
+    ts.isCallExpression(expr) &&
+    ts.isIdentifier(expr.expression) &&
+    expr.expression.text === "withFrom" &&
+    expr.arguments[0]
+  ) {
+    return addressesOf(expr.arguments[0]);
+  }
+  const address = written(expr);
+  return address === null ? [] : [address.split(/[?#]/)[0]];
+}
+
+const tagOf = (node: ts.JsxOpeningLikeElement) => node.tagName.getText();
+
+/** Whether a link's children draw one of the hints, at any depth. */
+function hinted(node: ts.Node): boolean {
+  if (
+    (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) &&
+    HINTS.has(tagOf(node))
+  ) {
+    return true;
+  }
+  return ts.forEachChild(node, hinted) ?? false;
+}
+
+/** Each `<Link>` and `<ButtonLink>` in a file: its line, where it goes, its hint. */
+function linksIn(file: string) {
+  const tree = ts.createSourceFile(
+    file,
+    readFileSync(file, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const links: { line: number; to: string[]; hinted: boolean }[] = [];
+  const visit = (node: ts.Node) => {
+    const opening = ts.isJsxElement(node)
+      ? node.openingElement
+      : ts.isJsxSelfClosingElement(node)
+        ? node
+        : null;
+    if (opening && ["Link", "ButtonLink"].includes(tagOf(opening))) {
+      const href = opening.attributes.properties.find(
+        (p): p is ts.JsxAttribute =>
+          ts.isJsxAttribute(p) && p.name.getText() === "href",
+      );
+      const init = href?.initializer;
+      const expr = init && ts.isJsxExpression(init) ? init.expression : init;
+      links.push({
+        line: tree.getLineAndCharacterOfPosition(opening.getStart()).line + 1,
+        to: expr ? addressesOf(expr) : [],
+        hinted: ts.isJsxElement(node) && node.children.some(hinted),
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  return links;
+}
+
 describe("loading boundaries", () => {
   /*
     Every tap an operator makes from the chrome. These are the screens the lag
@@ -209,6 +317,37 @@ describe("loading boundaries", () => {
       .filter((r) => NAV.some((item) => item.href === r));
 
     expect(onTheBar).toEqual([]);
+  });
+
+  /*
+    And what the rule costs, paid. With no boundary, nothing is painted
+    between a tap and one of those screens, and Next prefetches none of them,
+    so on one bar of signal a tap on a booking, a departure or a payout looked
+    ignored (the stability audit, P2-1). Every link into one turns the ring a
+    busy button turns, in the link itself: a row's chevron gives way to it,
+    and words are followed by it. A new link into one of those screens without
+    it is a dead tap again, and this names it.
+  */
+  it("and every link into one of them answers its own tap", () => {
+    // Every page that can 404, the builder among them: it also redirects,
+    // which `PAGES` leaves out as a redirect, but it is a screen as well.
+    const detail = new Set(
+      FILES.filter((f) => /\/page\.tsx$/.test(f))
+        .filter(canNotFound)
+        .map(routeOf)
+        .map(shapeOf),
+    );
+    const silent = walk(SRC)
+      .filter((f) => f.endsWith(".tsx") && !f.endsWith(".test.tsx"))
+      .filter((f) => !NO_ROOM.includes(rel(f)))
+      .flatMap((file) =>
+        linksIn(file)
+          .filter((link) => link.to.some((to) => detail.has(shapeOf(to))))
+          .filter((link) => !link.hinted)
+          .map((link) => `${rel(file)}:${link.line}`),
+      );
+
+    expect(silent).toEqual([]);
   });
 
   it("draw the chassis the nav registry says the route wears", () => {

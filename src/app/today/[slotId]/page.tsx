@@ -27,6 +27,7 @@ import { RefreshOnFocus } from "@/components/chrome/refresh-on-focus";
 import { Screen } from "@/components/chrome/screen";
 import { Panel, panelClass } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
+import { LinkRing } from "@/components/ui/link-pending";
 import { readInbox } from "@/lib/site/inbox";
 import { backFrom, hereWith, withFrom } from "@/lib/site/back-to";
 import { KeptOnThisPhone } from "@/components/chrome/kept-on-this-phone";
@@ -384,6 +385,7 @@ export default async function ManifestPage({
           <div className="mt-6">
             <ButtonLink href={withFrom(`/today/${slotId}/boarding`, here)}>
               {departed ? "Close out the boat" : "Start boarding"}
+              <LinkRing button />
             </ButtonLink>
           </div>
         ) : null}

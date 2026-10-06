@@ -33,7 +33,8 @@ import { cn } from "@/lib/cn";
 import { Announcer } from "@/components/ui/announcer";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
-import { ChevronRightIcon, LayersIcon } from "@/components/ui/icons";
+import { LayersIcon } from "@/components/ui/icons";
+import { RowChevron } from "@/components/ui/link-pending";
 import { panelClass } from "@/components/ui/panel";
 import { AnswerAnnouncer } from "@/components/requests/answer-announcer";
 import type { Answer, AnswerKind } from "@/components/requests/answer-store";
@@ -489,7 +490,7 @@ function LinkRow({ need }: { need: LinkNeed }) {
           {need.action}
         </span>
       </span>
-      <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+      <RowChevron className="text-terra-deep size-5 shrink-0" />
     </>
   );
 

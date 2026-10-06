@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel, panelClass } from "@/components/ui/panel";
 import { sendForm } from "@/lib/actions/send-form";
+import { LinkRing } from "@/components/ui/link-pending";
 
 /**
  * Adding departures — the one thing the capacity screen could not do.
@@ -166,6 +167,7 @@ function DepartureRound({
                       className="text-forest font-bold underline underline-offset-2"
                     >
                       Open the listing
+                      <LinkRing />
                     </Link>
                   </>
                 ) : null}

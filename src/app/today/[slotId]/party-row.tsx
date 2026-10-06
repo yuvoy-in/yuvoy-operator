@@ -13,6 +13,7 @@ import { RelayPanel } from "./relay-panel";
 import { CashCollect } from "@/app/bookings/cash-collect";
 import { Button } from "@/components/ui/button";
 import { CheckIcon } from "@/components/ui/icons";
+import { LinkRing } from "@/components/ui/link-pending";
 import { OnlineOnly } from "@/components/ui/online-only";
 import { useOnline } from "@/components/ui/use-online";
 import { useChrome } from "@/components/chrome/chrome-context";
@@ -227,6 +228,7 @@ export function PartyRow({
             className="text-forest tap-target shrink-0 text-sm font-bold underline underline-offset-4"
           >
             Booking
+            <LinkRing />
           </Link>
         ) : null}
       </div>
@@ -242,6 +244,7 @@ export function PartyRow({
           className="text-terra-deep tap-target mt-1 text-sm font-bold underline underline-offset-4"
         >
           {unread === 1 ? "1 new message" : `${unread} new messages`}
+          <LinkRing />
         </Link>
       ) : null}
 

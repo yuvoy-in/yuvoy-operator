@@ -8,6 +8,7 @@ import { marketTime } from "@/lib/format/market-time";
 import { shortDate } from "@/lib/home/words";
 import { withFrom } from "@/lib/site/back-to";
 import { CheckIcon } from "@/components/ui/icons";
+import { LinkRing } from "@/components/ui/link-pending";
 import { DepartureControls } from "./departure-controls";
 import { InspectorSheet } from "./inspector-sheet";
 
@@ -103,11 +104,16 @@ export function DepartureInspector({
                 key={party.bookingId ?? party.reference}
                 className="flex items-center justify-between gap-3 text-sm"
               >
+                {/*
+                  The name is cut short inside the link rather than the link
+                  being cut, so the ring after a long name stays in view.
+                */}
                 <Link
                   href={withFrom(`/bookings/${party.bookingId}`, here)}
-                  className="tap-target decoration-forest/40 hover:decoration-forest min-w-0 truncate font-bold underline underline-offset-4"
+                  className="tap-target decoration-forest/40 hover:decoration-forest min-w-0 font-bold underline underline-offset-4"
                 >
-                  {party.name}
+                  <span className="truncate">{party.name}</span>
+                  <LinkRing />
                 </Link>
                 <span className="text-forest/80 flex shrink-0 items-center gap-1.5">
                   {party.guests ?? 0} {party.guests === 1 ? "guest" : "guests"}

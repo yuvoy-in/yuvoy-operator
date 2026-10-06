@@ -19,6 +19,7 @@ import { useNoteSeatsSaved } from "./inspector-sheet";
 import { forgetSeatsSent, noteSeatsSent } from "./seats-sent";
 import { withFrom } from "@/lib/site/back-to";
 import { sendForm } from "@/lib/actions/send-form";
+import { LinkRing } from "@/components/ui/link-pending";
 
 /**
  * Everything inside an opened departure on the calendar (yuvoy-operator#84
@@ -135,6 +136,7 @@ export function DepartureControls({
         className="text-forest decoration-forest/40 inline-flex min-h-11 items-center text-sm font-bold underline underline-offset-4"
       >
         Who is booked
+        <LinkRing />
       </Link>
 
       {canManage && !calledOff ? (

@@ -47,6 +47,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Panel, panelClass } from "@/components/ui/panel";
 import { Chip } from "@/components/ui/chip";
 import { SettingsIcon } from "@/components/ui/icons";
+import { LinkRing } from "@/components/ui/link-pending";
 import { ProfileActions } from "@/app/account/profile-actions";
 import { AddSheet } from "@/app/account/add-sheet";
 import { About } from "@/app/account/about";
@@ -474,9 +475,13 @@ function ListingsGrid({
               )}
               <span className="flex flex-col items-start gap-1.5 p-3">
                 <Chip tone={attention ? "accent" : "neutral"}>{state}</Chip>
-                {/* The listing's own name, in the host's voice (v3.2). */}
+                {/*
+                  The listing's own name, in the host's voice (v3.2), and the
+                  ring after it while the listing is on its way.
+                */}
                 <span className="voice-host text-sm leading-snug text-balance">
                   {listing.title}
+                  <LinkRing />
                 </span>
                 {line ? (
                   <span

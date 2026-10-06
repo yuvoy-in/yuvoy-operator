@@ -6,6 +6,7 @@ import { CashCollect } from "@/app/bookings/cash-collect";
 import type { CashNeed, CashParty } from "@/lib/home/needs";
 import { Button } from "@/components/ui/button";
 import { BanknoteIcon } from "@/components/ui/icons";
+import { LinkRing } from "@/components/ui/link-pending";
 import { panelClass } from "@/components/ui/panel";
 
 /**
@@ -102,6 +103,7 @@ export function CashCard({
         className="text-forest tap-target mt-3 text-sm font-bold underline underline-offset-4"
       >
         Open the departure
+        <LinkRing />
       </Link>
     </li>
   );

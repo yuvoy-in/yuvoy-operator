@@ -24,11 +24,11 @@ import { dayCaption, marketTime } from "@/lib/format/market-time";
 import { markChange } from "@/lib/motion/mark";
 import { Announcer } from "@/components/ui/announcer";
 import { Button } from "@/components/ui/button";
-import { ChevronRightIcon } from "@/components/ui/icons";
 import { panelClass } from "@/components/ui/panel";
 import { StatusChip } from "@/components/ui/status-chip";
 import { withFrom } from "@/lib/site/back-to";
 import { callAction } from "@/lib/actions/call-action";
+import { RowChevron } from "@/components/ui/link-pending";
 
 /**
  * The chip each booking was last drawn with, by booking, for as long as the
@@ -275,7 +275,7 @@ export function BookingList({
                           tone={chip.live ? "accent" : "neutral"}
                         />
                       ) : null}
-                      <ChevronRightIcon className="text-terra-deep size-5" />
+                      <RowChevron className="text-terra-deep size-5" />
                     </span>
                   </Link>
                 </li>

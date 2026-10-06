@@ -613,6 +613,16 @@
   }
 
   /*
+    What the ring takes the place of, where it has a place already: a row's
+    chevron, while the screen the row opens is on its way (`RowChevron`). It
+    stays for the same show delay and leaves as the ring arrives, so a fast
+    answer never blinks it either.
+  */
+  .motion-busy-hide {
+    animation: motion-out 150ms var(--ease-exit) 300ms forwards;
+  }
+
+  /*
     A tick that draws itself (O02's receipt, O04's "Now offering 10."), on a
     path given `pathLength="1"`: 200ms, the portal's ceiling, a breath after
     the line it sits in has arrived. The breath is each experiment's own
@@ -660,6 +670,10 @@
 
     .motion-busy-ring {
       animation: motion-in 120ms linear 300ms backwards;
+    }
+
+    .motion-busy-hide {
+      animation: motion-out 120ms linear 300ms forwards;
     }
 
     .motion-tick path {

@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { InboxIcon } from "@/components/ui/icons";
+import { LinkRing } from "@/components/ui/link-pending";
 import { textareaClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 import { withFrom } from "@/lib/site/back-to";
@@ -230,6 +231,7 @@ export function MessageCard({
             className="text-forest tap-target mt-2 text-sm font-bold underline underline-offset-4"
           >
             The whole conversation and the booking
+            <LinkRing />
           </Link>
 
           {thread.canWrite ? (
