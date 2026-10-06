@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, buttonClass } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -43,6 +43,15 @@ import type { ListingOption } from "@/components/media/attach-form";
  * something. It is anchored to the button now, below it, and closes on a
  * second tap, on Escape (focus goes back to the button) and on a tap anywhere
  * else.
+ *
+ * ## Add a listing stays until the builder is on the glass
+ *
+ * It closed the menu and then asked for the builder, so on one bar of signal
+ * the tap took everything off the screen and put nothing in its place until
+ * the builder came (the stability audit, P2-1). The menu now stays, and the
+ * choice is a busy button for as long as the navigation runs: the router
+ * moves inside a transition, and the transition ends when the new screen
+ * paints.
  */
 export function AddSheet({
   canManage,
@@ -54,6 +63,7 @@ export function AddSheet({
 }) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [going, go] = useTransition();
   const router = useRouter();
   const anchor = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -108,10 +118,8 @@ export function AddSheet({
           >
             <Button
               variant="secondary"
-              onClick={() => {
-                setOpen(false);
-                router.push("/account/listings/new");
-              }}
+              pending={going}
+              onClick={() => go(() => router.push("/account/listings/new"))}
             >
               Add a listing
             </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { submitListing, type SubmitState } from "./actions";
 import { sendLabel } from "@/lib/services/draft";
@@ -38,6 +38,7 @@ export function SubmitButton({
     {},
   );
   const router = useRouter();
+  const [fixing, fix] = useTransition();
 
   if (state.done) {
     return (
@@ -67,14 +68,19 @@ export function SubmitButton({
           {/*
             A refusal that names missing fields has one useful next step, and it
             is not reading the list again: it is the form that fills them in.
+            Busy until the builder is on the glass, which keeps no loading
+            boundary (it can answer 404): a tap that painted nothing for as
+            long as the builder took looked ignored (the stability audit,
+            P2-1).
           */}
           {state.missing && state.missing.length > 0 ? (
             <Button
               variant="secondary"
               block={false}
               className="mt-2"
+              pending={fixing}
               onClick={() =>
-                router.push(`/account/listings/${experienceId}/edit`)
+                fix(() => router.push(`/account/listings/${experienceId}/edit`))
               }
             >
               Fix it
