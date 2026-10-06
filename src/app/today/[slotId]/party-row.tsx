@@ -148,6 +148,11 @@ export function PartyRow({
         if (outcome === "arrived" && answer.retryable) return keep();
         return answer;
       } catch {
+        /*
+          A session that ended lands here too: Next has already followed the
+          action's redirect to sign in, so keeping the check-in strands
+          nobody and sends it once they are back (party-row.test.tsx).
+        */
         return outcome === "arrived"
           ? keep()
           : {

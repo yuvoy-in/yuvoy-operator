@@ -35,7 +35,9 @@ export const senders: Senders = {
         ? { kind: "sent", earlier: { at: answer.arrivedAt } }
         : { kind: "sent" };
     } catch {
-      // The request never came back: the phone is offline again.
+      // The request never came back: the phone is offline again. Or the
+      // session ended, and Next is already on its way to sign in: kept, it
+      // goes once they are back (party-row.test.tsx).
       return { kind: "retry" };
     }
   },
