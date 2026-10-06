@@ -62,9 +62,38 @@ const routeOf = (page: string) =>
  * A redirect is not a screen. `/`, `/services/activities` and
  * `/services/reels` exist only to send an old URL somewhere current; they
  * render no UI, so a skeleton for them would be a skeleton for nothing.
+ *
+ * A page that redirects only on a condition (no session, a listing in
+ * review) and draws a screen otherwise IS a screen, and every rule here holds
+ * it. Leaving out every page that said `redirect(` anywhere, as this did,
+ * left out the builder, which can also answer 404, so a boundary above it
+ * would have streamed that 404 as a 200 with nothing here to say so; and
+ * Business, verification and sign in went unchecked for their chassis.
  */
-const isRedirect = (file: string) =>
-  /\bredirect\(/.test(readFileSync(file, "utf8"));
+function isRedirect(file: string): boolean {
+  let draws = false;
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isJsxElement(node) ||
+      ts.isJsxSelfClosingElement(node) ||
+      ts.isJsxFragment(node)
+    ) {
+      draws = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(
+    ts.createSourceFile(
+      file,
+      readFileSync(file, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    ),
+  );
+  return !draws;
+}
 
 /**
  * ## The redirect half of this was solved, not worked around
@@ -147,14 +176,7 @@ const chassisFor = (route: string) =>
 const SRC = join(process.cwd(), "src");
 
 /** The pending hints a link can carry (`components/ui/link-pending.tsx`). */
-const HINTS = new Set(["RowChevron", "LinkRing"]);
-
-/**
- * Links that go to one of those screens and carry no ring, on purpose. The
- * builder's step bar moves between the builder's own steps, drawn as seven
- * 4px bars: there is no room in one for a 16px ring.
- */
-const NO_ROOM = ["src/app/account/listings/steps/stepper.tsx"];
+const HINTS = new Set(["RowChevron", "LinkRing", "SegmentDot"]);
 
 /** A route or an address with every dynamic part made alike: `/bookings/[]`. */
 const shapeOf = (route: string) => route.replace(/\[[^\]]*\]/g, "[]");
@@ -357,17 +379,9 @@ describe("loading boundaries", () => {
     it is a dead tap again, and this names it.
   */
   it("and every link into one of them answers its own tap", () => {
-    // Every page that can 404, the builder among them: it also redirects,
-    // which `PAGES` leaves out as a redirect, but it is a screen as well.
-    const detail = new Set(
-      FILES.filter((f) => /\/page\.tsx$/.test(f))
-        .filter(canNotFound)
-        .map(routeOf)
-        .map(shapeOf),
-    );
+    const detail = new Set(PAGES.filter(canNotFound).map(routeOf).map(shapeOf));
     const silent = walk(SRC)
       .filter((f) => f.endsWith(".tsx") && !f.endsWith(".test.tsx"))
-      .filter((f) => !NO_ROOM.includes(rel(f)))
       .flatMap((file) =>
         linksIn(file)
           .filter((link) => link.to.some((to) => detail.has(shapeOf(to))))

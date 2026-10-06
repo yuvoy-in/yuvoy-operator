@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { STEPS, STEP_LABEL, type Step } from "@/lib/services/builder";
 import { cn } from "@/lib/cn";
+import { SegmentDot } from "@/components/ui/link-pending";
 
 /**
  * Where you are in the seven, said once (yuvoy-operator#85 s11).
@@ -61,40 +62,42 @@ export function Stepper({
             and the two are not the same measurement.
           */
           const inside = "flex h-11 flex-col items-center justify-center gap-1";
-          const body = (
-            <>
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "w-full rounded-full transition-[height,background-color] duration-200",
-                  open ? "h-1.5" : "h-1",
-                  short ? "bg-terra-deep" : open ? "bg-forest" : "bg-forest/20",
-                )}
-              />
-              {/*
-                Drawn either way, transparent when there is nothing to mark, so
-                a dot appearing never moves the bar it sits under.
-              */}
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "size-1 rounded-full",
-                  short ? "bg-terra-deep" : "bg-transparent",
-                )}
-              />
-              <span className="sr-only">{name}</span>
-            </>
+          const bar = (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "w-full rounded-full transition-[height,background-color] duration-200",
+                open ? "h-1.5" : "h-1",
+                short ? "bg-terra-deep" : open ? "bg-forest" : "bg-forest/20",
+              )}
+            />
           );
+          /*
+            Drawn either way, transparent when there is nothing to mark, so
+            a dot appearing never moves the bar it sits under.
+          */
+          const dot = cn(
+            "size-1 rounded-full",
+            short ? "bg-terra-deep" : "bg-transparent",
+          );
+          const label = <span className="sr-only">{name}</span>;
 
           return (
             <li key={step} className="flex-1">
               {id ? (
+                /*
+                  The builder's steps keep no loading boundary (each can
+                  answer 404), so nothing is painted between this tap and the
+                  step: the dot gives way to the busy ring while it comes.
+                */
                 <Link
                   href={`/account/listings/${id}/edit?step=${step}`}
                   aria-current={open ? "step" : undefined}
                   className={inside}
                 >
-                  {body}
+                  {bar}
+                  <SegmentDot className={dot} />
+                  {label}
                 </Link>
               ) : (
                 /*
@@ -105,7 +108,9 @@ export function Stepper({
                   aria-current={open ? "step" : undefined}
                   className={inside}
                 >
-                  {body}
+                  {bar}
+                  <span aria-hidden="true" className={dot} />
+                  {label}
                 </span>
               )}
             </li>

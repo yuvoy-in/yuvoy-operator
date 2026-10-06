@@ -67,3 +67,35 @@ export function LinkRing({ button = false }: { button?: boolean }) {
     />
   ) : null;
 }
+
+/**
+ * The dot under a segment of the builder's step bar, which gives way to the
+ * ring while that step is on its way.
+ *
+ * A segment is a 4px bar in a 44px target: no room in the bar for a 16px
+ * ring, but room under it, where the dot that marks a step still missing
+ * something sits. The ring hangs from the dot's top, out of the flow, so the
+ * bar and its neighbours never move, and the dot leaves as the ring arrives,
+ * as a row's chevron does.
+ */
+export function SegmentDot({ className }: { className?: string }) {
+  const { pending } = useLinkStatus();
+  return (
+    <span className="relative flex">
+      <span
+        aria-hidden="true"
+        data-motion={pending ? "" : undefined}
+        className={cn(className, pending && "motion-busy-hide")}
+      />
+      {pending ? (
+        // The ring turns (a transform), so its own box cannot be the one moved.
+        <span
+          aria-hidden="true"
+          className="absolute top-0 left-1/2 -translate-x-1/2"
+        >
+          <span data-motion="" className="motion-busy-ring block" />
+        </span>
+      ) : null}
+    </span>
+  );
+}

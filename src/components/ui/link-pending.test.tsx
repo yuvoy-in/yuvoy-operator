@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import Link from "next/link";
-import { LinkRing, RowChevron } from "./link-pending";
+import { LinkRing, RowChevron, SegmentDot } from "./link-pending";
 
 /*
   A tap into a screen that keeps no loading boundary (the stability audit,
@@ -95,5 +95,50 @@ describe("the ring after a link's words", () => {
     const ring = container.querySelector(".motion-busy-ring");
     expect(ring).not.toBeNull();
     expect(ring).not.toHaveClass("ml-1.5");
+  });
+});
+
+/*
+  The builder's step bar: seven 4px bars, each a 44px link to a step that
+  keeps no loading boundary. It was the one silent tap left, exempted for
+  having no room in a bar for the ring; there is room under it, where the
+  dot sits.
+*/
+describe("a step bar segment's dot", () => {
+  function segment() {
+    return (
+      <Link
+        href="/account/listings/exp_1/edit?step=selling"
+        className="flex h-11 flex-col items-center justify-center gap-1"
+      >
+        <span aria-hidden="true" className="h-1 w-full" />
+        <SegmentDot className="bg-terra-deep size-1 rounded-full" />
+        <span className="sr-only">Step 2, Selling</span>
+      </Link>
+    );
+  }
+
+  it("is only the dot while nothing is on its way", () => {
+    const { container } = render(segment());
+    expect(container.querySelector(".motion-busy-ring")).toBeNull();
+    const dot = container.querySelector(".size-1");
+    expect(dot).not.toHaveClass("motion-busy-hide");
+    expect(dot).not.toHaveAttribute("data-motion");
+  });
+
+  it("gives way to the ring, hung from the dot out of the flow", () => {
+    status.pending = true;
+    const { container } = render(segment());
+    const ring = container.querySelector(".motion-busy-ring");
+    const dot = container.querySelector(".size-1");
+    expect(ring).toHaveAttribute("data-motion");
+    expect(dot).toHaveClass("motion-busy-hide", "bg-terra-deep");
+    expect(dot).toHaveAttribute("data-motion");
+    // Out of the flow and hidden from a reader: the bar above never moves.
+    const hanger = ring?.parentElement;
+    expect(hanger).toHaveClass("absolute", "top-0");
+    expect(hanger).toHaveAttribute("aria-hidden", "true");
+    expect(hanger?.parentElement).toBe(dot?.parentElement);
+    expect(screen.getByRole("link", { name: "Step 2, Selling" })).toBeVisible();
   });
 });
