@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { cancelChange, type CancelState } from "./actions";
-import { describeChange, type ChangeState } from "@/lib/account/bank";
+import { describeChange, isOpen, type ChangeState } from "@/lib/account/bank";
 import { marketTime, marketDay } from "@/lib/format/market-time";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -106,6 +106,15 @@ export function ChangePanel({
         <p className="text-forest/90 mt-2 font-mono text-sm">{summary}</p>
       ) : null}
       <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
+        {/*
+          Said here because this panel is what raising a change leaves on
+          screen: the page revalidates and the panel is the confirmation (see
+          `changeBank`). The API holds the business's payouts while a bank
+          change is in any open state (`ErrPayoutOnHold`), so every open state
+          says so, and a stopped one, drawn above, does not
+          (yuvoy-operator#143).
+        */}
+        {isOpen(state) ? "Payouts are on hold until it settles. " : null}
         {body}
       </p>
 

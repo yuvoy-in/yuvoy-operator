@@ -5,6 +5,7 @@ import { saveSelling, type StepState } from "../builder-actions";
 import { PRICING_UNITS } from "@/lib/services/listings";
 import { commissionPreview, formatRate } from "@/lib/services/commission";
 import { formatPaise } from "@/lib/format/money";
+import { paiseToPriceText, priceToPaise } from "@/lib/money/price";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
@@ -14,8 +15,8 @@ import { FieldLabel } from "./field-help";
  * Step 2 — what it costs, and what the business receives.
  *
  * The "you receive" line follows the price as it is typed, in integer paise
- * rounded once, because a preview that disagrees with the settlement by a
- * paisa invites a conversation about whether we can count. It is drawn only
+ * read exactly as the save reads them, because a preview that disagrees with
+ * the settlement by a paisa invites a conversation about whether we can count. It is drawn only
  * when the rate is known: hardcoding 15% was refused on 11 September, since a
  * business on its own negotiated rate would be shown a figure that is wrong
  * about its own money.
@@ -49,16 +50,10 @@ export function SellingStep({
     saveSelling,
     {},
   );
-  const [price, setPrice] = useState(
-    typeof listing.unitPricePaise === "number" && listing.unitPricePaise > 0
-      ? String(Math.round(listing.unitPricePaise / 100))
-      : "",
-  );
-  const rupees = Number(price.replace(/[^\d.]/g, ""));
-  const split = commissionPreview(
-    Number.isFinite(rupees) && rupees > 0 ? Math.round(rupees * 100) : null,
-    commissionRateBps,
-  );
+  const [price, setPrice] = useState(paiseToPriceText(listing.unitPricePaise));
+  // Read as the save reads it (yuvoy-operator#144): no line for a price the
+  // save would refuse.
+  const split = commissionPreview(priceToPaise(price), commissionRateBps);
   const { marked, describedBy, needed } = fieldMarks(state.fields, flagged);
 
   /*
