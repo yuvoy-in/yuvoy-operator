@@ -175,3 +175,50 @@ describe("business details: yuvoy-operator#89 f10", () => {
     ).toBeNull();
   });
 });
+
+/*
+  The stability audit, P1-1. React resets a form when its action resolves,
+  refusals included: a GSTIN refused for one character took the registered
+  name, the entity type and the whole address back to what was on file.
+*/
+describe("a refused change to the details", () => {
+  it("keeps what was typed, the entity type included", async () => {
+    saveDetails.mockResolvedValue({
+      field: "gstin",
+      message: "That GSTIN is not 15 characters.",
+    });
+    render(<DetailsForm details={DETAILS} values={VALUES} canManage />);
+    const type = (label: string, value: string) =>
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    type("Registered name", "Nemo Reef Watersports LLP");
+    type("How it is registered", "llp");
+    type("GSTIN", "35ABCDE1234F1Z");
+    type("Area", "Govind Nagar");
+    submit();
+
+    expect(
+      await screen.findByText("That GSTIN is not 15 characters."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Registered name")).toHaveValue(
+      "Nemo Reef Watersports LLP",
+    );
+    expect(screen.getByLabelText("How it is registered")).toHaveValue("llp");
+    expect(screen.getByLabelText("GSTIN")).toHaveValue("35ABCDE1234F1Z");
+    expect(screen.getByLabelText("Area")).toHaveValue("Govind Nagar");
+    expect(screen.getByLabelText("Town or village")).toHaveValue("Havelock");
+  });
+
+  it("says no signal on the form when the request never came back", async () => {
+    saveDetails.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<DetailsForm details={DETAILS} values={VALUES} canManage />);
+    fireEvent.change(screen.getByLabelText("Area"), {
+      target: { value: "Govind Nagar" },
+    });
+    submit();
+
+    expect(
+      await screen.findByText("No signal. Nothing was saved. Try again."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Area")).toHaveValue("Govind Nagar");
+  });
+});

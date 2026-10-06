@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { ReviewPanel } from "@/components/account/review-panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * The legal details an invoice and a payout both need.
@@ -47,10 +48,20 @@ export function DetailsForm({
   /** A change waiting on us, or refused. Read on every visit; see `ReviewPanel`. */
   review?: ReviewNote | null;
 }) {
-  const [state, act, pending] = useActionState<DetailsState, FormData>(
-    saveDetails,
+  const [state, act, pending] = useActionState(
+    sendForm<DetailsState>(saveDetails, () => ({
+      message: "No signal. Nothing was saved. Try again.",
+    })),
     {},
   );
+  /*
+    What the form shows: what is on file, under whatever a refusal handed back
+    (`sendForm`), read in place. A GSTIN refused for one character used to
+    take the registered name and the whole address back with it. The entity
+    type is a select, which React reads only when it mounts, so it alone is
+    keyed on the attempt.
+  */
+  const shown: DetailsFormValues = { ...values, ...state.typed };
   /*
     The receipt the operator last put away, remembered by identity.
     `useActionState` keeps its last answer for the life of the component, so
@@ -158,7 +169,7 @@ export function DetailsForm({
         <Field
           name="legalName"
           label="Registered name"
-          defaultValue={values.legalName}
+          defaultValue={shown.legalName}
           missing={isMissing(details, "legalName")}
           invalid={state.field === "legalName"}
           hint="As it appears on your registration, not the name travellers see."
@@ -171,10 +182,11 @@ export function DetailsForm({
             {isMissing(details, "entityType") ? <Needed /> : null}
           </label>
           <select
+            key={state.attempt ?? 0}
             id="entityType"
             name="entityType"
             required
-            defaultValue={values.entityType}
+            defaultValue={shown.entityType}
             className={inputClass("mt-2")}
             aria-invalid={state.field === "entityType" || undefined}
           >
@@ -190,7 +202,7 @@ export function DetailsForm({
         <Field
           name="gstin"
           label="GSTIN"
-          defaultValue={values.gstin}
+          defaultValue={shown.gstin}
           missing={false}
           invalid={state.field === "gstin"}
           /*
@@ -207,7 +219,7 @@ export function DetailsForm({
           <Field
             name="addressLine1"
             label="Street or building"
-            defaultValue={values.addressLine1}
+            defaultValue={shown.addressLine1}
             missing={isMissing(details, "addressLine1")}
             invalid={state.field === "addressLine1"}
             required
@@ -215,14 +227,14 @@ export function DetailsForm({
           <Field
             name="addressLine2"
             label="Area"
-            defaultValue={values.addressLine2}
+            defaultValue={shown.addressLine2}
             missing={false}
             invalid={false}
           />
           <Field
             name="locality"
             label="Town or village"
-            defaultValue={values.locality}
+            defaultValue={shown.locality}
             missing={isMissing(details, "locality")}
             invalid={state.field === "locality"}
             required
@@ -230,7 +242,7 @@ export function DetailsForm({
           <Field
             name="region"
             label="State or union territory"
-            defaultValue={values.region}
+            defaultValue={shown.region}
             missing={isMissing(details, "region")}
             invalid={state.field === "region"}
             required
@@ -238,7 +250,7 @@ export function DetailsForm({
           <Field
             name="postalCode"
             label="PIN code"
-            defaultValue={values.postalCode}
+            defaultValue={shown.postalCode}
             missing={isMissing(details, "postalCode")}
             invalid={state.field === "postalCode"}
             required
