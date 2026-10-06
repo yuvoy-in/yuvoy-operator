@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 import { cspHeaders } from "./src/lib/site/csp";
-import { assertNoSecretPublicVars } from "./src/lib/site/public-env";
+import {
+  assertNoMocksInProduction,
+  assertNoSecretPublicVars,
+} from "./src/lib/site/public-env";
 
 /*
   Before anything is built: a public variable stored in Vercel as a Secret
@@ -8,6 +11,8 @@ import { assertNoSecretPublicVars } from "./src/lib/site/public-env";
   and name it instead. See src/lib/site/public-env.ts.
 */
 assertNoSecretPublicVars();
+// And fixtures must never answer on the real domain. Same file.
+assertNoMocksInProduction();
 
 /**
  * The operator portal is a higher-value target than the traveller app.
