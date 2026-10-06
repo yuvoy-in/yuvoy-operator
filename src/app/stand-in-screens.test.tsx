@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 
 let pathname = "/today";
 vi.mock("next/navigation", () => ({ usePathname: () => pathname }));
@@ -12,6 +12,7 @@ const { TabBar } = await import("@/components/chrome/tab-bar");
 
 afterEach(() => {
   pathname = "/today";
+  vi.restoreAllMocks();
 });
 
 /*
@@ -23,7 +24,7 @@ afterEach(() => {
   the bar beside them, as the app shell draws it.
 */
 const STAND_INS: [string, () => ReactNode][] = [
-  ["the error screen", () => <ErrorScreen reset={() => {}} />],
+  ["the error screen", () => <ErrorScreen retry={() => {}} />],
   ["the missing page", () => <NotFound />],
 ];
 
@@ -79,5 +80,45 @@ describe.each(STAND_INS)("%s", (_, standIn) => {
     const header = container.querySelector("header")!;
     expect(within(header).getByAltText("Yuvoy")).toBeInTheDocument();
     expect(within(header).queryByRole("link")).toBeNull();
+  });
+});
+
+/*
+  Try again called `reset()`, which draws the failed page again from what
+  the browser holds, so a server render that had failed failed again at once
+  (the stability audit). The waiting and the busy state are `useRetry`'s,
+  tested beside it.
+*/
+describe("the error screen's Try again", () => {
+  it("reads the page again, not the failure it holds", () => {
+    const retry = vi.fn();
+    const reset = vi.fn();
+    // Next hands an error screen both.
+    const props = { retry, reset } as { retry: () => void };
+    draw(() => <ErrorScreen {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(reset).not.toHaveBeenCalled();
+  });
+
+  it("with no signal, says so in place, and holds the way back", () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    const retry = vi.fn();
+    draw(() => <ErrorScreen retry={retry} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(retry).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("No signal. It tries again once you are back online."),
+    ).toHaveAttribute("role", "status");
+
+    // Followed, it would be the browser's own "no internet" page.
+    const followed = fireEvent.click(
+      screen.getByRole("link", { name: "Back to today" }),
+    );
+    expect(followed).toBe(false);
+    expect(
+      screen.getByText("No signal. That opens once you are back online."),
+    ).toHaveAttribute("role", "status");
   });
 });
