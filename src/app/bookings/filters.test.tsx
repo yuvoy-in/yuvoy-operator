@@ -18,6 +18,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const { BookingFilters } = await import("./filters");
+const { PillPanel, PillSwap } = await import("./pill-row");
 
 const NONE: Filters = { q: "", experienceId: "", from: "", to: "" };
 const TODAY = "2026-10-06";
@@ -114,5 +115,36 @@ describe("the address is the truth", () => {
 
     expect(box()).toHaveValue("");
     expect(replace).not.toHaveBeenCalled();
+  });
+});
+
+/*
+  A search on one bar of signal replaced the address outside any transition,
+  so the old rows sat there looking like the answer for as long as the server
+  took (the stability audit, P3-2). The router moves inside a transition; here
+  the new address never lands, as on a slow answer.
+*/
+describe("the rows while a search is on its way", () => {
+  it("say they are waiting once it is slow, as they do for a pill", () => {
+    replace.mockImplementation(() => new Promise(() => {}));
+    render(
+      <PillSwap>
+        {at(NONE)}
+        <PillPanel view="upcoming">
+          <p>Rows for upcoming</p>
+        </PillPanel>
+      </PillSwap>,
+    );
+    const rows = screen.getByText("Rows for upcoming").parentElement!;
+
+    fireEvent.change(box(), { target: { value: "asha" } });
+    act(() => vi.advanceTimersByTime(300));
+    expect(replace).toHaveBeenCalledWith("/bookings?q=asha&view=upcoming", {
+      scroll: false,
+    });
+    act(() => vi.advanceTimersByTime(299));
+    expect(rows).not.toHaveAttribute("aria-busy");
+    act(() => vi.advanceTimersByTime(1));
+    expect(rows).toHaveAttribute("aria-busy", "true");
   });
 });

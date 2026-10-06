@@ -13,6 +13,7 @@ import {
   type Filters,
 } from "@/lib/bookings/list";
 import { inputClass } from "@/components/ui/input";
+import { useRowsNavigation } from "./pill-row";
 
 /**
  * The search box, the two filters and Clear — yuvoy-operator#57 items 4 to 6.
@@ -33,6 +34,13 @@ import { inputClass } from "@/components/ui/input";
  * 300 ms, so a five-letter name is one request rather than five. `replace`
  * because every keystroke would otherwise be a history entry, and back from a
  * booking would walk letter by letter out of a word somebody typed.
+ *
+ * ## The rows say they are waiting for it
+ *
+ * Every change of the address runs in the transition the pills' rows watch
+ * (`useRowsNavigation`), so a search on one bar of signal dims the old rows
+ * after 300ms, as a pill's tap does, rather than leaving them looking like
+ * the answer (the stability audit, P3-2).
  */
 export function BookingFilters({
   filters,
@@ -50,6 +58,7 @@ export function BookingFilters({
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  const navigate = useRowsNavigation();
   const [text, setText] = useState(filters.q);
   const choice = choiceFor(filters, today, tomorrow);
   const [picking, setPicking] = useState(choice === "pick");
@@ -107,9 +116,11 @@ export function BookingFilters({
         else next.delete(key);
       }
       if (view) next.set("view", view);
-      router.replace(`/bookings?${next.toString()}`, { scroll: false });
+      navigate(() =>
+        router.replace(`/bookings?${next.toString()}`, { scroll: false }),
+      );
     },
-    [params, view, router],
+    [params, view, router, navigate],
   );
 
   /*
