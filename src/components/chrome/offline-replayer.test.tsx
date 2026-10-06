@@ -19,6 +19,7 @@ vi.mock("@/app/bookings/cash-actions", () => ({
 const { OfflineReplayer, senders } = await import("./offline-replayer");
 const { ChromeProvider } = await import("./chrome-context");
 const { offlineWrites } = await import("@/lib/site/offline-writes");
+const { resetSchedule } = await import("./refresh-schedule");
 
 const TAPPED = Date.parse("2026-10-04T01:00:00Z");
 
@@ -57,6 +58,7 @@ beforeEach(() => {
   offlineWrites.forget();
 });
 afterEach(() => {
+  resetSchedule();
   vi.useRealTimers();
   vi.restoreAllMocks();
   refresh.mockReset();

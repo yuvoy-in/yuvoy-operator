@@ -14,6 +14,7 @@ vi.mock("next/navigation", () => ({
 const { OnlineOnly } = await import("@/components/ui/online-only");
 const { ReadOnlyWhenOffline } = await import("./read-only-when-offline");
 const { RefreshOnFocus } = await import("./refresh-on-focus");
+const { resetSchedule } = await import("./refresh-schedule");
 const { InspectorSheet } = await import("@/app/calendar/inspector-sheet");
 
 let online = true;
@@ -24,6 +25,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // The screen's one re-read schedule lives as long as the page does.
+  resetSchedule();
   vi.restoreAllMocks();
   refresh.mockReset();
   replace.mockReset();
