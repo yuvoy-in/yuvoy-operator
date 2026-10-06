@@ -1,6 +1,6 @@
 "use client";
 
-import { Screen } from "@/components/chrome/screen";
+import { StandInScreen } from "@/components/chrome/stand-in-screen";
 import { Button, ButtonLink } from "@/components/ui/button";
 
 /**
@@ -26,10 +26,17 @@ import { Button, ButtonLink } from "@/components/ui/button";
  * following the rule the rest of the portal already keeps: "a correlation id
  * is for a support conversation that happens later — it goes to the logs, not
  * into sunlight."
+ *
+ * ## It wears the chassis of the screen it replaced
+ *
+ * It drew a signed-out door's on every route, so on a tab root the strip lost
+ * the business and the inbox, and the bar, which stays there, covered the
+ * foot of a sheet that left it no room (the stability audit, P3-6). It reads
+ * the route from the address instead (`StandInScreen`).
  */
 export default function Error({ reset }: { reset: () => void }) {
   return (
-    <Screen nav="none" width="sm">
+    <StandInScreen width="sm">
       <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         That did not load
       </h1>
@@ -51,6 +58,6 @@ export default function Error({ reset }: { reset: () => void }) {
         marked somebody off), check whether it took effect before doing it
         again.
       </p>
-    </Screen>
+    </StandInScreen>
   );
 }

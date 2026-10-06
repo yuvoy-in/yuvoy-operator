@@ -265,3 +265,24 @@ export function isBareRoute(pathname: string | null | undefined): boolean {
   if (!pathname) return false;
   return BARE_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
+
+/**
+ * The chassis a route's screens wear, in `Screen`'s words: `"tabs"` on a tab
+ * root, which carries the bar and leaves room for it; `"focused"` on a screen
+ * gone into, which has no bar and a back disc (or, where back cannot be
+ * known, the disc's place); `"none"` on a signed-out door, which draws the
+ * mark alone.
+ *
+ * Each page says it itself, a focused one with its own way back. The bar
+ * reads it here, and so does a screen that stands in for whichever page was
+ * asked for (the error screen, the missing page), which cannot know its page
+ * but can read the address. One answer, so a stand-in leaves room for the bar
+ * exactly where the bar is drawn (the stability audit, P3-6).
+ */
+export function screenNavFor(
+  pathname: string | null | undefined,
+): "tabs" | "focused" | "none" {
+  if (isBareRoute(pathname)) return "none";
+  if (isFocusedRoute(pathname)) return "focused";
+  return "tabs";
+}
