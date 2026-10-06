@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import type { StepState } from "../builder-actions";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 
@@ -29,6 +30,7 @@ export function StepShell({
   action,
   pending,
   message,
+  attempt,
   back,
   nextLabel = "Next",
   children,
@@ -39,6 +41,14 @@ export function StepShell({
   action: (formData: FormData) => void;
   pending: boolean;
   message?: string;
+  /**
+   * The step's refusals, counted by `sendForm`, for a step whose fields a
+   * reset cannot bring back in place: a select, a choice held in state, or a
+   * number field. Its form remounts onto what was typed instead (see
+   * `sendForm`). Location leaves it out, because the meeting pin's map would
+   * load again with every refusal, and keys its one select itself.
+   */
+  attempt?: number;
   /** Where Back goes. Absent on the first step, which has nowhere to go. */
   back?: string;
   nextLabel?: string;
@@ -53,7 +63,11 @@ export function StepShell({
         </p>
       ) : null}
 
-      <form action={action} className={blurb ? "mt-5 space-y-5" : "space-y-5"}>
+      <form
+        key={attempt ?? 0}
+        action={action}
+        className={blurb ? "mt-5 space-y-5" : "space-y-5"}
+      >
         {children}
 
         {message ? (
@@ -83,4 +97,12 @@ export function StepShell({
       </form>
     </Panel>
   );
+}
+
+/**
+ * Every step's refusal for a save that never reached us: the sentence
+ * `builder-actions.ts` already says when it cannot reach the API.
+ */
+export function notSaved(): StepState {
+  return { message: "No signal. Nothing was saved. Try again." };
 }

@@ -8,7 +8,8 @@ import {
   type Vocabulary,
 } from "@/lib/services/vocabulary";
 import { inputClass } from "@/components/ui/input";
-import { StepShell } from "./step-shell";
+import { sendForm } from "@/lib/actions/send-form";
+import { notSaved, StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
 import { FieldLabel, Why } from "./field-help";
 
@@ -46,10 +47,17 @@ export function BasicsStep({
   /** The field Edit was opened for, still needed: marked in place (O12). */
   flagged?: string;
 }) {
-  const [state, act, pending] = useActionState<StepState, FormData>(
-    saveBasics,
+  const [state, act, pending] = useActionState(
+    sendForm<StepState>(saveBasics, notSaved),
     {},
   );
+  /*
+    A refusal remounts the form onto what was typed (`attempt`, see
+    `sendForm`): the category is a select held in state, which a reset in
+    place would show as "Choose one" while the activities below still
+    followed the category chosen. Every default reads `typed` first.
+  */
+  const typed = state.typed;
   const [category, setCategory] = useState(listing.category ?? "");
   const activities = activityChoices(vocabulary, category || null);
   const { marked, describedBy, needed } = fieldMarks(state.fields, flagged);
@@ -60,6 +68,7 @@ export function BasicsStep({
       action={act}
       pending={pending}
       message={state.message}
+      attempt={state.attempt}
     >
       <input type="hidden" name="id" value={id} />
 
@@ -73,7 +82,7 @@ export function BasicsStep({
           name="title"
           required
           minLength={3}
-          defaultValue={listing.title ?? ""}
+          defaultValue={typed?.title ?? listing.title ?? ""}
           className={inputClass("voice-host mt-2")}
           aria-invalid={marked("title")}
           aria-describedby={describedBy("title", "b-title", "b-title-help")}
@@ -124,7 +133,7 @@ export function BasicsStep({
           <select
             id="b-activity"
             name="activityType"
-            defaultValue={listing.activityType ?? ""}
+            defaultValue={typed?.activityType ?? listing.activityType ?? ""}
             className={inputClass("mt-2")}
             aria-invalid={marked("activityType")}
             aria-describedby={describedBy("activityType", "b-activity")}
@@ -152,7 +161,7 @@ export function BasicsStep({
           id="b-destination"
           name="destination"
           required
-          defaultValue={listing.destination ?? ""}
+          defaultValue={typed?.destination ?? listing.destination ?? ""}
           className={inputClass("mt-2")}
           aria-invalid={marked("destination")}
           aria-describedby={describedBy("destination", "b-destination")}
@@ -172,7 +181,7 @@ export function BasicsStep({
         <input
           id="b-summary"
           name="summary"
-          defaultValue={listing.summary ?? ""}
+          defaultValue={typed?.summary ?? listing.summary ?? ""}
           className={inputClass("voice-host mt-2")}
           aria-invalid={marked("summary")}
           aria-describedby={describedBy("summary", "b-summary")}
@@ -186,7 +195,7 @@ export function BasicsStep({
           id="b-description"
           name="description"
           rows={5}
-          defaultValue={listing.description ?? ""}
+          defaultValue={typed?.description ?? listing.description ?? ""}
           className={inputClass("voice-host mt-2 h-auto py-3")}
           aria-invalid={marked("description")}
           aria-describedby={describedBy("description", "b-description")}

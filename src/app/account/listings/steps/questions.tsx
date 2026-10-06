@@ -5,7 +5,8 @@ import { saveQuestions, type StepState } from "../builder-actions";
 import { Button } from "@/components/ui/button";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
-import { StepShell } from "./step-shell";
+import { sendForm } from "@/lib/actions/send-form";
+import { notSaved, StepShell } from "./step-shell";
 
 /**
  * Step 5 — what a traveller is asked when booking.
@@ -48,8 +49,8 @@ export function QuestionsStep({
   questions: Row[];
   back: string;
 }) {
-  const [state, act, pending] = useActionState<StepState, FormData>(
-    saveQuestions,
+  const [state, act, pending] = useActionState(
+    sendForm<StepState>(saveQuestions, notSaved),
     {},
   );
   const [rows, setRows] = useState<Row[]>(questions);
@@ -81,6 +82,14 @@ export function QuestionsStep({
       action={act}
       pending={pending}
       message={state.message}
+      /*
+        Every field here is held in state, and a reset puts a select and a
+        checkbox held in state out of step with it: a refused save showed
+        every question as "A short answer", and each "They must answer it"
+        box as it was when the step opened, while the next save would still
+        have sent what was chosen. Remounted instead, they draw the state.
+      */
+      attempt={state.attempt}
       back={back}
     >
       <input type="hidden" name="id" value={id} />
