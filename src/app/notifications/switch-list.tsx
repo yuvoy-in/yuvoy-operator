@@ -8,6 +8,7 @@ import {
   type NotificationSettings,
 } from "@/lib/account/notifications";
 import { Panel } from "@/components/ui/panel";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * Every switch, with what each one covers — yuvoy-operator#46 items 5 and 6.
@@ -44,7 +45,14 @@ export function SwitchList({
   function toggle(group: string, on: boolean) {
     setFailure(null);
     start(async () => {
-      const result = await setSwitch(memberId, group, on);
+      // A switch that never came back is said here, not as the error screen.
+      const result = await callAction(
+        () => setSwitch(memberId, group, on),
+        () => ({
+          ok: false as const,
+          message: "No signal. Nothing was changed.",
+        }),
+      );
       if (!result.ok) {
         setFailure(result.message);
         /*

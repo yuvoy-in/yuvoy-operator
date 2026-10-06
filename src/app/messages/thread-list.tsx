@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { panelClass } from "@/components/ui/panel";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { withFrom } from "@/lib/site/back-to";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * The conversations list — yuvoy-operator#52 item 5.
@@ -46,7 +47,14 @@ export function ThreadList({
     if (!cursor) return;
     setFailure(null);
     start(async () => {
-      const next = await loadMoreThreads(cursor);
+      // A page that never came back is said here, under the rows (`callAction`).
+      const next = await callAction(
+        () => loadMoreThreads(cursor),
+        () => ({
+          ok: false as const,
+          message: "Those did not load. Try again.",
+        }),
+      );
       if (!next.ok) {
         setFailure(next.message);
         return;

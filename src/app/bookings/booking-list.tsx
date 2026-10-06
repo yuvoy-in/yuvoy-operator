@@ -28,6 +28,7 @@ import { ChevronRightIcon } from "@/components/ui/icons";
 import { panelClass } from "@/components/ui/panel";
 import { StatusChip } from "@/components/ui/status-chip";
 import { withFrom } from "@/lib/site/back-to";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * The chip each booking was last drawn with, by booking, for as long as the
@@ -177,7 +178,17 @@ export function BookingList({
     if (!cursor) return;
     setFailure(null);
     start(async () => {
-      const next = await loadMoreBookings({ view, ...filters, cursor });
+      /*
+        Through `callAction`: a page that never came back is "did not load"
+        under the rows already here, not the error screen in place of them.
+      */
+      const next = await callAction(
+        () => loadMoreBookings({ view, ...filters, cursor }),
+        () => ({
+          ok: false as const,
+          message: "Those did not load. Try again.",
+        }),
+      );
       if (!next.ok) {
         setFailure(next.message);
         return;
