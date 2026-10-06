@@ -84,14 +84,12 @@ describe("a check-in, held five seconds", () => {
   it("is forgotten once the manifest shows the arrival, and not before it was sent", async () => {
     const mark = vi.fn().mockResolvedValue({});
     const store = createCheckInStore("slot_dawn", mark);
-    const sent = vi.fn();
-    store.onSent(sent);
     store.hold("bkg_1");
     // Still held: a re-read that already shows them must not cancel the send.
     store.settle("bkg_1");
     expect(store.get().bkg_1).toMatchObject({ phase: "holding" });
     await vi.advanceTimersByTimeAsync(HOLD_MS);
-    expect(sent).toHaveBeenCalledWith("bkg_1");
+    expect(store.get().bkg_1).toEqual({ phase: "sent" });
     store.settle("bkg_1");
     expect(store.get().bkg_1).toBeUndefined();
   });

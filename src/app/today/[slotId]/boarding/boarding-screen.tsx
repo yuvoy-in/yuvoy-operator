@@ -179,13 +179,14 @@ export function BoardingScreen({
       .map((w) => w.bookingId),
   );
 
-  // The API has it: re-read, so the manifest says arrived and the time.
-  useEffect(() => {
-    store.onSent(() => {
-      if (navigator.onLine) router.refresh();
-    });
-    return () => store.onSent(null);
-  }, [store, router]);
+  /*
+    No refresh once the API has a check-in. `markAttendance` revalidates, so
+    its own response is the re-read manifest that says arrived and the time.
+    A `router.refresh()` on top rendered the whole screen a second time for
+    every arrival, about seven more reads, and an action and a refresh never
+    run side by side, so quick taps queued behind it (production readiness,
+    6 Oct 2026).
+  */
 
   // Sent, never dropped, when the screen goes or the phone is put away.
   useEffect(() => {
