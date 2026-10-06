@@ -20,6 +20,7 @@ import { InboxIcon } from "@/components/ui/icons";
 import { textareaClass } from "@/components/ui/input";
 import { panelClass } from "@/components/ui/panel";
 import { withFrom } from "@/lib/site/back-to";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * A guest who wrote, answered on Home (operator experiment A).
@@ -85,11 +86,21 @@ export function MessageCard({
   async function open() {
     onTouch();
     setPhase("opening");
-    const fresh = await reloadThread(need.bookingId);
-    if (!fresh) {
-      setPhase("failed");
-      return;
+    /*
+      "Opening" until the answer is in, whatever it is. A thread that never
+      came back, or a read the server itself could not make, left the button
+      busy for good, with nothing to tap again (the stability audit, P2-2).
+    */
+    let fresh: BookingThread | null = null;
+    try {
+      fresh = await callAction(
+        () => reloadThread(need.bookingId),
+        () => null,
+      );
+    } finally {
+      if (!fresh) setPhase("failed");
     }
+    if (!fresh) return;
     setThread(fresh);
     setPhase("open");
     /*
@@ -97,8 +108,12 @@ export function MessageCard({
       anything is appended, so a message arriving after it stays unread.
     */
     const upTo = newestMessageId(fresh.messages);
-    if (fresh.unreadCount > 0 && upTo)
-      void markThreadRead(need.bookingId, upTo);
+    if (fresh.unreadCount > 0 && upTo) {
+      void callAction(
+        () => markThreadRead(need.bookingId, upTo),
+        () => undefined,
+      );
+    }
   }
 
   function send(event: React.FormEvent) {
@@ -106,7 +121,14 @@ export function MessageCard({
     setFailure(null);
     setSentTo(null);
     startSending(async () => {
-      const result = await sendMessage(need.bookingId, text);
+      // A send that never came back keeps the words and says so (`callAction`).
+      const result = await callAction(
+        () => sendMessage(need.bookingId, text),
+        () => ({
+          ok: false as const,
+          message: "No signal. Nothing was sent. Try again.",
+        }),
+      );
       if (result.ok) {
         setThread((was) =>
           was ? { ...was, messages: [...was.messages, result.message] } : was,
@@ -118,7 +140,10 @@ export function MessageCard({
       // The words stay, so a refused number can be taken out and sent.
       setFailure(result.message);
       if (result.reload) {
-        const fresh = await reloadThread(need.bookingId);
+        const fresh = await callAction(
+          () => reloadThread(need.bookingId),
+          () => null,
+        );
         if (fresh) setThread(fresh);
       }
     });

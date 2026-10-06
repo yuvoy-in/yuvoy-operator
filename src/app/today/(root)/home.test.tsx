@@ -15,7 +15,11 @@ const markThreadRead = vi.fn();
 const sendMessage = vi.fn();
 const recordCashCollected = vi.fn();
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+vi.mock("next/navigation", async (original) => ({
+  // The real control flow helpers, which a dropped request goes through.
+  ...(await original<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh }),
+}));
 vi.mock("@/app/bookings/actions", () => ({
   acceptRequest: (prev: unknown, form: FormData) => acceptRequest(prev, form),
   declineRequest: (prev: unknown, form: FormData) => declineRequest(prev, form),
@@ -501,6 +505,38 @@ describe("a guest, answered on Home", () => {
     expect(
       screen.getByRole("button", { name: "Try again" }),
     ).toBeInTheDocument();
+  });
+
+  /*
+    The stability audit, P2-2 and P2-3: a request that never came back left
+    "Opening" busy for good, and a reply that never came back took Home to the
+    error screen, the words with it.
+  */
+  it("comes back from a conversation that never arrived, ready to try again", async () => {
+    reloadThread.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<NeedsYou {...props} needs={[MESSAGE]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Read and reply" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "That conversation did not open. Nothing was marked read.",
+    );
+    expect(markThreadRead).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Try again" }),
+    ).not.toHaveAttribute("aria-busy");
+  });
+
+  it("says a reply that never arrived was not sent, and keeps the words", async () => {
+    reloadThread.mockResolvedValue(THREAD);
+    sendMessage.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<NeedsYou {...props} needs={[MESSAGE]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Read and reply" }));
+    const box = await screen.findByLabelText("Reply to Sofia");
+    fireEvent.change(box, { target: { value: "See you at the jetty" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No signal. Nothing was sent. Try again.",
+    );
+    expect(box).toHaveValue("See you at the jetty");
   });
 
   it("keeps an opened conversation after the server stops listing it as unread", async () => {
