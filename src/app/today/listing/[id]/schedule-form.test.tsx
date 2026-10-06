@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { watchMotion } from "@/lib/motion/testing";
 
@@ -489,5 +489,49 @@ describe("the question, arriving and leaving still", () => {
     const receipt = await screen.findByText("The weekly schedule is saved");
     expect(motion.fadeOf(receipt.parentElement)).toBeDefined();
     expect(motion.copies()).toHaveLength(0);
+  });
+});
+
+/*
+  The stability audit, P1-1. A seat count sent with the keyboard's Go keeps
+  the focus in its box, and React leaves a focused number field's default
+  alone, so the reset after a refusal took the box back to the count on file
+  while the next save still sent the new one.
+*/
+describe("a refused save", () => {
+  it("shows the seats it would send again, sent with Go from the box", async () => {
+    saveSchedule.mockResolvedValueOnce({
+      message: "No signal. The schedule was not saved.",
+    });
+    form();
+    // Typed with the box focused, and sent with Go, which leaves it there.
+    const seats = usualSeats() as HTMLInputElement;
+    seats.focus();
+    fireEvent.change(seats, { target: { value: "10" } });
+    await act(async () => {
+      seats.form?.requestSubmit();
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No signal. The schedule was not saved.",
+    );
+    expect(usualSeats()).toHaveValue(10);
+    expect(sent()[0].seats).toBe(10);
+  });
+
+  it("says no signal in place when the request never came back", async () => {
+    saveSchedule.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    form();
+    fireEvent.change(usualSeats(), { target: { value: "10" } });
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Save the schedule" }),
+      );
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No signal. The schedule was not saved.",
+    );
+    expect(usualSeats()).toHaveValue(10);
   });
 });
