@@ -54,6 +54,40 @@ export function BookingFilters({
   const choice = choiceFor(filters, today, tomorrow);
   const [picking, setPicking] = useState(choice === "pick");
 
+  /*
+    The address is the truth, and this box only borrows it.
+
+    The screen stays mounted when the address changes underneath it, and the
+    box and the date pickers were seeded once. So the empty state's Clear, a
+    link, emptied the address and the box kept "asha", and the debounce below
+    put it back 300ms later: Clear undid itself (the stability audit, P1-2).
+    The date pickers stayed open over a range that had gone the same way.
+
+    So the box follows any search the address arrives with that the box did
+    not send (Clear, back, a link). What it did send coming back is only the
+    address catching up with typing, and is left alone: a newer navigation
+    discards an older one, so the address never goes back to an earlier
+    send. The pickers follow every change of dates, since a range picked
+    here comes back as "pick" anyway. Both are compared with the last render
+    as state, the pattern the pills use for the address they answered.
+  */
+  const [sent, setSent] = useState(filters.q);
+  const [seen, setSeen] = useState(filters);
+  if (
+    filters.q !== seen.q ||
+    filters.from !== seen.from ||
+    filters.to !== seen.to
+  ) {
+    setSeen(filters);
+    if (filters.q !== seen.q && filters.q !== sent) {
+      setSent(filters.q);
+      if (filters.q !== text.trim()) setText(filters.q);
+    }
+    if (filters.from !== seen.from || filters.to !== seen.to) {
+      setPicking(choice === "pick");
+    }
+  }
+
   /**
    * Rewrite the URL with these changes, dropping any page already loaded.
    *
@@ -86,7 +120,10 @@ export function BookingFilters({
   useEffect(() => {
     const trimmed = text.trim();
     if (trimmed === filters.q) return;
-    const id = setTimeout(() => apply({ q: trimmed }), 300);
+    const id = setTimeout(() => {
+      setSent(trimmed);
+      apply({ q: trimmed });
+    }, 300);
     return () => clearTimeout(id);
   }, [text, filters.q, apply]);
 
@@ -165,6 +202,7 @@ export function BookingFilters({
             type="button"
             onClick={() => {
               setText("");
+              setSent("");
               setPicking(false);
               apply({ q: "", experienceId: "", from: "", to: "" });
             }}
