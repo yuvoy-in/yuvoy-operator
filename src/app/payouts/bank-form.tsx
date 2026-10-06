@@ -8,6 +8,8 @@ import {
   type StepUpState,
 } from "./actions";
 import { maskAccount } from "@/lib/account/bank";
+import { callAction } from "@/lib/actions/call-action";
+import { sendForm } from "@/lib/actions/send-form";
 import { SUPPORT_PHONE } from "@/lib/site/contact";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
@@ -48,10 +50,22 @@ export function BankForm({
   const [step, setStep] = useState<StepUpState>({});
   const [sending, setSending] = useState(false);
   const [account, setAccount] = useState("");
-  const [state, act, pending] = useActionState<BankState, FormData>(
-    changeBank,
+  /*
+    A refusal hands back what was typed (`sendForm`), and the fields below read
+    it back in place: an IFSC refused for its fifth character used to empty the
+    name on the account and the bank with it. Never the code. It is typed
+    again, as it is at sign-in: a refused code is usually the reason for the
+    refusal, and a right one is still in the owner's email for its ten minutes.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<BankState>(
+      changeBank,
+      () => ({ message: "No signal. Nothing was changed." }),
+      { forget: ["code"] },
+    ),
     {},
   );
+  const typed = state.typed;
 
   return (
     <form action={act} className="space-y-5">
@@ -66,6 +80,7 @@ export function BankForm({
           autoComplete="off"
           autoFocus={autoFocus}
           required
+          defaultValue={typed?.accountHolder ?? ""}
           className={inputClass("mt-2")}
         />
       </div>
@@ -112,6 +127,7 @@ export function BankForm({
           type="text"
           autoComplete="off"
           required
+          defaultValue={typed?.ifsc ?? ""}
           aria-describedby="ifsc-hint"
           className={inputClass("mt-2 font-mono uppercase")}
         />
@@ -134,6 +150,7 @@ export function BankForm({
           name="bankName"
           type="text"
           autoComplete="off"
+          defaultValue={typed?.bankName ?? ""}
           className={inputClass("mt-2")}
         />
       </div>
@@ -202,9 +219,21 @@ export function BankForm({
             pending={sending}
             pendingLabel="Sending"
             onClick={async () => {
+              /*
+                Busy until the answer is in, whatever it is. A send that never
+                came back left this button spinning for good, with no way to
+                ask again short of reloading the screen.
+              */
               setSending(true);
-              setStep(await requestStepUp());
-              setSending(false);
+              try {
+                setStep(
+                  await callAction(requestStepUp, () => ({
+                    message: "No signal. No code was sent.",
+                  })),
+                );
+              } finally {
+                setSending(false);
+              }
             }}
             variant="outline"
             className="mt-4"
