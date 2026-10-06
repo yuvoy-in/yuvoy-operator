@@ -41,12 +41,6 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   /*
-    The session is resolved HERE, above the loading boundaries, and that
-    position is the whole point. See `lib/auth/gate.ts`.
-  */
-  await gateSession();
-
-  /*
     Everything the chrome shows that only the server can read: the bar's two
     counts (yuvoy-operator#42), the business name beside the mark and the
     unread count on the inbox (#80 t1, #96), and whether this login is shown
@@ -54,9 +48,23 @@ export default async function RootLayout({
     and all of it comes from `/operator/v1`, which a browser is never allowed
     to call. `chromeData` cannot throw: a signed-out door, a dead session or a
     dropped connection costs a piece of chrome, never a page.
+
+    Asked before the gate below, not after it. The gate's `/me` is the
+    chrome's (`readMe` is `cache`d), so the two overlap and the first byte
+    waits on the slowest read, not on `/me` and then the other three
+    (production readiness, 6 Oct 2026). When the gate redirects, nothing
+    reads the answer, and it is never a rejection.
   */
+  const chrome = chromeData();
+
+  /*
+    The session is resolved HERE, above the loading boundaries, and that
+    position is the whole point. See `gateSession` in `lib/auth/session.ts`.
+  */
+  await gateSession();
+
   const { badges, suspension, businessName, canManage, unread, userId } =
-    await chromeData();
+    await chrome;
 
   return (
     <html
