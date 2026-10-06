@@ -39,7 +39,8 @@ import {
 import { posterFor } from "@/lib/services/home";
 import { cn } from "@/lib/cn";
 import { listListings, listMedia } from "@/lib/day/manifest";
-import { readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
+import { readMe, readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
+import { readProfile } from "@/lib/profile/read";
 import { operatorPageUrl } from "@/lib/site/traveller-app";
 import { Screen } from "@/components/chrome/screen";
 import { SignOutButton } from "@/components/chrome/sign-out-button";
@@ -82,7 +83,8 @@ export const dynamic = "force-dynamic";
  *
  * That helper redirects here on `account_not_active`. Calling it from this page
  * would redirect to this page, forever. This is the one authenticated screen
- * that reads `GET /me` itself.
+ * that classifies `GET /me` itself. It still reads it through `readMe`, the
+ * answer the layout already asked for, never a second request.
  */
 export default async function AccountPage({
   searchParams,
@@ -99,8 +101,7 @@ export default async function AccountPage({
   let slug = "";
   let standing: Standing | null = null;
   try {
-    const { data, error } = await operatorApi(token).GET("/me", {});
-    if (error) throw error;
+    const data = await readMe(token);
     active = true;
     canManage = data?.canManage ?? false;
     suspended = Boolean(data?.account?.suspension);
@@ -127,9 +128,8 @@ export default async function AccountPage({
   */
   const [profile, logoUrl, story, listings, media] = active
     ? await Promise.all([
-        operatorApi(token)
-          .GET("/profile", {})
-          .then((r) => (r.error ? null : (readShape(r.data) ?? null)))
+        readProfile(token)
+          .then((data) => readShape(data) ?? null)
           .catch(() => null),
         operatorApi(token)
           .GET("/logo", {})

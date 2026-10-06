@@ -147,6 +147,58 @@ for (const f of files) {
   }
 }
 
+/* ------------------------------------ 4b. every request has a deadline --- */
+
+/*
+  A request with no deadline held its screen or its button for the platform's
+  five minutes whenever the API went quiet (production readiness, 6 Oct 2026).
+  So every request goes through `fetchWithin` (lib/api/deadline), which also
+  keeps the abort working under Next's patched fetch. The one exception is an
+  upload to a presigned URL: an upload is silent while it sends, so a deadline
+  on silence would cut a slow one off.
+*/
+for (const f of files) {
+  if (/\.test\.tsx?$/.test(f) || /lib[/\\]api[/\\]deadline\.ts$/.test(f))
+    continue;
+  const s = code(f);
+  for (const m of s.matchAll(/(^|[^\w.$])fetch\(\s*([^,)]*)/gm)) {
+    if (/\buploadUrl$/.test(m[2].trim())) continue;
+    problems.push(
+      `${rel(f)}: calls fetch() directly; use fetchWithin (lib/api/deadline) ` +
+        `so it has a deadline. Only an upload to a presigned URL is exempt.`,
+    );
+    break;
+  }
+}
+
+/* --------------------------- 4c. the chrome's reads are asked once ------ */
+
+/*
+  The root layout reads `/me`, `/profile` and `/requests` under every signed-in
+  screen. Next does not memoise a read that carries a signal, and a read with
+  a deadline always does, so a page that asked one of them itself paid for a
+  second request (production readiness, 6 Oct 2026). Each is asked only by its
+  `cache`d reader, which hands every caller in the render the layout's answer.
+*/
+const CHROME_READS = {
+  "/me": /lib[/\\]auth[/\\]session\.ts$/,
+  "/profile": /lib[/\\]profile[/\\]read\.ts$/,
+  "/requests": /lib[/\\]day[/\\]requests\.ts$/,
+};
+for (const f of files) {
+  if (/\.test\.tsx?$/.test(f)) continue;
+  const s = code(f);
+  for (const [path, reader] of Object.entries(CHROME_READS)) {
+    if (reader.test(f)) continue;
+    if (new RegExp(`\\.GET\\(\\s*["'\`]${path}["'\`]`).test(s)) {
+      problems.push(
+        `${rel(f)}: reads ${path} itself; ask its cached reader, so the ` +
+          `layout's answer is shared rather than requested again.`,
+      );
+    }
+  }
+}
+
 /* ======================================================================== */
 /*  The four that are specific to this repo. Each guards the same thing.     */
 /* ======================================================================== */

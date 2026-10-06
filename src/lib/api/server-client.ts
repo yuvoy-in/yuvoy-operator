@@ -7,6 +7,7 @@ import {
   apiError,
   isErrorEnvelope,
 } from "./errors";
+import { fetchWithin } from "./deadline";
 
 /**
  * The only place `/operator/v1` is called, and it runs on the SERVER ONLY.
@@ -170,6 +171,24 @@ const errorMiddleware: Middleware = {
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 const MAX_GET_ATTEMPTS = 3;
 
+/*
+  How long a request may go quiet before it is given up on (production
+  readiness, 6 Oct 2026). It is silence that is timed, not the whole
+  transfer: see `fetchWithin` in ./deadline.
+
+  A read gets six seconds. Every read here is a server render running beside
+  the API, where an answer takes tens of milliseconds, so six seconds of
+  nothing is an API that is not going to answer this render, and the read is
+  tried again on a fresh connection.
+
+  A write gets twenty-five and is still never retried. Giving up on one says
+  nothing about whether it happened, so it waits far longer before saying so.
+  Until this, either one on a dead connection held its screen or its button
+  for the platform's five minutes.
+*/
+export const READ_STALL_MS = 6_000;
+export const WRITE_STALL_MS = 25_000;
+
 /**
  * Exponential backoff with full jitter.
  *
@@ -182,7 +201,27 @@ export function backoffMs(attempt: number): number {
   return Math.round(base * (0.5 + Math.random() * 0.5));
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Waits out a backoff, unless the request is cancelled first: then it
+ * rejects at once with the reason, and no timer is left behind.
+ */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const stop = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", stop);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", stop, { once: true });
+  });
+}
 
 /**
  * GET-only retry.
@@ -195,14 +234,25 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 function retryingFetch(input: Request): Promise<Response> {
   const isGet = input.method === "GET";
+  const stallMs = isGet ? READ_STALL_MS : WRITE_STALL_MS;
 
   const attempt = async (n: number): Promise<Response> => {
     let res: Response;
     try {
-      res = await fetch(isGet ? input.clone() : input);
+      /*
+        Every attempt reaches the API. Next memoises the GETs of a server
+        render and keeps the promise, failures included, so a retry identical
+        to the attempt it replaced was answered from that memo after the
+        backoff: a render never retried anything (production readiness,
+        6 Oct 2026). A read whose init carries a signal is not memoised, and
+        `fetchWithin` always gives it one.
+      */
+      res = await fetchWithin(input, { signal: input.signal }, stallMs);
     } catch (cause) {
+      // A request its caller cancelled is not a network fault.
+      if (input.signal.aborted) throw cause;
       if (isGet && n < MAX_GET_ATTEMPTS - 1) {
-        await sleep(backoffMs(n));
+        await pause(backoffMs(n), input.signal);
         return attempt(n + 1);
       }
       throw new OperatorNetworkError(cause);
@@ -211,7 +261,7 @@ function retryingFetch(input: Request): Promise<Response> {
     if (!isGet || res.ok || n >= MAX_GET_ATTEMPTS - 1) return res;
     if (!RETRYABLE_STATUS.has(res.status)) return res;
 
-    await sleep(backoffMs(n));
+    await pause(backoffMs(n), input.signal);
     return attempt(n + 1);
   };
 

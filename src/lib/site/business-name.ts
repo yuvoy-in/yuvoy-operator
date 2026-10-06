@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { operatorApi } from "@/lib/api/server-client";
+import { readProfile } from "@/lib/profile/read";
 import { readShape } from "@/lib/account/read-shape";
 
 /**
@@ -22,14 +22,13 @@ import { readShape } from "@/lib/account/read-shape";
  *
  * Read by the root layout the way the badges are, because the chrome is a
  * client component and `/operator/v1` is never called from a browser. It
- * cannot throw: a name is not worth a page.
+ * cannot throw: a name is not worth a page. The read is `readProfile`'s, so
+ * a screen that shows the whole profile does not ask for it again.
  */
 export const readBusinessName = cache(
   async (token: string): Promise<string | null> => {
     try {
-      const { data, error } = await operatorApi(token).GET("/profile", {});
-      if (error) return null;
-      const profile = readShape(data);
+      const profile = readShape(await readProfile(token));
       const display = profile?.displayName?.trim();
       if (display) return display;
       const legal = profile?.legalName?.trim();

@@ -1,3 +1,4 @@
+import { fetchWithin } from "@/lib/api/deadline";
 import { PLACE_SEARCH_ORIGIN } from "./hosts";
 import { isPin, roundPin, type Pin } from "./pin";
 
@@ -67,6 +68,15 @@ function placeOf(feature: unknown): Place | null {
   return { name, area: area.join(", "), pin: roundPin({ lat, lng }) };
 }
 
+/*
+  A search that has heard nothing for this long is not going to answer, and is
+  reported as one that did not (production readiness, 6 Oct 2026). Without it
+  the field said "Searching" until the next keystroke, which on a dock may
+  never come. Five places are a few kilobytes; on a link that is still alive
+  the gaps are well under a second.
+*/
+const PLACE_SEARCH_STALL_MS = 8_000;
+
 /**
  * Up to five places for what was typed.
  *
@@ -86,10 +96,11 @@ export async function searchPlaces(
   });
   let response: Response;
   try {
-    response = await fetch(`${PLACE_SEARCH_ORIGIN}/api/?${params}`, {
-      signal,
-      headers: { accept: "application/json" },
-    });
+    response = await fetchWithin(
+      `${PLACE_SEARCH_ORIGIN}/api/?${params}`,
+      { signal, headers: { accept: "application/json" } },
+      PLACE_SEARCH_STALL_MS,
+    );
   } catch (err) {
     if (signal?.aborted) throw err;
     throw new PlaceSearchError("no answer");

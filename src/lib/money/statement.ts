@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { apiBaseUrl } from "@/lib/api/server-client";
+import { READ_STALL_MS, apiBaseUrl } from "@/lib/api/server-client";
+import { fetchWithin } from "@/lib/api/deadline";
 import { statementFilename, type Settlement } from "./settlements";
 
 /**
@@ -44,12 +45,13 @@ export async function fetchStatement(
 ): Promise<StatementResult> {
   let response: Response;
   try {
-    response = await fetch(
+    response = await fetchWithin(
       `${apiBaseUrl()}/settlements/${encodeURIComponent(settlement.id)}/statement`,
       {
         headers: { Authorization: `Bearer ${token}`, Accept: "text/csv" },
         cache: "no-store",
       },
+      READ_STALL_MS,
     );
   } catch {
     return { ok: false, reason: "failed" };

@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { operatorApi } from "@/lib/api/server-client";
 import { requireOperator } from "@/lib/auth/session";
-import {
-  standingOf,
-  type OperatorCredential,
-  type Standing,
-} from "@/lib/account/standing";
+import { readProfile } from "@/lib/profile/read";
+import { type OperatorCredential, type Standing } from "@/lib/account/standing";
 import { toFormValues, type BusinessDetails } from "@/lib/profile/details";
 import {
   suggestedCredentialType,
@@ -54,20 +50,21 @@ export const dynamic = "force-dynamic";
  */
 export default async function ProfilePage() {
   const { token, me } = await requireOperator();
-  const client = operatorApi(token);
 
   /*
-    Both reads together, and neither is allowed to cost the other.
-
     The standing comes from `GET /me`, which every page in this portal already
-    reads for its chrome; the details come from `/profile`. A failing profile
-    read must still leave the document form usable — an operator whose account
-    is blocked on an insurance certificate should be able to send it even if
-    the details endpoint is having a bad minute.
+    reads for its chrome and `requireOperator()` has just answered; the
+    details come from `/profile`, which the stage reads for the business's
+    name, so neither is asked twice. A failing profile read must still leave
+    the document form usable: an operator whose account is blocked on an
+    insurance certificate should be able to send it even if the details
+    endpoint is having a bad minute.
   */
-  const [detailsResult, meResult, changes] = await Promise.all([
-    client.GET("/profile", {}).catch(() => null),
-    client.GET("/me", {}).catch(() => null),
+  const [detailsResult, changes] = await Promise.all([
+    readProfile(token).then(
+      (data) => ({ data }),
+      () => null,
+    ),
     /*
       Whether a change to the details is waiting on us (yuvoy-operator#89
       f10). Soft: `[]` on failure says nothing rather than something false.
@@ -75,14 +72,12 @@ export default async function ProfilePage() {
     getChangeRequests(token),
   ]);
 
-  const standing: Standing | null =
-    meResult && !meResult.error ? standingOf(meResult.data?.account) : null;
+  const standing: Standing | null = me.account;
 
-  const details: BusinessDetails | null =
-    detailsResult && !detailsResult.error
-      ? readShape(detailsResult.data)
-      : null;
-  const detailsUnavailable = !detailsResult || Boolean(detailsResult.error);
+  const details: BusinessDetails | null = detailsResult
+    ? readShape(detailsResult.data)
+    : null;
+  const detailsUnavailable = detailsResult === null;
   const review = reviewNote(reviewOf(changes, "profile", details?.submittedAt));
 
   const credentials: OperatorCredential[] = standing?.credentials ?? [];

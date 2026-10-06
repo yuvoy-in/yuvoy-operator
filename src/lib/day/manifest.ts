@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { operatorApi } from "@/lib/api/server-client";
 import type { Manifest, OperatorListing, OperatorSlot } from "./types";
 import { inMarketDays } from "./calendar";
@@ -8,7 +9,12 @@ import type { MediaItem } from "@/lib/services/media";
 
 export * from "./types";
 
-export async function getManifest(
+/**
+ * One departure's manifest, read once per render: the departure's title and
+ * the page both ask for it, and a read with a deadline is not memoised by
+ * Next, so React's `cache` shares it.
+ */
+export const getManifest = cache(async function getManifest(
   token: string,
   slotId: string,
 ): Promise<Manifest> {
@@ -34,7 +40,7 @@ export async function getManifest(
     );
   }
   return data;
-}
+});
 
 /**
  * Departures on a run of MARKET days, ordered first-off-first.
