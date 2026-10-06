@@ -69,7 +69,7 @@ export function InviteForm() {
         Only on success. A refusal changed nothing on the server, and a refresh
         then would be a round trip on one bar of signal to redraw the same list.
       */
-      if (next.sent) router.refresh();
+      if (next.sent && navigator.onLine) router.refresh();
       return next;
     },
     {},

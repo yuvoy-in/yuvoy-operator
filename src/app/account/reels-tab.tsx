@@ -72,7 +72,7 @@ export function ReelsTab({
   const closeSheet = useCallback(() => {
     setOpen(null);
     setAdding(false);
-    router.refresh();
+    if (navigator.onLine) router.refresh();
   }, [router]);
 
   if (media.length === 0) {

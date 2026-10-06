@@ -40,9 +40,9 @@ import { KeptOnThisPhone } from "@/components/chrome/kept-on-this-phone";
  * Yuvoy for operators` three times does not, so the time and the trip lead:
  * `07:00 Try-dive at Nemo Reef · Yuvoy for operators`.
  *
- * It reads the manifest it is about to render, which is free — Next dedupes
- * the fetch between `generateMetadata` and the page in the same request, so
- * this costs no extra call to the API.
+ * It reads the manifest it is about to render, which is free: `getManifest`
+ * is shared through React's `cache` between `generateMetadata` and the page
+ * in the same request, so this costs no extra call to the API.
  *
  * Every failure falls back to the plain word rather than throwing: a title is
  * not worth a 500, and `notFound()` from here would pre-empt the page's own

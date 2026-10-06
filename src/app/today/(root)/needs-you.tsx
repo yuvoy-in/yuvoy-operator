@@ -98,7 +98,9 @@ export function NeedsYou({
   nextUp: string | null;
 }) {
   const router = useRouter();
-  const refresh = useCallback(() => router.refresh(), [router]);
+  const refresh = useCallback(() => {
+    if (navigator.onLine) router.refresh();
+  }, [router]);
   const { answers, store } = useAnswers(refresh);
   const [seats, confirmAll, confirming] = useActionState(
     sendForm<ConfirmSeatsState>(confirmSeats, () => ({

@@ -7,8 +7,9 @@ import { render, screen } from "@testing-library/react";
   details, so the operator meets the same two sentences twice ... Show each
   blocker in one place only, and link to it from the other."
 
-  The page's reads are replaced (who is signed in, `/profile`, `/me`, the
-  change requests); the page itself, and both forms on it, are real.
+  The page's reads are replaced (who is signed in and where they stand,
+  `/profile`, the change requests); the page itself, and both forms on it,
+  are real.
 */
 
 const BLOCKING = [
@@ -32,25 +33,35 @@ const BLOCKING = [
   },
 ];
 
-vi.mock("@/lib/auth/session", () => ({
-  requireOperator: async () => ({ token: "tok", me: { canManage: true } }),
-}));
+/** Every path the page asked the API for. */
+const asked: string[] = [];
+
+vi.mock("@/lib/auth/session", async () => {
+  const { standingOf } = await import("@/lib/account/standing");
+  return {
+    requireOperator: async () => ({
+      token: "tok",
+      me: {
+        canManage: true,
+        account: standingOf({
+          state: "LIVE",
+          bookable: true,
+          blocking: BLOCKING,
+          credentials: [],
+        } as Parameters<typeof standingOf>[0]),
+      },
+    }),
+  };
+});
 vi.mock("@/lib/api/server-client", () => ({
   operatorApi: () => ({
-    GET: async (path: string) =>
-      path === "/me"
-        ? {
-            data: {
-              account: {
-                state: "LIVE",
-                bookable: true,
-                blocking: BLOCKING,
-                credentials: [],
-              },
-            },
-            error: undefined,
-          }
-        : { data: { legalName: "", missing: ["legalName"] }, error: undefined },
+    GET: async (path: string) => {
+      asked.push(path);
+      return {
+        data: { legalName: "", missing: ["legalName"] },
+        error: undefined,
+      };
+    },
   }),
 }));
 vi.mock("@/lib/money/fetch", () => ({ getChangeRequests: async () => [] }));
@@ -62,6 +73,17 @@ vi.mock("./actions", () => ({
 const { default: ProfilePage } = await import("./page");
 
 describe("Business details", () => {
+  it("asks only for the details: where they stand is the session's answer", async () => {
+    /*
+      `requireOperator()` has read `GET /me` already, and a read with a
+      deadline is not memoised by Next, so asking again was a second request
+      on every load (production readiness, 6 Oct 2026).
+    */
+    asked.length = 0;
+    render(await ProfilePage());
+    expect(asked).toEqual(["/profile"]);
+  });
+
   it("counts what is waiting on the operator and links to it, once", async () => {
     render(await ProfilePage());
 

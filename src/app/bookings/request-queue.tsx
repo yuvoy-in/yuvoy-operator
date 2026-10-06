@@ -49,7 +49,9 @@ export function RequestQueue({
   pinPill?: boolean;
 }) {
   const router = useRouter();
-  const refresh = useCallback(() => router.refresh(), [router]);
+  const refresh = useCallback(() => {
+    if (navigator.onLine) router.refresh();
+  }, [router]);
   const { answers, store } = useAnswers(refresh);
   const [restore, setRestore] = useState<Record<string, AnswerKind>>({});
 

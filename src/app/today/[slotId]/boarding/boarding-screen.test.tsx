@@ -170,7 +170,8 @@ describe("boarding", () => {
     const form = markAttendance.mock.calls[0][1] as FormData;
     expect(form.get("bookingId")).toBe("asha");
     expect(form.get("outcome")).toBe("arrived");
-    expect(refresh).toHaveBeenCalled();
+    // The action revalidates: its answer is the re-read, and nothing reads again.
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("takes a check-in back on Undo, and sends nothing", async () => {

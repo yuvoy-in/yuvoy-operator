@@ -188,7 +188,15 @@ export function createAnswerStore(
     // was not seen to be this answer.
     if (next.phase === "failed") unmarkAnswerSent(mark);
     set(id, next);
-    settled?.();
+    /*
+      A decline that landed has been re-read already: `declineRequest`
+      revalidates, and its answer carries the list without the request.
+      Asking again rendered the screen twice (production readiness, 6 Oct
+      2026). An accept does not revalidate, and a refusal usually means the
+      queue moved somewhere else (answered on another phone, or lapsed), so
+      for those the list beneath is read again.
+    */
+    if (next.phase !== "declined") settled?.();
   }
 
   return {

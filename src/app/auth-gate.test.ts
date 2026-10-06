@@ -34,19 +34,31 @@ describe("the layout session gate", () => {
   });
 
   /*
-    Above `chromeData()`, which cannot throw by design — it swallows a dead
-    session to protect the badges. If the gate ran after it, a revoked session
-    would spend a full `/me` round trip before being turned away, and any
-    future throw inside chromeData would pre-empt the redirect.
+    Decided before `chromeData()`'s answer is waited for. That function cannot
+    throw by design (it swallows a dead session to protect the badges), but if
+    its answer were awaited first, a revoked session would spend a full round
+    trip before being turned away, and any future throw inside it would
+    pre-empt the redirect.
+
+    Its reads may START before the gate, and do (production readiness, 6 Oct
+    2026): the gate's `/me` is the chrome's (`readMe` is cached), so starting
+    both overlaps them and costs no request. What is pinned is the order of
+    the waits.
   */
-  it("runs before the chrome data it must not depend on", () => {
-    // The component body only — both names appear in the import block first.
+  it("decides before the chrome data it must not depend on is waited for", () => {
+    // The component body only: both names appear in the import block first.
     const src = stripComments(read("app/layout.tsx"));
     const body = src.slice(src.indexOf("export default async function"));
-    expect(body.indexOf("gateSession")).toBeGreaterThan(-1);
-    expect(body.indexOf("gateSession")).toBeLessThan(
-      body.indexOf("chromeData"),
-    );
+    const gate = body.search(/await\s+gateSession\s*\(\s*\)/);
+    expect(gate).toBeGreaterThan(-1);
+
+    // Awaited where it is called, or held and awaited later by its name.
+    const held = body.match(/(?:const|let)\s+(\w+)\s*=\s*chromeData\s*\(/);
+    const wait = held
+      ? body.search(new RegExp(`await\\s+${held[1]}\\b`))
+      : body.search(/await\s+chromeData\s*\(/);
+    expect(wait).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(wait);
   });
 
   /*

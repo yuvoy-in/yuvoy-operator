@@ -180,7 +180,7 @@ export function SendDocument({
       well so a page that was already rendered when the action landed catches
       up without the operator navigating.
     */
-    router.refresh();
+    if (navigator.onLine) router.refresh();
   }
 
   function reset() {

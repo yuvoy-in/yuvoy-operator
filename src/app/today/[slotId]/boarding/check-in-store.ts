@@ -41,7 +41,6 @@ export interface CheckInStore {
   /** Forget an answered check-in once the manifest shows it. */
   settle(bookingId: string): void;
   flush(): void;
-  onSent(listener: ((bookingId: string) => void) | null): void;
   /** How to keep a check-in that cannot be sent. Unset, it fails instead. */
   onKeep(keep: KeepCheckIn | null): void;
 }
@@ -67,7 +66,6 @@ export function createCheckInStore(
   const listeners = new Set<() => void>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const tapped = new Map<string, number>();
-  let sent: ((bookingId: string) => void) | null = null;
 
   function set(id: string, next: CheckIn | null) {
     const copy = { ...state };
@@ -118,10 +116,13 @@ export function createCheckInStore(
         set(id, { phase: "failed", message: answer.message });
         return;
       }
-      // Kept until the re-read manifest says arrived: see `settle`.
+      /*
+        Kept until the re-read manifest says arrived: see `settle`. Nothing
+        asks for that read: `markAttendance` revalidates, so the answer it
+        came back with already carries the manifest.
+      */
       tapped.delete(id);
       set(id, { phase: "sent" });
-      sent?.(id);
     } catch {
       // It may or may not have reached the API; arriving twice is safe.
       keepOrFail(id, UNKNOWN_CHECK_IN);
@@ -161,9 +162,6 @@ export function createCheckInStore(
       for (const [id, entry] of Object.entries(state)) {
         if (entry.phase === "holding") void send(id);
       }
-    },
-    onSent(listener) {
-      sent = listener;
     },
     onKeep(next) {
       keep = next ?? (() => false);

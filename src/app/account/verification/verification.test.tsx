@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import { redirect } from "next/navigation";
+import { OperatorApiError } from "@/lib/api/errors";
 
 /*
   Verification (yuvoy-operator#88 s13): "The biggest, darkest button on a
@@ -7,20 +9,26 @@ import { render, screen, within } from "@testing-library/react";
   outstanding item the primary action ('Add your logo'). Demote Go to today to
   a back link. Show each blocker in one place only."
 
-  The page reads `GET /me` itself, so the session and the API client are
-  replaced with the account under test; everything drawn is the real page.
+  The page reads `GET /me` through the session's own reader, so the cookie
+  and the API client are replaced with the account under test; the reader and
+  everything drawn are the real ones.
 */
 
 let account: unknown = null;
 let canManage = true;
+/** What `GET /me` throws instead of answering, as the error middleware does. */
+let failure: Error | null = null;
 
-vi.mock("@/lib/auth/session", () => ({
+vi.mock("@/lib/auth/session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/session")>()),
   readSessionToken: async () => "tok",
-  SIGN_IN_PATH: "/sign-in",
 }));
 vi.mock("@/lib/api/server-client", () => ({
   operatorApi: () => ({
-    GET: async () => ({ data: { account, canManage }, error: undefined }),
+    GET: async () => {
+      if (failure) throw failure;
+      return { data: { account, canManage }, error: undefined };
+    },
   }),
 }));
 vi.mock("next/navigation", () => ({
@@ -68,6 +76,7 @@ const LIVE_OUTSTANDING = {
 async function renderFor(standing: unknown, manage = true) {
   account = standing;
   canManage = manage;
+  failure = null;
   render(await VerificationPage());
 }
 
@@ -149,5 +158,33 @@ describe("Verification", () => {
     });
     const waiting = screen.getByRole("region", { name: "Waiting on you" });
     expect(within(waiting).queryAllByRole("link")).toHaveLength(0);
+  });
+
+  describe("when GET /me fails", () => {
+    it("sends an expired session to sign in, not to a reload that cannot work", async () => {
+      vi.mocked(redirect).mockClear();
+      failure = new OperatorApiError({
+        code: "unauthorized",
+        message: "Sign in again.",
+        status: 401,
+      });
+      await VerificationPage();
+      expect(redirect).toHaveBeenCalledWith("/sign-in");
+    });
+
+    it("says it cannot tell when the API had a bad minute, and offers the reload", async () => {
+      vi.mocked(redirect).mockClear();
+      failure = new OperatorApiError({
+        code: "internal_error",
+        message: "Try again.",
+        status: 503,
+      });
+      render(await VerificationPage());
+      expect(redirect).not.toHaveBeenCalled();
+      expect(
+        screen.getByText("We cannot tell you where you stand"),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Reload the page/)).toBeInTheDocument();
+    });
   });
 });
