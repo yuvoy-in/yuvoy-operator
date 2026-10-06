@@ -17,6 +17,7 @@ import {
   stopAnimations,
 } from "@/lib/motion";
 import { IconButton } from "./icon-button";
+import { lockScroll } from "./scroll-lock";
 import { CloseIcon } from "./icons";
 import { cn } from "@/lib/cn";
 
@@ -111,15 +112,15 @@ export function Sheet({
     };
     document.addEventListener("keydown", onKey);
 
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
+    // Counted, so two sheets closing in either order give the page back.
+    const unlock = lockScroll();
 
     let released = false;
     const free = () => {
       if (released) return;
       released = true;
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
+      unlock();
       if (opener instanceof HTMLElement) opener.focus();
     };
     release.current = free;

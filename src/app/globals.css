@@ -149,6 +149,14 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /*
+      Room for the scrollbar is kept whether or not there is one. A sheet
+      holds the page still by hiding its overflow, and on a desktop with
+      classic scrollbars that took the bar away and slid the whole page
+      sideways under the sheet as it opened (the stability audit, P2-6).
+      Phones draw overlay scrollbars, which take no room either way.
+    */
+    scrollbar-gutter: stable;
   }
 
   body {

@@ -150,3 +150,21 @@ describe("a sheet that leaves", () => {
     opener.remove();
   });
 });
+
+/*
+  The stability audit, P2-6. Each sheet saved the page's overflow and put it
+  back on close, so two open at once and closed first-opened-first left the
+  page holding still for good.
+*/
+describe("two sheets at once", () => {
+  it("give the page back however they close", () => {
+    const first = render(sheet({ title: "First" }));
+    const second = render(sheet({ title: "Second" }));
+    expect(document.body.style.overflow).toBe("hidden");
+
+    first.unmount();
+    expect(document.body.style.overflow).toBe("hidden");
+    second.unmount();
+    expect(document.body.style.overflow).toBe("");
+  });
+});
