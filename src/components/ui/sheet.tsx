@@ -245,8 +245,14 @@ export function Sheet({
         aria-modal="true"
         aria-labelledby={headingId}
         tabIndex={-1}
+        /*
+          Held to the screen as it is, toolbars and all. A `vh` is measured
+          with them put away, so on iOS a sheet held to 88vh could stand
+          taller than the screen with them showing, its title and Close off
+          the top (the stability audit, P3-7).
+        */
         className={cn(
-          "rounded-t-card border-paper-line bg-paper text-forest relative max-h-[88vh] w-full max-w-xl overflow-y-auto border p-5 pb-8 outline-none",
+          "rounded-t-card border-paper-line bg-paper text-forest relative max-h-[88dvh] w-full max-w-xl overflow-y-auto border p-5 pb-8 outline-none",
           inspector &&
             "lg:rounded-l-card lg:h-full lg:max-h-none lg:max-w-md lg:rounded-tr-none",
           className,

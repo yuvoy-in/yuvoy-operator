@@ -66,6 +66,20 @@ describe("palette", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("measures the screen as a phone shows it, never in a static vh", () => {
+    /*
+      A `vh` (and `h-screen`, which is 100 of them) is measured with a
+      phone's toolbars put away, so on iOS anything held to it could stand
+      taller than the screen with them showing. The sheet was held to 88vh
+      (the stability audit, P3-7). `dvh` follows the toolbars; `svh` and
+      `lvh` say which of the two is meant.
+    */
+    const offenders = FILES.filter((f) =>
+      /\b\d+(?:\.\d+)?vh\b|\bh-screen\b/.test(read(f)),
+    ).map(rel);
+    expect(offenders).toEqual([]);
+  });
+
   it("never uses font-semibold: the type system has three weights", () => {
     // 400, 500 and 700, and nothing between (yuvoy-app docs/DESIGN_SYSTEM.md v3.0).
     const offenders = FILES.filter((f) => /font-semibold/.test(read(f))).map(

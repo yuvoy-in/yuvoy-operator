@@ -272,3 +272,16 @@ describe("two sheets at once", () => {
     expect(document.body.style.overflow).toBe("");
   });
 });
+
+/*
+  The stability audit, P3-7. A `vh` is measured with a phone's toolbars put
+  away, so on iOS a sheet held to 88vh could stand taller than the screen
+  with them showing, its title and Close off the top. palette.test.ts keeps
+  every other `vh` out of the portal.
+*/
+describe("a sheet's height", () => {
+  it("is held to the screen as it is, toolbars and all", () => {
+    render(sheet());
+    expect(screen.getByRole("dialog")).toHaveClass("max-h-[88dvh]");
+  });
+});
