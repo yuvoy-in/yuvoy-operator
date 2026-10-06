@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { inputClass, textareaClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * About and languages — the half of the story that is the operator's outright.
@@ -67,8 +68,10 @@ function StoryRound({
   languages: string[];
   onAgain: () => void;
 }) {
-  const [state, act, pending] = useActionState<StoryState, FormData>(
-    saveStory,
+  const [state, act, pending] = useActionState(
+    sendForm<StoryState>(saveStory, () => ({
+      message: "No signal. Nothing was saved. Try again.",
+    })),
     {},
   );
   const [text, setText] = useState(about);

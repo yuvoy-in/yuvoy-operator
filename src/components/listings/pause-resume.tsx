@@ -16,6 +16,7 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { callAction } from "@/lib/actions/call-action";
 
 /** An action's answer, and when it arrived — so the later of two receipts wins. */
 type Stamped<T> = T & { at?: number };
@@ -85,7 +86,17 @@ export function PauseResume({
     FormData
   >(
     async (prev, form) => ({
-      ...(await pauseListing(prev, form)),
+      ...(await callAction(
+        () => pauseListing(prev, form),
+        // Refused as the action refuses, the reason handed back with it.
+        () => ({
+          message: "No signal. Nothing was sent. It is still on sale.",
+          typed: {
+            reasonCode: String(form.get("reasonCode") ?? "") || undefined,
+          },
+          attempt: (prev.attempt ?? 0) + 1,
+        }),
+      )),
       at: Date.now(),
     }),
     {},
@@ -95,7 +106,10 @@ export function PauseResume({
     FormData
   >(
     async (prev, form) => ({
-      ...(await resumeListing(prev, form)),
+      ...(await callAction(
+        () => resumeListing(prev, form),
+        () => ({ message: "No signal. Nothing changed. It is still paused." }),
+      )),
       at: Date.now(),
     }),
     {},

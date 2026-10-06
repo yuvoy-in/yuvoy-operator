@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { confirmSeats, type ConfirmSeatsState } from "@/app/calendar/actions";
 import { Button } from "@/components/ui/button";
 import { Panel, panelClass } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Departures off sale because nobody confirmed their seats, and one tap to
@@ -28,8 +29,10 @@ export function ConfirmSeats({
   notOnSale: number;
   goingOffSoon: number;
 }) {
-  const [state, act, pending] = useActionState<ConfirmSeatsState, FormData>(
-    confirmSeats,
+  const [state, act, pending] = useActionState(
+    sendForm<ConfirmSeatsState>(confirmSeats, () => ({
+      message: "No signal. Nothing was confirmed. Try again.",
+    })),
     {},
   );
 

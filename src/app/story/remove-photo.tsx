@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { removeStoryPhoto, type RemovePhotoState } from "./actions";
 import { Button } from "@/components/ui/button";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Take one photograph off the page — two taps, the second one naming what
@@ -21,8 +22,10 @@ export function RemovePhoto({
   position: number;
 }) {
   const [armed, setArmed] = useState(false);
-  const [state, act, pending] = useActionState<RemovePhotoState, FormData>(
-    removeStoryPhoto,
+  const [state, act, pending] = useActionState(
+    sendForm<RemovePhotoState>(removeStoryPhoto, () => ({
+      message: "No signal. It is still on your page. Try again.",
+    })),
     {},
   );
 

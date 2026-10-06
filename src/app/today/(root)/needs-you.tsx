@@ -41,6 +41,7 @@ import { RequestItem } from "@/components/requests/request-item";
 import { useAnswers } from "@/components/requests/use-answers";
 import { CashCard } from "./cash-card";
 import { MessageCard } from "./message-card";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * "Needs you" on Home: the rows the server worked out, in its order, each
@@ -98,10 +99,12 @@ export function NeedsYou({
   const router = useRouter();
   const refresh = useCallback(() => router.refresh(), [router]);
   const { answers, store } = useAnswers(refresh);
-  const [seats, confirmAll, confirming] = useActionState<
-    ConfirmSeatsState,
-    FormData
-  >(confirmSeats, {});
+  const [seats, confirmAll, confirming] = useActionState(
+    sendForm<ConfirmSeatsState>(confirmSeats, () => ({
+      message: "No signal. Nothing was confirmed. Try again.",
+    })),
+    {},
+  );
 
   /*
     The cards the operator opened, by key, with the last data the server sent

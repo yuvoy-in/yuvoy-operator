@@ -6,6 +6,7 @@ import { describeChange, type ChangeState } from "@/lib/account/bank";
 import { marketTime, marketDay } from "@/lib/format/market-time";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * A bank change in flight, and the brake beside it.
@@ -70,8 +71,10 @@ export function ChangePanel({
    */
   canStop: boolean;
 }) {
-  const [result, act, pending] = useActionState<CancelState, FormData>(
-    cancelChange,
+  const [result, act, pending] = useActionState(
+    sendForm<CancelState>(cancelChange, () => ({
+      message: "No signal. It was NOT stopped. Try again.",
+    })),
     {},
   );
   const [confirming, setConfirming] = useState(false);

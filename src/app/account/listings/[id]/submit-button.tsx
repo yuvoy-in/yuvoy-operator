@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { submitListing, type SubmitState } from "./actions";
 import { sendLabel } from "@/lib/services/draft";
 import { Button } from "@/components/ui/button";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Send for review, and Send again — yuvoy-operator#58 item 4.
@@ -30,8 +31,10 @@ export function SubmitButton({
   /** How many fields the API says are still outstanding. */
   missing?: number;
 }) {
-  const [state, act, pending] = useActionState<SubmitState, FormData>(
-    submitListing,
+  const [state, act, pending] = useActionState(
+    sendForm<SubmitState>(submitListing, () => ({
+      message: "No signal. It was not sent. Try again.",
+    })),
     {},
   );
   const router = useRouter();
