@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { saveLocation, type StepState } from "../builder-actions";
 import { screenerChoices, type Vocabulary } from "@/lib/services/vocabulary";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { MeetingPin } from "@/components/map/meeting-pin";
 import { pinOf, pinsSupported } from "@/lib/map/pin";
 import { sendForm } from "@/lib/actions/send-form";
@@ -115,7 +116,7 @@ export function LocationStep({
         <label htmlFor="l-inclusions" className={fieldLabelClass()}>
           What is included
         </label>
-        <textarea
+        <Textarea
           id="l-inclusions"
           name="inclusions"
           rows={4}
@@ -134,7 +135,7 @@ export function LocationStep({
         <label htmlFor="l-requirements" className={fieldLabelClass()}>
           What a traveller needs
         </label>
-        <textarea
+        <Textarea
           id="l-requirements"
           name="requirements"
           rows={4}
@@ -153,7 +154,7 @@ export function LocationStep({
         <label htmlFor="l-safety" className={fieldLabelClass()}>
           Safety notes
         </label>
-        <textarea
+        <Textarea
           id="l-safety"
           name="safetyNotes"
           rows={3}

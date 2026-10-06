@@ -21,6 +21,7 @@ import { Chip } from "@/components/ui/chip";
 import { PauseResume } from "./pause-resume";
 import { SentBack } from "./sent-back";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { panelClass } from "@/components/ui/panel";
 import { MeetingPin } from "@/components/map/meeting-pin";
 import { pinOf, pinsSupported } from "@/lib/map/pin";
@@ -373,7 +374,7 @@ export function ListingRow({
             >
               What happens on the day
             </label>
-            <textarea
+            <Textarea
               id={`description-${listing.id}`}
               name="description"
               rows={4}
@@ -530,7 +531,7 @@ export function ListingRow({
             >
               What is included
             </label>
-            <textarea
+            <Textarea
               id={`inclusions-${listing.id}`}
               name="inclusions"
               rows={3}
@@ -549,7 +550,7 @@ export function ListingRow({
             >
               What a traveller needs
             </label>
-            <textarea
+            <Textarea
               id={`requirements-${listing.id}`}
               name="requirements"
               rows={3}
@@ -569,7 +570,7 @@ export function ListingRow({
             >
               Safety notes
             </label>
-            <textarea
+            <Textarea
               id={`safety-${listing.id}`}
               name="safetyNotes"
               rows={3}

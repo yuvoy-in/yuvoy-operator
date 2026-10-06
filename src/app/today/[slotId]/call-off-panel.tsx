@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { choiceClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { panelClass } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
 import { sendForm } from "@/lib/actions/send-form";
@@ -275,7 +276,7 @@ export function CallOffPanel({
         >
           Anything to add (optional)
         </label>
-        <textarea
+        <Textarea
           id={`call-off-note-${slotId}`}
           name="note"
           rows={2}

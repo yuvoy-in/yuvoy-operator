@@ -11,6 +11,7 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { Panel } from "@/components/ui/panel";
 import { choiceClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { sendForm } from "@/lib/actions/send-form";
 
 /**
@@ -263,7 +264,7 @@ export function CancelBooking({
         <label htmlFor={`${ids}-note`} className="label text-forest/75">
           A note <span className="text-forest/70">(optional)</span>
         </label>
-        <textarea
+        <Textarea
           id={`${ids}-note`}
           name="note"
           rows={2}

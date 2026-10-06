@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import {
   createAccount,
@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass } from "@/components/ui/input";
 import { PhoneField } from "@/components/ui/phone-field";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { formatE164 } from "@/lib/auth/phone";
 import { EMAIL_REQUIRED_AT_SIGNUP } from "@/lib/auth/signup";
 import { EMAIL_MAX_LENGTH } from "@/lib/auth/email";
@@ -93,6 +94,11 @@ export function SignUpForm() {
    * somebody's own access is the one thing this screen must not print.
    */
   const [relationship, setRelationship] = useState("");
+  // Chosen before the page hydrated: the choice is marked, and its note shown.
+  const relationshipGroup = useRef<HTMLFieldSetElement>(null);
+  useChangedBeforeHydration(relationshipGroup, ([chosen]) =>
+    setRelationship(chosen.value),
+  );
 
   if (state.step === "code") {
     return (
@@ -219,7 +225,10 @@ export function SignUpForm() {
         owner on this account" is the screen contradicting itself about the one
         thing somebody is here to set up.
       */}
-      <fieldset aria-invalid={state.field === "relationship" || undefined}>
+      <fieldset
+        ref={relationshipGroup}
+        aria-invalid={state.field === "relationship" || undefined}
+      >
         <legend className="label text-forest/75">
           Do you own this business, or run it for the owner?
         </legend>

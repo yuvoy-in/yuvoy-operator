@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   COUNTRY,
   isCompleteNational,
@@ -8,6 +8,7 @@ import {
   toNationalDigits,
 } from "@/lib/auth/phone";
 import { cn } from "@/lib/cn";
+import { useChangedBeforeHydration } from "./use-changed-before-hydration";
 
 /**
  * The portal's phone field. One component, three forms — sign in, create an
@@ -71,6 +72,15 @@ export function PhoneField({
   const change = (raw: string) => setDigits(toNationalDigits(raw));
 
   /*
+    Typed, pasted or autofilled before the page hydrated, which on a slow
+    link is seconds of a form that looks ready. Without this the box held ten
+    digits over a disabled "Send me a code" until a digit was retyped (the
+    stability pass's stress run, 6 Oct 2026).
+  */
+  const box = useRef<HTMLInputElement>(null);
+  useChangedBeforeHydration(box, ([field]) => change(field.value));
+
+  /*
     Reported from the value rather than from the keystroke.
 
     Announcing it only in `onChange` made the parent's flag depend on an
@@ -116,6 +126,7 @@ export function PhoneField({
           {COUNTRY.dialCode}
         </span>
         <input
+          ref={box}
           id={id}
           type="tel"
           /*

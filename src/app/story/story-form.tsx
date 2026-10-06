@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { saveStory, type StoryState } from "./actions";
 import {
   ABOUT_MAX,
@@ -11,6 +11,8 @@ import {
 } from "@/lib/story/story";
 import { Button } from "@/components/ui/button";
 import { inputClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { Panel } from "@/components/ui/panel";
 import { sendForm } from "@/lib/actions/send-form";
 
@@ -76,6 +78,14 @@ function StoryRound({
   );
   const [text, setText] = useState(about);
   const [langs, setLangs] = useState(languages.join(", "));
+  /*
+    Written before the page hydrated. Without this the count said nothing
+    was there, and typing in the other field took it away.
+  */
+  const aboutField = useRef<HTMLTextAreaElement>(null);
+  const langsField = useRef<HTMLInputElement>(null);
+  useChangedBeforeHydration(aboutField, ([field]) => setText(field.value));
+  useChangedBeforeHydration(langsField, ([field]) => setLangs(field.value));
 
   const size = aboutSize(text);
   const aboutProblem = aboutIssue(text);
@@ -112,7 +122,8 @@ function StoryRound({
           Who you are, how long you have been at it, and what a first-timer
           should know.
         </p>
-        <textarea
+        <Textarea
+          ref={aboutField}
           id="about"
           name="about"
           rows={6}
@@ -154,6 +165,7 @@ function StoryRound({
           broken, which is the only moment it changes anything.
         */}
         <input
+          ref={langsField}
           id="languages"
           name="languages"
           value={langs}

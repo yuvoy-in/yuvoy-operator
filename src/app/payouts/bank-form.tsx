@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import {
   changeBank,
   requestStepUp,
@@ -13,6 +13,7 @@ import { sendForm } from "@/lib/actions/send-form";
 import { SUPPORT_PHONE } from "@/lib/site/contact";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { Panel } from "@/components/ui/panel";
 
 /**
@@ -50,6 +51,13 @@ export function BankForm({
   const [step, setStep] = useState<StepUpState>({});
   const [sending, setSending] = useState(false);
   const [account, setAccount] = useState("");
+  /*
+    Typed before the page hydrated, where the form is the first thing an
+    operator with no account on file sees: the last four below are read from
+    it, and the form's next render would have emptied the box.
+  */
+  const accountField = useRef<HTMLInputElement>(null);
+  useChangedBeforeHydration(accountField, ([field]) => setAccount(field.value));
   /*
     A refusal hands back what was typed (`sendForm`), and the fields below read
     it back in place: an IFSC refused for its fifth character used to empty the
@@ -90,6 +98,7 @@ export function BankForm({
           Account number
         </label>
         <input
+          ref={accountField}
           id="accountNumber"
           name="accountNumber"
           type="text"

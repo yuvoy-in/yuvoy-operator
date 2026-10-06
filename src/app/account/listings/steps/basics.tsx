@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { saveBasics, type StepState } from "../builder-actions";
 import {
   activityChoices,
@@ -8,6 +8,8 @@ import {
   type Vocabulary,
 } from "@/lib/services/vocabulary";
 import { inputClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { sendForm } from "@/lib/actions/send-form";
 import { notSaved, StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
@@ -59,6 +61,11 @@ export function BasicsStep({
   */
   const typed = state.typed;
   const [category, setCategory] = useState(listing.category ?? "");
+  // Chosen before the page hydrated: the kinds below follow it.
+  const categoryField = useRef<HTMLSelectElement>(null);
+  useChangedBeforeHydration(categoryField, ([field]) =>
+    setCategory(field.value),
+  );
   const activities = activityChoices(vocabulary, category || null);
   const { marked, describedBy, needed } = fieldMarks(state.fields, flagged);
 
@@ -102,6 +109,7 @@ export function BasicsStep({
         </FieldLabel>
         {needed("category", "b-category")}
         <select
+          ref={categoryField}
           id="b-category"
           name="category"
           required
@@ -191,7 +199,7 @@ export function BasicsStep({
       <div>
         <FieldLabel htmlFor="b-description">What happens on the day</FieldLabel>
         {needed("description", "b-description")}
-        <textarea
+        <Textarea
           id="b-description"
           name="description"
           rows={5}

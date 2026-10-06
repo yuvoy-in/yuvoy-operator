@@ -19,6 +19,7 @@ import { Chip } from "@/components/ui/chip";
 import { InboxIcon } from "@/components/ui/icons";
 import { LinkRing } from "@/components/ui/link-pending";
 import { textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { panelClass } from "@/components/ui/panel";
 import { withFrom } from "@/lib/site/back-to";
 import { callAction } from "@/lib/actions/call-action";
@@ -261,7 +262,7 @@ export function MessageCard({
               >
                 Reply to {first}
               </label>
-              <textarea
+              <Textarea
                 ref={box}
                 id={boxId}
                 name="text"

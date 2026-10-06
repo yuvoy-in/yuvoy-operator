@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { choiceClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Panel } from "@/components/ui/panel";
 import { sendForm } from "@/lib/actions/send-form";
 
@@ -190,7 +191,7 @@ export function CloseDeparture({
         >
           A note <span className="text-forest/70">(optional)</span>
         </label>
-        <textarea
+        <Textarea
           id={`close-note-${slotId}`}
           name="note"
           rows={2}

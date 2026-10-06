@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { fileCredential, type CredentialState } from "./actions";
 import {
   CREDENTIAL_TYPES,
@@ -9,6 +9,8 @@ import {
 } from "@/lib/profile/credentials";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { Panel } from "@/components/ui/panel";
 import { sendForm } from "@/lib/actions/send-form";
 
@@ -50,6 +52,9 @@ export function CredentialForm({
   );
   const typed = state.typed;
   const [type, setType] = useState<string>(suggested ?? "");
+  // Chosen before the page hydrated: its hint and warning follow it.
+  const typeField = useRef<HTMLSelectElement>(null);
+  useChangedBeforeHydration(typeField, ([field]) => setType(field.value));
 
   if (state.sent) {
     return (
@@ -91,6 +96,7 @@ export function CredentialForm({
             Which document
           </label>
           <select
+            ref={typeField}
             id="cred-type"
             name="type"
             required
@@ -186,7 +192,7 @@ export function CredentialForm({
           <label htmlFor="cred-notes" className="label text-forest/75">
             Anything we should know
           </label>
-          <textarea
+          <Textarea
             id="cred-notes"
             name="notes"
             rows={3}

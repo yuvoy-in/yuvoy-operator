@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { saveSelling, type StepState } from "../builder-actions";
 import { PRICING_UNITS } from "@/lib/services/listings";
 import { commissionPreview, formatRate } from "@/lib/services/commission";
 import { formatPaise } from "@/lib/format/money";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { sendForm } from "@/lib/actions/send-form";
 import { notSaved, StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
@@ -63,6 +64,9 @@ export function SellingStep({
       ? String(Math.round(listing.unitPricePaise / 100))
       : "",
   );
+  // Typed before the page hydrated: the split below is worked from it.
+  const priceField = useRef<HTMLInputElement>(null);
+  useChangedBeforeHydration(priceField, ([field]) => setPrice(field.value));
   const rupees = Number(price.replace(/[^\d.]/g, ""));
   const split = commissionPreview(
     Number.isFinite(rupees) && rupees > 0 ? Math.round(rupees * 100) : null,
@@ -98,6 +102,7 @@ export function SellingStep({
         </FieldLabel>
         {needed("unitPrice", "s-price")}
         <input
+          ref={priceField}
           id="s-price"
           name="unitPrice"
           inputMode="decimal"

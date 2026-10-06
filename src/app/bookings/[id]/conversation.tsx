@@ -20,6 +20,8 @@ import { marketTime } from "@/lib/format/market-time";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { cn } from "@/lib/cn";
 import { callAction } from "@/lib/actions/call-action";
 
@@ -55,6 +57,10 @@ export function Conversation({
   const [text, setText] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
   const [sending, startSending] = useTransition();
+
+  // A reply started before the page hydrated: kept, and sent as written.
+  const box = useRef<HTMLTextAreaElement>(null);
+  useChangedBeforeHydration(box, ([field]) => setText(field.value));
   const [loading, startLoading] = useTransition();
 
   /*
@@ -206,7 +212,8 @@ export function Conversation({
           <label htmlFor="message" className="label text-forest/75">
             Write to them
           </label>
-          <textarea
+          <Textarea
+            ref={box}
             id="message"
             name="text"
             rows={3}

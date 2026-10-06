@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { inputClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Panel } from "@/components/ui/panel";
 import { callAction } from "@/lib/actions/call-action";
 
@@ -308,7 +309,7 @@ export function PauseResume({
         >
           Anything to add
         </label>
-        <textarea
+        <Textarea
           id={`pause-note-${experienceId}`}
           name="note"
           rows={2}

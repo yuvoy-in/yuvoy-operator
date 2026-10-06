@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setSwitch } from "./actions";
 import {
@@ -9,6 +9,7 @@ import {
 } from "@/lib/account/notifications";
 import { Panel } from "@/components/ui/panel";
 import { callAction } from "@/lib/actions/call-action";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 
 /**
  * Every switch, with what each one covers — yuvoy-operator#46 items 5 and 6.
@@ -67,9 +68,24 @@ export function SwitchList({
     });
   }
 
+  /*
+    Flipped before the page hydrated. The switch showed the flip and nothing
+    was saved, and the list's next render put it back: saved now, as the
+    flip asked.
+  */
+  const list = useRef<HTMLUListElement>(null);
+  useChangedBeforeHydration(list, (changed) => {
+    for (const field of changed) {
+      const { group } = field.dataset;
+      if (group && field instanceof HTMLInputElement) {
+        toggle(group, field.checked);
+      }
+    }
+  });
+
   return (
     <>
-      <ul className="space-y-3">
+      <ul ref={list} className="space-y-3">
         {settings.switches.map((row) => {
           const who = changedLine(row, meId);
           return (
@@ -96,6 +112,7 @@ export function SwitchList({
                   </span>
                   <input
                     type="checkbox"
+                    data-group={row.group}
                     checked={row.on}
                     disabled={saving}
                     onChange={(e) => toggle(row.group, e.target.checked)}

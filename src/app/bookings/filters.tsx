@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DATE_CHOICES,
@@ -13,6 +13,7 @@ import {
   type Filters,
 } from "@/lib/bookings/list";
 import { inputClass } from "@/components/ui/input";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { useRowsNavigation } from "./pill-row";
 
 /**
@@ -138,16 +139,48 @@ export function BookingFilters({
     return () => clearTimeout(id);
   }, [text, filters.q, apply]);
 
-  function chooseDate(value: DateChoice) {
+  /** The address change a date choice makes: none for "pick", yet. */
+  function datesChosen(value: DateChoice): Record<string, string> {
     setPicking(value === "pick");
-    if (value === "pick") return;
-    apply(datesFor(value, today, tomorrow));
+    return value === "pick" ? {} : datesFor(value, today, tomorrow);
   }
+
+  function chooseDate(value: DateChoice) {
+    const changes = datesChosen(value);
+    if (Object.keys(changes).length > 0) apply(changes);
+  }
+
+  /*
+    Searched or filtered before the page hydrated: on a slow link the bar is
+    there for seconds before its script. Taken as one change, so a listing
+    and a date picked in that time land in one address.
+
+    Dates typed by hand outrank a date choice changed with them. Without a
+    script the choice hides nothing, so both can change, and taking the
+    choice would hide the very fields somebody typed into. The choice follows
+    the dates instead, as it does for any range (it reads "pick").
+  */
+  const bar = useRef<HTMLDivElement>(null);
+  useChangedBeforeHydration(bar, (changed) => {
+    const changes: Record<string, string> = {};
+    let chosen: DateChoice | null = null;
+    for (const field of changed) {
+      if (field.id === "booking-search") setText(field.value);
+      if (field.id === "booking-listing") changes.experienceId = field.value;
+      if (field.id === "booking-dates") chosen = field.value as DateChoice;
+      if (field.id === "booking-from") changes.from = field.value;
+      if (field.id === "booking-to") changes.to = field.value;
+    }
+    if (chosen && !("from" in changes) && !("to" in changes)) {
+      Object.assign(changes, datesChosen(chosen));
+    }
+    if (Object.keys(changes).length > 0) apply(changes);
+  });
 
   const picked = rangeLabel(filters);
 
   return (
-    <div className="mt-6 space-y-3">
+    <div ref={bar} className="mt-6 space-y-3">
       <div>
         <label htmlFor="booking-search" className="sr-only">
           Guest name or booking reference

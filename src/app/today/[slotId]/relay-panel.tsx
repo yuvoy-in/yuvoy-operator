@@ -11,6 +11,7 @@ import {
 } from "@/lib/day/relay-types";
 import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Panel } from "@/components/ui/panel";
 import { sendForm } from "@/lib/actions/send-form";
 
@@ -192,7 +193,7 @@ function RelayRound({
         >
           {sendsToPhone ? "Anything else (optional)" : "The note"}
         </label>
-        <textarea
+        <Textarea
           id={`note-${bookingId || slotId}`}
           name="note"
           rows={3}

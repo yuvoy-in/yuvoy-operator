@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Panel, panelClass } from "@/components/ui/panel";
 import { sendForm } from "@/lib/actions/send-form";
 
@@ -288,7 +289,7 @@ function BlackoutRound({
         <label htmlFor={`${id}-note`} className="label text-forest/75">
           Anything to add (optional)
         </label>
-        <textarea
+        <Textarea
           id={`${id}-note`}
           name="note"
           rows={2}
