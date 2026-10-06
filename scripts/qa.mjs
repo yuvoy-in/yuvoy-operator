@@ -131,6 +131,20 @@ for (const f of files) {
   if (/amountMinor\s*\/\s*100/.test(s)) {
     problems.push(`${rel(f)}: divides paise by hand`);
   }
+  /*
+    An amount read by deleting everything but digits and dots
+    (yuvoy-operator#144). It keeps every dot, so "Rs. 1500" read as ".1500"
+    and a listing was saved at 15 paise, "1500-2000" read as 15002000, and
+    "1.005" passed for a price. A typed amount goes through a parser that
+    refuses what it cannot read.
+  */
+  if (/\[\^(?:\\d|0-9)\.\]|\[\^\.(?:\\d|0-9)\]/.test(s)) {
+    problems.push(
+      `${rel(f)}: reads an amount by deleting everything but digits and ` +
+        `dots, which saved "Rs. 1500" as 15 paise (yuvoy-operator#144). ` +
+        `Use priceToPaise from @/lib/money/price.`,
+    );
+  }
 }
 
 /* ======================================================================== */

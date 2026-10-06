@@ -10,6 +10,7 @@ import { CATEGORIES, type Category } from "@/lib/services/vocabulary";
 import { suspendedMessage } from "@/lib/account/suspended";
 import { nextStep, type Step } from "@/lib/services/builder";
 import { readPinFields } from "@/lib/map/pin";
+import { priceToPaise } from "@/lib/money/price";
 
 /**
  * Saving one step of the listing builder — yuvoy-operator#58 item 7.
@@ -252,12 +253,14 @@ export async function saveSelling(
   }
 
   /*
-    Rupees on screen, paise on the wire. Rounded once, at the boundary: a price
-    that arrives a paisa off is a price an operator disputes at settlement.
+    Rupees on screen, paise on the wire, read the same way the "You receive"
+    line reads them. A price that cannot be read is refused rather than read
+    as another number: deleting everything but digits and dots saved
+    "Rs. 1500" as 15 paise (yuvoy-operator#144).
   */
-  const rupees = Number(parsed.data.unitPrice.replace(/[^\d.]/g, ""));
-  if (!Number.isFinite(rupees) || rupees <= 0) {
-    return { message: "A price in rupees.", fields: ["unitPrice"] };
+  const unitPricePaise = priceToPaise(parsed.data.unitPrice);
+  if (unitPricePaise === null) {
+    return { message: "Check the price.", fields: ["unitPrice"] };
   }
   const party = Number(parsed.data.maxPartySize);
   if (!Number.isInteger(party) || party < 1) {
@@ -279,7 +282,7 @@ export async function saveSelling(
     const { error } = await operatorApi(token).PATCH("/experiences/{id}", {
       params: { path: { id: parsed.data.id } },
       body: {
-        unitPricePaise: Math.round(rupees * 100),
+        unitPricePaise,
         pricingUnit: parsed.data.pricingUnit,
         maxPartySize: party,
         durationMinutes: minutes,

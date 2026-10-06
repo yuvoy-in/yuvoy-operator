@@ -218,6 +218,11 @@ test("raising a change needs a code, and the code goes to the owner", async ({
   await expect(page.getByText(/owner.s phone/)).toHaveCount(0);
   // The brake is on this screen; the phone-only warning reaches nobody today.
   await expect(page.getByText(/owner is messaged/i)).toHaveCount(0);
+  // What raising does to the money, before the tap (yuvoy-operator#143).
+  await expect(
+    page.getByText(/Raising it puts payouts on hold until it settles/),
+  ).toBeVisible();
+  await expect(page.getByText(/changes nothing today/)).toHaveCount(0);
 });
 
 test("a wrong code says the code did not work, and changes nothing", async ({
@@ -287,6 +292,10 @@ test("a valid change is raised, and nothing is live yet", async ({ page }) => {
     snapshot.
   */
   await expect(page.getByText("Raised: you can still stop this")).toBeVisible();
+  // And what it does to the money (yuvoy-operator#143).
+  await expect(
+    page.getByText(/Payouts are on hold until it settles/),
+  ).toBeVisible();
   // In the API's own summary shape (`BankChange.Summary`).
   await expect(page.getByText("····6789 (HDFC0001234)")).toBeVisible();
   await expect(

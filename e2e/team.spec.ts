@@ -1059,6 +1059,30 @@ test("a number nobody invited is told so, and told what to do", async ({
   await expect(page.getByLabel("Your code")).toHaveCount(0);
 });
 
+test("a wrong code on the join link says so, and asks nobody to leave anything", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#145. A wrong or used-up code is `409 cannot_invite`, and
+    every 409 used to be read as "confirm you are leaving another business".
+    So somebody in no business at all was asked to leave one, and past the
+    attempt limit went round that panel for good. Nothing is consumed by a
+    wrong code, so both projects run it.
+  */
+  await page.goto(`/join/${JOIN_TOKEN}`);
+  await page.getByLabel("Your phone number").fill("9000000104");
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await page.getByLabel("Your code").fill("000000");
+  await page.getByRole("button", { name: "Join", exact: true }).click();
+
+  await expect(page.locator("form").getByRole("alert")).toHaveText(
+    "We could not accept that invitation. Check the code and try again.",
+  );
+  await expect(page.getByText(/take you off/)).toHaveCount(0);
+  await expect(page.getByLabel("Your code")).toBeVisible();
+});
+
 test("an invited number joins, and is signed straight in", async ({
   page,
 }, testInfo) => {

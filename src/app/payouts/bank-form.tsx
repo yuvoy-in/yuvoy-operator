@@ -20,8 +20,9 @@ import { Panel } from "@/components/ui/panel";
  * Changing where the money goes.
  *
  * The whole design is deliberately slow, and the form says what raising a
- * change does before the tap: nothing today, then two clocks, stoppable
- * throughout. WHY it is slow is an answer in Help (yuvoy-operator#80 t4).
+ * change does before the tap: payouts on hold until it settles, then two
+ * clocks, stoppable throughout. WHY it is slow is an answer in Help
+ * (yuvoy-operator#80 t4).
  *
  * ## Empty, always
  *
@@ -271,11 +272,17 @@ export function BankForm({
         design, and with no phone sender it is suppressed (yuvoy-operator#91).
         What stands is the window and the brake on this screen, so that is
         what it promises.
+
+        "Raising it changes nothing today" was the first sentence, and it was
+        not true either: the API holds this business's payouts from the moment
+        a bank change is raised until it settles (`ErrPayoutOnHold`,
+        yuvoy-operator#143). The same words as the mobile operator app.
       */}
       <p className="text-forest/70 text-xs">
-        Raising it changes nothing today. For 24 hours an owner or an admin can
-        stop it from this screen; a person at Yuvoy then reviews it; and it goes
-        live 24 hours after that, still stoppable the whole time.
+        Raising it puts payouts on hold until it settles. For 24 hours an owner
+        or an admin can stop it from this screen; a person at Yuvoy then reviews
+        it; and it goes live 24 hours after that, still stoppable the whole
+        time.
       </p>
 
       <div className="flex flex-col gap-2">
