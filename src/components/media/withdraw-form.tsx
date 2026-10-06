@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { choiceClass } from "@/components/ui/input";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Taking a clip down, from the library rather than only from the receipt.
@@ -49,8 +50,15 @@ export function WithdrawForm({
   /** The listing it is on, if any — what taking it down actually costs. */
   attachedTo?: string;
 }) {
-  const [state, act, pending] = useActionState<WithdrawState, FormData>(
-    withdrawMedia,
+  /*
+    A refusal hands back the reason chosen (`sendForm`), and the radios read
+    it back in place rather than coming back unanswered. Not remounted,
+    because the question is this confirm's still frame and holds the focus.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<WithdrawState>(withdrawMedia, () => ({
+      message: "No signal. It is still up. Try again.",
+    })),
     {},
   );
   const [open, setOpen] = useState(false);
@@ -127,6 +135,7 @@ export function WithdrawForm({
                 name="reason"
                 value={reason.code}
                 required
+                defaultChecked={state.typed?.reason === reason.code}
                 className="accent-terra-deep mt-0.5 size-5 shrink-0"
               />
               <span>

@@ -5,6 +5,7 @@ import { attachMedia, type AttachState } from "./actions";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { describeStatus } from "@/lib/services/listings";
+import { sendForm, type Typed } from "@/lib/actions/send-form";
 
 export interface ListingOption {
   id: string;
@@ -12,7 +13,7 @@ export interface ListingOption {
   status?: string;
 }
 
-const initial: AttachState = {};
+const initial: Typed<AttachState> = {};
 
 export function AttachForm({
   mediaAssetId,
@@ -21,7 +22,12 @@ export function AttachForm({
   mediaAssetId: string;
   listings: ListingOption[];
 }) {
-  const [state, action, pending] = useActionState(attachMedia, initial);
+  const [state, action, pending] = useActionState(
+    sendForm<AttachState>(attachMedia, () => ({
+      message: "No signal. The clip was not attached. Try again.",
+    })),
+    initial,
+  );
   const [chosen, setChosen] = useState<string | null>(null);
   const chosenStatus = chosen
     ? describeStatus(listings.find((l) => l.id === chosen)?.status)
@@ -36,7 +42,12 @@ export function AttachForm({
   }
 
   return (
-    <form action={action} className="mt-4 space-y-3">
+    /*
+      Remounted per refusal (`sendForm`), onto what was chosen. The listing is
+      a select, which React reads only when it mounts, so a reset in place
+      showed "Choose a listing" under the warning for the one still chosen.
+    */
+    <form key={state.attempt ?? 0} action={action} className="mt-4 space-y-3">
       <input type="hidden" name="mediaAssetId" value={mediaAssetId} />
 
       <div>
@@ -48,7 +59,7 @@ export function AttachForm({
           name="experienceId"
           required
           className={inputClass("mt-2")}
-          defaultValue=""
+          defaultValue={state.typed?.experienceId ?? ""}
           onChange={(e) => setChosen(e.target.value || null)}
         >
           <option value="" disabled>
@@ -97,11 +108,21 @@ export function AttachForm({
         <legend className="label">Where it appears</legend>
         <div className="mt-2 flex gap-5 text-sm">
           <label className="flex items-center gap-2">
-            <input type="radio" name="role" value="hero" defaultChecked />
+            <input
+              type="radio"
+              name="role"
+              value="hero"
+              defaultChecked={(state.typed?.role ?? "hero") === "hero"}
+            />
             First clip
           </label>
           <label className="flex items-center gap-2">
-            <input type="radio" name="role" value="gallery" />
+            <input
+              type="radio"
+              name="role"
+              value="gallery"
+              defaultChecked={state.typed?.role === "gallery"}
+            />
             Gallery
           </label>
         </div>

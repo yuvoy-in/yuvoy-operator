@@ -6,6 +6,7 @@ import { WITHDRAW_REASONS } from "@/lib/media/rights";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { choiceClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * What the operator sees once the rights are recorded — and the one thing
@@ -35,8 +36,11 @@ export function Submitted({
   mediaAssetId: string;
   attestationNote?: string;
 }) {
-  const [state, act, pending] = useActionState<WithdrawState, FormData>(
-    withdrawMedia,
+  // A refusal keeps the reason chosen, read back in place (`sendForm`).
+  const [state, act, pending] = useActionState(
+    sendForm<WithdrawState>(withdrawMedia, () => ({
+      message: "No signal. It is still up. Try again.",
+    })),
     {},
   );
   const [confirming, setConfirming] = useState(false);
@@ -109,6 +113,7 @@ export function Submitted({
                     name="reason"
                     value={reason.code}
                     required
+                    defaultChecked={state.typed?.reason === reason.code}
                     className="accent-terra-deep mt-0.5 size-5 shrink-0"
                   />
                   <span>
