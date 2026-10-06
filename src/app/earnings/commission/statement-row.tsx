@@ -9,6 +9,7 @@ import {
   type CommissionStatement,
 } from "@/lib/money/commission-statements";
 import { cn } from "@/lib/cn";
+import { LinkRing } from "@/components/ui/link-pending";
 
 /**
  * One weekly commission statement as a row (yuvoy-operator#121): the week,
@@ -31,8 +32,10 @@ export function StatementRow({
       className="rounded-card border-paper-line bg-paper-deep hover:border-forest/40 ease-interaction flex items-center justify-between gap-4 border p-4 transition-colors duration-200"
     >
       <div className="min-w-0">
+        {/* The ring follows the week, so the chip and figure never move. */}
         <p className="font-bold text-balance">
           {weekLabel(statement.weekStart, statement.weekEnd)}
+          <LinkRing />
         </p>
         <p className="text-forest/70 mt-1 text-sm">
           {tripsLabel(statement.bookings)} ·{" "}

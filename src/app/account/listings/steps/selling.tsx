@@ -1,13 +1,15 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { saveSelling, type StepState } from "../builder-actions";
 import { PRICING_UNITS } from "@/lib/services/listings";
 import { commissionPreview, formatRate } from "@/lib/services/commission";
 import { formatPaise } from "@/lib/format/money";
 import { paiseToPriceText, priceToPaise } from "@/lib/money/price";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
-import { StepShell } from "./step-shell";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
+import { sendForm } from "@/lib/actions/send-form";
+import { notSaved, StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
 import { FieldLabel } from "./field-help";
 
@@ -46,11 +48,22 @@ export function SellingStep({
   /** The field Edit was opened for, still needed: marked in place (O12). */
   flagged?: string;
 }) {
-  const [state, act, pending] = useActionState<StepState, FormData>(
-    saveSelling,
+  /*
+    A refusal hands back what was typed (`sendForm`), every field below reads
+    it, and the form remounts onto it (`attempt`): the group size and the
+    length are number fields, which a reset in place takes back to what was on
+    file when Go was pressed from one. A refused group size used to take the
+    basis and the way it sells back with it. The price is held in state.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<StepState>(saveSelling, notSaved),
     {},
   );
+  const typed = state.typed;
   const [price, setPrice] = useState(paiseToPriceText(listing.unitPricePaise));
+  // Typed before the page hydrated: the split below is worked from it.
+  const priceField = useRef<HTMLInputElement>(null);
+  useChangedBeforeHydration(priceField, ([field]) => setPrice(field.value));
   // Read as the save reads it (yuvoy-operator#144): no line for a price the
   // save would refuse.
   const split = commissionPreview(priceToPaise(price), commissionRateBps);
@@ -73,6 +86,7 @@ export function SellingStep({
       action={act}
       pending={pending}
       message={state.message}
+      attempt={state.attempt}
       back={back}
     >
       <input type="hidden" name="id" value={id} />
@@ -83,6 +97,7 @@ export function SellingStep({
         </FieldLabel>
         {needed("unitPrice", "s-price")}
         <input
+          ref={priceField}
           id="s-price"
           name="unitPrice"
           inputMode="decimal"
@@ -123,7 +138,11 @@ export function SellingStep({
                 type="radio"
                 name="pricingUnit"
                 value={unit.value}
-                defaultChecked={stated && listing.pricingUnit === unit.value}
+                defaultChecked={
+                  typed
+                    ? typed.pricingUnit === unit.value
+                    : stated && listing.pricingUnit === unit.value
+                }
               />
               {unit.label}
             </label>
@@ -142,7 +161,7 @@ export function SellingStep({
           type="number"
           min={1}
           required
-          defaultValue={listing.maxPartySize ?? 6}
+          defaultValue={typed?.maxPartySize ?? listing.maxPartySize ?? 6}
           className={inputClass("mt-2")}
           aria-invalid={marked("maxPartySize")}
           aria-describedby={describedBy("maxPartySize", "s-party")}
@@ -160,7 +179,9 @@ export function SellingStep({
           type="number"
           min={1}
           required
-          defaultValue={listing.durationMinutes ?? 120}
+          defaultValue={
+            typed?.durationMinutes ?? listing.durationMinutes ?? 120
+          }
           className={inputClass("mt-2")}
           aria-describedby={describedBy(
             "durationMinutes",
@@ -183,7 +204,8 @@ export function SellingStep({
               name="bookingMode"
               value="allotment"
               defaultChecked={
-                (listing.bookingMode ?? "allotment") !== "request"
+                (typed?.bookingMode ?? listing.bookingMode ?? "allotment") !==
+                "request"
               }
             />
             Instant booking
@@ -193,7 +215,9 @@ export function SellingStep({
               type="radio"
               name="bookingMode"
               value="request"
-              defaultChecked={listing.bookingMode === "request"}
+              defaultChecked={
+                (typed?.bookingMode ?? listing.bookingMode) === "request"
+              }
             />
             I answer each request
           </label>

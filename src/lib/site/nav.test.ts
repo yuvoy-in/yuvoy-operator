@@ -8,6 +8,7 @@ import {
   isBareRoute,
   isFocusedRoute,
   navFor,
+  screenNavFor,
 } from "./nav";
 
 /**
@@ -74,6 +75,16 @@ describe("focused and bare routes", () => {
   ])("%s is %s", (pathname, kind) => {
     expect(isFocusedRoute(pathname)).toBe(kind === "focused");
     expect(isBareRoute(pathname)).toBe(kind === "bare");
+    /*
+      And the chassis a screen standing in for its page wears there, in
+      `Screen`'s words (the stability audit, P3-6).
+    */
+    const chassis: Record<string, string> = {
+      focused: "focused",
+      root: "tabs",
+      bare: "none",
+    };
+    expect(screenNavFor(pathname)).toBe(chassis[kind]);
   });
 
   it("never treats a tab root as focused or bare", () => {
@@ -221,6 +232,7 @@ describe("focused and bare routes", () => {
   it("answers false with no pathname rather than throwing", () => {
     expect(isFocusedRoute(null)).toBe(false);
     expect(isBareRoute(undefined)).toBe(false);
+    expect(screenNavFor(null)).toBe("tabs");
   });
 
   it("lists prefixes a tab root cannot match by accident", () => {

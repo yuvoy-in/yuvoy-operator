@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { useRouter } from "next/navigation";
 import { setMediaRole, type RoleState } from "@/components/media/actions";
 import { Button } from "@/components/ui/button";
+import { sendForm } from "@/lib/actions/send-form";
 
 const initial: RoleState = {};
 
@@ -42,7 +43,12 @@ export function RoleForm({
   /** `null` or absent when the API did not say. */
   role: "hero" | "gallery" | null | undefined;
 }) {
-  const [state, act, pending] = useActionState(setMediaRole, initial);
+  const [state, act, pending] = useActionState(
+    sendForm<RoleState>(setMediaRole, () => ({
+      message: "No signal. It was not moved. Try again.",
+    })),
+    initial,
+  );
   const router = useRouter();
 
   if (state.done) {

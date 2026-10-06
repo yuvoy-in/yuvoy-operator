@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalIcon } from "@/components/ui/icons";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { cn } from "@/lib/cn";
 import { searchPlaces, type Place } from "@/lib/map/photon";
 import {
@@ -141,6 +142,9 @@ export function MeetingPin({ initial }: { initial: Pin | null }) {
       }
     }
   }
+
+  // A place searched, or a link pasted, before the page hydrated.
+  useChangedBeforeHydration(box, ([field]) => onType(field.value));
 
   function onType(text: string) {
     setQuery(text);

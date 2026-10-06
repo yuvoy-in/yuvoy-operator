@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * The weekly schedule — yuvoy-operator#56 item 8.
@@ -94,8 +95,10 @@ export function ScheduleForm({
   const problems = planProblems(plan);
   const blocked = problems.length > 0;
   const blockedId = useId();
-  const [state, act, pending] = useActionState<ScheduleState, FormData>(
-    saveSchedule,
+  const [state, act, pending] = useActionState(
+    sendForm<ScheduleState>(saveSchedule, () => ({
+      message: "No signal. The schedule was not saved.",
+    })),
     {},
   );
 
@@ -152,7 +155,19 @@ export function ScheduleForm({
       */}
       <input type="hidden" name="weekly" value={JSON.stringify(rows)} />
 
-      <WeekPicker plan={plan} onChange={setPlan} problems={problems} />
+      {/*
+        Remounted per refusal (`sendForm`), so it is drawn from the week this
+        screen holds, which is what the field above sends. Its fields are held
+        in state, and a reset in place put them out of step with it: a seat
+        count sent with Go from its box went back to the one on file while
+        the next save still sent the new one.
+      */}
+      <WeekPicker
+        key={state.attempt ?? 0}
+        plan={plan}
+        onChange={setPlan}
+        problems={problems}
+      />
 
       {state.message ? (
         <div role="alert" className="text-terra-deep mt-3 text-sm font-bold">

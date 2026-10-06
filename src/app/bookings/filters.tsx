@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DATE_CHOICES,
@@ -13,6 +13,8 @@ import {
   type Filters,
 } from "@/lib/bookings/list";
 import { inputClass } from "@/components/ui/input";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
+import { useRowsNavigation } from "./pill-row";
 
 /**
  * The search box, the two filters and Clear — yuvoy-operator#57 items 4 to 6.
@@ -33,6 +35,13 @@ import { inputClass } from "@/components/ui/input";
  * 300 ms, so a five-letter name is one request rather than five. `replace`
  * because every keystroke would otherwise be a history entry, and back from a
  * booking would walk letter by letter out of a word somebody typed.
+ *
+ * ## The rows say they are waiting for it
+ *
+ * Every change of the address runs in the transition the pills' rows watch
+ * (`useRowsNavigation`), so a search on one bar of signal dims the old rows
+ * after 300ms, as a pill's tap does, rather than leaving them looking like
+ * the answer (the stability audit, P3-2).
  */
 export function BookingFilters({
   filters,
@@ -50,9 +59,44 @@ export function BookingFilters({
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  const navigate = useRowsNavigation();
   const [text, setText] = useState(filters.q);
   const choice = choiceFor(filters, today, tomorrow);
   const [picking, setPicking] = useState(choice === "pick");
+
+  /*
+    The address is the truth, and this box only borrows it.
+
+    The screen stays mounted when the address changes underneath it, and the
+    box and the date pickers were seeded once. So the empty state's Clear, a
+    link, emptied the address and the box kept "asha", and the debounce below
+    put it back 300ms later: Clear undid itself (the stability audit, P1-2).
+    The date pickers stayed open over a range that had gone the same way.
+
+    So the box follows any search the address arrives with that the box did
+    not send (Clear, back, a link). What it did send coming back is only the
+    address catching up with typing, and is left alone: a newer navigation
+    discards an older one, so the address never goes back to an earlier
+    send. The pickers follow every change of dates, since a range picked
+    here comes back as "pick" anyway. Both are compared with the last render
+    as state, the pattern the pills use for the address they answered.
+  */
+  const [sent, setSent] = useState(filters.q);
+  const [seen, setSeen] = useState(filters);
+  if (
+    filters.q !== seen.q ||
+    filters.from !== seen.from ||
+    filters.to !== seen.to
+  ) {
+    setSeen(filters);
+    if (filters.q !== seen.q && filters.q !== sent) {
+      setSent(filters.q);
+      if (filters.q !== text.trim()) setText(filters.q);
+    }
+    if (filters.from !== seen.from || filters.to !== seen.to) {
+      setPicking(choice === "pick");
+    }
+  }
 
   /**
    * Rewrite the URL with these changes, dropping any page already loaded.
@@ -73,9 +117,11 @@ export function BookingFilters({
         else next.delete(key);
       }
       if (view) next.set("view", view);
-      router.replace(`/bookings?${next.toString()}`, { scroll: false });
+      navigate(() =>
+        router.replace(`/bookings?${next.toString()}`, { scroll: false }),
+      );
     },
-    [params, view, router],
+    [params, view, router, navigate],
   );
 
   /*
@@ -86,20 +132,55 @@ export function BookingFilters({
   useEffect(() => {
     const trimmed = text.trim();
     if (trimmed === filters.q) return;
-    const id = setTimeout(() => apply({ q: trimmed }), 300);
+    const id = setTimeout(() => {
+      setSent(trimmed);
+      apply({ q: trimmed });
+    }, 300);
     return () => clearTimeout(id);
   }, [text, filters.q, apply]);
 
-  function chooseDate(value: DateChoice) {
+  /** The address change a date choice makes: none for "pick", yet. */
+  function datesChosen(value: DateChoice): Record<string, string> {
     setPicking(value === "pick");
-    if (value === "pick") return;
-    apply(datesFor(value, today, tomorrow));
+    return value === "pick" ? {} : datesFor(value, today, tomorrow);
   }
+
+  function chooseDate(value: DateChoice) {
+    const changes = datesChosen(value);
+    if (Object.keys(changes).length > 0) apply(changes);
+  }
+
+  /*
+    Searched or filtered before the page hydrated: on a slow link the bar is
+    there for seconds before its script. Taken as one change, so a listing
+    and a date picked in that time land in one address.
+
+    Dates typed by hand outrank a date choice changed with them. Without a
+    script the choice hides nothing, so both can change, and taking the
+    choice would hide the very fields somebody typed into. The choice follows
+    the dates instead, as it does for any range (it reads "pick").
+  */
+  const bar = useRef<HTMLDivElement>(null);
+  useChangedBeforeHydration(bar, (changed) => {
+    const changes: Record<string, string> = {};
+    let chosen: DateChoice | null = null;
+    for (const field of changed) {
+      if (field.id === "booking-search") setText(field.value);
+      if (field.id === "booking-listing") changes.experienceId = field.value;
+      if (field.id === "booking-dates") chosen = field.value as DateChoice;
+      if (field.id === "booking-from") changes.from = field.value;
+      if (field.id === "booking-to") changes.to = field.value;
+    }
+    if (chosen && !("from" in changes) && !("to" in changes)) {
+      Object.assign(changes, datesChosen(chosen));
+    }
+    if (Object.keys(changes).length > 0) apply(changes);
+  });
 
   const picked = rangeLabel(filters);
 
   return (
-    <div className="mt-6 space-y-3">
+    <div ref={bar} className="mt-6 space-y-3">
       <div>
         <label htmlFor="booking-search" className="sr-only">
           Guest name or booking reference
@@ -165,6 +246,7 @@ export function BookingFilters({
             type="button"
             onClick={() => {
               setText("");
+              setSent("");
               setPicking(false);
               apply({ q: "", experienceId: "", from: "", to: "" });
             }}

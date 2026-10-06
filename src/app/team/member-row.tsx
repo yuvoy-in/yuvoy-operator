@@ -13,6 +13,8 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { Chip } from "@/components/ui/chip";
 import { panelClass } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
+import { LinkRing } from "@/components/ui/link-pending";
 
 /**
  * One person, or one invitation nobody has accepted.
@@ -80,8 +82,10 @@ export function MemberRow({
    */
   joinUrl?: string;
 }) {
-  const [state, act, pending] = useActionState<RemoveState, FormData>(
-    removeMember,
+  const [state, act, pending] = useActionState(
+    sendForm<RemoveState>(removeMember, () => ({
+      message: "No signal. They were NOT removed. They still have access.",
+    })),
     {},
   );
   const [confirming, setConfirming] = useState(false);
@@ -263,6 +267,7 @@ export function MemberRow({
           className="text-forest tap-target mt-4 block text-sm underline underline-offset-2"
         >
           Their notifications
+          <LinkRing />
         </Link>
       ) : null}
 

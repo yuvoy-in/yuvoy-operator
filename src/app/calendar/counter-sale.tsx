@@ -13,6 +13,7 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Seats sold at the operator's own counter, reported so we stop selling them.
@@ -51,14 +52,18 @@ export function CounterSale({
   /** Another sale to record: a fresh form, not the last receipt. */
   onAgain: () => void;
 }) {
-  const [saleState, sell, selling] = useActionState<OfflineSaleState, FormData>(
-    recordOfflineSale,
+  const [saleState, sell, selling] = useActionState(
+    sendForm<OfflineSaleState>(recordOfflineSale, () => ({
+      message: "No signal. The sale was NOT recorded. Try again.",
+    })),
     {},
   );
-  const [takeState, takeBack, takingBack] = useActionState<
-    TakeBackState,
-    FormData
-  >(takeBackOfflineSale, {});
+  const [takeState, takeBack, takingBack] = useActionState(
+    sendForm<TakeBackState>(takeBackOfflineSale, () => ({
+      message: "No signal. Nothing was taken back. Try again.",
+    })),
+    {},
+  );
   const [sellingOpen, setSellingOpen] = useState(initiallyOpen);
   // The take-back's receipt is drawn here, in place of the sale's.
   const { root } = useStillConfirm(takeState.result ? "receipt" : "none");
@@ -184,7 +189,17 @@ export function CounterSale({
 
   if (sellingOpen) {
     return (
-      <form action={sell} className="border-paper-line border-t pt-4">
+      /*
+        Remounted per refusal (`sendForm`), onto the count that was typed. It
+        is a number field, sent as often as not with the keyboard's Go, and a
+        reset in place emptied it: "No signal. The sale was NOT recorded." over
+        a blank box, to somebody with a walk-up party in front of them.
+      */
+      <form
+        key={saleState.attempt ?? 0}
+        action={sell}
+        className="border-paper-line border-t pt-4"
+      >
         <input type="hidden" name="slotId" value={slot.id} />
         <label htmlFor={`offline-${slot.id}`} className="label text-forest/75">
           Seats you sold at your counter
@@ -197,6 +212,7 @@ export function CounterSale({
           min={1}
           max={200}
           required
+          defaultValue={saleState.typed?.seats ?? ""}
           className={inputClass("bg-paper mt-2 w-28 text-lg")}
         />
 

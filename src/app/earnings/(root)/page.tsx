@@ -52,6 +52,7 @@ import {
   BanknoteIcon,
   ChevronRightIcon,
 } from "@/components/ui/icons";
+import { LinkRing } from "@/components/ui/link-pending";
 import { cn } from "@/lib/cn";
 import { DownloadStatement } from "@/app/earnings/[id]/download-statement";
 import { StatementRow } from "@/app/earnings/commission/statement-row";
@@ -775,8 +776,10 @@ function SettlementRow({ settlement }: { settlement: Settlement }) {
       className="rounded-card border-paper-line bg-paper-deep hover:border-forest/40 ease-interaction flex items-center justify-between gap-4 border p-4 transition-colors duration-200"
     >
       <div className="min-w-0">
+        {/* The ring follows the week, so the figure never moves under it. */}
         <p className="font-bold text-balance">
           {weekLabel(settlement.periodStart, settlement.periodEnd)}
+          <LinkRing />
         </p>
         <p className="text-forest/70 mt-1 text-sm">
           {SETTLEMENT_STATE_LABEL[settlement.state]} ·{" "}

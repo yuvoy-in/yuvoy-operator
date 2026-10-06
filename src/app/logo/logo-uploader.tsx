@@ -5,6 +5,7 @@ import { createLogoIntent, saveLogo } from "./actions";
 import { formatBytes } from "@/lib/media/preflight";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * Choose a picture, send it to the host, save it — yuvoy-operator#35 §2.
@@ -66,7 +67,14 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
     }
 
     setPhase({ name: "preparing" });
-    const started = await createLogoIntent();
+    /*
+      Both calls go through `callAction`: a request that never came back says
+      the actions' own no-signal sentence, rather than leaving "preparing"
+      on screen for good.
+    */
+    const started = await callAction(createLogoIntent, () => ({
+      message: "No signal. Nothing was changed.",
+    }));
     if (!started.intent) {
       setPhase({
         name: "failed",
@@ -118,7 +126,11 @@ export function LogoUploader({ hasLogo }: { hasLogo: boolean }) {
       return;
     }
 
-    const saved = await saveLogo(started.intent.imageId);
+    const imageId = started.intent.imageId;
+    const saved = await callAction(
+      () => saveLogo(imageId),
+      () => ({ message: "No signal. Nothing was changed." }),
+    );
     if (saved.message) {
       setPhase({
         name: "failed",

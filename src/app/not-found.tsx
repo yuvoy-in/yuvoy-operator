@@ -1,4 +1,4 @@
-import { Screen } from "@/components/chrome/screen";
+import { StandInScreen } from "@/components/chrome/stand-in-screen";
 import { ButtonLink } from "@/components/ui/button";
 
 /**
@@ -8,10 +8,14 @@ import { ButtonLink } from "@/components/ui/button";
  * answer is the way back. Short on purpose: whoever is reading it mistyped
  * something or followed a link that has since moved, and neither is worth a
  * paragraph at 6am.
+ *
+ * It is drawn on any route, a booking that has gone as much as an address
+ * that never was, so it wears that route's chassis, as the error screen does
+ * (`StandInScreen`).
  */
 export default function NotFound() {
   return (
-    <Screen nav="none" width="sm">
+    <StandInScreen width="sm">
       <h1 className="font-display tracking-display leading-display text-4xl text-balance">
         There is nothing at that address
       </h1>
@@ -21,6 +25,6 @@ export default function NotFound() {
       <ButtonLink href="/today" className="mt-8">
         Go to today
       </ButtonLink>
-    </Screen>
+    </StandInScreen>
   );
 }

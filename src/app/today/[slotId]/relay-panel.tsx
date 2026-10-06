@@ -11,7 +11,9 @@ import {
 } from "@/lib/day/relay-types";
 import { Button } from "@/components/ui/button";
 import { choiceClass, inputClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Telling a departure something.
@@ -59,8 +61,10 @@ function RelayRound({
   who: string;
   onAgain: () => void;
 }) {
-  const [state, act, pending] = useActionState<RelayState, FormData>(
-    sendRelay,
+  const [state, act, pending] = useActionState(
+    sendForm<RelayState>(sendRelay, () => ({
+      message: "No signal. Nothing was sent.",
+    })),
     {},
   );
   const [open, setOpen] = useState(false);
@@ -126,7 +130,13 @@ function RelayRound({
   }
 
   return (
-    <form action={act} className="mt-4">
+    /*
+      Remounted per refusal (`sendForm`), onto what was typed. What is being
+      said is a choice held in state, and a reset in place ticked the first
+      one again beside the detail field for the one still chosen, so the next
+      send said something nobody picked. The detail and the note went with it.
+    */
+    <form key={state.attempt ?? 0} action={act} className="mt-4">
       <input type="hidden" name="slotId" value={slotId} />
       <input type="hidden" name="bookingId" value={bookingId ?? ""} />
 
@@ -169,6 +179,7 @@ function RelayRound({
             inputMode={spec.detail === "time" ? "numeric" : "text"}
             placeholder={spec.placeholder}
             required
+            defaultValue={state.typed?.detail ?? ""}
             className={inputClass("mt-2")}
           />
           <p className="text-forest/70 mt-1.5 text-xs">{spec.help}</p>
@@ -182,12 +193,13 @@ function RelayRound({
         >
           {sendsToPhone ? "Anything else (optional)" : "The note"}
         </label>
-        <textarea
+        <Textarea
           id={`note-${bookingId || slotId}`}
           name="note"
           rows={3}
           maxLength={NOTE_MAX}
           required={!sendsToPhone}
+          defaultValue={state.typed?.note ?? ""}
           className={textareaClass("mt-2")}
         />
         {/*

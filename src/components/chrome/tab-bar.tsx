@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { isBareRoute, isFocusedRoute, type NavBadges } from "@/lib/site/nav";
+import { screenNavFor, type NavBadges } from "@/lib/site/nav";
 import { NavList } from "./nav-items";
 
 /**
@@ -28,7 +28,11 @@ export function TabBar({
   canManage?: boolean;
 }) {
   const pathname = usePathname();
-  if (isFocusedRoute(pathname) || isBareRoute(pathname)) return null;
+  /*
+    On a tab root only, by the answer the error and missing-page screens
+    read, so they leave room for the bar exactly where it is drawn.
+  */
+  if (screenNavFor(pathname) !== "tabs") return null;
 
   return (
     <nav

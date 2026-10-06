@@ -1,8 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import type { ThreadRow } from "@/lib/messages/thread";
 
 vi.mock("./actions", () => ({ loadMoreThreads: vi.fn() }));
+
+// Whether the row's own navigation is on its way (`useLinkStatus`).
+const status = vi.hoisted(() => ({ pending: false }));
+vi.mock("next/link", async (original) => ({
+  ...(await original<typeof import("next/link")>()),
+  useLinkStatus: () => status,
+}));
+
+afterEach(() => {
+  status.pending = false;
+});
 
 const { ThreadList } = await import("./thread-list");
 
@@ -83,5 +94,25 @@ describe("a conversation row", () => {
     list([row({ experience: "" })]);
     const text = screen.getByRole("link").textContent ?? "";
     expect(text.match(/YV-CARD6N7P/g)).toHaveLength(1);
+  });
+
+  /*
+    The booking a row opens keeps no loading boundary (it can answer 404),
+    so on one bar of signal a tap painted nothing until the screen came, and
+    looked ignored (the stability audit, P2-1).
+  */
+  it("turns the busy ring where its chevron was while the conversation is on its way", () => {
+    const { rerender } = list([row()]);
+    expect(
+      screen.getByRole("link").querySelector(".motion-busy-ring"),
+    ).toBeNull();
+
+    status.pending = true;
+    rerender(
+      <ThreadList initial={{ rows: [row()], complete: true }} now={NOW} />,
+    );
+    expect(
+      screen.getByRole("link").querySelector(".motion-busy-ring"),
+    ).not.toBeNull();
   });
 });

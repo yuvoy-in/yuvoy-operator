@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { watchMotion } from "@/lib/motion/testing";
 import type { OperatorSlot } from "@/lib/day/types";
@@ -298,5 +304,51 @@ describe("arriving and leaving still", () => {
     await screen.findByText("2 seats taken back and on sale again");
     expect(motion.fadeOf(screen.getByRole("status"))).toBeDefined();
     expect(motion.copies()).toHaveLength(0);
+  });
+});
+
+/*
+  The stability audit, P1-1. React resets a form when its action resolves,
+  refusals included, so "No signal. The sale was NOT recorded." arrived over
+  an empty box, to somebody with a walk-up party in front of them.
+*/
+describe("a refused counter sale", () => {
+  async function sendWithGo() {
+    render(<CounterSale slot={SLOT} initiallyOpen onAgain={() => {}} />);
+    const box = screen.getByLabelText(
+      "Seats you sold at your counter",
+    ) as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "3" } });
+    // The keyboard's Go, which leaves the focus in the box.
+    box.focus();
+    await act(async () => {
+      box.form?.requestSubmit();
+    });
+  }
+
+  it("keeps the count that was typed", async () => {
+    recordOfflineSale.mockResolvedValue({
+      message: "No signal. The sale was NOT recorded. Try again.",
+    });
+    await sendWithGo();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The sale was NOT recorded",
+    );
+    expect(screen.getByLabelText("Seats you sold at your counter")).toHaveValue(
+      3,
+    );
+  });
+
+  it("says no signal in place when the request never came back", async () => {
+    recordOfflineSale.mockRejectedValue(new TypeError("Failed to fetch"));
+    await sendWithGo();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No signal. The sale was NOT recorded. Try again.",
+    );
+    expect(screen.getByLabelText("Seats you sold at your counter")).toHaveValue(
+      3,
+    );
   });
 });

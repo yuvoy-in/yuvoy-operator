@@ -11,6 +11,8 @@ import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
 import { Panel } from "@/components/ui/panel";
 import { choiceClass, textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Cancelling one booking — yuvoy-operator#43 item 4.
@@ -96,8 +98,17 @@ export function CancelBooking({
     `id="cancel-note"` fields would give two labels one field (the audit, O11).
   */
   const ids = useId();
-  const [state, act, pending] = useActionState<CancelState, FormData>(
-    cancelBooking,
+  /*
+    A refusal hands back what was chosen (`sendForm`), and the reason and the
+    note read it back in place: a refusal used to come back over an
+    unanswered "Why they cannot go" and an empty note. Not remounted, because
+    the question is this confirm's still frame and holds the focus.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<CancelState>(cancelBooking, () => ({
+      message:
+        "No signal. Nothing was cancelled and nothing was refunded. Try again.",
+    })),
     {},
   );
   const router = useRouter();
@@ -240,6 +251,7 @@ export function CancelBooking({
                 name="reasonCode"
                 value={reason.code}
                 required
+                defaultChecked={state.typed?.reasonCode === reason.code}
                 className="accent-terra-deep size-5 shrink-0"
               />
               <span>{reason.label}</span>
@@ -252,11 +264,12 @@ export function CancelBooking({
         <label htmlFor={`${ids}-note`} className="label text-forest/75">
           A note <span className="text-forest/70">(optional)</span>
         </label>
-        <textarea
+        <Textarea
           id={`${ids}-note`}
           name="note"
           rows={2}
           maxLength={500}
+          defaultValue={state.typed?.note ?? ""}
           aria-invalid={state.field === "note" || undefined}
           className={textareaClass("mt-2")}
         />

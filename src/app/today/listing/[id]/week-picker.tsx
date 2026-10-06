@@ -1,9 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { WEEKDAYS } from "./schedule-changes";
 import {
   SHORT_DAY,
@@ -61,8 +62,35 @@ export function WeekPicker({
   const said = (day: number | null) =>
     problems.filter((p) => p.day === day).map((p) => p.message);
 
+  /*
+    Times and seats changed before the page hydrated. All of them become one
+    new plan: each row's own change would start from the plan as it was, and
+    the last would undo the others.
+  */
+  const box = useRef<HTMLDivElement>(null);
+  useChangedBeforeHydration(box, (changed) => {
+    let next = plan;
+    for (const field of changed) {
+      const { day, row, departure } = field.dataset;
+      if (row === undefined || departure === undefined) continue;
+      const own = day ? Number(day) : null;
+      const rows = own === null ? next.usual : next.own[own];
+      if (!rows?.[Number(row)]) continue;
+      const change: Partial<Departure> =
+        departure === "seats"
+          ? { seats: seatsFrom(field.value) }
+          : { startTime: field.value };
+      const patched = rows.map((d, i) =>
+        i === Number(row) ? { ...d, ...change } : d,
+      );
+      next =
+        own === null ? setUsual(next, patched) : setOwn(next, own, patched);
+    }
+    if (next !== plan) onChange(next);
+  });
+
   return (
-    <div className="space-y-5">
+    <div ref={box} className="space-y-5">
       <div role="group" aria-labelledby={`${ids}-days`}>
         <div className="flex min-h-7 items-center justify-between gap-3">
           <p id={`${ids}-days`} className={fieldLabelClass()}>
@@ -209,6 +237,13 @@ function DayChips({
 }
 
 /**
+ * Seats as typed: NaN while the box is emptied to be retyped (see the field).
+ */
+function seatsFrom(value: string): number {
+  return value === "" ? NaN : Number(value);
+}
+
+/**
  * The departures of the usual days, or of one day: a time and seats each.
  * The last one cannot be removed, because a day with no departure does not
  * run: untick it instead, or put it back on the usual departures.
@@ -247,6 +282,9 @@ function DepartureRows({
               </label>
               <input
                 id={`${idBase}-time-${i}`}
+                data-day={day}
+                data-row={i}
+                data-departure="startTime"
                 type="time"
                 value={d.startTime}
                 onChange={(e) => update(i, { startTime: e.target.value })}
@@ -262,6 +300,9 @@ function DepartureRows({
               </label>
               <input
                 id={`${idBase}-seats-${i}`}
+                data-day={day}
+                data-row={i}
+                data-departure="seats"
                 type="number"
                 inputMode="numeric"
                 min={1}
@@ -273,9 +314,7 @@ function DepartureRows({
                 */
                 value={Number.isFinite(d.seats) ? d.seats : ""}
                 onChange={(e) =>
-                  update(i, {
-                    seats: e.target.value === "" ? NaN : Number(e.target.value),
-                  })
+                  update(i, { seats: seatsFrom(e.target.value) })
                 }
                 className={inputClass("mt-1 h-11 w-24")}
               />

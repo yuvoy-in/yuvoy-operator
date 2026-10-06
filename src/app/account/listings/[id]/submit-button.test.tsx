@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const submitListing = vi.fn();
 const push = vi.fn();
@@ -78,5 +78,31 @@ describe("sending a listing for review", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Fix it" }));
     expect(push).toHaveBeenCalledWith("/account/listings/exp_1/edit");
+  });
+
+  /*
+    The builder keeps no loading boundary (it can answer 404), so nothing is
+    painted until it comes, and a tap that answers nothing looks ignored (the
+    stability audit, P2-1). The router moves inside a transition; here the
+    navigation never lands, as on a slow answer.
+  */
+  it("stays busy on Fix it until the builder is in", async () => {
+    push.mockImplementation(() => new Promise(() => {}));
+    submitListing.mockResolvedValue({
+      message: "Still missing: a price",
+      missing: ["unitPricePaise"],
+    });
+    render(<SubmitButton experienceId="exp_1" label="Send for review" />);
+    fireEvent.click(screen.getByRole("button", { name: "Send for review" }));
+    await screen.findByRole("alert");
+
+    fireEvent.click(screen.getByRole("button", { name: "Fix it" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Fix it" })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
+    );
   });
 });

@@ -53,14 +53,17 @@ export function SheetSkeleton({
   nav = "tabs",
   width = "md",
   rows = 3,
+  stageLabel,
 }: {
   nav?: ScreenNav;
   width?: "sm" | "md" | "lg" | "xl";
   /** How many content blocks to stand in for. */
   rows?: number;
+  /** The caption on the stage, for a screen that still draws one. */
+  stageLabel?: string;
 }) {
   return (
-    <Screen nav={nav} width={width}>
+    <Screen nav={nav} width={width} stageLabel={stageLabel}>
       <div role="status" aria-busy="true" aria-label="Loading">
         <span className="sr-only">Loading</span>
         <div className="space-y-6">
@@ -98,6 +101,9 @@ export function FocusedSkeleton({
   return <SheetSkeleton nav="focused" width={width} rows={rows} />;
 }
 
+/** The caption every door draws on its stage, until the doors drop it. */
+export const DOOR_LABEL = "For operators";
+
 /**
  * The three doors — sign in, sign up, accept an invitation.
  *
@@ -105,7 +111,14 @@ export function FocusedSkeleton({
  * tab-bar chassis instead, the skeleton would paint a sheet and a clearance
  * for a bar that is not coming, and the real screen would then throw both
  * away. `nav="none"` is the same declaration those pages make themselves.
+ *
+ * And each door's own caption and measure: it drew no caption and the narrow
+ * sheet for all three, so the caption appeared when a door landed, and sign
+ * up's wider form pushed its sheet out (the stability audit, P3-3).
+ * `loading.test.ts` holds each `loading.tsx` to its door.
  */
-export function DoorSkeleton() {
-  return <SheetSkeleton nav="none" width="sm" rows={1} />;
+export function DoorSkeleton({ width = "sm" }: { width?: "sm" | "md" }) {
+  return (
+    <SheetSkeleton nav="none" width={width} rows={1} stageLabel={DOOR_LABEL} />
+  );
 }

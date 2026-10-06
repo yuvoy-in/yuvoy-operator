@@ -220,6 +220,21 @@ describe("the stage strip", () => {
     expect(container.querySelector(".tabbar-clearance")).toBeNull();
   });
 
+  it("draws a door's fallback with the door's caption and its measure", async () => {
+    /*
+      It drew no caption and the narrow sheet for every door, so the caption
+      appeared when the door landed and sign up's sheet widened under it (the
+      stability audit, P3-3). Which door draws which is loading.test.ts's.
+    */
+    const { DoorSkeleton } =
+      await import("@/components/states/route-skeletons");
+    const { container } = render(<DoorSkeleton width="md" />);
+    const header = container.querySelector("header")!;
+    expect(within(header).getByText("For operators")).toBeInTheDocument();
+    expect(container.querySelector(".max-w-2xl")).not.toBeNull();
+    expect(container.querySelector(".max-w-md")).toBeNull();
+  });
+
   it("carries no inbox on a signed-out door", () => {
     render(
       <Screen nav="none">

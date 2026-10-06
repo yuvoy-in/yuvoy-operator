@@ -29,8 +29,8 @@ import { listSlots } from "@/lib/day/manifest";
 import { departureDayOf, departureOf } from "@/lib/bookings/departure-of";
 import { backFrom, hereWith, withFrom } from "@/lib/site/back-to";
 import { panelClass } from "@/components/ui/panel";
-import { ChevronRightIcon } from "@/components/ui/icons";
 import { Conversation } from "./conversation";
+import { RowChevron } from "@/components/ui/link-pending";
 
 export const metadata: Metadata = { title: "Booking" };
 export const dynamic = "force-dynamic";
@@ -342,7 +342,7 @@ export default async function BookingPage({
               Everyone on it, check-in, and a message to them all
             </span>
           </span>
-          <ChevronRightIcon className="text-terra-deep size-5 shrink-0" />
+          <RowChevron className="text-terra-deep size-5 shrink-0" />
         </Link>
       ) : null}
 

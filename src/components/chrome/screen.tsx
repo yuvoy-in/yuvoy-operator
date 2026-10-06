@@ -17,11 +17,14 @@ import { StageIdentity } from "./stage-identity";
  *   nav={{back}}  a focused screen: a back disc, no bar
  *   nav="focused" a focused screen's loading fallback: the back disc's place
  *                 held by an inert disc, since a fallback cannot know where
- *                 back leads, so the real one lands on it and nothing swaps
+ *                 back leads, so the real one lands on it and nothing swaps.
+ *                 The error and missing-page screens wear it on a focused
+ *                 route for the same reason (`StandInScreen`)
  *   nav="none"    a signed-out door: the mark and nothing else
  *
  * The registry's `isFocusedRoute` / `isBareRoute` are the other half of that
- * decision, pinned by `nav.test.ts`.
+ * decision, pinned by `nav.test.ts`, and `screenNavFor` says it in these
+ * words for the screens that cannot know their route.
  *
  * ## The strip (yuvoy-operator#80 t1, #96)
  *

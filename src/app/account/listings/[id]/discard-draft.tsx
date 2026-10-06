@@ -5,6 +5,7 @@ import { discardDraft, type DiscardState } from "./actions";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";
 import { useStillConfirm } from "@/components/ui/use-still-confirm";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * "Discard this draft" on a draft nobody has seen (yuvoy-operator#112).
@@ -38,8 +39,10 @@ export function DiscardDraft({
   /** What the operator called it, named in the question. */
   title?: string;
 }) {
-  const [state, act, pending] = useActionState<DiscardState, FormData>(
-    discardDraft,
+  const [state, act, pending] = useActionState(
+    sendForm<DiscardState>(discardDraft, () => ({
+      message: "No signal. The draft is still here. Try again.",
+    })),
     {},
   );
   const [open, setOpen] = useState(false);

@@ -6,10 +6,21 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { PhoneField } from "@/components/ui/phone-field";
+import { sendForm } from "@/lib/actions/send-form";
+import { UNREACHABLE } from "@/lib/api/errors";
 
 export function JoinForm() {
-  const [state, act, pending] = useActionState<AcceptState, FormData>(
-    acceptInvite,
+  /*
+    Sent through `sendForm`, so an accept that never came back says the
+    action's own no-signal sentence here instead of taking the page to the
+    error screen. Nothing typed needs handing back: the number is held by
+    `PhoneField`, which a reset leaves alone, and the code is typed again, as
+    it is at sign-in, and never kept.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<AcceptState>(acceptInvite, () => ({ message: UNREACHABLE }), {
+      forget: ["code"],
+    }),
     {},
   );
   /** The submit waits for a whole number, as the other two doors do. */

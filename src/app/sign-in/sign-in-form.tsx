@@ -12,6 +12,8 @@ import { inputClass } from "@/components/ui/input";
 import { PhoneField } from "@/components/ui/phone-field";
 import { formatE164 } from "@/lib/auth/phone";
 import { WhereTheCodeGoes } from "./where-the-code-goes";
+import { callAction } from "@/lib/actions/call-action";
+import { UNREACHABLE } from "@/lib/api/errors";
 
 /**
  * Two steps in one form, driven entirely by Server Actions.
@@ -24,18 +26,35 @@ import { WhereTheCodeGoes } from "./where-the-code-goes";
  */
 export function SignInForm({ next }: { next?: string | null }) {
   const [state, act, pending] = useActionState<SignInState, FormData>(
-    async (prev, form) => {
-      if (prev.step === "code") return submitCode(prev, form);
-      /*
-        An operator who already holds a Yuvoy-issued code goes straight to the
-        code field rather than asking for one to be sent — see
-        `enterExistingCode`. Dispatched on an intent field rather than a second
-        form, so both buttons submit the same phone number.
-      */
-      return form.get("intent") === "have-code"
-        ? enterExistingCode(prev, form)
-        : requestCode(prev, form);
-    },
+    (prev, form) =>
+      callAction(
+        () => {
+          if (prev.step === "code") return submitCode(prev, form);
+          /*
+            An operator who already holds a Yuvoy-issued code goes straight to
+            the code field rather than asking for one to be sent (see
+            `enterExistingCode`). Dispatched on an intent field rather than a
+            second form, so both buttons submit the same phone number.
+          */
+          return form.get("intent") === "have-code"
+            ? enterExistingCode(prev, form)
+            : requestCode(prev, form);
+        },
+        /*
+          A request that never came back says what one the server could not
+          pass on says, on the step it was on: the number handed back as the
+          actions hand it back, and a code typed again.
+        */
+        () =>
+          prev.step === "code"
+            ? { ...prev, message: UNREACHABLE }
+            : {
+                step: "phone",
+                message: UNREACHABLE,
+                typed: String(form.get("phone") ?? ""),
+                attempt: (prev.attempt ?? 0) + 1,
+              },
+      ),
     { step: "phone" },
   );
 

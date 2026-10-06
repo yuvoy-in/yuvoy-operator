@@ -18,6 +18,8 @@ import { cn } from "@/lib/cn";
 import { useNoteSeatsSaved } from "./inspector-sheet";
 import { forgetSeatsSent, noteSeatsSent } from "./seats-sent";
 import { withFrom } from "@/lib/site/back-to";
+import { sendForm } from "@/lib/actions/send-form";
+import { LinkRing } from "@/components/ui/link-pending";
 
 /**
  * Everything inside an opened departure on the calendar (yuvoy-operator#84
@@ -134,6 +136,7 @@ export function DepartureControls({
         className="text-forest decoration-forest/40 inline-flex min-h-11 items-center text-sm font-bold underline underline-offset-4"
       >
         Who is booked
+        <LinkRing />
       </Link>
 
       {canManage && !calledOff ? (
@@ -178,8 +181,11 @@ export function DepartureControls({
  * sale the receipt is still here, because the component never unmounted.
  */
 export function ConfirmDepartureSeats({ slot }: { slot: OperatorSlot }) {
-  const [state, act, pending] = useActionState<CapacityState, FormData>(
-    setCapacity,
+  const [state, act, pending] = useActionState(
+    sendForm<CapacityState>(setCapacity, () => ({
+      slotId: slot.id,
+      message: "No signal. Seats were not changed.",
+    })),
     {},
   );
 
@@ -246,12 +252,18 @@ export function ConfirmDepartureSeats({ slot }: { slot: OperatorSlot }) {
  * only then.
  */
 export function SeatsForm({ slot }: { slot: OperatorSlot }) {
-  const [state, act, saving] = useActionState<CapacityState, FormData>(
-    async (prev, form) => {
-      const seats = Number(form.get("seats"));
-      if (Number.isInteger(seats)) noteSeatsSent(slot.id, seats);
-      return setCapacity(prev, form);
-    },
+  const [state, act, saving] = useActionState(
+    sendForm<CapacityState>(
+      async (prev, form) => {
+        const seats = Number(form.get("seats"));
+        if (Number.isInteger(seats)) noteSeatsSent(slot.id, seats);
+        return setCapacity(prev, form);
+      },
+      () => ({
+        slotId: slot.id,
+        message: "No signal. Seats were not changed.",
+      }),
+    ),
     {},
   );
   const form = useRef<HTMLFormElement>(null);
@@ -288,7 +300,16 @@ export function SeatsForm({ slot }: { slot: OperatorSlot }) {
           Seats offered
         </label>
         <div className="mt-2 flex gap-2">
+          {/*
+            A refusal hands back the number that was typed (`sendForm`), and
+            the box is remounted onto it: it used to go back to what the
+            departure offers, under the refusal that was about the number in
+            it. Keyed by itself, because it is a number field, sent with Go as
+            often as with the button, and React leaves a focused number field's
+            default alone. The form around it is the sheet's measured frame.
+          */}
           <input
+            key={state.attempt ?? 0}
             id={`seats-${slot.id}`}
             name="seats"
             type="number"
@@ -302,7 +323,7 @@ export function SeatsForm({ slot }: { slot: OperatorSlot }) {
           */
             min={0}
             max={200}
-            defaultValue={state.seats ?? slot.seats}
+            defaultValue={state.typed?.seats ?? state.seats ?? slot.seats}
             required
             aria-describedby={
               slot.sold > 0 ? `seats-floor-${slot.id}` : undefined

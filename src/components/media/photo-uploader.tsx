@@ -21,6 +21,7 @@ import { ListingPicker } from "./listing-picker";
 import type { ListingOption } from "./attach-form";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * Adding a photograph to the library — yuvoy-operator#27.
@@ -121,7 +122,11 @@ export function PhotoUploader({
 
     setPhase({ name: "checking" });
 
-    const result = await createPhotoIntent(experienceId, role);
+    // A request that never came back says so, rather than "checking" for good.
+    const result = await callAction(
+      () => createPhotoIntent(experienceId, role),
+      () => ({ message: "No signal. Nothing was started." }),
+    );
     if (!result.intent) {
       setPhase({
         name: "failed",
@@ -186,7 +191,10 @@ export function PhotoUploader({
     */
     // The intent, not just the image: it is what carries the listing across
     // the upload. `imageId` alone names no listing.
-    const done = await completePhotoUpload(intent.imageId, intent.intentId);
+    const done = await callAction(
+      () => completePhotoUpload(intent.imageId, intent.intentId),
+      () => ({ message: "No signal. We could not confirm it. Try again." }),
+    );
     if (!done.mediaAssetId) {
       setPhase({
         name: "failed",

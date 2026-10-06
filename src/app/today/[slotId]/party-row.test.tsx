@@ -511,3 +511,60 @@ describe("PartyRow with no signal", () => {
     vi.restoreAllMocks();
   });
 });
+
+/*
+  A session that ended at the jetty. The action's `requireOperator()`
+  redirects to sign in, and Next 16.3's router follows that redirect itself:
+  the call only rejects with it afterwards, marked handled
+  (router-reducer/reducers/server-action-reducer.js). So the row catching it
+  strands nobody, and catching it is what keeps the check-in, which the
+  replayer sends once the operator has signed in again. Handing it back to
+  Next instead (`unstable_rethrow`, as the forms do) would lose the check-in.
+*/
+describe("PartyRow when the session ends mid check-in", () => {
+  it("keeps the check-in for after sign in", async () => {
+    const { redirect } =
+      await vi.importActual<typeof import("next/navigation")>(
+        "next/navigation",
+      );
+    let ended: unknown;
+    try {
+      redirect("/sign-in");
+    } catch (error) {
+      ended = Object.assign(error as object, { handled: true });
+    }
+    markAttendance.mockRejectedValueOnce(ended);
+
+    const { ChromeProvider } =
+      await import("@/components/chrome/chrome-context");
+    const { offlineWrites } = await import("@/lib/site/offline-writes");
+    offlineWrites.forget();
+    render(
+      <ChromeProvider
+        identity={{ businessName: null, canManage: true, userId: "usr_owner" }}
+      >
+        <ul>
+          <PartyRow
+            party={party}
+            slotId="slot_dawn"
+            departed={false}
+            screening={null}
+            cash={null}
+            timezone={TZ}
+            canManage
+          />
+        </ul>
+      </ChromeProvider>,
+    );
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Check in" }));
+
+    expect(markAttendance).toHaveBeenCalled();
+    expect(offlineWrites.list()).toMatchObject([
+      { kind: "arrived", userId: "usr_owner", bookingId: "bk_1" },
+    ]);
+    offlineWrites.forget();
+  });
+});

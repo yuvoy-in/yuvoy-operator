@@ -17,6 +17,8 @@ import {
   stopAnimations,
 } from "@/lib/motion";
 import { IconButton } from "./icon-button";
+import { lockScroll } from "./scroll-lock";
+import { inertOthers } from "./inert-others";
 import { CloseIcon } from "./icons";
 import { cn } from "@/lib/cn";
 
@@ -28,20 +30,23 @@ import { cn } from "@/lib/cn";
  * second is with it. On a jetty phone that is a visible flash, and the sheet is
  * the whole answer to a tap.
  *
- * What it owes the person using it, and all three were things a plain div
+ * What it owes the person using it, and all four were things a plain div
  * would not do:
  *
  *   - **Escape closes it.** The one gesture everybody tries.
  *   - **The page behind does not scroll.** A sheet whose backdrop scrolls
  *     loses the operator's place in the grid they opened it from.
+ *   - **The page behind cannot be reached.** `aria-modal` says the rest of
+ *     the page is inert, and now it is (`inertOthers`), as a modal `<dialog>`
+ *     makes it: Tab past the last control used to walk into the page behind,
+ *     and a screen reader's swipe with it (the stability audit, P3-5).
  *   - **Focus goes in and comes back.** Opening moves focus into the sheet, so
  *     a screen reader is reading the sheet rather than the page under it, and
- *     closing puts it back on whatever opened it.
- *
- * `aria-modal` is the claim that the rest of the page is inert. It is honest
- * here because the backdrop covers it and Escape is the way out; a full focus
- * trap is the one thing this does not do, and tabbing past the last control
- * reaches the page behind rather than wrapping.
+ *     closing puts it back on whatever opened it. When that has gone from the
+ *     screen by then (a party's row, moved to Aboard while its sheet was
+ *     open), focus went nowhere and the next Tab started from the top of the
+ *     page; it goes to what the owner says stands in for it (`returnTo`),
+ *     the fallback `useConfirmFocus` makes for a confirm.
  *
  * ## Where it lives, said by how it arrives (O08 A, approved 4 Oct 2026)
  *
@@ -63,6 +68,7 @@ export function Sheet({
   motion,
   leaving = false,
   onLeft,
+  returnTo,
 }: {
   /**
    * Named for a screen reader, and drawn as the sheet's heading. A node, so a
@@ -84,22 +90,28 @@ export function Sheet({
   leaving?: boolean;
   /** Told once the way out has played. */
   onLeft?: () => void;
+  /**
+   * Where focus goes back to when what opened the sheet has gone from the
+   * screen by the time it closes. Read as it closes.
+   */
+  returnTo?: () => HTMLElement | null | undefined;
 }) {
   const inspector = layout === "inspector";
   const headingId = useId();
+  const root = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const backdrop = useRef<HTMLButtonElement>(null);
 
   // The latest callbacks, for the listeners and the exit bound once.
-  const latest = useRef({ onClose, onLeft });
+  const latest = useRef({ onClose, onLeft, returnTo });
   useEffect(() => {
-    latest.current = { onClose, onLeft };
+    latest.current = { onClose, onLeft, returnTo };
   });
 
   /*
     In, and back out: focus moves into the sheet, Escape closes it, and the
-    page behind holds still. All three are given back once, when the sheet
-    starts to leave or when it goes, whichever comes first.
+    page behind holds still, out of reach. All of it is given back once, when
+    the sheet starts to leave or when it goes, whichever comes first.
   */
   const release = useRef<() => void>(() => {});
   useEffect(() => {
@@ -111,16 +123,23 @@ export function Sheet({
     };
     document.addEventListener("keydown", onKey);
 
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
+    // Counted, so two sheets closing in either order give the page back.
+    const unlock = lockScroll();
+    const reach = root.current ? inertOthers(root.current) : () => {};
 
     let released = false;
     const free = () => {
       if (released) return;
       released = true;
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-      if (opener instanceof HTMLElement) opener.focus();
+      unlock();
+      // Given back before focus is: nothing inert can take it.
+      reach();
+      const back =
+        opener instanceof HTMLElement && opener.isConnected
+          ? opener
+          : latest.current.returnTo?.();
+      back?.focus();
     };
     release.current = free;
     return free;
@@ -197,6 +216,7 @@ export function Sheet({
 
   return (
     <div
+      ref={root}
       inert={leaving}
       className={cn(
         "fixed inset-0 z-50 flex items-end justify-center",
@@ -225,8 +245,14 @@ export function Sheet({
         aria-modal="true"
         aria-labelledby={headingId}
         tabIndex={-1}
+        /*
+          Held to the screen as it is, toolbars and all. A `vh` is measured
+          with them put away, so on iOS a sheet held to 88vh could stand
+          taller than the screen with them showing, its title and Close off
+          the top (the stability audit, P3-7).
+        */
         className={cn(
-          "rounded-t-card border-paper-line bg-paper text-forest relative max-h-[88vh] w-full max-w-xl overflow-y-auto border p-5 pb-8 outline-none",
+          "rounded-t-card border-paper-line bg-paper text-forest relative max-h-[88dvh] w-full max-w-xl overflow-y-auto border p-5 pb-8 outline-none",
           inspector &&
             "lg:rounded-l-card lg:h-full lg:max-h-none lg:max-w-md lg:rounded-tr-none",
           className,

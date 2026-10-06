@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render } from "@testing-library/react";
+import { useSyncExternalStore } from "react";
+import { renderToString } from "react-dom/server";
+import { hydrateRoot, type Root } from "react-dom/client";
 import { Roll } from "./roll";
 
 /*
@@ -106,5 +109,78 @@ describe("a figure that rolls", () => {
     expect(container.querySelector("[data-was]")).not.toBeNull();
     act(() => vi.advanceTimersByTime(250));
     expect(container.querySelector("[data-was]")).toBeNull();
+  });
+});
+
+/*
+  A hard load of boarding with check-ins kept on this phone (the stability
+  audit, P3-4). The server cannot read the phone, so it draws its own count,
+  and the first client pass corrects it. That correction rolled, so the
+  screen moved on its own after it had appeared.
+*/
+describe("a figure on a page loaded from the server", () => {
+  let root: Root | null = null;
+  let container: HTMLElement | null = null;
+
+  afterEach(() => {
+    act(() => root?.unmount());
+    root = null;
+    container?.remove();
+    container = null;
+  });
+
+  /** A count only the phone holds: the server says 2, this phone 4. */
+  let phone = 4;
+  const listeners = new Set<() => void>();
+  const store = {
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    set(n: number) {
+      phone = n;
+      for (const listener of listeners) listener();
+    },
+  };
+
+  function Aboard() {
+    const value = useSyncExternalStore(
+      store.subscribe,
+      () => phone,
+      () => 2,
+    );
+    return <Roll value={value} />;
+  }
+
+  async function load() {
+    container = document.createElement("div");
+    container.innerHTML = renderToString(<Aboard />);
+    document.body.appendChild(container);
+    expect(container.textContent).toBe("2");
+    const recoverable = vi.fn();
+    await act(async () => {
+      root = hydrateRoot(container!, <Aboard />, {
+        onRecoverableError: recoverable,
+      });
+    });
+    expect(recoverable).not.toHaveBeenCalled();
+    return container;
+  }
+
+  it("lands on the phone's count still, rather than rolling to it", async () => {
+    phone = 4;
+    const page = await load();
+    expect(page.textContent).toBe("4");
+    expect(played).toHaveLength(0);
+    expect(page.querySelector("[data-was]")).toBeNull();
+  });
+
+  it("rolls every change after that, as before", async () => {
+    phone = 4;
+    const page = await load();
+    act(() => store.set(5));
+    expect(page.textContent).toBe("5");
+    expect(played.length).toBeGreaterThan(0);
+    expect(page.querySelector("[data-was]")).not.toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { PhoneField } from "@/components/ui/phone-field";
 import { Panel } from "@/components/ui/panel";
+import { sendForm } from "@/lib/actions/send-form";
 
 /**
  * Three steps, and one of them can take somebody's job away.
@@ -29,11 +30,24 @@ export function JoinTokenForm({
   token: string;
   businessName?: string;
 }) {
-  const [state, act, pending] = useActionState<JoinState, FormData>(
-    async (prev, form) => {
-      if (prev.step === "code") return acceptJoin(token, prev, form);
-      return requestJoinCode(token, prev, form);
-    },
+  /*
+    Sent through `sendForm`, so a request that never came back says the
+    step's own no-signal sentence where it was instead of taking the page to
+    the error screen. The number is held by `PhoneField`, which a reset
+    leaves alone, and the code is typed again and never kept.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<JoinState>(
+      async (prev, form) => {
+        if (prev.step === "code") return acceptJoin(token, prev, form);
+        return requestJoinCode(token, prev, form);
+      },
+      (_form, prev) =>
+        prev.step === "code"
+          ? { ...prev, message: "No signal. Nothing changed." }
+          : { step: "phone", message: "No signal. Try again." },
+      { forget: ["code"] },
+    ),
     { step: "phone" },
   );
   /** The submit waits for a whole number. See `PhoneField`. */
@@ -41,9 +55,9 @@ export function JoinTokenForm({
   /**
    * Their agreement to leave, held here rather than in the action's state.
    *
-   * It must come from a tap and nothing else, so it is reset by any re-render
-   * that hands back a fresh state — there is no path where it survives into a
-   * request the person did not authorise.
+   * It must come from a tap and nothing else: it starts unticked, nothing
+   * but the box sets it, and the field that carries it is drawn only while
+   * the box is on screen and ticked.
    */
   const [agreed, setAgreed] = useState(false);
 
@@ -137,7 +151,14 @@ export function JoinTokenForm({
                 {step.leavingText}
               </p>
               <label className="mt-3 flex items-start gap-3 text-sm">
+                {/*
+                  Remounted per refusal (`sendForm`), so it shows what will be
+                  sent. A reset in place unticked the box after a wrong code
+                  while the agreement it stood for, and the field carrying it,
+                  stayed: the box said no and the next tap said yes.
+                */}
                 <input
+                  key={state.attempt ?? 0}
                   type="checkbox"
                   checked={agreed}
                   onChange={(e) => setAgreed(e.target.checked)}

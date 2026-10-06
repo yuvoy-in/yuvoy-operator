@@ -18,6 +18,7 @@ import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { Problem } from "@/components/ui/states";
 import { ButtonLink } from "@/components/ui/button";
+import { LinkRing } from "@/components/ui/link-pending";
 import { PauseResume } from "@/components/listings/pause-resume";
 import { ConfirmSeats } from "@/components/listings/confirm-seats";
 import { ScheduleForm } from "./schedule-form";
@@ -191,6 +192,7 @@ export default async function ListingHubPage({
             block={false}
           >
             Edit
+            <LinkRing button />
           </ButtonLink>
         ) : null}
         {sellable && listing.slug ? (

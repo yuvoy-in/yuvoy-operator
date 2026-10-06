@@ -236,6 +236,34 @@ describe("tapping a pill", () => {
     );
   });
 
+  /*
+    A search or filter that lands while a pill's tap is waiting has replaced
+    the pill's navigation (the router keeps the newer), so the pill it asked
+    for is never coming. It stayed lit over the old rows for good (the
+    stability audit, P3-2).
+  */
+  it("puts the pill back when a search lands while its tap waits", () => {
+    reduce(true);
+    const { rerender } = row("upcoming");
+    fireEvent.click(screen.getByRole("link", { name: /^Past/ }));
+
+    // The same pill in the address, with a search on every link.
+    const searched = PILLS.map((pill) => ({
+      ...pill,
+      href: `${pill.href}&q=asha`,
+    }));
+    rerender(
+      <PillRow label="Which bookings" selected="upcoming" pills={searched} />,
+    );
+    expect(screen.getByRole("link", { name: /^Upcoming/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("link", { name: /^Past/ })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
   it("lets the history decide when back is pressed while a tap waits", () => {
     reduce(true);
     row("upcoming");
@@ -307,11 +335,18 @@ describe("tapping a pill", () => {
 describe("the rows a pill chooses", () => {
   function Bookings() {
     const [view, setView] = useState("upcoming");
+    const [q, setQ] = useState("");
+    const pills = q
+      ? PILLS.map((pill) => ({ ...pill, href: `${pill.href}&q=${q}` }))
+      : PILLS;
     return (
       <PillSwap>
-        <PillRow label="Which bookings" selected={view} pills={PILLS} />
+        <PillRow label="Which bookings" selected={view} pills={pills} />
         <button type="button" onClick={() => setView("past")}>
           The server answers
+        </button>
+        <button type="button" onClick={() => setQ("asha")}>
+          A search lands first
         </button>
         <PillPanel view={view}>
           <p>Rows for {view}</p>
@@ -334,6 +369,25 @@ describe("the rows a pill chooses", () => {
     fireEvent.click(screen.getByRole("button", { name: "The server answers" }));
     expect(screen.getByText("Rows for past")).toBeInTheDocument();
     expect(rows).not.toHaveAttribute("aria-busy");
+  });
+
+  it("stops saying they are on their way when a search replaces the tap", () => {
+    vi.useFakeTimers();
+    reduce(true);
+    render(<Bookings />);
+    const rows = screen.getByText("Rows for upcoming").parentElement!;
+    fireEvent.click(screen.getByRole("link", { name: /^Past/ }));
+    act(() => vi.advanceTimersByTime(300));
+    expect(rows).toHaveAttribute("aria-busy", "true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "A search lands first" }),
+    );
+    expect(rows).not.toHaveAttribute("aria-busy");
+    expect(screen.getByRole("link", { name: /^Upcoming/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 
   it("cross-fades the rows: a held copy of the old ones fades out over the new", () => {

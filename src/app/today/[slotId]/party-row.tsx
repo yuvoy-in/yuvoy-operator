@@ -13,6 +13,7 @@ import { RelayPanel } from "./relay-panel";
 import { CashCollect } from "@/app/bookings/cash-collect";
 import { Button } from "@/components/ui/button";
 import { CheckIcon } from "@/components/ui/icons";
+import { LinkRing } from "@/components/ui/link-pending";
 import { OnlineOnly } from "@/components/ui/online-only";
 import { useOnline } from "@/components/ui/use-online";
 import { useChrome } from "@/components/chrome/chrome-context";
@@ -147,6 +148,11 @@ export function PartyRow({
         if (outcome === "arrived" && answer.retryable) return keep();
         return answer;
       } catch {
+        /*
+          A session that ended lands here too: Next has already followed the
+          action's redirect to sign in, so keeping the check-in strands
+          nobody and sends it once they are back (party-row.test.tsx).
+        */
         return outcome === "arrived"
           ? keep()
           : {
@@ -227,6 +233,7 @@ export function PartyRow({
             className="text-forest tap-target shrink-0 text-sm font-bold underline underline-offset-4"
           >
             Booking
+            <LinkRing />
           </Link>
         ) : null}
       </div>
@@ -242,6 +249,7 @@ export function PartyRow({
           className="text-terra-deep tap-target mt-1 text-sm font-bold underline underline-offset-4"
         >
           {unread === 1 ? "1 new message" : `${unread} new messages`}
+          <LinkRing />
         </Link>
       ) : null}
 

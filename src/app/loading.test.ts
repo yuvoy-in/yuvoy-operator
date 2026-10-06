@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
+import ts from "typescript";
 import { NAV, isBareRoute, isFocusedRoute } from "@/lib/site/nav";
+import { DOOR_LABEL } from "@/components/states/route-skeletons";
 
 /**
  * Every route reaches a loading boundary, and it is the right one.
@@ -60,9 +62,38 @@ const routeOf = (page: string) =>
  * A redirect is not a screen. `/`, `/services/activities` and
  * `/services/reels` exist only to send an old URL somewhere current; they
  * render no UI, so a skeleton for them would be a skeleton for nothing.
+ *
+ * A page that redirects only on a condition (no session, a listing in
+ * review) and draws a screen otherwise IS a screen, and every rule here holds
+ * it. Leaving out every page that said `redirect(` anywhere, as this did,
+ * left out the builder, which can also answer 404, so a boundary above it
+ * would have streamed that 404 as a 200 with nothing here to say so; and
+ * Business, verification and sign in went unchecked for their chassis.
  */
-const isRedirect = (file: string) =>
-  /\bredirect\(/.test(readFileSync(file, "utf8"));
+function isRedirect(file: string): boolean {
+  let draws = false;
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isJsxElement(node) ||
+      ts.isJsxSelfClosingElement(node) ||
+      ts.isJsxFragment(node)
+    ) {
+      draws = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(
+    ts.createSourceFile(
+      file,
+      readFileSync(file, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    ),
+  );
+  return !draws;
+}
 
 /**
  * ## The redirect half of this was solved, not worked around
@@ -136,6 +167,133 @@ function chassisOf(boundary: string): "tabs" | "focused" | "door" {
 const chassisFor = (route: string) =>
   isBareRoute(route) ? "door" : isFocusedRoute(route) ? "focused" : "tabs";
 
+/*
+  The links into the screens that keep no boundary. Read from the syntax tree
+  (the TypeScript parser the typecheck already runs), not with patterns: a
+  link's address is an expression, its children are JSX, and both hold
+  words, quotes and comments a pattern would trip on.
+*/
+const SRC = join(process.cwd(), "src");
+
+/** The pending hints a link can carry (`components/ui/link-pending.tsx`). */
+const HINTS = new Set(["RowChevron", "LinkRing", "SegmentDot"]);
+
+/** A route or an address with every dynamic part made alike: `/bookings/[]`. */
+const shapeOf = (route: string) => route.replace(/\[[^\]]*\]/g, "[]");
+
+/** An address as written: a template's substitutions are its dynamic parts. */
+function written(expr: ts.Expression): string | null {
+  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
+    return expr.text;
+  }
+  if (ts.isTemplateExpression(expr)) {
+    return expr.templateSpans.reduce(
+      (text, span) => `${text}[]${span.literal.text}`,
+      expr.head.text,
+    );
+  }
+  return null;
+}
+
+/**
+ * Where a link's `href` can go, as written at the link: the address itself,
+ * either side of a choice, or the first argument of `withFrom` (its second is
+ * where the screen goes back to). An address made anywhere else (a party's
+ * `bookingHref`, a need's `href`) cannot be read here, and those links were
+ * given their ring by hand.
+ */
+function addressesOf(expr: ts.Expression): string[] {
+  if (ts.isParenthesizedExpression(expr)) return addressesOf(expr.expression);
+  if (ts.isConditionalExpression(expr)) {
+    return [...addressesOf(expr.whenTrue), ...addressesOf(expr.whenFalse)];
+  }
+  if (
+    ts.isCallExpression(expr) &&
+    ts.isIdentifier(expr.expression) &&
+    expr.expression.text === "withFrom" &&
+    expr.arguments[0]
+  ) {
+    return addressesOf(expr.arguments[0]);
+  }
+  const address = written(expr);
+  return address === null ? [] : [address.split(/[?#]/)[0]];
+}
+
+const tagOf = (node: ts.JsxOpeningLikeElement) => node.tagName.getText();
+
+/** Whether a link's children draw one of the hints, at any depth. */
+function hinted(node: ts.Node): boolean {
+  if (
+    (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) &&
+    HINTS.has(tagOf(node))
+  ) {
+    return true;
+  }
+  return ts.forEachChild(node, hinted) ?? false;
+}
+
+const treeOf = (file: string) =>
+  ts.createSourceFile(
+    file,
+    readFileSync(file, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+
+/** The written-out (string) props of every `<tag>` in a file. */
+function propsOf(file: string, tag: string): Record<string, string>[] {
+  const found: Record<string, string>[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      tagOf(node) === tag
+    ) {
+      const props: Record<string, string> = {};
+      for (const p of node.attributes.properties) {
+        if (ts.isJsxAttribute(p) && p.initializer) {
+          if (ts.isStringLiteral(p.initializer)) {
+            props[p.name.getText()] = p.initializer.text;
+          }
+        }
+      }
+      found.push(props);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(treeOf(file));
+  return found;
+}
+
+/** Each `<Link>` and `<ButtonLink>` in a file: its line, where it goes, its hint. */
+function linksIn(file: string) {
+  const tree = treeOf(file);
+  const links: { line: number; to: string[]; hinted: boolean }[] = [];
+  const visit = (node: ts.Node) => {
+    const opening = ts.isJsxElement(node)
+      ? node.openingElement
+      : ts.isJsxSelfClosingElement(node)
+        ? node
+        : null;
+    if (opening && ["Link", "ButtonLink"].includes(tagOf(opening))) {
+      const href = opening.attributes.properties.find(
+        (p): p is ts.JsxAttribute =>
+          ts.isJsxAttribute(p) && p.name.getText() === "href",
+      );
+      const init = href?.initializer;
+      const expr = init && ts.isJsxExpression(init) ? init.expression : init;
+      links.push({
+        line: tree.getLineAndCharacterOfPosition(opening.getStart()).line + 1,
+        to: expr ? addressesOf(expr) : [],
+        hinted: ts.isJsxElement(node) && node.children.some(hinted),
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  return links;
+}
+
 describe("loading boundaries", () => {
   /*
     Every tap an operator makes from the chrome. These are the screens the lag
@@ -157,6 +315,25 @@ describe("loading boundaries", () => {
       .filter((p) => boundaryFor(p) === null)
       .map(rel);
 
+    expect(uncovered).toEqual([]);
+  });
+
+  /*
+    Off the bar but tapped all the same, and none of them can answer 404:
+    Team from Settings, Add a listing from Business, and the invitation door
+    from a message. Each held the old screen on the glass with nothing to say
+    the tap had landed (the stability audit, P2-1). `/team` and `/join` sit
+    in a `(root)` group so the boundary is theirs alone, because a child of
+    each calls `notFound()`.
+  */
+  it("cover the screens a button or a message leads to", () => {
+    const TAPPED = ["/team", "/join", "/account/listings/new"];
+    const found = PAGES.map(routeOf).filter((r) => TAPPED.includes(r));
+    expect(found.sort()).toEqual([...TAPPED].sort());
+
+    const uncovered = PAGES.filter((p) => TAPPED.includes(routeOf(p)))
+      .filter((p) => boundaryFor(p) === null)
+      .map(rel);
     expect(uncovered).toEqual([]);
   });
 
@@ -192,6 +369,29 @@ describe("loading boundaries", () => {
     expect(onTheBar).toEqual([]);
   });
 
+  /*
+    And what the rule costs, paid. With no boundary, nothing is painted
+    between a tap and one of those screens, and Next prefetches none of them,
+    so on one bar of signal a tap on a booking, a departure or a payout looked
+    ignored (the stability audit, P2-1). Every link into one turns the ring a
+    busy button turns, in the link itself: a row's chevron gives way to it,
+    and words are followed by it. A new link into one of those screens without
+    it is a dead tap again, and this names it.
+  */
+  it("and every link into one of them answers its own tap", () => {
+    const detail = new Set(PAGES.filter(canNotFound).map(routeOf).map(shapeOf));
+    const silent = walk(SRC)
+      .filter((f) => f.endsWith(".tsx") && !f.endsWith(".test.tsx"))
+      .flatMap((file) =>
+        linksIn(file)
+          .filter((link) => link.to.some((to) => detail.has(shapeOf(to))))
+          .filter((link) => !link.hinted)
+          .map((link) => `${rel(file)}:${link.line}`),
+      );
+
+    expect(silent).toEqual([]);
+  });
+
   it("draw the chassis the nav registry says the route wears", () => {
     const wrong = PAGES.map((page) => {
       const route = routeOf(page);
@@ -203,6 +403,37 @@ describe("loading boundaries", () => {
         ? null
         : `${route}: wears ${expected}, ${rel(boundary)} draws ${drawn}`;
     }).filter(Boolean);
+
+    expect(wrong).toEqual([]);
+  });
+
+  /*
+    A door's fallback is that door: the caption on its stage and the measure
+    of its sheet. It drew no caption and the narrow sheet for all three, so
+    the caption appeared when a door landed and sign up's sheet widened under
+    it (the stability audit, P3-3). Read from what each page and each
+    boundary write, so a door that changes either is named here.
+  */
+  it("draw a door's own caption and measure", () => {
+    const wrong = FILES.filter((f) => /\/loading\.tsx$/.test(f))
+      .filter((boundary) => chassisOf(boundary) === "door")
+      .flatMap((boundary) => {
+        const drawn = propsOf(boundary, "DoorSkeleton")[0] ?? {};
+        const width = drawn.width ?? "sm";
+        return FILES.filter((f) => /\/page\.tsx$/.test(f))
+          .filter((page) => boundaryFor(page) === boundary)
+          .flatMap((page) =>
+            propsOf(page, "Screen").map((screen) => {
+              // `Screen`'s own default measure is md.
+              const wears = screen.width ?? "md";
+              const caption = screen.stageLabel ?? "none";
+              return wears === width && caption === DOOR_LABEL
+                ? null
+                : `${routeOf(page)} wears ${wears} under "${caption}", ${rel(boundary)} draws ${width} under "${DOOR_LABEL}"`;
+            }),
+          );
+      })
+      .filter(Boolean);
 
     expect(wrong).toEqual([]);
   });

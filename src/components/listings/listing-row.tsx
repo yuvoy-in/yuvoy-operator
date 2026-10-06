@@ -21,9 +21,11 @@ import { Chip } from "@/components/ui/chip";
 import { PauseResume } from "./pause-resume";
 import { SentBack } from "./sent-back";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { panelClass } from "@/components/ui/panel";
 import { MeetingPin } from "@/components/map/meeting-pin";
 import { pinOf, pinsSupported } from "@/lib/map/pin";
+import { sendForm } from "@/lib/actions/send-form";
 
 /** The pin's two numbers move together or not at all (yuvoy-api#249). */
 const PIN_PAIR = [["meetingLat", "meetingLng"]] as const;
@@ -78,8 +80,10 @@ export function ListingRow({
    */
   suspended?: boolean;
 }) {
-  const [state, act, pending] = useActionState<RevisionState, FormData>(
-    submitRevision,
+  const [state, act, pending] = useActionState(
+    sendForm<RevisionState>(submitRevision, () => ({
+      message: "No signal. Nothing was sent. Try again.",
+    })),
     {},
   );
   const [editing, setEditing] = useState(false);
@@ -96,6 +100,16 @@ export function ListingRow({
   const rejection = describeRejection(listing.review?.rejectionCode);
   const blockers = describeBlockers(listing.publishBlockers);
   const defaults = formDefaults(listing);
+  /*
+    What the form shows: what is on file, under whatever a refusal handed back
+    (`sendForm`). The action is sent only what changed, so that is all that
+    comes back, and every other field is on file anyway. Read in place rather
+    than by remounting the form, which would load the pin's map again with
+    every refusal; the activity, a select React reads only when it mounts, is
+    keyed on the attempt by itself. Twelve fields used to go back to what was
+    on file over one refused price.
+  */
+  const shown: Record<string, string> = { ...defaults, ...state.typed };
 
   return (
     <li id={`listing-${listing.id}`} className={panelClass()}>
@@ -286,7 +300,7 @@ export function ListingRow({
               name="title"
               required
               minLength={3}
-              defaultValue={defaults.title}
+              defaultValue={shown.title}
               className={inputClass("voice-host mt-2")}
             />
           </div>
@@ -301,7 +315,7 @@ export function ListingRow({
             <input
               id={`summary-${listing.id}`}
               name="summary"
-              defaultValue={defaults.summary}
+              defaultValue={shown.summary}
               className={inputClass("voice-host mt-2")}
             />
           </div>
@@ -328,9 +342,10 @@ export function ListingRow({
                 Activity
               </label>
               <select
+                key={state.attempt ?? 0}
                 id={`activity-${listing.id}`}
                 name="activityType"
-                defaultValue={defaults.activityType}
+                defaultValue={shown.activityType}
                 className={inputClass("mt-2")}
                 aria-describedby={`activity-help-${listing.id}`}
               >
@@ -359,11 +374,11 @@ export function ListingRow({
             >
               What happens on the day
             </label>
-            <textarea
+            <Textarea
               id={`description-${listing.id}`}
               name="description"
               rows={4}
-              defaultValue={defaults.description}
+              defaultValue={shown.description}
               className={inputClass("voice-host mt-2 h-auto py-3")}
             />
           </div>
@@ -378,7 +393,7 @@ export function ListingRow({
             <input
               id={`meeting-${listing.id}`}
               name="meetingPoint"
-              defaultValue={defaults.meetingPoint}
+              defaultValue={shown.meetingPoint}
               className={inputClass("voice-host mt-2")}
             />
           </div>
@@ -406,7 +421,7 @@ export function ListingRow({
               id={`price-${listing.id}`}
               name="unitPrice"
               inputMode="numeric"
-              defaultValue={defaults.unitPrice}
+              defaultValue={shown.unitPrice}
               className={inputClass("mt-2")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">In rupees.</p>
@@ -440,7 +455,7 @@ export function ListingRow({
                     type="radio"
                     name="pricingUnit"
                     value={unit.value}
-                    defaultChecked={defaults.pricingUnit === unit.value}
+                    defaultChecked={shown.pricingUnit === unit.value}
                     className="accent-forest mt-0.5 size-5 shrink-0"
                   />
                   <span>
@@ -481,7 +496,7 @@ export function ListingRow({
                 id={`duration-${listing.id}`}
                 name="durationMinutes"
                 inputMode="numeric"
-                defaultValue={defaults.durationMinutes}
+                defaultValue={shown.durationMinutes}
                 className={inputClass("mt-2")}
                 aria-describedby={`duration-help-${listing.id}`}
               />
@@ -503,7 +518,7 @@ export function ListingRow({
                 id={`party-${listing.id}`}
                 name="maxPartySize"
                 inputMode="numeric"
-                defaultValue={defaults.maxPartySize}
+                defaultValue={shown.maxPartySize}
                 className={inputClass("mt-2")}
               />
             </div>
@@ -516,11 +531,11 @@ export function ListingRow({
             >
               What is included
             </label>
-            <textarea
+            <Textarea
               id={`inclusions-${listing.id}`}
               name="inclusions"
               rows={3}
-              defaultValue={defaults.inclusions}
+              defaultValue={shown.inclusions}
               className={inputClass("voice-host mt-2 h-auto py-3")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
@@ -535,11 +550,11 @@ export function ListingRow({
             >
               What a traveller needs
             </label>
-            <textarea
+            <Textarea
               id={`requirements-${listing.id}`}
               name="requirements"
               rows={3}
-              defaultValue={defaults.requirements}
+              defaultValue={shown.requirements}
               className={inputClass("voice-host mt-2 h-auto py-3")}
             />
             <p className="text-forest/70 mt-1.5 text-xs">
@@ -555,11 +570,11 @@ export function ListingRow({
             >
               Safety notes
             </label>
-            <textarea
+            <Textarea
               id={`safety-${listing.id}`}
               name="safetyNotes"
               rows={3}
-              defaultValue={defaults.safetyNotes}
+              defaultValue={shown.safetyNotes}
               className={inputClass("voice-host mt-2 h-auto py-3")}
             />
             {/*

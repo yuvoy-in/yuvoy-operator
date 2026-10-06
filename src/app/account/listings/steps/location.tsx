@@ -4,9 +4,11 @@ import { useActionState } from "react";
 import { saveLocation, type StepState } from "../builder-actions";
 import { screenerChoices, type Vocabulary } from "@/lib/services/vocabulary";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { MeetingPin } from "@/components/map/meeting-pin";
 import { pinOf, pinsSupported } from "@/lib/map/pin";
-import { StepShell } from "./step-shell";
+import { sendForm } from "@/lib/actions/send-form";
+import { notSaved, StepShell } from "./step-shell";
 import { fieldMarks } from "./field-marks";
 import { FieldLabel } from "./field-help";
 
@@ -44,10 +46,19 @@ export function LocationStep({
   /** The field Edit was opened for, still needed: marked in place (O12). */
   flagged?: string;
 }) {
-  const [state, act, pending] = useActionState<StepState, FormData>(
-    saveLocation,
+  /*
+    A refusal hands back what was typed (`sendForm`) and the fields read it in
+    place. The form is NOT remounted the way Basics is: the meeting pin's map
+    would load again with every refusal, and a refusal for no signal is the
+    one time its tiles could not come back. The pin keeps itself (its two
+    fields are hidden, which a reset never touches), and the health check, a
+    select React reads only when it mounts, is keyed on the attempt by itself.
+  */
+  const [state, act, pending] = useActionState(
+    sendForm<StepState>(saveLocation, notSaved),
     {},
   );
+  const typed = state.typed;
   const screeners = screenerChoices(vocabulary);
   const { marked, describedBy, needed } = fieldMarks(state.fields, flagged);
 
@@ -70,7 +81,7 @@ export function LocationStep({
           id="l-meeting"
           name="meetingPoint"
           required
-          defaultValue={listing.meetingPoint ?? ""}
+          defaultValue={typed?.meetingPoint ?? listing.meetingPoint ?? ""}
           className={inputClass("voice-host mt-2")}
           aria-invalid={marked("meetingPoint")}
           aria-describedby={describedBy("meetingPoint", "l-meeting")}
@@ -85,7 +96,7 @@ export function LocationStep({
         <input
           id="l-landmark"
           name="meetingLandmark"
-          defaultValue={listing.meetingLandmark ?? ""}
+          defaultValue={typed?.meetingLandmark ?? listing.meetingLandmark ?? ""}
           className={inputClass("voice-host mt-2")}
           aria-describedby={describedBy(
             "meetingLandmark",
@@ -105,11 +116,13 @@ export function LocationStep({
         <label htmlFor="l-inclusions" className={fieldLabelClass()}>
           What is included
         </label>
-        <textarea
+        <Textarea
           id="l-inclusions"
           name="inclusions"
           rows={4}
-          defaultValue={(listing.inclusions ?? []).join("\n")}
+          defaultValue={
+            typed?.inclusions ?? (listing.inclusions ?? []).join("\n")
+          }
           className={inputClass("voice-host mt-2 h-auto py-3")}
           aria-describedby="l-inclusions-help"
         />
@@ -122,11 +135,13 @@ export function LocationStep({
         <label htmlFor="l-requirements" className={fieldLabelClass()}>
           What a traveller needs
         </label>
-        <textarea
+        <Textarea
           id="l-requirements"
           name="requirements"
           rows={4}
-          defaultValue={(listing.requirements ?? []).join("\n")}
+          defaultValue={
+            typed?.requirements ?? (listing.requirements ?? []).join("\n")
+          }
           className={inputClass("voice-host mt-2 h-auto py-3")}
           aria-describedby="l-requirements-help"
         />
@@ -139,11 +154,11 @@ export function LocationStep({
         <label htmlFor="l-safety" className={fieldLabelClass()}>
           Safety notes
         </label>
-        <textarea
+        <Textarea
           id="l-safety"
           name="safetyNotes"
           rows={3}
-          defaultValue={listing.safetyNotes ?? ""}
+          defaultValue={typed?.safetyNotes ?? listing.safetyNotes ?? ""}
           className={inputClass("voice-host mt-2 h-auto py-3")}
         />
       </div>
@@ -154,9 +169,10 @@ export function LocationStep({
             Health check before booking
           </label>
           <select
+            key={state.attempt ?? 0}
             id="l-screener"
             name="screenerKey"
-            defaultValue={listing.screenerKey ?? ""}
+            defaultValue={typed?.screenerKey ?? listing.screenerKey ?? ""}
             className={inputClass("mt-2")}
             aria-invalid={marked("screenerKey")}
             aria-describedby="l-screener-help"

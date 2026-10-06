@@ -20,7 +20,10 @@ import { marketTime } from "@/lib/format/market-time";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { textareaClass } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { cn } from "@/lib/cn";
+import { callAction } from "@/lib/actions/call-action";
 
 /**
  * The conversation with a booking's traveller — yuvoy-operator#52 items 1 to 3.
@@ -54,6 +57,10 @@ export function Conversation({
   const [text, setText] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
   const [sending, startSending] = useTransition();
+
+  // A reply started before the page hydrated: kept, and sent as written.
+  const box = useRef<HTMLTextAreaElement>(null);
+  useChangedBeforeHydration(box, ([field]) => setText(field.value));
   const [loading, startLoading] = useTransition();
 
   /*
@@ -76,7 +83,10 @@ export function Conversation({
     const upTo = newestMessageId(initial.messages);
     if (!upTo) return;
     marked.current = true;
-    void markThreadRead(bookingId, upTo);
+    void callAction(
+      () => markThreadRead(bookingId, upTo),
+      () => undefined,
+    );
   }, [bookingId, initial]);
 
   function showEarlier() {
@@ -84,7 +94,15 @@ export function Conversation({
     if (!cursor) return;
     setFailure(null);
     startLoading(async () => {
-      const page = await loadEarlier(bookingId, cursor);
+      // A page that never came back is said here, over the messages already
+      // drawn, rather than as the error screen in place of them (`callAction`).
+      const page = await callAction(
+        () => loadEarlier(bookingId, cursor),
+        () => ({
+          ok: false as const,
+          message: "Those did not load. Try again.",
+        }),
+      );
       if (!page.ok) {
         setFailure(page.message);
         return;
@@ -103,7 +121,14 @@ export function Conversation({
     event.preventDefault();
     setFailure(null);
     startSending(async () => {
-      const result = await sendMessage(bookingId, text);
+      // A send that never came back keeps the words and says so (`callAction`).
+      const result = await callAction(
+        () => sendMessage(bookingId, text),
+        () => ({
+          ok: false as const,
+          message: "No signal. Nothing was sent. Try again.",
+        }),
+      );
       if (result.ok) {
         setThread((was) => ({
           ...was,
@@ -119,7 +144,10 @@ export function Conversation({
         memory on a phone in the sun.
       */
       if (result.reload) {
-        const fresh = await reloadThread(bookingId);
+        const fresh = await callAction(
+          () => reloadThread(bookingId),
+          () => null,
+        );
         // The composer goes with it: `canWrite` is false on the fresh thread.
         if (fresh) setThread(fresh);
       }
@@ -184,7 +212,8 @@ export function Conversation({
           <label htmlFor="message" className="label text-forest/75">
             Write to them
           </label>
-          <textarea
+          <Textarea
+            ref={box}
             id="message"
             name="text"
             rows={3}

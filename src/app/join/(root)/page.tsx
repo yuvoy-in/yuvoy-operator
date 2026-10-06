@@ -1,6 +1,12 @@
+/*
+  In a `(root)` route group so the loading boundary beside it is `/join`'s
+  alone: `/join/[token]` calls `notFound()`, and a boundary above it would
+  stream that 404 as a 200 (see `loading.test.ts`). The group is not part of
+  the URL, and the form beside it stays in `app/join/`.
+*/
 import type { Metadata } from "next";
 import Link from "next/link";
-import { JoinForm } from "./join-form";
+import { JoinForm } from "@/app/join/join-form";
 import { Screen } from "@/components/chrome/screen";
 
 export const metadata: Metadata = { title: "Accept an invitation" };
