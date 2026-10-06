@@ -108,3 +108,19 @@ function typedIn(
   }
   return typed;
 }
+
+/**
+ * Named fields exactly as they were sent, each `""` when absent.
+ *
+ * For a form whose action hands its own `values` back with a refusal (the
+ * sign-up and the invitation, which predate `typed`): a request that never
+ * came back has to hand back the same, or the form remounts empty.
+ */
+export function fieldsOf<K extends string>(
+  form: FormData,
+  names: readonly K[],
+): Record<K, string> {
+  return Object.fromEntries(
+    names.map((name) => [name, String(form.get(name) ?? "")]),
+  ) as Record<K, string>;
+}

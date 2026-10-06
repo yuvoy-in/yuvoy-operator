@@ -21,7 +21,9 @@ vi.mock("./actions", () => ({
 }));
 
 const refresh = vi.fn();
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", async (original) => ({
+  // The real control flow helpers, which a dropped request goes through.
+  ...(await original<typeof import("next/navigation")>()),
   useRouter: () => ({ refresh }),
 }));
 
@@ -192,6 +194,33 @@ describe("a refusal", () => {
     expect(
       screen.getByText("An owner can change where the business is paid."),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+  The stability audit, P2-3: an invitation that never came back took the team
+  screen to the error page, with all three fields and the role chosen.
+*/
+describe("an invitation that never came back", () => {
+  it("says no signal on the form and keeps everything that was typed", async () => {
+    inviteMember.mockRejectedValue(new TypeError("Failed to fetch"));
+    const user = userEvent.setup();
+    render(<InviteForm />);
+    await user.click(screen.getByRole("radio", { name: /Owner/ }));
+    await submit(user, { email: "ramesh@example.com" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No signal. Nothing was sent. Try again.",
+    );
+    expect(screen.getByLabelText("Their name")).toHaveValue("Ramesh Toppo");
+    expect(screen.getByLabelText("Their phone number")).toHaveValue(
+      "+919000000104",
+    );
+    expect(screen.getByLabelText(/Their email/)).toHaveValue(
+      "ramesh@example.com",
+    );
+    expect(screen.getByRole("radio", { name: /Owner/ })).toBeChecked();
+    expect(refresh).not.toHaveBeenCalled();
   });
 });
 

@@ -7,6 +7,7 @@ import { inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { PhoneField } from "@/components/ui/phone-field";
 import { sendForm } from "@/lib/actions/send-form";
+import { UNREACHABLE } from "@/lib/api/errors";
 
 export function JoinForm() {
   /*
@@ -17,13 +18,9 @@ export function JoinForm() {
     it is at sign-in, and never kept.
   */
   const [state, act, pending] = useActionState(
-    sendForm<AcceptState>(
-      acceptInvite,
-      () => ({
-        message: "We could not reach Yuvoy. Check your signal and try again.",
-      }),
-      { forget: ["code"] },
-    ),
+    sendForm<AcceptState>(acceptInvite, () => ({ message: UNREACHABLE }), {
+      forget: ["code"],
+    }),
     {},
   );
   /** The submit waits for a whole number, as the other two doors do. */

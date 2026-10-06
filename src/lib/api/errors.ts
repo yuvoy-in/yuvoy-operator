@@ -72,9 +72,17 @@ export class OperatorApiError extends Error {
   }
 }
 
+/**
+ * What the doors (sign-in, sign-up, an invitation) say when Yuvoy cannot be
+ * reached. Exported so a request from the phone that never came back says
+ * the same words as one the server could not pass on.
+ */
+export const UNREACHABLE =
+  "We could not reach Yuvoy. Check your signal and try again.";
+
 export class OperatorNetworkError extends Error {
   constructor(cause?: unknown) {
-    super("We could not reach Yuvoy. Check your signal and try again.");
+    super(UNREACHABLE);
     this.name = "OperatorNetworkError";
     this.cause = cause;
   }

@@ -15,6 +15,9 @@ import { formatE164 } from "@/lib/auth/phone";
 import { EMAIL_REQUIRED_AT_SIGNUP } from "@/lib/auth/signup";
 import { EMAIL_MAX_LENGTH } from "@/lib/auth/email";
 import { WhereTheCodeGoes } from "@/app/sign-in/where-the-code-goes";
+import { callAction } from "@/lib/actions/call-action";
+import { fieldsOf } from "@/lib/actions/send-form";
+import { UNREACHABLE } from "@/lib/api/errors";
 
 /**
  * Owning it and running it, and what each one actually gets you.
@@ -47,14 +50,36 @@ const RELATIONSHIPS = [
  */
 export function SignUpForm() {
   const [state, act, pending] = useActionState<SignUpState, FormData>(
-    async (prev, form) => {
-      if (prev.step === "code") {
-        return form.get("intent") === "resend"
-          ? resendCode(prev)
-          : finishSignUp(prev, form);
-      }
-      return createAccount(prev, form);
-    },
+    (prev, form) =>
+      callAction(
+        () => {
+          if (prev.step === "code") {
+            return form.get("intent") === "resend"
+              ? resendCode(prev)
+              : finishSignUp(prev, form);
+          }
+          return createAccount(prev, form);
+        },
+        /*
+          A request that never came back is refused the way the actions
+          refuse, on the step it was on: the details handed back with the
+          attempt they remount on, and a code typed again.
+        */
+        () =>
+          prev.step === "code"
+            ? { ...prev, message: UNREACHABLE }
+            : {
+                message: "No signal. Nothing was sent. Try again.",
+                values: fieldsOf(form, [
+                  "businessName",
+                  "name",
+                  "phone",
+                  "email",
+                  "relationship",
+                ]),
+                attempt: (prev.attempt ?? 0) + 1,
+              },
+      ),
     { step: "details" },
   );
   /** The submit waits for a whole number. See `PhoneField`. */
