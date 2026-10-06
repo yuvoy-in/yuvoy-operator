@@ -99,8 +99,8 @@ test("each step saves on Next, and Review sends it", async ({ page }) => {
   await signIn(page);
   const id = await startDraft(page, title);
 
-  // Selling.
-  await page.getByLabel("Price").fill("4500");
+  // Selling, typed the way people write a price (yuvoy-operator#144).
+  await page.getByLabel("Price").fill("Rs. 4,500");
   await expect(page.getByText(/You receive/)).toContainText("₹3,825");
   await page.getByRole("radio", { name: "Per person" }).check();
   await page.getByLabel("Most people per booking").fill("6");
@@ -217,7 +217,8 @@ test("a step that is refused stays where it is and says why", async ({
   const id = await startDraft(page, title);
 
   await page.goto(`/account/listings/${id}/edit?step=selling`);
-  await page.getByLabel("Price").fill("0");
+  // A range is not a price: it was saved as 15002000 (yuvoy-operator#144).
+  await page.getByLabel("Price").fill("1500-2000");
   // A basis IS chosen, so the refusal under test is the price and not the one
   // field with no default.
   await page.getByRole("radio", { name: "Per person" }).check();
@@ -225,7 +226,7 @@ test("a step that is refused stays where it is and says why", async ({
 
   // `.first()`: the step's own refusal, not the route announcer behind it.
   await expect(page.getByRole("alert").first()).toContainText(
-    "A price in rupees",
+    "Check the price.",
   );
   await expect(page).toHaveURL(/step=selling/);
 });

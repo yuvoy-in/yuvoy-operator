@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { ChangeState } from "@/lib/account/bank";
 
 /*
   The brake on a bank change in flight.
@@ -26,11 +27,17 @@ function panel({
   canStop = true,
   isOwner = true,
   hasAccountOnFile = true,
-}: { canStop?: boolean; isOwner?: boolean; hasAccountOnFile?: boolean } = {}) {
+  state = "cooling",
+}: {
+  canStop?: boolean;
+  isOwner?: boolean;
+  hasAccountOnFile?: boolean;
+  state?: ChangeState;
+} = {}) {
   return render(
     <ChangePanel
       id="chg_bank_1"
-      state="cooling"
+      state={state}
       summary="HDFC Bank ····4417 (HDFC0001234)"
       objectionUntil={null}
       coolingUntil="2026-09-23T03:30:00Z"
@@ -125,5 +132,46 @@ describe("stopping a bank change", () => {
     expect(
       screen.getByText(/an owner or an admin can stop it/),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+  yuvoy-operator#143. The form said raising a change "changes nothing today",
+  and the API holds the business's payouts from the moment one is raised until
+  it settles. This panel is what a raise leaves on screen, so it says so in
+  every state the API holds them, and not once the change is stopped.
+*/
+describe("the hold on payouts", () => {
+  it.each<ChangeState>(["objection_window", "pending", "cooling", "approved"])(
+    "is said while the change is %s",
+    (state) => {
+      panel({ state });
+      expect(
+        screen.getByText(/^Payouts are on hold until it settles\./),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it.each<ChangeState>(["applied", "rejected", "withdrawn"])(
+    "is not said for a change that is %s",
+    (state) => {
+      panel({ state });
+      expect(screen.queryByText(/on hold/)).toBeNull();
+    },
+  );
+
+  it("is not said once the change is stopped", async () => {
+    cancelChange.mockResolvedValue({ stopped: true });
+    panel({ state: "objection_window" });
+    expect(screen.getByText(/on hold/)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "This wasn't me. Stop it" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Stop the change" }));
+
+    expect(
+      await screen.findByText("Stopped. Nothing was changed."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/on hold/)).toBeNull();
   });
 });
