@@ -53,11 +53,15 @@ export type Typed<S> = S & {
  * after a refusal, as it is at sign-in: the wrong code is usually WHY it was
  * refused.
  *
+ * `unsent` is the screen's own sentence for a request that never came back,
+ * handed what was sent and the answer before it, for a form with steps that
+ * has to stay on the one it was on.
+ *
  * A refusal is an answer with a `message`, unless `refused` says otherwise.
  */
 export function sendForm<S extends { message?: string }>(
   action: (state: S, form: FormData) => Promise<S>,
-  unsent: (form: FormData) => S,
+  unsent: (form: FormData, state: S) => S,
   options: {
     forget?: readonly string[];
     refused?: (answer: S) => boolean;
@@ -67,9 +71,10 @@ export function sendForm<S extends { message?: string }>(
     options;
   return async (state, form) => {
     const { attempt } = state;
+    const previous = withoutTyped(state);
     const answer = await callAction(
-      () => action(withoutTyped(state), form),
-      () => unsent(form),
+      () => action(previous, form),
+      () => unsent(form, previous),
     );
     if (!refused(answer)) return { ...answer, attempt };
     return {
