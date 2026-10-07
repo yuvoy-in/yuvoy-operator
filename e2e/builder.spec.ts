@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * The listing builder — yuvoy-operator#58 item 7.
@@ -495,10 +495,7 @@ test("the Location step, pin and all, has no accessibility violations", async ({
     pin.getByRole("button", { name: /Put the pin at/ }),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "the builder's Location step, a pin offered");
 });
 
 test("the builder has no accessibility violations", async ({ page }) => {
@@ -506,8 +503,5 @@ test("the builder has no accessibility violations", async ({ page }) => {
   await page.goto("/account/listings/new");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "the builder, a new listing");
 });

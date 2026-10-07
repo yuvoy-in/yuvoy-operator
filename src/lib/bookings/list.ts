@@ -369,3 +369,22 @@ export function pillHref(view: View | null, filters: Filters): string {
   const query = params.toString();
   return query ? `/bookings?${query}` : "/bookings";
 }
+
+/**
+ * A booking found by its reference, under whichever pill holds it
+ * (yuvoy-operator#158).
+ *
+ * No pill is named, so the screen opens on the first one the search fills:
+ * the counts honour `q` and ignore the view (`defaultView`). Cash linked an
+ * unrecorded trip to Past, and a trip from earlier today stays under
+ * Upcoming until its day ends or its party is marked, so the link opened on
+ * "No bookings match" while the Upcoming pill said 1.
+ */
+export function referenceHref(reference: string): string {
+  return pillHref(null, {
+    q: readSearch(reference),
+    experienceId: "",
+    from: "",
+    to: "",
+  });
+}

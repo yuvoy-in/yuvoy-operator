@@ -8,6 +8,7 @@ import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { codeSchema } from "@/lib/auth/code";
 import { dedash } from "@/lib/format/dedash";
 import { sentence } from "@/lib/format/sentence";
+import { closedDoorMessage } from "@/lib/auth/closed-door";
 
 /**
  * Joining a business from its link — yuvoy-operator#23.
@@ -238,6 +239,13 @@ export async function acceptJoin(
           message: "Too many attempts. Wait a minute, then try the code again.",
         };
       }
+      /*
+        A right code that no retry can use: the business was offboarded, or
+        this number closed its login (`closedDoorMessage`). "Try the code
+        again" would spend another of its tries on the same answer.
+      */
+      const closed = closedDoorMessage(err);
+      if (closed) return { ...prev, step: "code", message: closed };
       if (err.isNotFound) {
         return {
           ...prev,

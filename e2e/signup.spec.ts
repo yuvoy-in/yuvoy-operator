@@ -1,5 +1,5 @@
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * O1 — an operator creates their own account.
@@ -414,11 +414,7 @@ test("/signup has no accessibility violations", async ({ page }) => {
   await page.goto("/signup");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/signup");
 });
 
 test("the question is asked, and not answering is refused rather than assumed", async ({

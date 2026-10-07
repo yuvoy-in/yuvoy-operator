@@ -2221,6 +2221,27 @@ for (const f of files) {
   }
 }
 
+/* ------------ an accessibility check waits out the motion ------------- */
+
+/*
+  axe reads colours as they are drawn at that instant, so a check that runs
+  while a sheet fades in reads its text at a fraction of its contrast. The
+  cancel form failed on and off that way, a different colour on every attempt
+  of the same text (yuvoy-operator#160). `expectAccessible` in e2e/axe.ts
+  waits the page's motion out before it reads, so axe is imported there and
+  nowhere else in e2e/: a spec that builds its own check skips the wait.
+*/
+const AXE_CHECK = join("e2e", "axe.ts");
+for (const f of walk(join(ROOT, "e2e"))) {
+  if (!/\.[cm]?[jt]sx?$/.test(f) || rel(f) === AXE_CHECK) continue;
+  if (/["'](?:@axe-core\/playwright|axe-core)(?:\/[^"']*)?["']/.test(code(f))) {
+    problems.push(
+      `${rel(f)}: runs axe itself, so it can read a screen mid-fade. ` +
+        `Use expectAccessible from ${AXE_CHECK}, which waits the motion out.`,
+    );
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);

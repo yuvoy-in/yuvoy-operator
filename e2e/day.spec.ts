@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 import { expectAccessible } from "./axe";
 
 /**
@@ -469,11 +468,7 @@ for (const route of ["/sign-in", "/today", "/today/slot_dawn"]) {
     await page.goto(route);
     await page.waitForLoadState("networkidle");
 
-    const results = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-      .analyze();
-
-    expect(results.violations).toEqual([]);
+    await expectAccessible(page, route);
   });
 }
 
@@ -654,11 +649,7 @@ test("/bookings has no accessibility violations", async ({ page }) => {
   await page.goto("/bookings");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/bookings");
 });
 
 /* ==================================================== O10 · relay, call-off */

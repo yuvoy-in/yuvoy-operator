@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * O4 — the highest-risk thing an operator can do.
@@ -303,6 +303,14 @@ test("a valid change is raised, and nothing is live yet", async ({ page }) => {
   ).toBeVisible();
   // And the form is gone, because only one change may be open at a time.
   await expect(page.getByText(/already a change in progress/)).toBeVisible();
+  /*
+    `/me` says the same change is holding the payouts (yuvoy-operator#156).
+    The panel above already says so, with its stage and its brake, so the
+    hold is not said a second time.
+  */
+  await expect(
+    page.getByText("Payouts are on hold while your bank change goes through"),
+  ).toHaveCount(0);
 });
 
 test("a bank change in flight holds the payout, and earnings says so", async ({
@@ -361,9 +369,5 @@ test("/payouts has no accessibility violations", async ({ page }) => {
   await page.goto("/payouts");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/payouts");
 });

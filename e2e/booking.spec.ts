@@ -1,5 +1,5 @@
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * One booking: why it ended, what the party answered, and cancelling it —
@@ -377,10 +377,7 @@ test("a cancelled booking has no accessibility violations", async ({
   await page.goto(`/bookings/${CALLED_OFF_CARD}`);
   await expect(page.getByText(/^Called off by your team/)).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "a cancelled booking");
 });
 
 test("the cancel form has no accessibility violations", async ({ page }) => {
@@ -391,8 +388,6 @@ test("the cancel form has no accessibility violations", async ({ page }) => {
     page.getByText("Cancel Anil Kumar's booking, YV-0WED9K3L?"),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  // The sheet is still fading in here; the check waits it out (op#160).
+  await expectAccessible(page, "a booking, its cancel form open");
 });

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * yuvoy-operator#40 §2 — what the operator owes us on cash we never handled.
@@ -160,7 +160,7 @@ test("a trip that ran with no cash recorded is named, with the way to close it",
   await expect(unrecorded.getByText("YV-UNR3C0D")).toBeVisible();
   await expect(
     unrecorded.getByRole("link", { name: "Open the booking" }),
-  ).toHaveAttribute("href", "/bookings?view=past&q=YV-UNR3C0D");
+  ).toHaveAttribute("href", "/bookings?q=YV-UNR3C0D");
 });
 
 test("a shortfall is explained rather than left looking like an error", async ({
@@ -247,10 +247,7 @@ test("/cash has no accessibility violations", async ({ page }) => {
     page.getByRole("heading", { name: /Cash you.{1,3}ve collected/ }),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/cash");
 });
 
 /* =========================================== §1 · taking cash at the counter */
@@ -451,8 +448,5 @@ test("/today/slot_cash has no accessibility violations", async ({ page }) => {
   await expect(page.getByText("₹9,000 taken · 08:10")).toBeVisible();
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/today/slot_cash");
 });

@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 import { expectAccessible } from "./axe";
 
 /**
@@ -167,13 +166,10 @@ test("boarding has no accessibility violations, in sun mode and out of it", asyn
     "true",
   );
 
-  const tags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
-  const sun = await new AxeBuilder({ page }).withTags(tags).analyze();
-  expect(sun.violations).toEqual([]);
+  await expectAccessible(page, "boarding, in sun mode");
 
   await page.getByRole("button", { name: "Sun mode" }).click();
-  const shade = await new AxeBuilder({ page }).withTags(tags).analyze();
-  expect(shade.violations).toEqual([]);
+  await expectAccessible(page, "boarding, out of sun mode");
 });
 
 /*

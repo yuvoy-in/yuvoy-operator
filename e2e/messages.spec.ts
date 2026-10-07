@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 import { expectAccessible } from "./axe";
 
 /**
@@ -457,10 +456,7 @@ test("/messages has no accessibility violations", async ({ page }) => {
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/messages");
 });
 
 test("a conversation has no accessibility violations", async ({ page }) => {
@@ -470,8 +466,5 @@ test("a conversation has no accessibility violations", async ({ page }) => {
     page.getByRole("heading", { name: "Conversation" }),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "a conversation");
 });
