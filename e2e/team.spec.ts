@@ -1,5 +1,5 @@
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * O5 — a dive shop is not one person.
@@ -787,11 +787,7 @@ test("/team has no accessibility violations", async ({ page }) => {
   await page.goto("/team");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/team");
 });
 
 test("the join link is a copy control on the invitation, and never a URL on screen", async ({
@@ -1177,9 +1173,5 @@ test("/join has no accessibility violations", async ({ page }) => {
   await page.goto("/join");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/join");
 });

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * Documents, the payout code, and notification switches — yuvoy-operator#46.
@@ -668,8 +668,5 @@ test("/notifications has no accessibility violations", async ({ page }) => {
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/notifications");
 });

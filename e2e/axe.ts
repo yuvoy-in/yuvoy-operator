@@ -2,8 +2,9 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 
 /**
- * The bar every screen is held to: WCAG 2.2 AA, the tags every
- * accessibility test in this suite already passes by hand.
+ * The bar every screen is held to: WCAG 2.2 AA. Cash and the commission
+ * statements were held to 2.0 AA only until yuvoy-operator#160 brought every
+ * check through here.
  */
 export const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
@@ -41,10 +42,11 @@ async function motionSettled(page: Page) {
 /**
  * No violations on the page as it stands once its motion has finished.
  *
- * For a state a test has opened (a confirm, a sheet, a held answer): the
- * redesign's QA pass audits each one where a test already reaches it, so an
- * open state is checked by the same walk that proves it works. `what` names
- * the state in a failure.
+ * The one way this suite runs axe, for a whole screen and for a state a test
+ * has opened (a confirm, a sheet, a held answer) alike. A spec that built its
+ * own check read the cancel form mid-fade and failed on and off
+ * (yuvoy-operator#160), so `pnpm qa` refuses an axe import anywhere else in
+ * e2e/. `what` names the screen or state in a failure.
  */
 export async function expectAccessible(page: Page, what: string) {
   await motionSettled(page);

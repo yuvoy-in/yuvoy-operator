@@ -1470,6 +1470,23 @@ export const CHANGE_REQUESTS = [
   },
 ];
 
+/**
+ * The bank change history of `BANK_UNCONFIRMED_ID`'s business: one change,
+ * applied two days ago, which is the account on file. `GET /me` holds its
+ * payouts until our team updates the bank we pay from to match it.
+ */
+export const BANK_UNCONFIRMED_CHANGES = [
+  {
+    id: "chg_bank_unconfirmed",
+    kind: "bank_account",
+    state: "applied",
+    summary: "ICICI Bank ····7788 (ICIC0000456)",
+    requestedAt: todayAt("09:00", -4),
+    objectionUntil: null,
+    coolingUntil: todayAt("09:00", -2),
+  },
+];
+
 /* --------------------------------------------------------------- team ---- */
 
 export interface MockTeamMember {
@@ -1792,6 +1809,20 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
   },
   {
     /*
+      The video host refuses every clip they upload: once the bytes are up,
+      confirming answers `422 media_refused`, the same on every later call
+      (yuvoy-api#286). A final answer the uploader had never been given, so it
+      said "Try again shortly" and kept the dead upload's slot, and the next
+      clip could not go in (yuvoy-operator#157).
+    */
+    id: "usr_upload_refused",
+    name: "Refuse Test",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000120",
+  },
+  {
+    /*
       The listings read fails while the departures read works.
 
       `/calendar` asks two endpoints: `GET /slots` for the fortnight it edits,
@@ -1834,6 +1865,20 @@ export const OTHER_MEMBERS: MockTeamMember[] = [
     roles: ["OWNER"],
     state: "active",
     phone: "+919000000118",
+  },
+  {
+    /*
+      A live business whose new bank account has gone live, and whose payouts
+      the run still holds until our team updates the bank we pay from:
+      `payoutsHeld` `destination_unconfirmed` (yuvoy-api#275,
+      yuvoy-operator#156). Its own business, so no other test's bank change
+      can move its hold.
+    */
+    id: "usr_bank_unconfirmed",
+    name: "Meera Pillai",
+    roles: ["OWNER"],
+    state: "active",
+    phone: "+919000000119",
   },
 ];
 
@@ -2149,11 +2194,15 @@ export const LIVE_OUTSTANDING_ID = "usr_live_outstanding";
 export const DROPPING_ID = "usr_upload_drops";
 /** A colleague holds the one upload slot, so they get the 409 that is left. */
 export const CONTENDED_ID = "usr_upload_contended";
+/** The host refuses their clips once they are up: `422 media_refused`. */
+export const REFUSED_ID = "usr_upload_refused";
 /** `GET /slots` refuses their wide range, and answers the fortnight. */
 export const WIDE_READ_FAILS_ID = "usr_wide_read_fails";
 export const FAILING_ID = "usr_api_failing";
 /** A business with nothing on it yet: Home's start-selling checklist. */
 export const NEW_BUSINESS_ID = "usr_new_business";
+/** A new bank account that is live, and not yet paid to: the second hold. */
+export const BANK_UNCONFIRMED_ID = "usr_bank_unconfirmed";
 
 /* --------------------------------------------------- conversations ------- */
 

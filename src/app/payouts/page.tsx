@@ -10,6 +10,7 @@ import {
   type ChangeState,
 } from "@/lib/account/bank";
 import { rejectionReason } from "@/lib/account/review";
+import { payoutsHeldNotice } from "@/lib/money/payouts-held";
 import { canManageAccess } from "@/lib/team/access";
 import { helpHref } from "@/lib/help";
 import { ChangePanel } from "./change-panel";
@@ -81,6 +82,9 @@ export default async function PayoutsPage() {
     A list that did not load is not an empty one. Drawn as empty it would put
     the form in front of an owner whose account, and whose change in flight,
     simply did not arrive, with no brake on the screen.
+
+    A hold the payout run reports needs no list to be said, unless it is a
+    bank change, which is said with the change it is about.
   */
   if (requests === null) {
     return (
@@ -88,6 +92,14 @@ export default async function PayoutsPage() {
         <h1 className="font-display tracking-display leading-display text-4xl text-balance">
           Payout details
         </h1>
+        <HeldNotice
+          notice={payoutsHeldNotice(
+            me.payoutsHeld === "bank_change_in_progress"
+              ? null
+              : me.payoutsHeld,
+            { changeShown: false },
+          )}
+        />
         <div className="mt-6">
           <Problem
             title="Your payout details did not load"
@@ -168,6 +180,18 @@ export default async function PayoutsPage() {
         </div>
       ) : null}
 
+      {/*
+        A hold the change list cannot explain, above all the second one: the
+        change has gone live and we have not yet updated the bank we pay from,
+        so the account below is on file and is not paid yet. This screen said
+        nothing about it, over money that was not moving (yuvoy-operator#156).
+      */}
+      <HeldNotice
+        notice={payoutsHeldNotice(me.payoutsHeld, {
+          changeShown: inFlight.length > 0,
+        })}
+      />
+
       <PayoutDetails onFile={onFile} refusal={refusal} />
 
       {history.length > 0 ? (
@@ -215,5 +239,27 @@ export default async function PayoutsPage() {
         Why a change takes two days
       </Link>
     </Screen>
+  );
+}
+
+/**
+ * A hold the payout run reports (`payoutsHeld` on `/me`), in the words of
+ * `payoutsHeldNotice`, drawn as Money draws a bank change holding a payout.
+ */
+function HeldNotice({
+  notice,
+}: {
+  notice: { title: string; body: string } | null;
+}) {
+  if (!notice) return null;
+  return (
+    <Panel tone="alert" className="mt-6 p-6">
+      <p className="text-terra-deep text-base font-bold text-balance">
+        {notice.title}
+      </p>
+      <p className="text-forest/80 leading-body mt-2 text-sm text-pretty">
+        {notice.body}
+      </p>
+    </Panel>
   );
 }

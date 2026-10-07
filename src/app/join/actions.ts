@@ -5,6 +5,8 @@ import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
 import { writeSessionToken } from "@/lib/auth/session-writes";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
+import { closedDoorMessage } from "@/lib/auth/closed-door";
+import { sentence } from "@/lib/format/sentence";
 
 /**
  * Accepting an invitation — the one write in this portal with no session
@@ -120,6 +122,22 @@ export async function acceptInvite(
       return {
         message:
           "That did not work. Check the number and the code, and ask whoever invited you to send a new one. Codes last seven days.",
+      };
+    }
+    /*
+      Answers no retry can change, which "just now" told them to retry. A
+      right code for an offboarded business or a closed login
+      (`closedDoorMessage`). And `404 invitation_unavailable`: nobody can
+      join this business right now, and the invitation works again once it
+      can. "The message says whom to ask, never why; render it."
+    */
+    const closed = closedDoorMessage(err);
+    if (closed) return { message: closed };
+    if (err instanceof OperatorApiError && err.isNotFound) {
+      return {
+        message:
+          sentence(err.message) ||
+          "Nobody can join this business right now, and your invitation still works once they can. Ask whoever invited you.",
       };
     }
     return { message: "We could not accept that invitation just now." };

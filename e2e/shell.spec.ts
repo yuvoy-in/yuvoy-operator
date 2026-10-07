@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * The chassis (v2.7): the floating bar on a tab root, the back control on a
@@ -270,10 +270,7 @@ for (const route of [
     await signIn(page);
     await page.goto(route);
     await page.waitForLoadState("networkidle");
-    const results = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-      .analyze();
-    expect(results.violations).toEqual([]);
+    await expectAccessible(page, route);
   });
 }
 

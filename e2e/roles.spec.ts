@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * What each role is offered, and what it is told it cannot do.
@@ -267,11 +267,7 @@ test("the staff earnings refusal has no accessibility violations", async ({
   await page.goto("/earnings");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/earnings, refused to staff");
 });
 
 /* ------------------------------------------------ the other sign-in door -- */

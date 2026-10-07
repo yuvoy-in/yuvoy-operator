@@ -13,6 +13,7 @@ import {
 } from "@/lib/media/rights";
 import { suspendedMessage } from "@/lib/account/suspended";
 import { dedashText } from "@/lib/format/dedash";
+import { sentence } from "@/lib/format/sentence";
 
 /**
  * O8's three writes. The fourth step — the bytes — does not happen here.
@@ -192,6 +193,13 @@ export interface ConfirmState {
   ready?: boolean;
   mediaAssetId?: string;
   message?: string;
+  /**
+   * The answer will not change, so the upload is over: the host refused the
+   * clip (`422 media_refused`) or has nothing under this upload (`404`).
+   * "Asking again gives the same answer", so the caller stops polling and
+   * lets the slot go, and the next clip asks for a new one.
+   */
+  final?: boolean;
 }
 
 /**
@@ -200,6 +208,14 @@ export interface ConfirmState {
  * "A hint that it is worth polling, nothing more — the client's claim is never
  * trusted." `202 ready:false` is the normal first answer and is not an error;
  * the caller polls.
+ *
+ * Two answers are final (yuvoy-api#286). A clip the video host will never make
+ * (not a video, longer than the slot allowed, one it could not decode) answers
+ * `422 media_refused`, whose message "is a sentence to show as it is". It fell
+ * to "Try again shortly" before, for a clip no retry could ever bring back
+ * (yuvoy-operator#157). `details.reason` is a code for support, "not a closed
+ * list to branch on", and nothing here reads it. A `404` is the host having
+ * nothing under this upload, which asking again cannot change either.
  */
 export async function confirmUpload(intentId: string): Promise<ConfirmState> {
   const { token } = await requireOperator();
@@ -224,8 +240,19 @@ export async function confirmUpload(intentId: string): Promise<ConfirmState> {
     if (err instanceof OperatorNetworkError) {
       return { message: "No signal. The upload is safe. Try again shortly." };
     }
+    if (err instanceof OperatorApiError && err.code === "media_refused") {
+      return {
+        message:
+          sentence(err.message) ||
+          "That clip was refused, so it will not be in your reels. Choose another.",
+        final: true,
+      };
+    }
     if (err instanceof OperatorApiError && err.isNotFound) {
-      return { message: "That upload is no longer here. Start again." };
+      return {
+        message: "That upload is no longer here. Start again.",
+        final: true,
+      };
     }
     return { message: "We could not check the upload. Try again shortly." };
   }

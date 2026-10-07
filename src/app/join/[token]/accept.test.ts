@@ -31,10 +31,10 @@ function form(): FormData {
   return f;
 }
 
-function refuse(code: string, message: string) {
+function refuse(code: string, message: string, status = 409) {
   post.mockResolvedValue({
     data: undefined,
-    error: new OperatorApiError({ code, message, status: 409 }),
+    error: new OperatorApiError({ code, message, status }),
   });
 }
 
@@ -72,6 +72,38 @@ describe("a 409 on accepting", () => {
     refuse("conflict", "");
     const next = await acceptJoin("jn_reefdivers", PREV, form());
     expect(next.message).toBe("That did not work. Try the code again.");
+    expect(next.leavingBusiness).toBeUndefined();
+  });
+});
+
+describe("a right code no retry can use", () => {
+  /*
+    Both `403`s on accepting, documented with yuvoy-api#280: an offboarded
+    business, and a number whose closed login is waiting to be erased. Each
+    fell to "Try the code again", which would only spend another try on the
+    same answer.
+  */
+  it("says the business is on hold, and who to call", async () => {
+    refuse("account_not_active", "this business cannot be joined", 403);
+    const next = await acceptJoin("jn_reefdivers", PREV, form());
+    expect(next).toEqual({
+      ...PREV,
+      message:
+        "This business account is on hold, so it cannot be signed into. Call us on +91 81216 57657.",
+    });
+  });
+
+  it("says a closed login cannot join, and who to call", async () => {
+    refuse(
+      "account_deletion_pending",
+      "Your account is being deleted, so you cannot sign in. If you did not mean to close it, contact support.",
+      403,
+    );
+    const next = await acceptJoin("jn_reefdivers", PREV, form());
+    expect(next.step).toBe("code");
+    expect(next.message).toBe(
+      "Your login was closed and is being deleted, so it cannot be signed into. If you did not mean to close it, call us on +91 81216 57657.",
+    );
     expect(next.leavingBusiness).toBeUndefined();
   });
 });

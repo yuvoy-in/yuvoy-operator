@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * Settings, and the help behind it: yuvoy-operator#88 s12 and #80 t4.
@@ -124,10 +124,7 @@ test("/account/help has no accessibility violations, with an answer open", async
   await page.goto("/account/help#how-payouts-work");
   await expect(page.locator("#how-payouts-work")).toHaveAttribute("open", "");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/account/help, an answer open");
 });
 
 test("/account/settings has no accessibility violations", async ({ page }) => {
@@ -137,8 +134,5 @@ test("/account/settings has no accessibility violations", async ({ page }) => {
     page.getByRole("heading", { level: 1, name: "Settings" }),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/account/settings");
 });

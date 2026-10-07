@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 import { expectAccessible } from "./axe";
 
 /*
@@ -637,11 +636,7 @@ test("the edit screen has no accessibility violations", async ({ page }) => {
   await openEdit(page, "Reef dive");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "a listing's edit screen");
 });
 
 test("a clip can be taken down from the library, with a reason", async ({
