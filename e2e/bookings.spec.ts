@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * Bookings: pills, one search box, and filters — yuvoy-operator#57.
@@ -176,6 +176,25 @@ test("searching a name narrows every pill at once", async ({ page }) => {
   await expect.poll(() => pillCount(page, "Upcoming")).toBeLessThan(before);
 });
 
+test("a reference with no pill named opens where the booking is, a trip from earlier today under Upcoming", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#158. Cash's link to an unrecorded trip named Past, and a
+    trip from earlier today stays under Upcoming until its day ends or its
+    party is marked: the link opened on "No bookings match" while the
+    Upcoming pill said 1. It names no pill now (`referenceHref`), as here.
+    Asha's departure set off earlier today (`earlierToday`) and she is not
+    marked, the state "a reference finds its booking" below relies on too.
+  */
+  await signIn(page);
+  await page.goto("/bookings?q=YV-4K2M9P7Q");
+
+  await expect(pill(page, "Upcoming")).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("main")).toContainText("Asha Menon");
+  await expect(page.getByText("No bookings match")).toHaveCount(0);
+});
+
 test("a reference finds its booking, with or without the YV-", async ({
   page,
 }) => {
@@ -336,8 +355,5 @@ test("/bookings has no accessibility violations", async ({ page }) => {
   await page.goto("/bookings?view=upcoming");
   await expect(pill(page, "Upcoming")).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/bookings, Upcoming");
 });

@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/app-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the operator app needs to know at launch
+         * @description Read at launch, before anybody signs in. Public and the same for every caller, so it is cached for a few minutes at the edge: a change to a setting reaches phones within that time. Every value is configuration, so changing one is a deploy of settings and never a release of the app.
+         */
+        get: operations["getOperatorAppConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/signup": {
         parameters: {
             query?: never;
@@ -70,7 +90,7 @@ export interface paths {
         post: operations["createOperatorSession"];
         /**
          * Sign out
-         * @description Revokes this session immediately. The token stops working on the next request.
+         * @description Revokes this session immediately. The token stops working on the next request, and every phone this session registered with `registerOperatorDevice` stops getting pushes at the same moment.
          */
         delete: operations["deleteOperatorSession"];
         options?: never;
@@ -632,6 +652,102 @@ export interface paths {
         get: operations["getOperatorMe"];
         put?: never;
         post?: never;
+        /**
+         * Close my account
+         * @description Closes the signed-in person's own login (D13: request now, erase later). In one step it records a request to erase this person's personal data, due within 30 days, removes them from the team, signs them out everywhere (`revoked_reason` `account deletion`), and stops this number signing in to the operator app again until our staff complete or refuse the request. Nothing is erased by this call.
+         *
+         *     What the app sees afterwards. The number has no login left, so asking for a sign-in code (`POST /auth/otp`) is answered exactly as for a number with no login, and no code is sent: the app should not wait for one. Accepting an invitation (`acceptJoin`, `acceptOperatorInvite`) answers `403 account_deletion_pending` after the right code, and nobody joins. `createOperatorSession` answers `403 account_deletion_pending` only if the number has a membership again while the request is open (a sign-up made since, which is answered like any other); after closing, with nothing new, sign-in simply never gets a code.
+         *
+         *     It closes the person, not the business. The business keeps its listings, departures, bookings and every money record (payments, cash, refunds, settlements, commission statements), and the later erase step removes this person's details from them and keeps the records. The person no longer appears in `GET /team`; nobody can restore them there, and coming back means a fresh invitation once the request is closed.
+         *
+         *     **The last person in charge.** A business always keeps an active OWNER or ADMIN (D15). When the caller is the only one left and the business still trades, this answers `409 owner_must_hand_over` and nothing changes: make somebody else an owner or an admin in Team first (`PUT /team/{id}/role`), or contact support. A business still trades while anything is live: a listing published, a booking still to run, a request waiting for an answer, or money still to settle either way (a payout not yet sent, a commission statement not yet paid, commission on cash not yet billed).
+         *
+         *     No step-up. Step-up sends its code to an owner, which is the wrong person to approve a request about somebody's own personal data, and nothing is erased for 30 days, so a mistake is undone by asking support. The people of a suspended, closed or disqualified business may still do this: like signing out, ending your own access is not business, so it is never answered `account_suspended`.
+         *
+         *     A second call has no session left and answers `401`. One that does arrive while the request is open answers `202` with the same `erasureDueBy`, and no second request is written.
+         */
+        delete: operations["deleteOperatorAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The phones I am signed in on
+         * @description Every live session of the signed-in person: not signed out or ended, not idle for 14 days and not past its 90 days. The session making this request comes first with `current: true`, then the rest, most recently used first. Another person's sessions never appear, whatever their role in the business.
+         *
+         *     **Not paged.** A person holds at most five sessions at once (the oldest is ended when a sixth signs in), so the list is short.
+         *
+         *     `device` is what the app said when it signed in, or a label of ours for a session started by joining a team, and null when there is neither. It is a label, not proof of which phone it is.
+         *
+         *     Open to a suspended business, like every read.
+         */
+        get: operations["listMyOperatorSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Sign out on one phone
+         * @description Ends one live session of the signed-in person, from any phone they are signed in on. Its token stops working on its next request. Ending the current session is allowed and is signing out (`deleteOperatorSession`).
+         *
+         *     `404` for an id that is not a live session of this person: somebody else's (on this business's team or not), one already ended or expired, an unknown one and one that is not an id at all are the same answer, so nothing can be learnt by trying ids.
+         *
+         *     Open to a suspended business, as signing out is: ending your own access is not business, and a lost phone's session would otherwise keep reading bookings until it idled out.
+         */
+        delete: operations["endMyOperatorSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Everything the Today screen shows, in one read
+         * @description The facts behind Today, composed on the server so the portal and the mobile app stop opening the screen with six reads and a walk over every message thread. **Facts only**: sentences, ordering copy and colours stay in the client.
+         *
+         *     Every part is read from the same place as the endpoint it replaces (`GET /requests`, `/experiences`, `/slots`, `/bookings`, `/settlements/overview`, `/commission-statements`), so Today cannot disagree with those lists.
+         *
+         *     **`date` is the market day** in the business's own clock, `YYYY-MM-DD`. Without it, it is today there. `tomorrow` is the next day. Send it from a screen left open past midnight.
+         *
+         *     **Departures** are those that can hold guests on that day: not called off, and not a draft's or a first submission's or a closed one's with nobody on it. A departure somebody is booked on stays on the list even when it has stopped selling, because the boat still leaves. `onSale` says whether it is selling now. One aggregate answers `checkedIn` and `cashToCollectPaise` for the whole day.
+         *
+         *     **STAFF see no money anywhere in this response.** For a STAFF login `cashToCollectPaise` is absent from every departure, and `cashTripsUnrecorded` and `money` are absent. Absent, never `0`: a crew screen must not read "nothing owed" off a number it was not allowed to see.
+         *
+         *     **When a part cannot be read** the whole request fails with the usual error, so a screen is never drawn calm over a failed read. The one exception is `money`, read for OWNER, ADMIN and MANAGER only: a part of it that cannot be read is `null` (`money.week`, `money.owedPaise`, `cashTripsUnrecorded`) and the rest of Today stands.
+         *
+         *     Open to a suspended business, like every read.
+         */
+        get: operations["getOperatorToday"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -659,6 +775,38 @@ export interface paths {
         put: operations["setMyNotificationSwitches"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get pushes on this phone
+         * @description Registers the push token `expo-notifications` gave this app, after sign-in. Sending the same token again refreshes it and is not an error, so an app may register on every launch. A token somebody else registered moves to this person: on a phone a team shares, the pushes follow whoever signed in last.
+         *
+         *     **A phone gets pushes only while the session that registered it is alive.** Signing out, the session running out, a change of role, being held or removed from the team, or the business being offboarded all stop them.
+         *
+         *     **What reaches the phone follows your notification switches** (`/me/notifications`): a notice you turned off is not pushed either.
+         *
+         *     **What a push carries.** A generic title and sentence with no traveller, business, listing, amount, date or reference in it, and `data: { type, id }`: `booking` with a booking id (a new booking, a traveller cancelling), `request` with the request's id (a new seat request), `message` with the booking id whose conversation has a new message, and `account` with the business id (started selling, switched on and not yet bookable, stopped selling). Open it over the session to show anything more. Each push is sent beside the message on WhatsApp or email, never instead of it.
+         *
+         *     A suspended business is answered `403 account_suspended` here, as for any write the owner has not left open while suspended.
+         */
+        post: operations["registerOperatorDevice"];
+        /**
+         * Stop pushes on this phone
+         * @description Stops pushes to one token of yours. The token is in the body, not the query, because a URL is written to request logs. `204` whether or not the token was registered to you. Signing out does this as well, for every phone the session registered.
+         */
+        delete: operations["unregisterOperatorDevice"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2070,6 +2218,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/media/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One upload or one piece of media
+         * @description Where one upload, or one photograph or clip, has got to. Written for the phone that was killed half way through an upload: it comes back holding the `intentId` it saved, and this says whether to continue, start again or go on to rights.
+         *
+         *     **`id` is either an `intentId`** (from `POST /media/upload-intents` or `POST /media/photo-intents`) **or a media id** (`mediaAssetId` from `complete`, or `id` from `GET /media`). Asked with an `intentId` whose upload has finished, the answer is the media, so `mediaAssetId` gives the id that rights, publish and withdraw take. Save the `intentId` the moment the slot is granted: until the provider has the whole file there is no other id.
+         *
+         *     **Resuming a clip.** When `upload.resumable` is `true`, `HEAD` the `upload.uploadUrl` with `Tus-Resumable: 1.0.0`, read `Upload-Offset` and `PATCH` from there. The offset is not in this answer and cannot be: the bytes go from the phone to the video host and never through this API, so the host's tus endpoint is the only party that knows how many arrived. When `Upload-Offset` equals `upload.sizeBytes` every byte is there, and the next step is `POST /media/upload-intents/{id}/complete`. The file sent must be exactly `upload.sizeBytes` long, because tus fixed the length when the slot was opened.
+         *
+         *     **Not resumable** means start again with `POST /media/upload-intents`: the slot expired, failed or was abandoned, the host can no longer address it, or it is a photograph (one request to a thirty-minute slot, nothing to continue). An open clip upload started by a colleague on the same business is shown with its state and no `uploadUrl`: only the person who started an upload continues it, the same rule `POST /media/upload-intents` keeps when it resumes.
+         *
+         *     **`uploadUrl` is a credential** for writing into our video account. It is derived from the upload's id rather than stored, and the answer is `Cache-Control: no-store`. Do not persist it; ask again.
+         *
+         *     **Preview.** A clip with playback gets short-lived signed URLs (about an hour; ask again rather than keeping them), minted the way the moderation queue mints them. A photograph gets its image URL, which is unsigned by design. `preview` is `null` while there is nothing to show yet, for media that was withdrawn or failed, and when the host could not sign: the rest of the answer is still true when it is.
+         *
+         *     Any role on the business may read it. Somebody else's upload or media is a `404`, the same as one that does not exist.
+         */
+        get: operations["getOperatorMedia"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/media/photo-intents": {
         parameters: {
             query?: never;
@@ -2169,7 +2349,9 @@ export interface paths {
          * Tell us the upload finished
          * @description A hint that it is worth polling, nothing more — **the client's claim is never trusted.** What decides is whether the provider has an asset that is in our account, ready, with a playback id, a poster and a duration.
          *
-         *     `202` with `ready: false` is normal and not an error: the video is still processing. A job keeps polling whether or not the client comes back.
+         *     `202` with `ready: false` is normal and not an error: the video is still processing. Ask again.
+         *
+         *     `422` `media_refused` and `404` are final. The host refused the clip, or has nothing under this upload (answered as `not_found`, like an unknown upload or another business's), and asking again gives the same answer. Stop polling and say so: a refused clip never reaches the reel list.
          */
         post: operations["confirmUpload"];
         delete?: never;
@@ -2258,6 +2440,130 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccountDeletion: {
+            /**
+             * @description The erasure request has been recorded and nobody has acted on it yet. The only value this call answers with.
+             * @enum {string}
+             */
+            state: "received";
+            /**
+             * Format: date-time
+             * @description When the personal data must be erased by: 30 days after the request was first made. A repeated call answers the first request's date.
+             */
+            erasureDueBy: string;
+            /** @description One plain paragraph saying what happened and what is kept. Safe to show as it is. */
+            message: string;
+        };
+        /** @description One phone the signed-in person is signed in on. */
+        OperatorSession: {
+            /**
+             * Format: uuid
+             * @description Send to `endMyOperatorSession` to end it.
+             */
+            id: string;
+            /** @description What the app said this phone is when it signed in, or our label for a session started by joining a team, cleaned as `createOperatorSession` cleans it, also for a session that signed in before that cleaning existed. Null when there is neither, or when nothing is left after cleaning. A label, not proof. */
+            device: string | null;
+            /**
+             * Format: date-time
+             * @description When this session signed in.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When it last made a request; `createdAt` for one not used since it signed in.
+             */
+            lastUsedAt: string;
+            /**
+             * Format: date-time
+             * @description When it ends unless it is used before then: the earlier of 14 days since it was last used and 90 days after it signed in.
+             */
+            expiresAt: string;
+            /** @description True for the session that made this request, and only it. */
+            current: boolean;
+        };
+        DeviceRegistration: {
+            /**
+             * @description Which push service the token is for. Only `expo` today; another kind would be added here without changing anything else.
+             * @enum {string}
+             */
+            kind: "expo";
+            /** @description The token `getExpoPushTokenAsync` returned, exactly as returned. */
+            token: string;
+            /** @enum {string} */
+            platform: "ios" | "android";
+            /** @description The app's own version, like `1.4.0`. */
+            appVersion: string;
+        };
+        DeviceToken: {
+            /** @enum {string} */
+            kind: "expo";
+            token: string;
+        };
+        AppConfig: {
+            /** @description The oldest app build still served, per platform, as `MAJOR.MINOR.PATCH`. An app whose own version is lower shows an update screen. `0.0.0` means no build is refused. */
+            minimumVersion: {
+                /** @example 1.0.0 */
+                ios: string;
+                /** @example 1.0.0 */
+                android: string;
+            };
+            features: {
+                /**
+                 * @description `coming_soon` means cash is the only way to pay, and the app says online payment is on its way instead of offering it.
+                 * @enum {string}
+                 */
+                payments: "coming_soon" | "available";
+                /** @description Whether creating a reservation needs an admitted number. */
+                inviteOnly: boolean;
+            };
+            /** @description How to reach a person. The same block `GET /me` carries. */
+            support: {
+                /** @description Null until there is a support number; hide the chat button then. */
+                whatsappE164: string | null;
+                hours: string;
+            };
+            /** @description The host video and photographs are served from, or null when none is configured. An app may use it to allow-list media URLs. */
+            deliveryHost: string | null;
+        };
+        CredentialRequirementDocument: {
+            /** @enum {string} */
+            type: "directorate_registration" | "instructor_cert" | "oxygen" | "equipment" | "boat" | "insurance" | "bank" | "gst";
+            satisfied: boolean;
+        };
+        CatalogScreener: {
+            /** @example diving_rstc */
+            key: string;
+            /** @description The screener's name as a person reads it, from the newest version of it that is not retired. Never empty. */
+            label: string;
+        };
+        OperatorStoryPhoto: {
+            id: string;
+            position: number;
+            url?: string;
+        };
+        OperatorReviewListItem: {
+            id: string;
+            rating: number;
+            /** @description Null when they tapped stars and wrote nothing. */
+            comment: string | null;
+            /** @description What they said was good. Empty when they chose none. */
+            tags: ("guide" | "safety" | "value" | "organisation" | "punctuality" | "equipment")[];
+            /** Format: uuid */
+            experienceId: string;
+            experienceTitle: string;
+            /** @description The first word of the name they booked under. Null when they gave none. */
+            travellerName: string | null;
+            /**
+             * Format: date
+             * @description The day the trip ran, in the market's own calendar.
+             */
+            tripDate: string;
+            /**
+             * Format: date-time
+             * @description When the traveller wrote it.
+             */
+            createdAt: string;
+        };
         /** @description One payout week, Monday to Sunday in your market's clock, as a lock of it would record it now. */
         SettlementWeek: {
             /**
@@ -2759,37 +3065,119 @@ export interface components {
             situation?: "processing" | "needs_rights" | "in_review" | "changes_needed" | "live" | "waiting_on_listing" | "listing_withdrawn" | "not_attached" | "withdrawn" | "failed";
             /** Format: date-time */
             createdAt?: string;
+            rejection?: components["schemas"]["OperatorMediaRejection"];
+            listing?: components["schemas"]["OperatorMediaListing"];
+        };
+        /**
+         * @description Why a reviewer refused it. A clip that disappears into "rejected" with no reason is a support conversation, and the codes are a closed set so a screen can render them rather than paraphrase.
+         *
+         *     `UNSAFE_PRACTICE_SHOWN` appears with state `quarantined`, not `rejected`: it is a signal about how the operator runs trips, not a note about the video.
+         */
+        OperatorMediaRejection: {
+            code?: string;
+            note?: string;
+        };
+        /** @description The listing this media belongs to, chosen at upload since D-031 C5, so it is present from the moment the upload completes rather than only after publication. Absent only for media that predates that, or that arrived through the concierge path. */
+        OperatorMediaListing: {
+            experienceId?: string;
+            title?: string;
             /**
-             * @description Why a reviewer refused it. A clip that disappears into "rejected" with no reason is a support conversation, and the codes are a closed set so a screen can render them rather than paraphrase.
-             *
-             *     `UNSAFE_PRACTICE_SHOWN` appears with state `quarantined`, not `rejected` — it is a signal about how the operator runs trips, not a note about the video.
+             * @description The PUBLICATION's state: whether this media is live on that listing. Unchanged in meaning and unchanged in name, deliberately: renaming it would break the published client.
+             * @enum {string}
              */
-            rejection?: {
-                code?: string;
-                note?: string;
-            };
-            /** @description The listing this media belongs to — chosen at upload since D-031 C5, so it is present from the moment the upload completes rather than only after publication. Absent only for media that predates that, or that arrived through the concierge path. */
-            listing?: {
+            state?: "draft" | "published" | "withdrawn";
+            /**
+             * @description The LISTING's own state, which is a different question. "Approved, and waiting for a draft listing to go live" cannot be told from "approved and forgotten about" without it.
+             * @enum {string}
+             */
+            listingState?: "draft" | "in_review" | "published" | "withdrawn";
+            /**
+             * @description Whether this media is the listing's cover. `hero` is the picture or reel the listing leads with; `gallery` is one of the rest. `null` when no role is known. Always sent (since 2026-09-14).
+             *
+             *     It reads `hero` whenever this media is the listing's published cover, which is what travellers see. Sending `POST /media/{id}/publish` with `role: gallery` for a published hero takes the cover away, so this reads `gallery` afterwards and the listing has no cover until another item is published as `hero`.
+             * @enum {string|null}
+             */
+            role?: "hero" | "gallery" | null;
+        };
+        /** @description One upload or one piece of media, for `GET /media/{id}`. Where it is media, the fields it shares with `OperatorMedia` mean exactly what they mean there. */
+        OperatorMediaDetail: {
+            /** @description The media id once the upload has become media, and until then the `intentId`. */
+            id: string;
+            /** @description The id rights, publish and withdraw take. `null` while this is still only an upload. */
+            mediaAssetId: string | null;
+            /** @enum {string} */
+            kind: "video" | "image";
+            /** @description `uploading` while it is still only an upload that can take bytes, `failed` for an upload that can no longer become media, and after that the values `OperatorMedia.state` takes. */
+            state: string;
+            /**
+             * @description The set `OperatorMedia.situation` takes, plus `uploading`: the bytes are still on their way and there is no media yet.
+             * @enum {string}
+             */
+            situation: "uploading" | "processing" | "needs_rights" | "in_review" | "changes_needed" | "live" | "waiting_on_listing" | "listing_withdrawn" | "not_attached" | "withdrawn" | "failed";
+            /**
+             * Format: date-time
+             * @description When the media was recorded, or the upload slot opened while there is no media.
+             */
+            createdAt: string;
+            /** @description Whether rights have been attested at `POST /media/{id}/rights`. Always `false` while this is still only an upload. */
+            rightsAttested: boolean;
+            posterUrl?: string;
+            durationSeconds?: number;
+            rejection?: components["schemas"]["OperatorMediaRejection"];
+            listing?: components["schemas"]["OperatorMediaListing"];
+            /** @description The upload slot this came through, newest first if there was more than one. `null` when none is recorded: media our own staff registered, and photographs from before uploads named a listing. */
+            upload: {
+                intentId: string;
+                /**
+                 * @description `issued` and `uploading` can still take bytes. An open slot past `expiresAt` reads `expired` here even before the sweep has recorded it.
+                 * @enum {string}
+                 */
+                state: "issued" | "uploading" | "completed" | "failed" | "expired" | "abandoned";
+                /** Format: date-time */
+                expiresAt: string;
+                /**
+                 * Format: int64
+                 * @description The length the slot was opened for. A resumed file of any other size never finishes.
+                 */
+                sizeBytes: number;
+                /**
+                 * @description `tus` for a clip, `direct` for a photograph.
+                 * @enum {string}
+                 */
+                protocol: "tus" | "direct";
+                /** @description The chunk size to send in. Clips only. */
+                chunkBytes?: number;
+                /** @description `true` only for an open clip upload, started by the person asking, that the video host can still address. `uploadUrl` is present exactly when this is `true`. */
+                resumable: boolean;
+                /**
+                 * Format: uri
+                 * @description The tus address to `HEAD` for the offset and `PATCH` to. A credential: do not persist it.
+                 */
+                uploadUrl?: string;
+                failureReason?: string;
+                /** @description The listing chosen at upload, when one was. */
                 experienceId?: string;
-                title?: string;
+                /** @enum {string} */
+                role?: "hero" | "gallery";
+            } | null;
+            /** @description A way for the operator to see it. `null` when there is nothing to show yet, the media was withdrawn or failed, or the host could not sign one. */
+            preview: {
+                /** @description `true` for a clip: the URLs expire after about an hour. `false` for a photograph, whose delivery is unsigned by design. */
+                signed: boolean;
+                /** Format: uri */
+                hlsUrl?: string;
+                /** Format: uri */
+                dashUrl?: string;
+                /** Format: uri */
+                iframeUrl?: string;
+                /** Format: uri */
+                posterUrl?: string;
                 /**
-                 * @description The PUBLICATION's state — whether this media is live on that listing. Unchanged in meaning and unchanged in name, deliberately: renaming it would break the published client.
-                 * @enum {string}
+                 * Format: uri
+                 * @description A photograph's own image. Absent on a clip.
                  */
-                state?: "draft" | "published" | "withdrawn";
-                /**
-                 * @description The LISTING's own state, which is a different question. "Approved, and waiting for a draft listing to go live" cannot be told from "approved and forgotten about" without it.
-                 * @enum {string}
-                 */
-                listingState?: "draft" | "in_review" | "published" | "withdrawn";
-                /**
-                 * @description Whether this media is the listing's cover. `hero` is the picture or reel the listing leads with; `gallery` is one of the rest. `null` when no role is known. Always sent (since 2026-09-14).
-                 *
-                 *     It reads `hero` whenever this media is the listing's published cover, which is what travellers see. Sending `POST /media/{id}/publish` with `role: gallery` for a published hero takes the cover away, so this reads `gallery` afterwards and the listing has no cover until another item is published as `hero`.
-                 * @enum {string|null}
-                 */
-                role?: "hero" | "gallery" | null;
-            };
+                imageUrl?: string;
+            } | null;
         };
         OperatorExperience: {
             id?: string;
@@ -2953,7 +3341,7 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "account_suspended" | "operator_unavailable" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "departure_started" | "different_day" | "time_taken" | "not_withdrawn" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked" | "already_reopened" | "closure_started" | "already_cancelled" | "booking_ended" | "refund_already_raised" | "nothing_to_give_back" | "cash_already_returned" | "documents_unavailable" | "document_locked" | "upload_not_arrived" | "document_refused" | "upload_closed" | "not_settled" | "messages_closed" | "invitation_unavailable" | "already_taken_back" | "counter_sales_below_zero";
+                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "account_suspended" | "idempotency_key_malformed" | "idempotency_key_reuse" | "idempotency_in_progress" | "idempotency_response_lost" | "operator_unavailable" | "invalid_push_token" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_refused" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "departure_started" | "different_day" | "time_taken" | "not_withdrawn" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked" | "already_reopened" | "closure_started" | "already_cancelled" | "booking_ended" | "refund_already_raised" | "nothing_to_give_back" | "cash_already_returned" | "documents_unavailable" | "document_locked" | "upload_not_arrived" | "document_refused" | "upload_closed" | "not_settled" | "messages_closed" | "invitation_unavailable" | "already_taken_back" | "counter_sales_below_zero" | "account_deletion_pending" | "owner_must_hand_over";
                 /** @description Human-readable; safe to show. */
                 message: string;
                 /** @description Field-level messages, keyed by field name. */
@@ -3457,6 +3845,20 @@ export interface components {
              */
             phoneMasked?: string;
         };
+        /** @description Whether payouts to this business are on hold, read by the same check the payout run refuses on, so this screen and the run cannot disagree. The two reasons hold different steps: see each one. Both holds clear on their own once the step they wait for is done. There is no amount here. */
+        PayoutsHeld: {
+            /** @description True exactly when `reason` is not null. */
+            held: boolean;
+            /**
+             * @description Null when nothing is holding payouts. When both holds apply at once this is `bank_change_in_progress`, the first one the run checks.
+             *
+             *     `bank_change_in_progress`: a change to the bank account is still going through its two clocks (waiting for objections, waiting for our review, or cooling after approval). We do not yet know which account to pay, so no new payout week is locked until the change applies or is stopped. A week already locked for payment before the change was raised can still be approved and paid, to the account on file. The screen can say new payouts resume once the change completes. Until it applies, an OWNER or ADMIN can stop it at `POST /change-requests/{id}/cancel`.
+             *
+             *     `destination_unconfirmed`: the change to the bank account has applied, and our team has not yet confirmed that the bank portal we pay from has been updated to the new account. No payout is locked or paid until then, so money does not go to the old account. Nothing is needed from the business; the screen can say payouts resume once we have updated our bank.
+             * @enum {string|null}
+             */
+            reason: "bank_change_in_progress" | "destination_unconfirmed" | null;
+        };
         /**
          * @description Why this operator can or cannot sell, and **who has to move next**.
          *
@@ -3661,6 +4063,75 @@ export interface components {
             /** @description What the listing asks travellers and what this party answered, exactly as `GET /slots/{id}/manifest` sends it for the same party. **Present only when there is something to show**: the listing asks a question, or this party answered one. Answers are deleted 90 days after the trip, as `PartyQuestion` describes. */
             questions?: components["schemas"]["PartyQuestion"][];
         };
+        Today: {
+            /**
+             * Format: date
+             * @description The market day this answer is for, in the business's clock.
+             */
+            date: string;
+            /**
+             * Format: date
+             * @description The day after `date`.
+             */
+            tomorrow: string;
+            /** @description The same block `GET /me` carries as `account`, `suspension` inside it. Absent means unknown, never "everything is fine". */
+            account?: components["schemas"]["AccountStanding"];
+            /** @description Messages from travellers not yet read, the same number as `GET /me`. */
+            unreadCount: number;
+            /** @description Open requests, soonest to expire first, at most 20. `openRequestCount` is the total. */
+            openRequests: components["schemas"]["OpenRequest"][];
+            /** @description Every open request, not only those listed. The same number as `counts.requests` on `GET /bookings`. */
+            openRequestCount: number;
+            departures: {
+                /** @description Soonest first. */
+                today: components["schemas"]["TodayDeparture"][];
+                /** @description Soonest first. */
+                tomorrow: components["schemas"]["TodayDeparture"][];
+            };
+            /** @description Upcoming departures off sale because nobody has confirmed their seats: the sum of `departuresNotOnSale` over the listings. */
+            seatsToConfirm: number;
+            listings: components["schemas"]["TodayListings"];
+            /** @description Cash trips that are over with no payment recorded: the count `GET /commission-owed` gives as `unrecordedBookings`. `null` when it could not be read. **Absent for STAFF.** */
+            cashTripsUnrecorded?: number | null;
+            /** @description What the business is paid and owes. **Absent for STAFF.** */
+            money?: components["schemas"]["TodayMoney"];
+            /** @description Every booking there has ever been: upcoming, past and cancelled. A cancelled booking counts, because somebody bought. An open request does not. Show the start-selling checklist while it is `0`. */
+            bookingsEver: number;
+        };
+        /** @description A departure exactly as `GET /slots` sends it, with what the day's list adds. */
+        TodayDeparture: components["schemas"]["OperatorDeparture"] & {
+            /** @description Guests marked as arrived, the manifest's `totals.arrived`. Counts guests, not parties. */
+            checkedIn: number;
+            /** @description Cash still to take across this departure's parties, in paise: parties paying at the counter on a booking the manifest can still take cash on, with nothing recorded yet. `0` when none. **Absent for STAFF.** */
+            cashToCollectPaise?: number;
+        };
+        /** @description The listings counted by `status` as `GET /experiences` reports it. A published listing whose edit was declined still sells and counts as live; a first listing sent back counts as a draft. The parts add up to the listings there are. */
+        TodayListings: {
+            /** @description `live`, `live_changes_in_review`, or an edit declined on a listing that sells. */
+            live: number;
+            draft: number;
+            /** @description `withdrawn`. */
+            paused: number;
+            inReview: number;
+            /** @description Published, and not sellable until the account blockers clear. */
+            notSelling: number;
+            /** @description Live listings with `bookableDatesNext30Days` of `0`: on the traveller app and selling nothing. */
+            liveWithNoDatesNext30Days: number;
+        };
+        TodayMoney: {
+            /** @description The next settlement, from `nextSettlement` on `GET /settlements/overview`. `null` when it could not be read. */
+            week: {
+                /** Format: date */
+                periodStart?: string;
+                /** Format: date */
+                periodEnd?: string;
+                /** Format: date */
+                settlesFrom?: string;
+                netPaise?: number;
+            } | null;
+            /** @description What the business still owes Yuvoy now: the sum of `owedPaise` over its commission statements, a waived one counting as nothing. Never `GET /commission-owed`'s figure, which sums every completed cash trip billed or not, paid or not. `null` when it could not be read. */
+            owedPaise: number | null;
+        };
     };
     responses: {
         /** @description Something in the request needs fixing. */
@@ -3699,7 +4170,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description `account_suspended`: the business is suspended (D20), or its status is `OFFBOARDED` or `DISQUALIFIED` (D44), and this write is not one it may still make. The message is "Your account has been suspended. Please reach out to admin for help.", or for those two statuses "Your account has been closed. Please reach out to admin for help." and "Your account has been disqualified. Please reach out to admin for help.", and is safe to show as it is. Reads still work, and so do attendance, cash collected, cash given back, both relays, writing in the conversation on a booking and marking it read, calling a departure off, cancelling a booking, declining a request, holding, restoring or removing somebody on the team, stopping a bank change, filing a document with its file, and signing out. */
+        /** @description `account_suspended`: the business is suspended (D20), or its status is `OFFBOARDED` or `DISQUALIFIED` (D44), and this write is not one it may still make. The message is "Your account has been suspended. Please reach out to admin for help.", or for those two statuses "Your account has been closed. Please reach out to admin for help." and "Your account has been disqualified. Please reach out to admin for help.", and is safe to show as it is. Reads still work, and so do attendance, cash collected, cash given back, both relays, writing in the conversation on a booking and marking it read, calling a departure off, cancelling a booking, declining a request, holding, restoring or removing somebody on the team, stopping a bank change, filing a document with its file, signing out, ending one of your own sessions from the list, and closing your own login. */
         AccountSuspended: {
             headers: {
                 [name: string]: unknown;
@@ -3717,7 +4188,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Too many requests from this address. */
+        /** @description `rate_limited`: too many requests. Wait a little and try again; there is no `Retry-After` header. The sign-in routes (`/auth/signup`, `/auth/otp`, `/auth/session`, `/auth/step-up`, `/auth/step-up/verify`, `/join/{token}/code`, `/join/{token}/accept` and `/team/accept`) share one budget, counted per phone number in the body and per session, with a looser ceiling per address (yuvoy-api#267). So repeated sign-in attempts for a number also use up its accept attempts, and people behind one mobile network address are not refused together. The relay and message routes count per address. */
         RateLimited: {
             headers: {
                 [name: string]: unknown;
@@ -3727,13 +4198,44 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /**
+         * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+         *
+         *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+         *
+         *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+         *
+         *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+         */
+        IdempotencyKey: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getOperatorAppConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppConfig"];
+                };
+            };
+        };
+    };
     operatorSignUp: {
         parameters: {
             query?: never;
@@ -3836,7 +4338,7 @@ export interface operations {
                 "application/json": {
                     phone: string;
                     code: string;
-                    /** @description A label the operator recognises. */
+                    /** @description Optional. A label the operator recognises for this phone, e.g. "Redmi Note 13, Android 14", shown back in `listMyOperatorSessions`. Cleaned of control and formatting characters: a control character or line break becomes a space, other formatting characters are removed (the zero-width joiner and non-joiner stay), runs of spaces become one, and the result is trimmed and cut to 100 characters. Never refused, because a sign-in must not fail over a device name: a value that is not a string is ignored. Empty after that, or absent, means none. */
                     device?: string;
                 };
             };
@@ -3862,7 +4364,15 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["AccountNotActive"];
+            /** @description `account_not_active`, as described in the AccountNotActive response, or `account_deletion_pending`: the code was right, but this number closed an operator login (`deleteOperatorAccount`), the request to erase it is still open, and the number has a membership again, from a sign-up made while the request is open. A person who closed their login and has not joined anywhere since never gets here: no sign-in code is sent to their number, as for any number with no login. Only answered after the code checked out, so it tells nobody without the code anything. The message says to contact support if closing it was a mistake; render it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             429: components["responses"]["RateLimited"];
         };
     };
@@ -4217,7 +4727,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Joined, and signed in. The code they just proved is the proof a session needs, and asking for it twice in a row is the same gate twice rather than a second one. */
+            /** @description Joined, and signed in. The code they just proved is the proof a session needs, and asking for it twice in a row is the same gate twice rather than a second one. A repeat of a request that already succeeded (the app sent it and lost the answer) gets this same answer for ten minutes after the join, with a new session: the code must still be right, the person must still be active at this business, and every repeat spends one of the code's tries. Nothing is joined, moved or announced a second time, and `confirmLeaving` is not needed on the repeat because nobody moves. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -4237,7 +4747,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description `invalid_input`. The number or the code is missing, or this number is the only owner or admin at the business it works with now, so accepting would leave nobody there who can run it (D15). The message says which, and what to do; render it. Deliberately not a `409`: every `409` here has meant `confirmation_required`, and confirming cannot help with this one. */
+            /** @description `invalid_input`. The number or the code is missing, the number is not in E.164 form (`+919000000101`), the body is not JSON, or this number is the only owner or admin at the business it works with now, so accepting would leave nobody there who can run it (D15). The message says which, and what to do; render it. Deliberately not a `409`: confirming cannot help with this one, so it must not be read as `confirmation_required`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4246,7 +4756,20 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description No invitation for that number, or `invitation_unavailable`: the code was right, but nobody can join the business right now (D43). Nothing changed, and the invitation still works once the business can take people on again, for as long as it has left. The message names the business and says whom to ask, never why; render it. */
+            /**
+             * @description `account_not_active`: the join happened, but the business was offboarded between the join and the session, so no session is issued. Rare: a business that is already offboarded answers `404` `invitation_unavailable` and nothing is joined. Render the message; signing in again will not help either.
+             *
+             *     `account_deletion_pending`: the code was right, but this number closed its operator login (`deleteOperatorAccount`) and the request to erase it is still open. Nothing changed and nobody joined. The message says to contact support if closing it was a mistake.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No invitation for that number, or `invitation_unavailable`: the code was right, but nobody can join the business right now (D43). Nothing changed, and the invitation still works once the business can take people on again, for as long as it has left. A repeat of a request that already succeeded (see `201`) at a business on hold gets `invitation_unavailable` too, and only inside the ten minutes after the join; the invitation working again later is about one not yet accepted. The message names the business and says whom to ask, never why; render it. A repeat of a request that already succeeded gets `not_found` when it no longer counts as one (see `201`): more than ten minutes after the join, the code wrong or out of tries, or the membership since removed or held. If the app sent this request before and lost the answer, send them to sign in. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4255,7 +4778,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description `confirmation_required` — accepting removes them from another business and they have not agreed yet. */
+            /** @description Branch on `error.code`; the two need different screens. `confirmation_required`: this number works with another business and `confirmLeaving` was not sent as `true`. Ask the person, and send the same request again with `confirmLeaving: true` only once they agree. `cannot_invite`: the code is wrong, the code has used up its attempts, or this number is already on this business's team. Nothing changed. Show the message and let them type the code again, or ask `POST /join/{token}/code` for a fresh one; never answer it by asking them to confirm leaving. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4583,11 +5106,7 @@ export interface operations {
                         category: string;
                         /** @description Present when one was asked about. */
                         activityType?: string;
-                        documents: {
-                            /** @enum {string} */
-                            type: "directorate_registration" | "instructor_cert" | "oxygen" | "equipment" | "boat" | "insurance" | "bank" | "gst";
-                            satisfied: boolean;
-                        }[];
+                        documents: components["schemas"]["CredentialRequirementDocument"][];
                     };
                 };
             };
@@ -4853,7 +5372,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Accepted, and signed in. */
+            /** @description Accepted, and signed in. A repeat of a request that already succeeded (the app sent it and lost the answer) gets this same answer for ten minutes after the join, with a new session: the code must still be right, the person must still be active at that business, and every repeat spends one of the code's tries. Nothing is joined a second time. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -4873,8 +5392,37 @@ export interface operations {
                     };
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            /** @description `invitation_unavailable`: the code was right, but nobody can join the business right now (D43). Nothing changed, and the invitation still works once the business can take people on again, for as long as it has left. The message says whom to ask, never why; render it. */
+            /** @description `invalid_input`: the body could not be read as JSON. Fix the request; nothing was tried. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthorized`, with the message "that invitation did not work". Not about a session: there is no open invitation for this number, the code is wrong or has used up its attempts, or this number is already on a team (this door never moves anybody; the join link does). One answer for all of them on purpose. Let them type the code again, or ask whoever invited them for a new invitation. A repeat of a request that already succeeded gets this when it no longer counts as one (see `201`): more than ten minutes after the join, the code wrong or out of tries, or the membership since removed or held. If the app sent this request before and lost the answer, send them to sign in. A failure on our side is not a `401`; it is an ordinary server error. There is no `409` on this route. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `account_not_active`: the join happened, but the business was offboarded between the join and the session, so no session is issued. Rare: a business that is already offboarded answers `404` `invitation_unavailable` and nothing is joined. Render the message.
+             *     `account_deletion_pending`: the code was right, but this number closed its operator login (`deleteOperatorAccount`) and the request to erase it is still open. Nothing changed and nobody joined. The message says to contact support if closing it was a mistake.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `invitation_unavailable`: the code was right, but nobody can join the business right now (D43). Nothing changed, and the invitation still works once the business can take people on again, for as long as it has left. A repeat of a request that already succeeded (see `201`) at a business on hold gets `invitation_unavailable` too, and only inside the ten minutes after the join; the invitation working again later is about one not yet accepted. The message says whom to ask, never why; render it. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4883,6 +5431,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     setOperatorUserRole: {
@@ -5187,9 +5736,134 @@ export interface operations {
                         commissionRateBps?: number;
                         /** @description Why this account can or cannot sell, and who has to move next. Absent means unknown — never "everything is fine". */
                         account?: components["schemas"]["AccountStanding"];
+                        /**
+                         * @description Messages from travellers the business has not read, across every conversation on its bookings: the number for an inbox badge. Always present, `0` when none.
+                         *
+                         *     It counts what `unreadForOperator` counts on each row of `GET /message-threads`, added up in one read, so a client no longer walks every page of threads to show a badge. The read marker belongs to the conversation, not the person, so a message anybody on the team has opened is read for all of them.
+                         */
+                        unreadCount?: number;
+                        /** @description The session signing this request. Additive: a client that ignores it loses nothing. */
+                        session?: {
+                            /**
+                             * Format: date-time
+                             * @description When this session now ends, after this request moved it on: 14 days since it was last used, and never later than 90 days after it signed in. Keep any stored expiry in step with this rather than guessing.
+                             */
+                            expiresAt: string;
+                        };
+                        /**
+                         * @description Whether the payout run is holding this business's payouts right now, and why. Always present, with `held: false` and a null `reason` when nothing is holding payouts.
+                         *
+                         *     Every role gets it, STAFF included. It says whether money can move, not how much, so it is not an amount and is not withheld the way money fields are.
+                         */
+                        payoutsHeld: components["schemas"]["PayoutsHeld"];
                     };
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountNotActive"];
+        };
+    };
+    deleteOperatorAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The login is closed and the erasure request is recorded. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletion"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountNotActive"];
+            /** @description `owner_must_hand_over`: the caller is the business's only active OWNER or ADMIN and the business still trades. Nothing changed. The message says to make somebody else an owner or an admin in Team first, or to contact support; render it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listMyOperatorSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The live sessions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessions: components["schemas"]["OperatorSession"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountNotActive"];
+        };
+    };
+    endMyOperatorSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A session `id` from `listMyOperatorSessions`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountNotActive"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getOperatorToday: {
+        parameters: {
+            query?: {
+                /** @description The market day Today means, `YYYY-MM-DD`, in the business's own clock. Default: today there. Not a date is a `400` with `details.date`. */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Today's facts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Today"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["AccountNotActive"];
         };
@@ -5257,6 +5931,74 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    registerOperatorDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceRegistration"];
+            };
+        };
+        responses: {
+            /** @description Registered */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `invalid_push_token` for a token that is not an Expo push token; `invalid_input` for anything else, with `details` keyed by field. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    unregisterOperatorDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceToken"];
+            };
+        };
+        responses: {
+            /** @description Stopped */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description As for `registerOperatorDevice`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
+            429: components["responses"]["RateLimited"];
         };
     };
     listOperatorBookings: {
@@ -5371,7 +6113,18 @@ export interface operations {
     relayToBooking: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
             };
@@ -5392,10 +6145,18 @@ export interface operations {
                     "application/json": components["schemas"]["RelayResult"];
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Something in the request needs fixing, or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description `nobody_to_tell`: this booking is no longer live (cancelled, declined, or a hold that lapsed), so there was nobody to send to. Deliberately not a success: "sent to 0 people" and "sent" must not look the same. */
+            /** @description `nobody_to_tell`: this booking is no longer live (cancelled, declined, or a hold that lapsed), so there was nobody to send to. Deliberately not a success: "sent to 0 people" and "sent" must not look the same. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5418,7 +6179,18 @@ export interface operations {
     relayToSlot: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
             };
@@ -5439,10 +6211,18 @@ export interface operations {
                     "application/json": components["schemas"]["RelayResult"];
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Something in the request needs fixing, or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description `nobody_to_tell` — nobody has a live booking on this departure. */
+            /** @description `nobody_to_tell`: nobody has a live booking on this departure. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5496,7 +6276,18 @@ export interface operations {
     sendOperatorBookingMessage: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
             };
@@ -5517,7 +6308,7 @@ export interface operations {
                     "application/json": components["schemas"]["BookingMessage"];
                 };
             };
-            /** @description `invalid_input`, with `details.text` saying why: `required` (nothing written, or a body that is not JSON), `too long` (over 1000 characters), `unprintable` (characters no screen can show), or `contact details`, with `details.contactDetail` `phone`, `email` or `link`. Nothing was stored. */
+            /** @description `invalid_input`, with `details.text` saying why: `required` (nothing written, or a body that is not JSON), `too long` (over 1000 characters), `unprintable` (characters no screen can show), or `contact details`, with `details.contactDetail` `phone`, `email` or `link`. Nothing was stored. Or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -5529,7 +6320,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description `messages_closed`: the conversation can be read and not written in. `details.reason` is `cancelled`, `declined` or `window_closed`. */
+            /** @description `messages_closed`: the conversation can be read and not written in. `details.reason` is `cancelled`, `declined` or `window_closed`. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5761,7 +6552,18 @@ export interface operations {
     markAttendance: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
             };
@@ -5789,10 +6591,18 @@ export interface operations {
                     };
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Something in the request needs fixing, or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description `departure_has_not_started` — wait until the trip sets off. `not_on_this_departure` — already settled, cancelled or declined. */
+            /** @description `departure_has_not_started` — wait until the trip sets off. `not_on_this_departure` — already settled, cancelled or declined. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5806,7 +6616,18 @@ export interface operations {
     cancelOperatorBooking: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
             };
@@ -5837,7 +6658,7 @@ export interface operations {
                     "application/json": components["schemas"]["BookingCancelResult"];
                 };
             };
-            /** @description `invalid_reason_code`; `confirmation_required`, when there is no reference or it is not this booking's; or a note over 500 characters. */
+            /** @description `invalid_reason_code`; `confirmation_required`, when there is no reference or it is not this booking's; or a note over 500 characters. Or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -5857,7 +6678,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description `already_cancelled`: there is nothing left to cancel, and nothing was refunded twice. `booking_ended`: it was declined, completed or marked a no-show. `departure_started`: the departure has left. `refund_already_raised`: part of it has been refunded already, so it cannot be cancelled here; ask us to cancel it. */
+            /** @description `already_cancelled`: there is nothing left to cancel, and nothing was refunded twice. `booking_ended`: it was declined, completed or marked a no-show. `departure_started`: the departure has left. `refund_already_raised`: part of it has been refunded already, so it cannot be cancelled here; ask us to cancel it. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5871,7 +6692,18 @@ export interface operations {
     recordCashCollected: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
             };
@@ -5905,10 +6737,18 @@ export interface operations {
                     };
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Something in the request needs fixing, or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description `not_on_this_departure` — the booking is cancelled, declined or already settled, or the amount is more than the fare, or it was paid online and there is nothing to collect. */
+            /** @description `not_on_this_departure` — the booking is cancelled, declined or already settled, or the amount is more than the fare, or it was paid online and there is nothing to collect. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6022,7 +6862,18 @@ export interface operations {
     recordOfflineSale: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
             };
@@ -6046,16 +6897,44 @@ export interface operations {
                     "application/json": components["schemas"]["OfflineSaleResult"];
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Something in the request needs fixing, or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
+            /** @description `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     takeBackOfflineSale: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
                 /** @description The `id` from the `recordOfflineSale` answer. */
@@ -6074,6 +6953,15 @@ export interface operations {
                     "application/json": components["schemas"]["OfflineSaleTakeBack"];
                 };
             };
+            /** @description Something in the request needs fixing, or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["AccountSuspended"];
             /** @description No such counter sale on this departure. The same answer for an entry belonging to another business, an entry recorded on another departure, and an id that is nothing at all — telling those apart would say what exists in somebody else's account. */
@@ -6085,7 +6973,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description `already_taken_back` — this entry has been taken back once and its seats are already back on the departure. Nothing moved a second time, so a client that lost the first answer has nothing left to do and can treat this as done. `counter_sales_below_zero` — taking it back would leave the departure having sold fewer than none at its own counter. It cannot happen through this route and is a guard against a correction made some other way; the message says to record what was actually sold, or to call us. */
+            /** @description `already_taken_back` — this entry has been taken back once and its seats are already back on the departure. Nothing moved a second time, so a client that lost the first answer has nothing left to do and can treat this as done. `counter_sales_below_zero` — taking it back would leave the departure having sold fewer than none at its own counter. It cannot happen through this route and is a guard against a correction made some other way; the message says to record what was actually sold, or to call us. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6099,7 +6987,18 @@ export interface operations {
     callOffDeparture: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
             };
@@ -6129,7 +7028,15 @@ export interface operations {
                     "application/json": components["schemas"]["CallOffResult"];
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Something in the request needs fixing, or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             /** @description STAFF cannot call off a departure. */
             403: {
@@ -6141,7 +7048,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description `already_called_off` — everybody on it has already been told. */
+            /** @description `already_called_off`: everybody on it has already been told. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6824,12 +7731,7 @@ export interface operations {
                          *
                          *     Not an enum anywhere in this contract: a screener is a row, added or retired on medical advice rather than by a release. Empty means no screener can be chosen yet.
                          */
-                        screeners?: {
-                            /** @example diving_rstc */
-                            key: string;
-                            /** @description The screener's name as a person reads it, from the newest version of it that is not retired. Never empty. */
-                            label: string;
-                        }[];
+                        screeners?: components["schemas"]["CatalogScreener"][];
                     };
                 };
             };
@@ -7371,11 +8273,7 @@ export interface operations {
                         };
                         about: string;
                         languages: string[];
-                        photos: {
-                            id: string;
-                            position: number;
-                            url?: string;
-                        }[];
+                        photos: components["schemas"]["OperatorStoryPhoto"][];
                         reviewed: {
                             operatingSince?: number;
                             findThemAt?: string;
@@ -7487,29 +8385,7 @@ export interface operations {
                                 equipment: number;
                             };
                         };
-                        items: {
-                            id: string;
-                            rating: number;
-                            /** @description Null when they tapped stars and wrote nothing. */
-                            comment: string | null;
-                            /** @description What they said was good. Empty when they chose none. */
-                            tags: ("guide" | "safety" | "value" | "organisation" | "punctuality" | "equipment")[];
-                            /** Format: uuid */
-                            experienceId: string;
-                            experienceTitle: string;
-                            /** @description The first word of the name they booked under. Null when they gave none. */
-                            travellerName: string | null;
-                            /**
-                             * Format: date
-                             * @description The day the trip ran, in the market's own calendar.
-                             */
-                            tripDate: string;
-                            /**
-                             * Format: date-time
-                             * @description When the traveller wrote it.
-                             */
-                            createdAt: string;
-                        }[];
+                        items: components["schemas"]["OperatorReviewListItem"][];
                         /** @description Told rather than inferred. `true` means nothing comes after this page; `false` always comes with a `nextCursor`. */
                         complete: boolean;
                         /** @description Absent when there is nothing after this page. */
@@ -7868,6 +8744,40 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    getOperatorMedia: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description An `intentId` or a media id. Anything that is not a UUID is a `404`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upload, the media it became, or both. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorMediaDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description `media_unavailable`: media is not configured on this service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     createPhotoUpload: {
         parameters: {
             query?: never;
@@ -8148,6 +9058,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
+            /** @description `media_refused`: the video host will never make a clip of this upload. It is not a video, it is longer than the slot allowed, it could not be decoded, or the host called it ready and it still had no poster or duration when the upload window closed. The message is a sentence to show as it is. `details.reason` is a short code (`malformed_video`, `duration_exceed_constraint`, `incomplete`, `unknown` and others) for support, not a closed list to branch on. The same answer comes back on every later call, and `GET /media/{id}` shows the upload as `failed`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     attestMediaRights: {

@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * Yuvoy's commission on cash trips, billed weekly (yuvoy-operator#121, owner
@@ -274,10 +274,7 @@ test("a statement page has no accessibility violations", async ({ page }) => {
     page.getByRole("region", { name: "Pay this statement" }),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "a statement, part paid");
 });
 
 test("the statements list has no accessibility violations", async ({
@@ -287,8 +284,5 @@ test("the statements list has no accessibility violations", async ({
   await page.goto("/earnings/commission");
   await expect(statementRows(page)).toHaveCount(4);
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "the statements list");
 });

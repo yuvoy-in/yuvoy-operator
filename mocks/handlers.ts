@@ -18,6 +18,8 @@ import {
   ACCOUNT_LIVE_OUTSTANDING,
   ACCOUNT_PROSPECT,
   AWAITING_ID,
+  BANK_UNCONFIRMED_CHANGES,
+  BANK_UNCONFIRMED_ID,
   CHANGE_REQUESTS,
   COMMISSION_OWED,
   COMMISSION_PAY_TO,
@@ -38,6 +40,7 @@ import {
   OTHER_MEMBERS,
   LIVE_OUTSTANDING_ID,
   PROSPECT_ID,
+  REFUSED_ID,
   SUSPENDED_ID,
   ACCOUNT_SUSPENDED,
   REQUESTS,
@@ -174,7 +177,50 @@ function changesFor(request: Request): Record<string, unknown>[] {
       delete out.raisedFor;
       return out;
     });
-  return mine === "reef" ? [...raised, ...CHANGE_REQUESTS] : raised;
+  if (mine === "reef") return [...raised, ...CHANGE_REQUESTS];
+  if (mine === `solo:${BANK_UNCONFIRMED_ID}`) {
+    return [...raised, ...BANK_UNCONFIRMED_CHANGES];
+  }
+  return raised;
+}
+
+/**
+ * This business's bank changes that are still open: not yet live, not
+ * stopped and not refused.
+ *
+ * BANK changes only. The list also carries logo and details changes waiting
+ * for review (the same table, another `kind`), and one of those in flight
+ * says nothing about where the money goes: counting it refused every bank
+ * change raised after a live business sent a new logo.
+ *
+ * `approved` is open too: the API holds payouts on it as on the other three
+ * (`readPayoutHolds`), whatever this portal's own screens make of it.
+ */
+function openBankChanges(request: Request): Record<string, unknown>[] {
+  return changesFor(request).filter(
+    (r) =>
+      (r as { kind?: string }).kind === "bank_account" &&
+      !stoppedChanges.includes(String((r as { id?: string }).id)) &&
+      ["objection_window", "pending", "cooling", "approved"].includes(
+        String((r as { state?: string }).state),
+      ),
+  );
+}
+
+/**
+ * `payoutsHeld` on `GET /me`, by the API's rule (yuvoy-api#275): a bank
+ * change still open holds first; then a new account that went live and that
+ * our team has not yet put into the bank we pay from. Only
+ * `BANK_UNCONFIRMED_ID`'s business is in that second state here.
+ */
+function payoutsHeldFor(request: Request) {
+  if (openBankChanges(request).length > 0) {
+    return { held: true, reason: "bank_change_in_progress" };
+  }
+  if (businessOf(request) === `solo:${BANK_UNCONFIRMED_ID}`) {
+    return { held: true, reason: "destination_unconfirmed" };
+  }
+  return { held: false, reason: null };
 }
 
 /**
@@ -1869,6 +1915,8 @@ function accountFor(me: { id: string }) {
     */
     return ACCOUNT_LIVE_OUTSTANDING;
   }
+  // Live, and paid weekly: its payouts are held for another reason.
+  if (me.id === BANK_UNCONFIRMED_ID) return ACCOUNT_LIVE;
   if (OTHER_MEMBERS.some((o) => o.id === me.id)) return undefined;
   return ACCOUNT_LIVE;
 }
@@ -2981,6 +3029,8 @@ export const handlers = [
       commissionRateBps: OPERATOR.commissionRateBps,
       canManage: canManage(me),
       ...(account ? { account: accountWithFiles(account) } : {}),
+      // Always present, every role, with no amount in it.
+      payoutsHeld: payoutsHeldFor(request),
     });
   }),
 
@@ -5401,6 +5451,22 @@ export const handlers = [
         return HttpResponse.json({ ready: false }, { status: 202 });
       }
 
+      /*
+        The host's last word on a clip it will never make (yuvoy-api#286).
+        Final: the same answer on every later call, nothing reaches the reel
+        list, and asking for an upload again mints a new one, which
+        `confirmedAt` above already makes this mock do. The message is the
+        API's own, "a sentence to show as it is".
+      */
+      if (me.id === REFUSED_ID) {
+        return envelope(
+          "media_refused",
+          "That clip was refused, so it will not be in your reels. Choose another.",
+          422,
+          { reason: "malformed_video" },
+        );
+      }
+
       const mediaAssetId = `med_${intent.id.slice(4)}`;
       /*
         No `posterUrl`, deliberately. A clip has no still until the provider
@@ -7264,20 +7330,8 @@ export const handlers = [
       return envelope("forbidden", "Only the owner can change this.", 403);
     }
 
-    /*
-      Open BANK changes only. The list also carries logo and details changes
-      waiting for review (the same table, another `kind`), and one of those in
-      flight says nothing about where the money goes: counting it refused
-      every bank change raised after a live business sent a new logo.
-    */
-    const open = changesFor(request).filter(
-      (r) =>
-        (r as { kind?: string }).kind === "bank_account" &&
-        !stoppedChanges.includes(String((r as { id?: string }).id)) &&
-        ["objection_window", "pending", "cooling", "approved"].includes(
-          String((r as { state?: string }).state),
-        ),
-    );
+    // Open BANK changes only: see `openBankChanges`.
+    const open = openBankChanges(request);
     if (open.length > 0) {
       // "Two open bank changes would mean the second approval silently decides
       // which account wins."

@@ -365,7 +365,46 @@ path=contracts/operator-openapi.yaml
 # on api.yuvoy.in answers 401, where a path that does not exist answers 404.
 #
 # `git ls-remote` read master as febd9a1e3abe immediately before pinning.
+#
+# 7 Oct 2026. Forward from febd9a1e3abe to 05d1204e44cc, yuvoy-api #264 to
+# #288. Nothing this portal reads is removed or changes shape.
+#
+# Removals, read by set difference as before:
+#   - None. No path, operation or schema disappears. Six objects written
+#     inline are named schemas now (#264), each the same shape as before.
+#   - `payoutsHeld` is newly required on `GET /me` (#275). It is still read
+#     as if it could be missing: an API without it holds nothing back, and
+#     the bank row says what it said before.
+#
+# Consumed in this change:
+#   - `payoutsHeld` on `/me` (yuvoy-operator#156). Money's bank row says the
+#     week is on hold and why, for either reason, and Payout details says the
+#     hold the change list cannot show: a change that went live before we
+#     updated the bank we pay from. `toPayoutsHeld` narrows the reason where
+#     it enters, and a reason it does not know is still a hold.
+#   - `422 media_refused` and `404` on `POST /media/upload-intents/{id}/
+#     complete` (#286, yuvoy-operator#157). Both are final: the uploader says
+#     the API's sentence, de-dashed, and lets go of the slot so the next clip
+#     can go in.
+#   - `403 account_not_active` and `account_deletion_pending` on both doors
+#     that accept an invitation (#280), and the second on sign-in too (#274);
+#     `404 invitation_unavailable` on `POST /team/accept`. Each fell to "try
+#     again" somewhere; each now says who can help (`closedDoorMessage`).
+#
+# NOT consumed here, and each needs its own change:
+#   - `GET /today` and `unreadCount` on `/me` (#265).
+#   - `Idempotency-Key` on the day-of-trip writes (#266).
+#   - `/me/sessions` (#273), `/me/devices` (#269), `DELETE /me` (#274),
+#     `GET /app-config` (#264) and `GET /media/{id}` (#272).
+#
+# Live before building: unauthenticated, `/me/sessions` (#273, merged after
+# #275 and #280) and `/today` answer 401 on api.yuvoy.in, where a path that
+# does not exist answers 404. Whether it runs #286 cannot be read from
+# outside; against an API without it, a refused clip says what it said
+# before.
+#
+# `git ls-remote` read master as 05d1204e44cc immediately before pinning.
 
-ref=febd9a1e3abe2c16b4891dfc64a0f8776226147b
+ref=05d1204e44ccdd86f2b91f6e6d10f58d0708549d
 branch=master
-pinned_on=2026-10-05
+pinned_on=2026-10-07

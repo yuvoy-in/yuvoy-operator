@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * O9's capacity half — the single most important number in the system.
@@ -1151,21 +1151,14 @@ test("/calendar has no accessibility violations", async ({ page }) => {
   await tomorrow.getByRole("button", { name: /^Close this day/ }).click();
   await page.waitForLoadState("networkidle");
 
-  const board = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(board.violations).toEqual([]);
+  await expectAccessible(page, "/calendar, every form open");
 
   // And the inspector, open over the board.
   await departureOn(page, 1, "Snorkel trip to Elephant Beach").first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/calendar, a departure's inspector open");
 });
 
 /*
@@ -1323,10 +1316,7 @@ test("with no signal the calendar stays readable, changes nothing, and says so",
   expect(page.url()).toBe(here);
   await expect(page.getByRole("heading", { name: "Calendar" })).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/calendar, with no signal");
 
   // Back online: the notice goes, and the board is usable again.
   await context.setOffline(false);

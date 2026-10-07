@@ -383,6 +383,18 @@ export function Uploader({
         }),
       );
       if (result.message) {
+        if (result.final) {
+          /*
+            The host's last word on this upload: refused, or gone. The slot is
+            over, and so is the record of which clip it holds. Kept, they made
+            the next clip meet a dead upload as one "already going", or as an
+            upload server that could not be reached, and nothing else could go
+            in until a reload (yuvoy-operator#157). Forgotten, the next clip
+            asks for a new upload.
+          */
+          slot.current = null;
+          forgetSlot();
+        }
         setPhase({ name: "failed", message: result.message });
         return;
       }
@@ -673,9 +685,9 @@ export function Uploader({
             Uploaded. We are processing it now.
           </p>
           {/*
-            The bytes are safe either way — "a job keeps polling whether or not
-            the client comes back" — but the rights step is on this page and
-            there is no `GET /media` to find the clip again from anywhere else.
+            The bytes are safe either way. The reel list shows the clip while
+            it is processing, and its rights can be attested from there once it
+            is ready, but the rights step follows here the moment it is ready.
             So the ask is still to stay, and the way back is still said.
           */}
           <p className="text-forest/70 leading-body mt-2 text-sm text-pretty">

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * O3 — whether an operator can trade, and the screens that say so when
@@ -652,10 +652,7 @@ test("/account has no accessibility violations, on hold or not", async ({
   await page.goto("/account");
   await page.waitForLoadState("networkidle");
 
-  const active = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(active.violations).toEqual([]);
+  await expectAccessible(page, "/account, an active business");
 
   /*
     A suspended business lands on the day like anybody else since
@@ -672,8 +669,5 @@ test("/account has no accessibility violations, on hold or not", async ({
     page.getByRole("alert").filter({ hasText: "suspended" }).first(),
   ).toBeVisible();
 
-  const held = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(held.violations).toEqual([]);
+  await expectAccessible(page, "/account, a suspended business");
 });

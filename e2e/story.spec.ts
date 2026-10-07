@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * Your story — yuvoy-operator#41.
@@ -256,9 +256,5 @@ test("/story has no accessibility violations", async ({ page }) => {
   await page.goto("/story");
   await page.waitForLoadState("networkidle");
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/story");
 });

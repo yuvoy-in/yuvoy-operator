@@ -38,9 +38,12 @@ export type PayoutDestination =
  * Where the next payout goes, said inside it (operator A, approved 3 Oct
  * 2026: "the bank the payout goes to shown inside the payout").
  *
- *   held     a bank change is in flight. Nothing moves until it settles, and
- *            which account it then goes to is the change's to decide, so no
- *            account is named.
+ *   held     a bank change is in flight, or the payout run says it is holding
+ *            the money (`payoutsHeld`, yuvoy-operator#156). Nothing moves
+ *            until it clears, so no account is named: which one is paid is
+ *            the change's to decide, or is the new one only once we have
+ *            updated the bank we pay from. The row says why instead
+ *            (`heldDestinationLine`).
  *   account  the account on file, in the words Payout details uses.
  *   null     nothing is sent (a week that pays nothing, or one owed back), or
  *            no account is on file (one set up by hand before any change was

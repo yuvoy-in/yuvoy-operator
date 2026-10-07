@@ -14,6 +14,7 @@ import {
   type Standing,
   type Suspension,
 } from "@/lib/account/standing";
+import { toPayoutsHeld, type PayoutsHeld } from "@/lib/money/payouts-held";
 
 /**
  * The operator session: reading it, and deciding what it means.
@@ -130,6 +131,15 @@ export interface OperatorIdentity {
    * see `WRITES_ALLOWED_WHILE_SUSPENDED`.
    */
   suspension: NonNullable<Suspension> | null;
+  /**
+   * Whether the payout run is holding this business's money, and why
+   * (yuvoy-api#275, yuvoy-operator#156), or `null` when nothing is held or
+   * the API did not say. Every role gets it, with no amount in it.
+   *
+   * Read on every render, like the rest of this object, so a hold our team
+   * has cleared is never drawn from an older answer. See `payouts-held.ts`.
+   */
+  payoutsHeld: PayoutsHeld;
 }
 
 /**
@@ -199,6 +209,7 @@ export async function requireOperator(): Promise<{
         canManage: data.canManage ?? false,
         account: standingOf(data.account),
         suspension: suspensionOf(data.account),
+        payoutsHeld: toPayoutsHeld(data.payoutsHeld),
       },
     };
   } catch (err) {

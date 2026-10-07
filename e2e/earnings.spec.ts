@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * What the business is paid — yuvoy-operator#47.
@@ -25,6 +25,8 @@ import AxeBuilder from "@axe-core/playwright";
 const DEV_CODE = "424242";
 const MANAGER = "+919000000101";
 const STAFF = "+919000000103";
+/** A new bank account that is live, and not paid to until we update our bank. */
+const BANK_UNCONFIRMED = "+919000000119";
 
 async function signIn(page: Page, phone = MANAGER) {
   await page.goto("/sign-in");
@@ -340,6 +342,44 @@ test("the bank details are the last door on the tab", async ({ page }) => {
   await page.waitForURL("**/payouts");
 });
 
+test("a payout held until we update our bank names no account, and says why", async ({
+  page,
+}) => {
+  /*
+    yuvoy-operator#156. The new account is live and on file, and the payout
+    run still holds the money until our team has put it into the bank we pay
+    from (`payoutsHeld` `destination_unconfirmed` on `/me`). The row named
+    the account as if the next payout were on its way there.
+  */
+  await signIn(page, BANK_UNCONFIRMED);
+  await page.goto("/earnings");
+
+  const toBank = page
+    .getByRole("region", { name: "Next payout" })
+    .locator("dl > div")
+    .filter({ has: page.locator("dt", { hasText: /^To your bank$/ }) });
+  await expect(toBank).toContainText("On hold until we update our bank");
+  await expect(toBank).not.toContainText("account ending");
+  // No bank change is in flight, so the change list's warning is not drawn.
+  await expect(
+    page.getByText("Payouts are on hold while your bank change is reviewed"),
+  ).toHaveCount(0);
+
+  // Payout details says why, above the account it is not paying yet.
+  await page.goto("/payouts");
+  await expect(
+    page.getByText("Payouts are on hold until we update our bank"),
+  ).toBeVisible();
+  await expect(page.getByText(/Nothing is needed from you/)).toBeVisible();
+  await expect(
+    page.getByText("ICIC0000456 · account ending 7788"),
+  ).toBeVisible();
+  await expectAccessible(
+    page,
+    "Payout details, payouts held until we update our bank",
+  );
+});
+
 test("the one idea that is not obvious is a tap from its answer", async ({
   page,
 }) => {
@@ -399,10 +439,7 @@ test("/earnings has no accessibility violations", async ({ page }) => {
   await page.goto("/earnings");
   await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "/earnings");
 });
 
 test("a settlement page has no accessibility violations", async ({ page }) => {
@@ -410,8 +447,5 @@ test("a settlement page has no accessibility violations", async ({ page }) => {
   await page.goto("/earnings/stl_sent");
   await expect(page.getByRole("heading", { name: /to / })).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "a settlement, sent");
 });

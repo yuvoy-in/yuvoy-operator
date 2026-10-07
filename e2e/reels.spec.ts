@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { expectAccessible } from "./axe";
 
 /**
  * O8 — the operator supplies the video the whole traveller feed is made of.
@@ -46,6 +46,8 @@ const OWNER = "+919000000101";
 const DROPPING = "+919000000107";
 /** A colleague at their business already holds the one upload slot. */
 const CONTENDED = "+919000000110";
+/** The video host refuses their clips once they are up. */
+const REFUSED = "+919000000120";
 
 async function signIn(page: Page, phone = OWNER) {
   await page.goto("/sign-in");
@@ -167,6 +169,41 @@ test("a dropped connection is a pause, not a failure", async ({ page }) => {
   await expect(page.getByText("Your clip is uploaded")).toBeVisible({
     timeout: 60_000,
   });
+});
+
+test("a clip the host refuses says so, and the next clip can go in", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await signIn(page, REFUSED);
+  await choose(page, clip(1));
+  await page.getByRole("button", { name: "Upload it" }).click();
+
+  /*
+    `422 media_refused` once the bytes are up (yuvoy-api#286): the host will
+    never make a clip of this upload, and asking again gives the same answer.
+    It said "We could not check the upload. Try again shortly."
+  */
+  await expect(
+    page.getByText(
+      "That clip was refused, so it will not be in your reels. Choose another.",
+    ),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/Try again shortly/)).toHaveCount(0);
+  // Nothing offers the refused clip again.
+  await expect(page.getByText(/again and it carries on/)).toHaveCount(0);
+
+  /*
+    And another clip can go in (yuvoy-operator#157). The refused upload kept
+    its slot, so the next clip met it as an upload "already going" and could
+    not be sent at all until a reload.
+  */
+  await page
+    .getByLabel("Choose a clip")
+    .setInputFiles(testInfoClip(2, "harbour.mp4"));
+  await expect(page.getByText("harbour.mp4")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Upload it" })).toBeVisible();
+  await expect(page.getByText(/already holds/)).toHaveCount(0);
 });
 
 test("a slot holding one clip's bytes refuses another, and resumes the first", async ({
@@ -656,10 +693,7 @@ test("the Reels tab and its sheet have no accessibility violations", async ({
   await page.goto("/account?tab=reels");
   await page.waitForLoadState("networkidle");
 
-  const grid = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(grid.violations).toEqual([]);
+  await expectAccessible(page, "the Reels tab");
 
   /*
     And the sheet, which is the new thing axe has to be happy about: a dialog
@@ -679,10 +713,7 @@ test("the Reels tab and its sheet have no accessibility violations", async ({
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForLoadState("networkidle");
 
-  const open = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(open.violations).toEqual([]);
+  await expectAccessible(page, "the Reels tab, a reel's sheet open");
 });
 
 test("attaching to a listing nobody can book says so", async ({ page }) => {

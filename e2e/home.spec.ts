@@ -1,5 +1,4 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 import { expectAccessible } from "./axe";
 
 /**
@@ -725,10 +724,7 @@ test("Home has no accessibility violations", async ({ page }) => {
   const reasons = page.locator("main details summary");
   if (await reasons.count()) await reasons.first().click();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "Home, its selling line open");
 });
 
 test("the listing hub has no accessibility violations", async ({ page }) => {
@@ -738,10 +734,7 @@ test("the listing hub has no accessibility violations", async ({ page }) => {
     page.getByRole("heading", { name: "Try-dive at Nemo Reef" }),
   ).toBeVisible();
 
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  expect(results.violations).toEqual([]);
+  await expectAccessible(page, "the listing hub");
 });
 
 test("a live listing with no dates to sell says so, and one with dates does not", async ({

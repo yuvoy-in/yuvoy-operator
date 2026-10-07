@@ -14,6 +14,7 @@ import {
   payoutHold,
   type ChangeRequest,
 } from "@/lib/money/earnings";
+import { heldDestinationLine } from "@/lib/money/payouts-held";
 import { accountOnFile, type OnFile } from "@/lib/account/bank";
 import { canManageAccess } from "@/lib/team/access";
 import {
@@ -148,6 +149,13 @@ export default async function MoneyPage({
   ]);
 
   const hold = payoutHold(changes);
+  /*
+    What the next payout's bank row says while it is held: by the change list,
+    or by the payout run itself (`payoutsHeld` on `/me`), which also holds
+    after a new account goes live until we have updated the bank we pay from
+    (yuvoy-operator#156).
+  */
+  const heldLine = heldDestinationLine(Boolean(hold), me.payoutsHeld);
   // The bank details, said on their door: "account ending 4412" (op#96).
   const onFile = accountOnFile(changes);
   const { nextSettlement, pipeline, paidAtCounter, seasonToDate } = overview;
@@ -213,7 +221,7 @@ export default async function MoneyPage({
                 key={block}
                 week={nextSettlement}
                 to={onFile}
-                held={Boolean(hold)}
+                heldLine={heldLine}
               />
             );
           case "booked":
@@ -390,16 +398,23 @@ function HoldWarning({
 function NextPayout({
   week,
   to,
-  held,
+  heldLine,
 }: {
   week: SettlementWeek;
   /** The account on file, as Payout details says it. `null`: none on file. */
   to: OnFile | null;
-  /** A bank change is in flight, so nothing is paid out until it settles. */
-  held: boolean;
+  /**
+   * Why nothing is paid out yet, said in place of the account, or `null`
+   * when nothing holds the payout. See `heldDestinationLine`.
+   */
+  heldLine: string | null;
 }) {
   const owedBack = isOwedBack(week.netPaise);
-  const destination = payoutDestination(week.netPaise, to?.line ?? null, held);
+  const destination = payoutDestination(
+    week.netPaise,
+    to?.line ?? null,
+    heldLine !== null,
+  );
   return (
     <Panel className="mt-6" role="region" aria-labelledby="next-payout">
       <h2 id="next-payout" className="label text-forest/75">
@@ -450,9 +465,7 @@ function NextPayout({
             <dt className="text-forest/75 shrink-0">To your bank</dt>
             <dd className="min-w-0 text-right font-bold">
               {destination.kind === "held" ? (
-                <span className="text-terra-deep">
-                  On hold until your bank change settles
-                </span>
+                <span className="text-terra-deep">{heldLine}</span>
               ) : (
                 <Link
                   href="/payouts"

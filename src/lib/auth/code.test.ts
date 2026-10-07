@@ -147,6 +147,26 @@ describe("trading a code for a session", () => {
     });
   });
 
+  it("says a closed login cannot sign in, and who to call, rather than 'try again'", async () => {
+    /*
+      `403 account_deletion_pending` (yuvoy-api#274): the code was right, and
+      this number closed its login while the request to erase it is still
+      open. It fell to "try again shortly", which no retry can change.
+    */
+    post.mockRejectedValue(
+      refusal(
+        403,
+        "account_deletion_pending",
+        "Your account is being deleted, so you cannot sign in. If you did not mean to close it, contact support.",
+      ),
+    );
+    expect(await exchangeCode("+919000000101", "424242")).toEqual({
+      ok: false,
+      message:
+        "Your login was closed and is being deleted, so it cannot be signed into. If you did not mean to close it, call us on +91 81216 57657.",
+    });
+  });
+
   it("says to wait when it is throttled, not to ask for another code", async () => {
     post.mockRejectedValue(refusal(429, "rate_limited", "slow down"));
     expect(await exchangeCode("+919000000101", "424242")).toEqual({

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { sentence } from "@/lib/format/sentence";
-import { SUPPORT_PHONE } from "@/lib/site/contact";
+import { closedDoorMessage } from "@/lib/auth/closed-door";
 
 /**
  * Asking for a sign-in code, and trading one for a session.
@@ -137,12 +137,14 @@ export type CodeExchange =
  * window. A throttle is a different next step — wait, do not ask for another —
  * so it gets its own sentence.
  *
- * So does `403 account_not_active`, the one refusal here that no retry can
- * clear. It fell to "try again shortly" before, which sent the owner of an
- * offboarded business round the same two screens until they gave up. The code
- * is right and the person is fine; the ACCOUNT cannot hold a session, and the
- * way forward is a person at Yuvoy, so the sentence says who and how. It
- * matches what `/account` says to the same state, in the same words.
+ * So does `403 account_not_active`, a refusal no retry can clear. It fell to
+ * "try again shortly" before, which sent the owner of an offboarded business
+ * round the same two screens until they gave up. The code is right and the
+ * person is fine; the ACCOUNT cannot hold a session, and the way forward is a
+ * person at Yuvoy, so the sentence says who and how. It matches what
+ * `/account` says to the same state, in the same words. The other `403`,
+ * `account_deletion_pending` (a login its owner closed, yuvoy-api#274), is
+ * the same kind of answer and is said the same way (`closedDoorMessage`).
  */
 export async function exchangeCode(
   phone: string,
@@ -167,12 +169,9 @@ export async function exchangeCode(
         message: "Too many attempts. Wait a minute, then try the code again.",
       };
     }
-    if (err instanceof OperatorApiError && err.code === "account_not_active") {
-      return {
-        ok: false,
-        message: `This business account is on hold, so it cannot be signed into. Call us on ${SUPPORT_PHONE}.`,
-      };
-    }
+    // `account_not_active`, and since yuvoy-api#274 a closed login too.
+    const closed = closedDoorMessage(err);
+    if (closed) return { ok: false, message: closed };
     if (err instanceof OperatorApiError && err.isUnauthorized) {
       return {
         ok: false,

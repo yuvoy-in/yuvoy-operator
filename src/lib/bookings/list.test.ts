@@ -11,6 +11,7 @@ import {
   nothingBooked,
   pillHref,
   pillScrollLeft,
+  referenceHref,
   rangeLabel,
   readFilters,
   readSearch,
@@ -386,5 +387,18 @@ describe("the link on a pill", () => {
     // The audit before release, O5: Try again pinned Upcoming.
     expect(pillHref(null, filters())).toBe("/bookings");
     expect(pillHref(null, filters({ q: "asha" }))).toBe("/bookings?q=asha");
+  });
+});
+
+describe("the link to a booking by its reference", () => {
+  it("names no pill, so a trip from earlier today is found under Upcoming", () => {
+    // yuvoy-operator#158: Cash sent every unrecorded trip to Past.
+    expect(referenceHref("YV-T0DAY4K5")).toBe("/bookings?q=YV-T0DAY4K5");
+  });
+
+  it("sends the reference as the search box would", () => {
+    expect(referenceHref("  YV-T0DAY4K5 ")).toBe("/bookings?q=YV-T0DAY4K5");
+    expect(referenceHref("YV-A&B")).toBe("/bookings?q=YV-A%26B");
+    expect(referenceHref("")).toBe("/bookings");
   });
 });

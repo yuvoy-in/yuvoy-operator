@@ -17,6 +17,7 @@ import { Screen } from "@/components/chrome/screen";
 import { Panel, panelClass } from "@/components/ui/panel";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { SUPPORT_PHONE } from "@/lib/site/contact";
+import { referenceHref } from "@/lib/bookings/list";
 
 export const metadata: Metadata = { title: "Cash you've collected" };
 
@@ -233,9 +234,15 @@ export default async function CashPage() {
                       </span>{" "}
                       fare
                     </p>
+                    {/*
+                      By its reference under whichever pill holds it, never
+                      Past alone: a trip from earlier today is still under
+                      Upcoming until its day ends or its party is marked
+                      (yuvoy-operator#158).
+                    */}
                     {line.bookingReference ? (
                       <Link
-                        href={`/bookings?view=past&q=${encodeURIComponent(line.bookingReference)}`}
+                        href={referenceHref(line.bookingReference)}
                         className="text-forest tap-target mt-1 inline-block text-sm underline underline-offset-2"
                       >
                         Open the booking
