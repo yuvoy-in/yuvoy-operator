@@ -63,7 +63,7 @@ export interface paths {
          *
          *     The challenge is recorded either way, so the endpoint's timing cannot become the oracle its body carefully is not.
          *
-         *     Rate-limited per IP. Every request costs an SMS once a sender exists, so the limit is a cost control as much as an abuse control.
+         *     Rate-limited per IP. Every request costs an SMS once a sender exists, so the limit is a cost control as much as an abuse control. Through the portal's server, per IP means the person's address it names (see the API description).
          */
         post: operations["requestOperatorOtp"];
         delete?: never;
@@ -430,7 +430,7 @@ export interface paths {
          *
          *     The objection window runs **before** approval so the real owner can stop it. The cooling window runs **after**, so even an approved change is still catchable. An objection window closing with nobody objecting does *not* approve anything; it moves the request into a human review queue. Auto-approving on silence would make the whole design a delay rather than a control.
          *
-         *     **Every owner is messaged on their phone the moment it is raised, when this deployment has a phone sender.** The warning is not emailed, so with no phone sender nobody is messaged at all. `whatHappensNext` says which of the two happened.
+         *     **Every active owner is warned the moment it is raised**: on their phone when this deployment has a phone sender, and otherwise by email to the address they gave us. The email is the bare warning and our number, with no link and no detail. An owner with no address is not warned when there is no phone sender. `whatHappensNext` says which happened.
          *
          *     Only the **last four digits** of the account number are stored. Nothing in this service pays anybody — the payout run does not read from here — so holding the full number would be a liability with no matching capability. It arrives out of band when a person sets the account up, confirming the last four against what the operator sees on their screen.
          *
@@ -1843,7 +1843,7 @@ export interface paths {
          *
          *     A question sent back with its `id` and the same `text`, `answerType` and `options` keeps that id and every answer to it; its place in the list and `required` can change. Changing its `text`, `answerType` or `options` makes it a new question with a new id: a traveller who answered the old wording keeps that answer, shown with the words they saw, and is asked the new one. A question left out is no longer asked, and answers already given to it stay on those bookings.
          *
-         *     At most 10 questions. `text` up to 200 characters. A `choice` question has 2 to 10 options, each up to 60 characters and different from the others ignoring case; the other types have none. Unknown fields are refused. A refusal names every problem in `details`, keyed like `questions[0].text`.
+         *     At most 10 questions. `text` up to 200 characters. A `choice` question has 2 to 10 options, each up to 60 characters and different from the others ignoring case; the other types have none. Neither `text` nor an option may include a phone number, an email address or a link, the same screening messages have: travellers reach you through Yuvoy. This holds for a question already saved too, so re-saving a list keeps to it. A question that asks for a phone number in words is not refused, but every answer to it that holds one is. Unknown fields are refused. A refusal names every problem in `details`, keyed like `questions[0].text`.
          *
          *     `required` is enforced only on a checkout that sends answers: that checkout is refused until every required question the listing asks has an answer that fits. A checkout that sends no answers is not refused over it. Its booking shows the question as not answered yet, and the traveller can answer it from their booking link while the booking is going ahead and until its departure leaves.
          *
@@ -3434,6 +3434,11 @@ export interface components {
             bookingId: string;
             reference: string;
             experience: string;
+            /**
+             * Format: uuid
+             * @description The departure the booking is on: the same value as `OperatorDeparture.id`, `Manifest.slotId` and `OperatorBooking.slotId`, so a conversation can open its departure. Always sent by this API. Optional in the schema only so a client can fall back on an older API that did not send it.
+             */
+            slotId?: string;
             slot: {
                 /** Format: date-time */
                 startsAt: string;
@@ -3613,6 +3618,8 @@ export interface components {
                 screening?: components["schemas"]["PartyScreening"];
                 /** @description What the listing asks travellers and what this party answered. **Present only when there is something to show**: the listing asks a question, or this party answered one. These questions never ask about health, which stays with `screening`. Answers are deleted 90 days after the trip, as `PartyQuestion` describes. */
                 questions?: components["schemas"]["PartyQuestion"][];
+                /** @description This party's messages nobody at the business has read, the same count `GET /message-threads` gives the same booking, so a party who wrote "running late" shows on their line at the jetty. `0` when there is nothing unread or no conversation yet. **Absent on a hold**, which has no booking and so no conversation. */
+                unreadCount?: number;
                 /**
                  * @description **Present only when this party pays you at the counter**, the same object `GET /bookings` sends on the same booking. Absent on a party that paid online and on a hold.
                  *
@@ -3627,6 +3634,8 @@ export interface components {
                 arrived?: number;
                 seatsSold?: number;
                 seatsSoldOffline?: number;
+                /** @description The departure's seats, the same number as `OperatorDeparture.seats` in `GET /slots` for this departure, read by the same column, so "5 of 8 booked" needs no second read. Like that number, it already has the seats you sold at your own counter taken off. */
+                seats?: number;
             };
         };
         /**
@@ -3782,9 +3791,9 @@ export interface components {
             /** Format: date-time */
             coolingUntil?: string | null;
             /**
-             * @description Why we refused it, in a sentence written for the business. Present only when `state` is `rejected` and somebody recorded a reason at the time; absent means none was recorded, and the portal should then say nothing rather than invent one.
+             * @description Why we refused it, in a sentence written for the business: what was wrong, what still stands, and what to do next. Present only when `state` is `rejected` and a reason was recorded; every refusal since yuvoy-api#228 has one, so it is absent only on an older refusal nobody explained, and the portal should then say nothing rather than invent one.
              *
-             *     Never the words our staff typed. That note is written for our records and can name the bank we rang or the person we spoke to, which is the same reason a suspension's reason is kept off `GET /me`. The sentence here is chosen from the kind of change, the way the suspension sentence is chosen from the status.
+             *     Never the words our staff typed. That note is written for our records and can name the bank we rang or the person we spoke to, which is the same reason a suspension's reason is kept off `GET /me`. The sentence is ours, for the reason our staff picked from a short list for the kind of change (for a bank change: the name on the account does not match the business, the bank could not confirm the account and IFSC, or the bank proof in their documents could not be read). When none of those fit, it is the general sentence for the kind, which asks the business to call us. Show it as it is.
              */
             rejectionReason?: string;
         };
@@ -3971,6 +3980,11 @@ export interface components {
              * @description The listing, the same `id` `GET /experiences` returns, so a listing filter built from that list lines up with these rows.
              */
             experienceId?: string;
+            /**
+             * Format: uuid
+             * @description The departure this booking is on: the same value as `OperatorDeparture.id` and `Manifest.slotId`, so a booking can open its departure. Always sent by this API. Optional in the schema only so a client can fall back on an older API that did not send it.
+             */
+            slotId?: string;
             slot?: {
                 /** Format: date-time */
                 startsAt?: string;
@@ -4078,6 +4092,8 @@ export interface components {
             account?: components["schemas"]["AccountStanding"];
             /** @description Messages from travellers not yet read, the same number as `GET /me`. */
             unreadCount: number;
+            /** @description Conversations holding at least one of those messages, the same number as `GET /me`. */
+            unreadConversations: number;
             /** @description Open requests, soonest to expire first, at most 20. `openRequestCount` is the total. */
             openRequests: components["schemas"]["OpenRequest"][];
             /** @description Every open request, not only those listed. The same number as `counts.requests` on `GET /bookings`. */
@@ -4090,6 +4106,8 @@ export interface components {
             };
             /** @description Upcoming departures off sale because nobody has confirmed their seats: the sum of `departuresNotOnSale` over the listings. */
             seatsToConfirm: number;
+            /** @description Departures still on sale that go off sale within a day unless their seats are confirmed: the sum of `departuresGoingOffSaleSoon` over the listings. */
+            departuresGoingOffSaleSoon: number;
             listings: components["schemas"]["TodayListings"];
             /** @description Cash trips that are over with no payment recorded: the count `GET /commission-owed` gives as `unrecordedBookings`. `null` when it could not be read. **Absent for STAFF.** */
             cashTripsUnrecorded?: number | null;
@@ -4102,6 +4120,8 @@ export interface components {
         TodayDeparture: components["schemas"]["OperatorDeparture"] & {
             /** @description Guests marked as arrived, the manifest's `totals.arrived`. Counts guests, not parties. */
             checkedIn: number;
+            /** @description Everybody on the manifest, live holds included: the manifest's `totals.guests`. Not checked in is `guests - checkedIn`. */
+            guests: number;
             /** @description Cash still to take across this departure's parties, in paise: parties paying at the counter on a booking the manifest can still take cash on, with nothing recorded yet. `0` when none. **Absent for STAFF.** */
             cashToCollectPaise?: number;
         };
@@ -4117,6 +4137,11 @@ export interface components {
             notSelling: number;
             /** @description Live listings with `bookableDatesNext30Days` of `0`: on the traveller app and selling nothing. */
             liveWithNoDatesNext30Days: number;
+            /** @description The listings that count makes, in the order `GET /experiences` gives them, so a screen can name the listing when there is one. Its length is always `liveWithNoDatesNext30Days`; empty, never absent, when there are none. */
+            liveWithNoDatesNext30DaysListings: {
+                id: string;
+                title: string;
+            }[];
         };
         TodayMoney: {
             /** @description The next settlement, from `nextSettlement` on `GET /settlements/overview`. `null` when it could not be read. */
@@ -5171,7 +5196,7 @@ export interface operations {
                         summary?: string;
                         /** Format: date-time */
                         objectionUntil?: string;
-                        /** @description A sentence to show as it is. It says "We have messaged the owner's phone." only when the warning went onto a channel this deployment can send on. Otherwise it says nobody could be messaged, and that the change can be stopped from Payout details until it goes live. */
+                        /** @description A sentence to show as it is. It begins "We have messaged the owner's phone." when the warning went out by phone, and "We have emailed the owner." when it went by email, each only when that is what was queued. Otherwise it says nobody could be messaged, and that the change can be stopped from Payout details until it goes live. */
                         whatHappensNext?: string;
                     };
                 };
@@ -5742,6 +5767,8 @@ export interface operations {
                          *     It counts what `unreadForOperator` counts on each row of `GET /message-threads`, added up in one read, so a client no longer walks every page of threads to show a badge. The read marker belongs to the conversation, not the person, so a message anybody on the team has opened is read for all of them.
                          */
                         unreadCount?: number;
+                        /** @description How many conversations hold at least one of the `unreadCount` messages: one guest waiting on a reply each, however many times they wrote. Always present, `0` when none. To learn which bookings they are, read `GET /message-threads?unread=true`. */
+                        unreadConversations?: number;
                         /** @description The session signing this request. Additive: a client that ignores it loses nothing. */
                         session?: {
                             /**
@@ -6377,6 +6404,8 @@ export interface operations {
                 limit?: number;
                 /** @description A previous page's `nextCursor`. Opaque, so do not construct one. A cursor this list did not issue is a `400`. */
                 cursor?: string;
+                /** @description `true` lists only the conversations holding a message from the traveller nobody at the business has read, in the same order and pages, each with its `unreadCount`. So the bookings with something unread, and how much, are usually one page rather than a walk of the whole inbox; `unreadConversations` on `GET /me` says how many there are. Like the counts, the filter is live: a conversation read while you page leaves the pages still to come. `false` or absent lists every conversation. Any other value is a `400` naming `unread`. Send the same `unread` on every page of one walk: the cursor does not carry it. */
+                unread?: boolean;
             };
             header?: never;
             path?: never;
@@ -6574,6 +6603,18 @@ export interface operations {
                 "application/json": {
                     /** @enum {string} */
                     outcome: "arrived" | "completed" | "no_show";
+                    /**
+                     * Format: date-time
+                     * @description `arrived` only, and optional: when the operator tapped, for a check-in the phone held while it had no signal and sent when the signal came back. Send it with its offset.
+                     *
+                     *     **Send it from the first attempt**, stamped when the check-in was tapped, and never add it to a retry that reuses the same `Idempotency-Key`. The key's fingerprint includes the body, so a retry that adds `seenAt` is a different request and answers `409 idempotency_key_reuse`, even though the arrival is already recorded.
+                     *
+                     *     Used as `arrivedAt` on the booking's **first** arrival only; a later send keeps the first time, as it always has. Believed only when it is no more than 12 hours before our clock and not before the departure's own day in its market time. A time after our clock (a phone clock running ahead) is recorded as now, never in the future. A time too early is **ignored, not refused**: the arrival is recorded at the time it reached us, exactly as without `seenAt`, because refusing a queued check-in would lose the check-in itself. `arrivedAt` in the answer says which time was kept.
+                     *
+                     *     Absent, everything behaves as before. Ignored on `completed` and `no_show`. On `arrived`, a value that is not a date-time answers `400 invalid_input` naming `seenAt`, and nothing is marked.
+                     * @example 2026-10-07T06:30:00+05:30
+                     */
+                    seenAt?: string;
                 };
             };
         };
@@ -6586,12 +6627,15 @@ export interface operations {
                 content: {
                     "application/json": {
                         outcome?: string;
-                        /** Format: date-time */
+                        /**
+                         * Format: date-time
+                         * @description `arrived` only. The arrival time on record: the first one, and `seenAt` when it was believed.
+                         */
                         arrivedAt?: string;
                     };
                 };
             };
-            /** @description Something in the request needs fixing, or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
+            /** @description Something in the request needs fixing (a `seenAt` that is not a date-time names `seenAt` in `details`), or `idempotency_key_malformed`: the `Idempotency-Key` sent is not 16-128 characters of `A-Za-z0-9_.:-`. */
             400: {
                 headers: {
                     [name: string]: unknown;

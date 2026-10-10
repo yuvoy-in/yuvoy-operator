@@ -81,8 +81,10 @@ export function reviewOf(
 }
 
 /**
- * The API's sentence for a refusal (yuvoy-api#223), long dashes out, or null.
- * Present only on a rejected row somebody recorded a reason for.
+ * The API's sentence for a refusal, long dashes out, or null. Since
+ * yuvoy-api#228 it is the API's own words for the reason staff picked, never
+ * the note they wrote; a refusal from before then reads the kind's general
+ * sentence (yuvoy-api#223).
  */
 export function rejectionReason(
   row: Pick<ChangeRequest, "state" | "rejectionReason">,
@@ -91,12 +93,12 @@ export function rejectionReason(
   const text = row.rejectionReason?.trim();
   if (!text) return null;
   /*
-    Never a phone number that is not ours. The API's sentences say "Call us
-    on +91 9531 000 000", which is not a Yuvoy number (owner, 24 Sep 2026; the
-    published line is SUPPORT_PHONE), and an operator told why their bank
-    change was refused would ring nobody. So a sentence naming any other
-    number is held back and today's words are said instead; once the API's
-    number is right, the sentence shows with no change here.
+    Never a phone number that is not ours. The API's sentences once said
+    "Call us on +91 9531 000 000", which is not a Yuvoy number (owner, 24 Sep
+    2026; the published line is SUPPORT_PHONE), and an operator told why their
+    bank change was refused would ring nobody. They name our number now, so
+    they show as they are; a sentence naming any other number is still held
+    back and today's words are said instead.
   */
   if (!onlyOurNumber(text)) return null;
   return dedash(text);

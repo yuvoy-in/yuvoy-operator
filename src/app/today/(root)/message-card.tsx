@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { panelClass } from "@/components/ui/panel";
 import { withFrom } from "@/lib/site/back-to";
 import { callAction } from "@/lib/actions/call-action";
+import { createSendKeys } from "@/lib/messages/send-key";
 
 /**
  * A guest who wrote, answered on Home (operator experiment A).
@@ -69,6 +70,8 @@ export function MessageCard({
   const [failure, setFailure] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [sending, startSending] = useTransition();
+  // One key per message, so Send again after a lost answer posts it once.
+  const [keys] = useState(createSendKeys);
   const box = useRef<HTMLTextAreaElement>(null);
   const heading = useRef<HTMLParagraphElement>(null);
 
@@ -123,9 +126,10 @@ export function MessageCard({
     setFailure(null);
     setSentTo(null);
     startSending(async () => {
+      const key = keys.keyFor(text);
       // A send that never came back keeps the words and says so (`callAction`).
       const result = await callAction(
-        () => sendMessage(need.bookingId, text),
+        () => sendMessage(need.bookingId, text, key),
         () => ({
           ok: false as const,
           message: "No signal. Nothing was sent. Try again.",
@@ -135,12 +139,16 @@ export function MessageCard({
         setThread((was) =>
           was ? { ...was, messages: [...was.messages, result.message] } : was,
         );
+        keys.clear();
         setText("");
         setSentTo(name ?? "the guest");
         return;
       }
       // The words stay, so a refused number can be taken out and sent.
       setFailure(result.message);
+      if (result.newKey || result.sent) keys.clear();
+      // It went, and only its answer was lost: the reload below shows it.
+      if (result.sent) setText("");
       if (result.reload) {
         const fresh = await callAction(
           () => reloadThread(need.bookingId),

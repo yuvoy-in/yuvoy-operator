@@ -110,6 +110,15 @@ describe("what one booking contributed", () => {
     });
     expect(line.cash).toBeUndefined();
   });
+
+  it("names the departure it is on, when the API does (yuvoy-api#259)", () => {
+    expect(toBookingLine(booking({ slotId: " slt_1 " })).slotId).toBe("slt_1");
+    // Absent or blank is an API from before it, never an empty stand-in.
+    expect(toBookingLine(booking())).not.toHaveProperty("slotId");
+    expect(toBookingLine(booking({ slotId: "  " }))).not.toHaveProperty(
+      "slotId",
+    );
+  });
 });
 
 describe("a booking paid at the counter — yuvoy-operator#40 §1", () => {

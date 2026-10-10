@@ -106,6 +106,8 @@ export function createCheckInStore(
     form.set("bookingId", id);
     form.set("slotId", slotId);
     form.set("outcome", "arrived");
+    // When they were seen, not when the five seconds ran out (yuvoy-api#263).
+    form.set("seenAt", new Date(tapped.get(id) ?? clock()).toISOString());
     try {
       const answer = await mark({}, form);
       if (answer.retryable) {
@@ -140,7 +142,11 @@ export function createCheckInStore(
       if (!id || phase === "sending" || phase === "sent") return;
       stopTimer(id);
       const now = clock();
-      tapped.set(id, now);
+      /*
+        Tapped again after a send that failed: they were seen at the FIRST
+        tap, and that is the time sent. A row Undo cleared starts fresh.
+      */
+      if (phase !== "failed" || !tapped.has(id)) tapped.set(id, now);
       set(id, { phase: "holding", until: now + HOLD_MS });
       timers.set(
         id,

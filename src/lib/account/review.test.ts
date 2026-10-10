@@ -100,8 +100,9 @@ describe("why a change was refused: yuvoy-api#223", () => {
 
   it("holds back a sentence that names a number that is not ours", () => {
     /*
-      The API's sentences say "Call us on +91 9531 000 000", which is not a
-      Yuvoy number (owner, 24 Sep 2026). An operator must never be sent to it.
+      The API's sentences once said "Call us on +91 9531 000 000", which is
+      not a Yuvoy number (owner, 24 Sep 2026). They name ours since
+      yuvoy-api#228, and an operator must still never be sent to another.
     */
     const wrong = reviewOf(
       [

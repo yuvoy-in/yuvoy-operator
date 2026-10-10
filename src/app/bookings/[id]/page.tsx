@@ -121,20 +121,23 @@ export default async function BookingPage({
     load it", which is a different sentence from "nothing has been said".
   */
   /*
-    The departure this booking is on, so the booking opens it (audit 5.2):
-    read from the booking's own market day, with the conversation, and
-    soft-failing like it. No link is drawn rather than a wrong one; see
-    `departureOf`. Until yuvoy-api#259 sends the departure's id.
+    The departure this booking is on, so the booking opens it (audit 5.2).
+    The booking names it since yuvoy-api#259, and then nothing more is read.
+    On an API from before it, it is found as it was: the booking's own market
+    day read beside the conversation, soft-failing like it, and no link drawn
+    rather than a wrong one (see `departureOf`).
   */
-  const day = departureDayOf(booking);
+  const day = booking.slotId ? null : departureDayOf(booking);
   const [thread, slotId] = await Promise.all([
     getBookingThread(token, id).catch(() => null),
-    day
-      ? listSlots(token, day, day).then(
-          (slots) => departureOf(booking, slots),
-          () => null,
-        )
-      : Promise.resolve(null),
+    booking.slotId
+      ? Promise.resolve(booking.slotId)
+      : day
+        ? listSlots(token, day, day).then(
+            (slots) => departureOf(booking, slots),
+            () => null,
+          )
+        : Promise.resolve(null),
   ]);
 
   // Back goes where the operator came from (audit 5.8), the list by default.

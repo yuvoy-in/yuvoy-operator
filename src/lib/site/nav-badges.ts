@@ -8,7 +8,7 @@ import {
 } from "@/lib/account/standing";
 import { countBadges } from "./badge-counts";
 import { readBusinessName } from "./business-name";
-import { readInbox } from "./inbox";
+import { readInboxTotals } from "./inbox";
 import type { NavBadges } from "./nav";
 
 /**
@@ -82,10 +82,12 @@ const SIGNED_OUT: ChromeData = {
  * yuvoy-operator#80 t1 and #96, for the same reason and in the same wave:
  * four reads side by side cost the slowest of them, not the sum.
  *
- * `readMe`, `listOpenRequests` and `readInbox` are all `cache`d for the
- * request, and the pages ask the same questions (every page asks `/me`
- * through `requireOperator()`, Home and Bookings ask `/requests`, Home asks
- * for the inbox), so on those screens this reads what the page reads, once.
+ * `readMe`, `listOpenRequests` and `readInboxTotals` are all `cache`d for
+ * the request, and the pages ask the same questions (every page asks `/me`
+ * through `requireOperator()`, Home and Bookings ask `/requests`), so on
+ * those screens this reads what the page reads, once. On an API that counts
+ * unread on `/me` (yuvoy-api#282 item 6) the inbox count is that same `/me`
+ * answer, and only an older API is walked.
  *
  * The same rule as the badges holds for all of it: a failure costs its own
  * piece of chrome, never the page. The wrong failure is a blank page over a
@@ -104,7 +106,7 @@ export async function chromeData(): Promise<ChromeData> {
     readMe(token),
     listOpenRequests(token),
     readBusinessName(token),
-    readInbox(token),
+    readInboxTotals(token),
   ]);
 
   const account = me.status === "fulfilled" ? me.value.account : undefined;

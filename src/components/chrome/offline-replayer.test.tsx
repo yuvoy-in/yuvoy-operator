@@ -82,6 +82,21 @@ describe("sending a kept check-in", () => {
     ]).toEqual(["bkg_asha", "slot_dawn", "arrived"]);
   });
 
+  it("says when they were seen: the tap kept with it, on every attempt", async () => {
+    // yuvoy-api#263: sent late, the manifest still says the minute they boarded.
+    markAttendance.mockResolvedValue({ retryable: true });
+    await senders.arrived(ARRIVED);
+    markAttendance.mockResolvedValue({});
+    await senders.arrived(ARRIVED);
+    const seen = markAttendance.mock.calls.map((call) =>
+      (call[1] as FormData).get("seenAt"),
+    );
+    expect(seen).toEqual([
+      "2026-10-04T01:00:00.000Z",
+      "2026-10-04T01:00:00.000Z",
+    ]);
+  });
+
   it("says when somebody had already checked them in, before this tap", async () => {
     markAttendance.mockResolvedValue({ arrivedAt: "2026-10-04T00:50:00Z" });
     expect(await senders.arrived(ARRIVED)).toEqual({

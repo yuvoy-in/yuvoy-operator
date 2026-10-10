@@ -8,7 +8,7 @@ let token: string | null = "tok";
 const readMe = vi.fn();
 const listOpenRequests = vi.fn();
 const readBusinessName = vi.fn();
-const readInbox = vi.fn();
+const readInboxTotals = vi.fn();
 
 vi.mock("@/lib/auth/session", () => ({
   readMe: (t: string) => readMe(t),
@@ -20,7 +20,9 @@ vi.mock("@/lib/day/requests", () => ({
 vi.mock("./business-name", () => ({
   readBusinessName: (t: string) => readBusinessName(t),
 }));
-vi.mock("./inbox", () => ({ readInbox: (t: string) => readInbox(t) }));
+vi.mock("./inbox", () => ({
+  readInboxTotals: (t: string) => readInboxTotals(t),
+}));
 
 const { chromeData } = await import("./nav-badges");
 
@@ -31,7 +33,9 @@ beforeEach(() => {
   readMe.mockReset().mockResolvedValue({ canManage: true, account: LIVE });
   listOpenRequests.mockReset().mockResolvedValue([{}, {}]);
   readBusinessName.mockReset().mockResolvedValue("Reef Divers Havelock");
-  readInbox.mockReset().mockResolvedValue({ messages: 5, conversations: 2 });
+  readInboxTotals
+    .mockReset()
+    .mockResolvedValue({ messages: 5, conversations: 2 });
 });
 
 describe("the chrome's reads", () => {
@@ -45,7 +49,7 @@ describe("the chrome's reads", () => {
   });
 
   it("leaves the inbox count out when it could not be read, rather than saying zero", async () => {
-    readInbox.mockResolvedValue(null);
+    readInboxTotals.mockResolvedValue(null);
     const chrome = await chromeData();
     expect(chrome).not.toHaveProperty("unread");
     // And a count that failed costs nothing else.
@@ -53,7 +57,7 @@ describe("the chrome's reads", () => {
   });
 
   it("keeps a real zero, which the inbox then draws as nothing", async () => {
-    readInbox.mockResolvedValue({ messages: 0, conversations: 0 });
+    readInboxTotals.mockResolvedValue({ messages: 0, conversations: 0 });
     expect((await chromeData()).unread).toBe(0);
   });
 

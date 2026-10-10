@@ -128,7 +128,10 @@ export function BoardingScreen({
   experience: string;
   departed: boolean;
   calledOff: boolean;
-  /** "5 of 8 seats sold", from the day's departures, or null when unread. */
+  /**
+   * "5 of 8 seats sold", off the manifest (the day's departures on an older
+   * API), or null when unread.
+   */
   seats: string | null;
   rows: BoardingRow[];
   timezone: string;

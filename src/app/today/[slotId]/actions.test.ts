@@ -19,7 +19,8 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-const { sendRelay, callOffDeparture } = await import("./actions");
+const { sendRelay, callOffDeparture, markAttendance } =
+  await import("./actions");
 
 function relayForm(over: Record<string, string> = {}): FormData {
   const f = new FormData();
@@ -243,5 +244,57 @@ describe("the call-off's confirm", () => {
       "Pick a reason for calling it off. Nothing was cancelled.",
     );
     expect(post).not.toHaveBeenCalled();
+  });
+});
+
+describe("when a party was seen: yuvoy-api#263", () => {
+  function arrival(over: Record<string, string> = {}): FormData {
+    const f = new FormData();
+    const values = {
+      bookingId: "bkg_1",
+      slotId: "slot_1",
+      outcome: "arrived",
+      ...over,
+    };
+    for (const [k, v] of Object.entries(values)) f.set(k, v);
+    return f;
+  }
+
+  beforeEach(() => {
+    post.mockResolvedValue({
+      data: { outcome: "arrived", arrivedAt: "2026-10-10T01:00:00Z" },
+      error: undefined,
+    });
+  });
+
+  it("sends the tap's time with an arrival, in one form", async () => {
+    await markAttendance({}, arrival({ seenAt: "2026-10-10T06:30:00+05:30" }));
+    expect(post.mock.calls[0][1].body).toEqual({
+      outcome: "arrived",
+      seenAt: "2026-10-10T01:00:00.000Z",
+    });
+  });
+
+  it("drops a time it cannot read rather than lose the check-in", async () => {
+    // The API would refuse it, and nothing would be marked.
+    await markAttendance({}, arrival({ seenAt: "half past six" }));
+    expect(post.mock.calls[0][1].body).toEqual({ outcome: "arrived" });
+  });
+
+  it("sends no time with a terminal outcome", async () => {
+    post.mockResolvedValue({
+      data: { outcome: "completed" },
+      error: undefined,
+    });
+    await markAttendance(
+      {},
+      arrival({ outcome: "completed", seenAt: "2026-10-10T01:00:00Z" }),
+    );
+    expect(post.mock.calls[0][1].body).toEqual({ outcome: "completed" });
+  });
+
+  it("sends an arrival with no time as it always did", async () => {
+    await markAttendance({}, arrival());
+    expect(post.mock.calls[0][1].body).toEqual({ outcome: "arrived" });
   });
 });
