@@ -5,6 +5,10 @@
 # every release deployed production twice, and the two builds raced for the
 # domain.
 #
+# The same deploy also runs on its own when Vercel never picks up a push to
+# `main` (deploy-watchdog.yml, since 11 Oct 2026). Both hold the `production`
+# group, so the two queue instead of racing.
+#
 # Its own Vercel project and its own origin: D-102 puts the operator portal on
 # a separate origin from the traveller app deliberately, and the two are
 # different security surfaces (see next.config.ts).
