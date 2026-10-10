@@ -428,24 +428,66 @@ import { MOCK_TUS_PORT } from "./tus-port";
 export { MOCK_TUS_PORT };
 
 /**
- * Idempotent, and never fatal.
+ * A port this host cannot have, said out loud (yuvoy-operator#163).
  *
- * `instrumentation.register()` re-runs across a hot reload, and `next build`
- * runs it too during static generation — where a listener that held the event
- * loop open would hang a build that was otherwise finished. Hence `unref`, and
- * hence a port already in use being a shrug rather than a crash.
+ * Whatever holds it, most often another mocked operator server (a `pnpm dev`,
+ * a `pnpm start`, an e2e run in another checkout), receives every upload this
+ * server mints, and the uploads fail there. This used to be shrugged off, and
+ * it surfaced as four upload walks failing at four unrelated-looking lines,
+ * on one machine and not another, blocking every push from it.
+ *
+ * Fatal under the e2e web server, which sets `MOCK_TUS_STRICT`: a suite whose
+ * uploads cannot work is not worth starting. A warning anywhere else, so a
+ * dev server stays up for everything that is not an upload.
  */
-export function startMockTusServer(): void {
-  if (server) return;
-  server = createServer(handle);
-  server.on("error", () => {
-    server = null;
-  });
-  try {
-    server.listen(MOCK_TUS_PORT, "127.0.0.1", () => {
-      server?.unref();
-    });
-  } catch {
-    server = null;
+function cannotListen(err: unknown): void {
+  const why = (err as NodeJS.ErrnoException | null)?.code ?? String(err);
+  const message =
+    `The mock media host cannot listen on 127.0.0.1:${MOCK_TUS_PORT} (${why}), ` +
+    `so every upload this server starts would go to whatever holds that port, and fail. ` +
+    `See what does: lsof -nP -iTCP:${MOCK_TUS_PORT} -sTCP:LISTEN. ` +
+    `It is usually another mocked operator server (pnpm dev, pnpm start, or an e2e run in another checkout): ` +
+    `stop it, or set MOCK_TUS_PORT to a free port.`;
+  if (process.env.MOCK_TUS_STRICT === "1") {
+    console.error(message);
+    process.exit(1);
+  } else {
+    console.warn(message);
   }
+}
+
+/**
+ * Starts the host once per process, and settles once it is listening or has
+ * said why it cannot.
+ *
+ * Next 16 calls `register()` once per server, and a dev server can call it
+ * again after a reload, hence the guard. Never during `next build`: Next
+ * returns early from `registerInstrumentation` in `phase-production-build`.
+ * `unref`, so the host never keeps a process alive on its own.
+ *
+ * Awaited by `register()`, which Next awaits before it serves, so under the
+ * e2e web server a port in use stops the server before any test reaches it.
+ */
+export function startMockTusServer(): Promise<void> {
+  if (server) return Promise.resolve();
+  const host = createServer(handle);
+  server = host;
+  return new Promise((resolve) => {
+    host.on("error", (err) => {
+      if (server === host) server = null;
+      cannotListen(err);
+      resolve();
+    });
+    try {
+      host.listen(MOCK_TUS_PORT, "127.0.0.1", () => {
+        host.unref();
+        resolve();
+      });
+    } catch (err) {
+      // A port that is not a port (`MOCK_TUS_PORT=abc`) throws here instead.
+      server = null;
+      cannotListen(err);
+      resolve();
+    }
+  });
 }

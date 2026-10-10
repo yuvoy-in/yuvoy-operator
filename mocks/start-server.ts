@@ -13,7 +13,8 @@ export async function startServerMocks(): Promise<void> {
   /*
     O8's bytes go from the browser straight to the video provider, so the one
     request in this portal that MSW cannot intercept needs a real origin to
-    talk to. Mock-only, unref'd, and a shrug if the port is taken.
+    talk to. Mock-only and unref'd. Awaited, so a port it cannot have is
+    reported before this server answers anybody (yuvoy-operator#163).
   */
-  startMockTusServer();
+  await startMockTusServer();
 }

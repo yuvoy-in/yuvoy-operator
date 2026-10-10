@@ -2242,6 +2242,34 @@ for (const f of walk(join(ROOT, "e2e"))) {
   }
 }
 
+/* ------------- the e2e server's mock media host is its own ------------ */
+
+/*
+  The mock media host listened on 3201 whatever else did, and shrugged when
+  it could not. On a machine where another process held that port, every
+  upload the e2e server minted went to that process, and four upload walks
+  failed at four unrelated-looking lines, blocking every push from it
+  (yuvoy-operator#163). The run now takes a free port, and `MOCK_TUS_STRICT`
+  stops the e2e server when it still cannot have it. Both come from
+  `mockMediaHostEnv` in playwright.config.ts; without the flag a lost port is
+  silent again, and nothing else would notice it had gone.
+*/
+const PW_CONFIG = join(ROOT, "playwright.config.ts");
+if (existsSync(PW_CONFIG)) {
+  const config = code(PW_CONFIG);
+  if (
+    !/MOCK_TUS_STRICT:\s*"1"/.test(config) ||
+    !/\.\.\.mockMediaHostEnv\(\)/.test(config)
+  ) {
+    problems.push(
+      `playwright.config.ts: the e2e web server must take its env from ` +
+        `mockMediaHostEnv(), with MOCK_TUS_STRICT: "1". Without it, a mock ` +
+        `media host that lost its port fails the upload walks with no word ` +
+        `about the port (yuvoy-operator#163).`,
+    );
+  }
+}
+
 /* --------------------------------------------------------------- report -- */
 
 console.log(`\nroutes: ${[...routes].sort().join("  ")}\n`);
