@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { cn } from "@/lib/cn";
 import { callAction } from "@/lib/actions/call-action";
+import { createSendKeys } from "@/lib/messages/send-key";
 
 /**
  * The conversation with a booking's traveller — yuvoy-operator#52 items 1 to 3.
@@ -57,6 +58,8 @@ export function Conversation({
   const [text, setText] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
   const [sending, startSending] = useTransition();
+  // One key per message, so Send again after a lost answer posts it once.
+  const [keys] = useState(createSendKeys);
 
   // A reply started before the page hydrated: kept, and sent as written.
   const box = useRef<HTMLTextAreaElement>(null);
@@ -121,9 +124,10 @@ export function Conversation({
     event.preventDefault();
     setFailure(null);
     startSending(async () => {
+      const key = keys.keyFor(text);
       // A send that never came back keeps the words and says so (`callAction`).
       const result = await callAction(
-        () => sendMessage(bookingId, text),
+        () => sendMessage(bookingId, text, key),
         () => ({
           ok: false as const,
           message: "No signal. Nothing was sent. Try again.",
@@ -134,10 +138,14 @@ export function Conversation({
           ...was,
           messages: [...was.messages, result.message],
         }));
+        keys.clear();
         setText("");
         return;
       }
       setFailure(result.message);
+      if (result.newKey || result.sent) keys.clear();
+      // It went, and only its answer was lost: the reload below shows it.
+      if (result.sent) setText("");
       /*
         The text stays on a refusal, deliberately. A message turned away for a
         phone number should have the number taken out and sent, not retyped from

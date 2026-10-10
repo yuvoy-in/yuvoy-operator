@@ -103,8 +103,37 @@ describe("PartyRow — terminal outcomes", () => {
         />
       </ul>,
     );
+    const before = Date.now();
     await user.click(screen.getByRole("button", { name: "Check in" }));
     expect(markAttendance).toHaveBeenCalled();
+    // When they were seen, stamped at the tap (yuvoy-api#263).
+    const form = markAttendance.mock.calls.at(-1)?.[1] as FormData;
+    const seen = Date.parse(String(form.get("seenAt")));
+    expect(seen).toBeGreaterThanOrEqual(before);
+    expect(seen).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("says nothing of when they were seen on a terminal outcome", async () => {
+    markAttendance.mockClear();
+    const user = userEvent.setup();
+    render(
+      <ul>
+        <PartyRow
+          party={party}
+          slotId="slot_dawn"
+          departed
+          screening={null}
+          cash={null}
+          timezone={TZ}
+          canManage={false}
+        />
+      </ul>,
+    );
+    await user.click(screen.getByRole("button", { name: "Completed" }));
+    await user.click(screen.getByRole("button", { name: "Confirm completed" }));
+    const form = markAttendance.mock.calls.at(-1)?.[1] as FormData;
+    expect(form.get("outcome")).toBe("completed");
+    expect(form.get("seenAt")).toBeNull();
   });
 
   it("says Checked in once they are, with a drawn tick rather than a character", () => {
@@ -482,6 +511,10 @@ describe("PartyRow with no signal", () => {
         bookingId: "bk_1",
       },
     ]);
+    // Kept with the tap's time, which is the `seenAt` it is sent with later.
+    expect(Math.abs(offlineWrites.list()[0].at - Date.now())).toBeLessThan(
+      5_000,
+    );
     expect(
       screen.getByText(
         "Checked in on this phone. Sends when the signal is back.",

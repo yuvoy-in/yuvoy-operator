@@ -194,4 +194,39 @@ describe("a refused step", () => {
     expect(screen.getByDisplayValue("Yes or no")).toBeInTheDocument();
     expect(screen.getByLabelText("They must answer it")).toBeChecked();
   });
+
+  it("says why a question was refused, under the question", async () => {
+    // yuvoy-api#282 item 5: a question holding a phone number is refused.
+    const why =
+      "A question cannot include a phone number, an email address or a link, and this one looks like it has a phone number, from seven or more digits written close together. Write it another way.";
+    saveQuestions.mockResolvedValue({
+      message: "Some of these questions need fixing.",
+      fields: ["questions.0.text"],
+      notes: { "questions.0.text": why },
+    });
+    render(
+      <QuestionsStep
+        id="exp_1"
+        questions={[
+          {
+            text: "Call 98765 43210 first?",
+            answerType: "yes_no",
+            options: [],
+            required: false,
+          },
+        ]}
+        back="/account/listings/exp_1/edit?step=location"
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    });
+
+    const question = await screen.findByLabelText("Question 1");
+    expect(question).toHaveAttribute("aria-invalid", "true");
+    expect(question).toHaveAccessibleDescription(why);
+    expect(screen.getByText(why)).toBeInTheDocument();
+    // The words stay, to be changed rather than typed again.
+    expect(question).toHaveValue("Call 98765 43210 first?");
+  });
 });

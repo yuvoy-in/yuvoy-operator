@@ -126,6 +126,15 @@ export function PartyRow({
   const [state, act, pending] = useActionState<AttendanceState, FormData>(
     async (prev, form) => {
       const outcome = String(form.get("outcome") ?? "");
+      /*
+        Stamped at the tap and kept with a check-in held for later, so the
+        send now and any send after the signal comes back say the same time
+        (yuvoy-api#263).
+      */
+      const tappedAt = Date.now();
+      if (outcome === "arrived") {
+        form.set("seenAt", new Date(tappedAt).toISOString());
+      }
       const keep = (): AttendanceState => {
         if (!userId || !party.bookingId) {
           return {
@@ -138,7 +147,7 @@ export function PartyRow({
           userId,
           slotId,
           bookingId: party.bookingId,
-          at: Date.now(),
+          at: tappedAt,
         });
         return {};
       };

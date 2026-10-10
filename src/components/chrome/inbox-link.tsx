@@ -18,12 +18,12 @@ import { useChrome } from "./chrome-context";
  * ## The count keeps the tab bar's rules
  *
  * It is the conversations with a message nobody has read, counted on the
- * server by the root layout (`readInbox`). **Absent means unknown and draws
- * nothing; zero draws nothing** too, because an empty inbox is not news. The
- * bubble is decorative and the number is said through the link's NAME,
- * "Messages, 2 unread conversations", for the reason the bar says its counts
- * that way: a span beside the label is announced with a stray pause, and the
- * name still starts with the word a voice-control user says.
+ * server by the root layout (`readInboxTotals`). **Absent means unknown and
+ * draws nothing; zero draws nothing** too, because an empty inbox is not
+ * news. The bubble is decorative and the number is said through the link's
+ * NAME, "Messages, 2 unread conversations", for the reason the bar says its
+ * counts that way: a span beside the label is announced with a stray pause,
+ * and the name still starts with the word a voice-control user says.
  *
  * Not drawn on the conversations list itself, where it would be a link to
  * the page already open.

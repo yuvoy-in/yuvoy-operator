@@ -2,8 +2,9 @@ import { marketDayOf } from "@/lib/day/calendar";
 import type { OperatorSlot } from "@/lib/day/types";
 
 /**
- * Which departure a booking is on, while `OperatorBooking` carries no
- * departure id (yuvoy-api#259).
+ * Which departure a booking is on, for an API that does not say. Since
+ * yuvoy-api#259 `OperatorBooking.slotId` names it and this is not asked;
+ * it stays for an API from before that, where absent means the old way.
  *
  * A booking says its listing and its start time; a departure is one listing
  * at one start time, so the pair finds it, read from `GET /slots` for the

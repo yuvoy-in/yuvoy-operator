@@ -405,6 +405,49 @@ path=contracts/operator-openapi.yaml
 #
 # `git ls-remote` read master as 05d1204e44cc immediately before pinning.
 
-ref=05d1204e44ccdd86f2b91f6e6d10f58d0708549d
+#
+# 10 Oct 2026. Forward from 05d1204e44cc to 178d98912d87, yuvoy-api #289 to
+# #302. Nothing this portal reads is removed or changes shape.
+#
+# Removals, read by set difference as before:
+#   - None. No path, operation or schema disappears. `rejectionReason` keeps
+#     its shape; since #228 it is the sentence for the reason staff picked,
+#     and it shows as it is because it names our number.
+#
+# Consumed in this change:
+#   - `unreadCount` and `unreadConversations` on `/me`, and
+#     `GET /message-threads?unread=true` (#260, #295). The bar's badges are
+#     one read and the unread conversations one page, where they were a walk
+#     of up to ten pages under every screen. An API without them is walked
+#     as before.
+#   - `Manifest.totals.seats` and `parties[].unreadCount` (#260). Boarding
+#     reads its seat line off the manifest, and a party's unread messages
+#     show on their line with no inbox walk. Read by presence: an older
+#     manifest is joined to `GET /slots` and the walk, as before.
+#   - `slotId` on `OperatorBooking` and `MessageThreadSummary` (#259). A
+#     booking opens its departure without reading the day's departures; with
+#     no `slotId` it is still matched by its time.
+#   - `seenAt` on an arrival (#263). Stamped when the check-in was tapped and
+#     the same on every resend, so a check-in held with no signal keeps its
+#     own time. Attendance still sends no `Idempotency-Key`.
+#   - `Idempotency-Key` on a conversation's send (#282 item 4). One key per
+#     message's words, held by the composer until it is posted, and the key's
+#     own refusals said in plain words.
+#   - Contact screening on listing questions (#282 item 5, #297). A refused
+#     question is marked where it is, with the API's reason beside it. The
+#     mocks screen messages and questions with the API's own patterns and
+#     sentences.
+#   - `X-Yuvoy-Client-IP` with `X-Yuvoy-Proxy-Secret` on every call this
+#     server makes (#282 item 3, #299). Sent only once
+#     `PROXY_CLIENT_IP_SECRET` is set; until then nothing changes.
+#
+# NOT consumed here:
+#   - `GET /today` (#265) and the counts it now carries.
+#   - `whatHappensNext` on a bank change (#227), which now says when the
+#     owner was emailed. Payout details stays the confirmation, as before.
+#
+# `git ls-remote` read master as 178d98912d87 immediately before pinning.
+
+ref=178d98912d879f1cf633fd5d60b404f63dcd78a7
 branch=master
-pinned_on=2026-10-07
+pinned_on=2026-10-10

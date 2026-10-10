@@ -42,6 +42,17 @@ interface Row {
 
 const MAX = 10;
 
+type QuestionPart = "text" | "answerType" | "options";
+
+/** The API's reason under the field it is about, or nothing. */
+function Problem({ id, note }: { id?: string; note?: string }) {
+  return id && note ? (
+    <p id={id} className="text-terra-deep mt-1.5 text-sm font-bold">
+      {note}
+    </p>
+  ) : null;
+}
+
 export function QuestionsStep({
   id,
   questions,
@@ -56,6 +67,16 @@ export function QuestionsStep({
     {},
   );
   const [rows, setRows] = useState<Row[]>(questions);
+
+  /*
+    The API's reason beside a question it would not save (yuvoy-api#282
+    item 5: a question or a choice holding a phone number, an email address
+    or a link), read from the answer to the last save.
+  */
+  const noteOf = (row: number, part: QuestionPart) =>
+    state.notes?.[`questions.${row}.${part}`];
+  const problemId = (row: number, part: QuestionPart) =>
+    noteOf(row, part) ? `q-${row}-${part}-problem` : undefined;
 
   function update(index: number, change: Partial<Row>) {
     setRows((was) =>
@@ -145,7 +166,9 @@ export function QuestionsStep({
                 aria-invalid={
                   state.fields?.includes(`questions.${i}.text`) || undefined
                 }
+                aria-describedby={problemId(i, "text")}
               />
+              <Problem id={problemId(i, "text")} note={noteOf(i, "text")} />
 
               <div className="mt-3 flex flex-wrap items-center gap-4">
                 <label className="text-sm">
@@ -158,6 +181,11 @@ export function QuestionsStep({
                       update(i, { answerType: e.target.value as AnswerType })
                     }
                     className={inputClass("mt-1 inline-block w-auto")}
+                    aria-invalid={
+                      state.fields?.includes(`questions.${i}.answerType`) ||
+                      undefined
+                    }
+                    aria-describedby={problemId(i, "answerType")}
                   >
                     <option value="short_text">A short answer</option>
                     <option value="choice">One of a list</option>
@@ -175,6 +203,10 @@ export function QuestionsStep({
                   They must answer it
                 </label>
               </div>
+              <Problem
+                id={problemId(i, "answerType")}
+                note={noteOf(i, "answerType")}
+              />
 
               {row.answerType === "choice" ? (
                 <div className="mt-3">
@@ -198,7 +230,15 @@ export function QuestionsStep({
                       state.fields?.includes(`questions.${i}.options`) ||
                       undefined
                     }
-                    aria-describedby={`q-${i}-options-help`}
+                    aria-describedby={
+                      [problemId(i, "options"), `q-${i}-options-help`]
+                        .filter(Boolean)
+                        .join(" ") || undefined
+                    }
+                  />
+                  <Problem
+                    id={problemId(i, "options")}
+                    note={noteOf(i, "options")}
                   />
                   <p
                     id={`q-${i}-options-help`}

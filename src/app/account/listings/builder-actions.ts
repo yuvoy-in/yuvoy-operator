@@ -11,6 +11,7 @@ import { suspendedMessage } from "@/lib/account/suspended";
 import { nextStep, type Step } from "@/lib/services/builder";
 import { readPinFields } from "@/lib/map/pin";
 import { priceToPaise } from "@/lib/money/price";
+import { sentence } from "@/lib/format/sentence";
 
 /**
  * Saving one step of the listing builder — yuvoy-operator#58 item 7.
@@ -41,6 +42,11 @@ export interface StepState {
   message?: string;
   /** Field names to mark, from `details` on a `400`. */
   fields?: string[];
+  /**
+   * The API's reason beside a marked field, keyed like `fields`, where it
+   * gives one per field: a question it would not save says which, and why.
+   */
+  notes?: Record<string, string>;
 }
 
 /** Where a step goes when it saves. */
@@ -470,8 +476,45 @@ export async function saveQuestions(
     );
     if (error) throw error;
   } catch (err) {
-    return saveFailure(err, parsed.data.id);
+    return questionsRefused(err) ?? saveFailure(err, parsed.data.id);
   }
 
   onward(parsed.data.id, "questions");
+}
+
+/**
+ * A question list the API would not save, marked on the questions it names.
+ *
+ * The API refuses the whole list with one sentence ("some of these questions
+ * need fixing") and says which and why in `details`, keyed by the field:
+ * `questions[1].text`, `questions[2].options`. Printing only the sentence
+ * left the operator guessing which of ten questions to change. Since
+ * yuvoy-api#282 item 5 that includes a question or a choice holding a phone
+ * number, an email address or a link, which every traveller would read, and
+ * which only the API can say: this portal does no screening of its own.
+ *
+ * `id` is a question the listing no longer asks; it is told on the question.
+ * `null` for any other refusal, which the shared handling words as before.
+ */
+function questionsRefused(err: unknown): StepState | null {
+  if (!(err instanceof OperatorApiError) || err.status !== 400) return null;
+  const details = err.details;
+  if (!details || typeof details !== "object") return null;
+  const fields: string[] = [];
+  const notes: Record<string, string> = {};
+  for (const [key, why] of Object.entries(details)) {
+    const at = /^questions\[(\d+)\]\.(text|options|answerType|id)$/.exec(key);
+    if (!at) continue;
+    const field = `questions.${at[1]}.${at[2] === "id" ? "text" : at[2]}`;
+    if (!fields.includes(field)) fields.push(field);
+    if (typeof why === "string" && why.trim() && !notes[field]) {
+      notes[field] = sentence(why);
+    }
+  }
+  if (fields.length === 0) return null;
+  return {
+    message: sentence(err.message) || "Some of these questions need fixing.",
+    fields,
+    notes,
+  };
 }

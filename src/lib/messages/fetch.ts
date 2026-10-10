@@ -19,8 +19,9 @@ import type {
  *     "Conversations did not load." with a way to try again rather than an
  *     empty state that lies.
  *
- * The unread count the inbox control and Home draw is `readInbox`
- * (`lib/site/inbox.ts`), which catches and says it could not read.
+ * The unread counts the inbox control and Home draw are `readInboxTotals`
+ * and `readInbox` (`lib/site/inbox.ts`), which catch and say they could not
+ * read.
  */
 
 /**
@@ -91,14 +92,25 @@ function toRow(raw: {
   };
 }
 
-/** One page of conversations, most recently active first. */
+/**
+ * One page of conversations, most recently active first. `unread` lists only
+ * those with something unread in them (yuvoy-api#282 item 6), and is sent on
+ * every page of a walk, because the cursor does not carry it.
+ */
 export async function listThreads(
   token: string,
   cursor?: string,
   limit = 50,
+  options: { unread?: boolean } = {},
 ): Promise<ThreadPage> {
   const { data, error } = await operatorApi(token).GET("/message-threads", {
-    params: { query: { limit, ...(cursor ? { cursor } : {}) } },
+    params: {
+      query: {
+        limit,
+        ...(cursor ? { cursor } : {}),
+        ...(options.unread ? { unread: true } : {}),
+      },
+    },
   });
   if (error) throw error;
 

@@ -27,6 +27,12 @@ export const senders: Senders = {
     form.set("bookingId", write.bookingId);
     form.set("slotId", write.slotId);
     form.set("outcome", "arrived");
+    /*
+      The tap's time, kept with the write, so the manifest says when they
+      were seen and not when the signal came back (yuvoy-api#263). The same
+      on every attempt, so every send of one check-in is one body.
+    */
+    form.set("seenAt", new Date(write.at).toISOString());
     try {
       const answer = await markAttendance({}, form);
       if (answer.retryable) return { kind: "retry" };

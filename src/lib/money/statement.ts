@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { READ_STALL_MS, apiBaseUrl } from "@/lib/api/server-client";
 import { fetchWithin } from "@/lib/api/deadline";
+import { visitorAddress } from "@/lib/api/visitor";
 import { statementFilename, type Settlement } from "./settlements";
 
 /**
@@ -48,7 +49,11 @@ export async function fetchStatement(
     response = await fetchWithin(
       `${apiBaseUrl()}/settlements/${encodeURIComponent(settlement.id)}/statement`,
       {
-        headers: { Authorization: `Bearer ${token}`, Accept: "text/csv" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "text/csv",
+          ...(await visitorAddress()),
+        },
         cache: "no-store",
       },
       READ_STALL_MS,

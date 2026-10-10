@@ -50,6 +50,26 @@ const schema = z.object({
   outcome: z.enum(["arrived", "completed", "no_show"]),
 });
 
+/**
+ * When the party was seen, for an arrival: the time the check-in was TAPPED,
+ * stamped on the phone (yuvoy-api#263). A check-in kept on the phone with no
+ * signal is sent minutes later, and without this the manifest said they
+ * arrived when the signal came back.
+ *
+ * The API believes it on the booking's first arrival only, within 12 hours
+ * and not before the departure's day, takes a time ahead of its clock as now,
+ * and ignores one too early rather than refusing the check-in. So the only
+ * thing that could cost the check-in is a value that is not a date-time, and
+ * that is dropped here instead: the arrival is still recorded, at the time
+ * it reached the API, as before. Written back in one form, so every send of
+ * one tap carries the same body.
+ */
+function seenAtOf(value: FormDataEntryValue | null): string | undefined {
+  if (typeof value !== "string" || !value) return undefined;
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? new Date(at).toISOString() : undefined;
+}
+
 export async function markAttendance(
   _prev: AttendanceState,
   form: FormData,
@@ -70,13 +90,18 @@ export async function markAttendance(
   }
 
   const { bookingId, slotId, outcome } = parsed.data;
+  const seenAt =
+    outcome === "arrived" ? seenAtOf(form.get("seenAt")) : undefined;
   const { token } = await requireOperator();
 
   let arrivedAt: string | undefined;
   try {
     const { data, error } = await operatorApi(token).POST(
       "/bookings/{id}/attendance",
-      { params: { path: { id: bookingId } }, body: { outcome } },
+      {
+        params: { path: { id: bookingId } },
+        body: { outcome, ...(seenAt ? { seenAt } : {}) },
+      },
     );
     if (error) throw error;
     arrivedAt = data?.arrivedAt;

@@ -5,6 +5,7 @@ import { requireOperator } from "@/lib/auth/session";
 import { operatorApi } from "@/lib/api/server-client";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { getBookingThread } from "@/lib/messages/fetch";
+import { IDEMPOTENCY_KEY } from "@/lib/messages/send-key";
 import type { BookingThread, ThreadMessage } from "@/lib/messages/thread";
 
 /**
@@ -36,12 +37,29 @@ export type SendResult =
    * cancelled, declined, or the window closed while the box was open — so the
    * screen replaces the thread rather than only printing a sentence. Without it
    * the composer would still be sitting there, ready to be refused again.
+   *
+   * `sent` means the message did go, and only its answer was lost: the words
+   * are cleared and the reloaded thread shows it. `newKey` means the key sent
+   * can never be used again, so the next send needs a new one (`send-key.ts`).
    */
-  | { ok: false; message: string; reload?: boolean };
+  | {
+      ok: false;
+      message: string;
+      reload?: boolean;
+      sent?: boolean;
+      newKey?: boolean;
+    };
 
+/**
+ * `key` is the composer's Idempotency-Key for these words (`send-key.ts`),
+ * so a send whose answer was lost can be sent again and still arrive once
+ * (yuvoy-api#282 item 4). One that is not the API's shape is not sent at
+ * all: the message goes as it did before keys, never refused for the key.
+ */
 export async function sendMessage(
   bookingId: string,
   text: string,
+  key?: string,
 ): Promise<SendResult> {
   const { token } = await requireOperator();
 
@@ -56,10 +74,18 @@ export async function sendMessage(
     return { ok: false, message: "Write something first." };
   }
 
+  const idempotencyKey =
+    key && IDEMPOTENCY_KEY.test(key) ? { "Idempotency-Key": key } : undefined;
   try {
     const { data, error } = await operatorApi(token).POST(
       "/bookings/{id}/messages",
-      { params: { path: { id: bookingId } }, body: { text: body } },
+      {
+        params: {
+          path: { id: bookingId },
+          ...(idempotencyKey ? { header: idempotencyKey } : {}),
+        },
+        body: { text: body },
+      },
     );
     if (error) throw error;
     return { ok: true, message: data as ThreadMessage };
@@ -73,6 +99,38 @@ export async function sendMessage(
       return { ok: false, message: "No signal. Nothing was sent. Try again." };
     }
     if (err instanceof OperatorApiError) {
+      /*
+        The key's own answers, before the 400s below would print the API's
+        sentence about a header nobody sees. A resend while the first is
+        still being written waits; one whose first send landed but whose
+        answer was lost is not sent again; a key that cannot be used again
+        is let go, and the next tap sends with a new one.
+      */
+      if (err.code === "idempotency_in_progress") {
+        return {
+          ok: false,
+          message:
+            "That message is still on its way. Give it a moment, then send it again. It will only arrive once.",
+        };
+      }
+      if (err.code === "idempotency_response_lost") {
+        return {
+          ok: false,
+          message: "That message was sent. It is in the conversation below.",
+          reload: true,
+          sent: true,
+        };
+      }
+      if (
+        err.code === "idempotency_key_reuse" ||
+        err.code === "idempotency_key_malformed"
+      ) {
+        return {
+          ok: false,
+          message: "That did not send. Send it again.",
+          newKey: true,
+        };
+      }
       if (err.status === 429) {
         return {
           ok: false,
