@@ -8,6 +8,7 @@ import {
   isErrorEnvelope,
 } from "./errors";
 import { fetchWithin } from "./deadline";
+import { visitorAddressMiddleware } from "./visitor";
 
 /**
  * The only place `/operator/v1` is called, and it runs on the SERVER ONLY.
@@ -277,6 +278,10 @@ function retryingFetch(input: Request): Promise<Response> {
  * about where a session lives and the cookie handling stays in one place —
  * `lib/auth/session.ts`. An unauthenticated client (for `/auth/*`) is built
  * by passing nothing.
+ *
+ * Every call also names the person it is made for, once the shared secret is
+ * set (./visitor): the API's per-IP limits, a sign-in code above all, count
+ * them rather than Vercel.
  */
 export function operatorApi(sessionToken?: string) {
   const client = createFetchClient<paths>({
@@ -295,7 +300,7 @@ export function operatorApi(sessionToken?: string) {
     cache: "no-store",
   });
 
-  client.use(errorMiddleware);
+  client.use(visitorAddressMiddleware, errorMiddleware);
   return client;
 }
 

@@ -70,6 +70,53 @@ describe("a check-in, held five seconds", () => {
     expect(store.get().bkg_1).toEqual({ phase: "sent" });
   });
 
+  /*
+    yuvoy-api#263: the API takes when the party was seen, so a check-in sent
+    late still says the minute they stepped aboard.
+  */
+  it("says when they were seen: the tap, not the end of the five seconds", async () => {
+    const mark = vi.fn().mockResolvedValue({});
+    let at = Date.parse("2026-10-10T00:30:00.000Z");
+    const store = createCheckInStore("slot_dawn", mark, () => at);
+    store.hold("bkg_1");
+    at += HOLD_MS;
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    const form = mark.mock.calls[0][1] as FormData;
+    expect(form.get("seenAt")).toBe("2026-10-10T00:30:00.000Z");
+  });
+
+  it("keeps the first tap's time when a failed check-in is tapped again", async () => {
+    const mark = vi
+      .fn()
+      .mockResolvedValueOnce({ message: "Not recorded. Try again." })
+      .mockResolvedValueOnce({});
+    let at = Date.parse("2026-10-10T00:30:00.000Z");
+    const store = createCheckInStore("slot_dawn", mark, () => at);
+    store.hold("bkg_1");
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    at += 3 * 60_000;
+    store.hold("bkg_1");
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    const forms = mark.mock.calls.map((call) => call[1] as FormData);
+    expect(forms.map((form) => form.get("seenAt"))).toEqual([
+      "2026-10-10T00:30:00.000Z",
+      "2026-10-10T00:30:00.000Z",
+    ]);
+  });
+
+  it("stamps a fresh time for a check-in tapped again after Undo", async () => {
+    const mark = vi.fn().mockResolvedValue({});
+    let at = Date.parse("2026-10-10T00:30:00.000Z");
+    const store = createCheckInStore("slot_dawn", mark, () => at);
+    store.hold("bkg_1");
+    store.undo("bkg_1");
+    at += 60_000;
+    store.hold("bkg_1");
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    const form = mark.mock.calls[0][1] as FormData;
+    expect(form.get("seenAt")).toBe("2026-10-10T00:31:00.000Z");
+  });
+
   it("claims nothing when the send itself never answered", async () => {
     const mark = vi.fn().mockRejectedValue(new Error("Failed to fetch"));
     const store = createCheckInStore("slot_dawn", mark);

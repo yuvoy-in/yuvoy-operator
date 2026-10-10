@@ -198,7 +198,7 @@ test("a phone number is refused, and the typed text is kept to edit", async ({
   await page.getByRole("button", { name: "Send" }).click();
 
   const alert = page.locator("#conversation").getByRole("alert");
-  await expect(alert).toContainText("cannot contain a phone number");
+  await expect(alert).toContainText("looks like it has a phone number");
   await expect(box).toHaveValue("call me on 98765 43210");
 
   // And nothing was added to the conversation.
@@ -240,11 +240,11 @@ test("an email address and a link are refused too", async ({ page }) => {
 
   await box.fill("write to me at priya@reefdivers.example");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(alert).toContainText("cannot contain an email address");
+  await expect(alert).toContainText("looks like it has an email address");
 
   await box.fill("the details are on www.reefdivers.test");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(alert).toContainText("cannot contain a link");
+  await expect(alert).toContainText("looks like it has a link");
 });
 
 test("a conversation row leads with the trip, and the reference comes last", async ({

@@ -275,6 +275,14 @@ const canManage = (member: MockTeamMember) =>
   member.roles.includes("MANAGER");
 
 let attendance: Record<string, { outcome: string; arrivedAt?: string }> = {};
+/**
+ * Message sends kept under their Idempotency-Key, `person:key`, with the
+ * request they answered (B4, yuvoy-api#282 item 4).
+ */
+const messageKeys = new Map<
+  string,
+  { fingerprint: string; message: MockMessage }
+>();
 /** Wrong sign-in codes per number. The sixth answers 429. */
 let codeAttempts: Record<string, number> = {};
 const CODE_ATTEMPT_LIMIT = 5;
@@ -1446,6 +1454,49 @@ function slotDay(slot: MockSlot): string {
   );
 }
 
+/** An RFC 3339 date-time, offset required: what the API's parser takes. */
+const RFC3339 =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+/** The instant a departure's market day begins, in its own zone. */
+function slotDayStart(slot: MockSlot): number {
+  const day = slotDay(slot);
+  // The zone's offset that day, read off the clock rather than assumed.
+  const noon = Date.parse(`${day}T12:00:00Z`);
+  const wall = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: slot.timezone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+      .formatToParts(noon)
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const offset =
+    Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute) -
+    noon;
+  return Date.parse(`${day}T00:00:00Z`) - offset;
+}
+
+/**
+ * A FIRST arrival's time, by the API's rules for `seenAt` (yuvoy-api#292):
+ * believed when no more than 12 hours back and not before the departure's
+ * own day; a time ahead of the clock is now; one too early is ignored, not
+ * refused, so the check-in is recorded at the time it arrived.
+ */
+function arrivalTime(slot: MockSlot, seenAt: number | undefined): string {
+  const now = Date.now();
+  if (seenAt === undefined) return new Date(now).toISOString();
+  if (seenAt > now) return new Date(now).toISOString();
+  const tooEarly =
+    seenAt < now - 12 * 60 * 60 * 1000 || seenAt < slotDayStart(slot);
+  return new Date(tooEarly ? now : seenAt).toISOString();
+}
+
 /** Every departure this operator has, fixtures and ones a test added. */
 /**
  * Every departure there is, fixture or made this session. Every route that
@@ -1645,30 +1696,91 @@ function saleVerdictOf(
  *
  * Modelled rather than waved through, because this is the one branch of the
  * composer somebody will actually hit and the portal does NO filtering of its
- * own — the issue says so in `Do not build`. A permissive mock would let the
+ * own: the issue says so in `Do not build`. A permissive mock would let the
  * portal ship with the refusal never once rendered, which is exactly how this
  * repo ended up with a `requireOperator()` that threw to an error boundary
  * that did not exist.
  *
- * The date exception is the subtle half and it is in the contract: "except the
- * digits of a date written like 14.09.2026 or 2026-09-14". An operator saying
- * when to turn up must not be told they typed a phone number.
+ * The server's D-051 rules exactly, as `internal/contactdetail` writes them at
+ * the pinned contract. Since yuvoy-api#282 item 5 the same rules screen a
+ * listing's questions and a traveller's answers, and three kinds of digits
+ * are set aside before a phone number is counted: a date (14.09.2026 or
+ * 2026-09-14, which an operator saying when to turn up must be able to
+ * write), a span of clock times with no colon (0830-0930) and a code that
+ * runs from letters into digits (Z1234567). A bare run of ten digits is
+ * still a number.
  */
 function contactDetailIn(text: string): "phone" | "email" | "link" | null {
-  // Email first: an address contains something the link rule would also match.
-  if (/[^\s@]+@[^\s@]+\.[^\s@]{2,}/.test(text)) return "email";
-  if (/(^|\s)(https?:\/\/|www\.)/i.test(text)) return "link";
-  if (/\b[a-z0-9][a-z0-9-]*\.(com|in|net|org|io|co|me)\b/i.test(text))
+  if (/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(text)) {
+    return "email";
+  }
+  if (
+    /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|in|net|org|io|co|me)\b)/i.test(text)
+  ) {
     return "link";
-
-  const withoutDates = text
-    .replace(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/g, " ")
-    .replace(/\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/g, " ");
-  // Seven or more digits "counted through the spaces, dashes, brackets and
-  // dots between them".
-  if (/\d(?:[\s().-]*\d){6,}/.test(withoutDates)) return "phone";
-  return null;
+  }
+  const digits = text
+    .replace(
+      /\b(?:(?:0?[1-9]|[12]\d|3[01])[./-](?:0?[1-9]|[12]\d|3[01])[./-](?:\d{4}|\d{2})|\d{4}[./-](?:0?[1-9]|1[0-2])[./-](?:0?[1-9]|[12]\d|3[01]))\b/g,
+      "_",
+    )
+    .replace(
+      /\b(?:[01]\d|2[0-3])[0-5]\d\s*-\s*(?:[01]\d|2[0-3])[0-5]\d\b/g,
+      "_",
+    )
+    .replace(/\b[A-Za-z]+\d[A-Za-z0-9]*\b/g, "_");
+  return /(?:\d[\s\-().]*){7,}/.test(digits) ? "phone" : null;
 }
+
+/** What the API calls each kind, in a refusal that never repeats the text. */
+function contactKindWords(kind: "phone" | "email" | "link"): string {
+  return kind === "email"
+    ? "an email address"
+    : kind === "link"
+      ? "a link"
+      : "a phone number, from seven or more digits written close together";
+}
+
+/**
+ * A question's or a choice's refusal for holding a contact detail
+ * (yuvoy-api#282 item 5), in the API's words, or "" when it holds none.
+ * `what` is "a question" or "an option".
+ */
+function contactRefusal(text: string, what: string): string {
+  const kind = contactDetailIn(text);
+  return kind
+    ? `${what} cannot include a phone number, an email address or a link, and this one looks like it has ${contactKindWords(kind)}. Write it another way`
+    : "";
+}
+
+/**
+ * A choice question's options as the API reads them
+ * (`normaliseChoiceOptions`): trimmed, and the first thing wrong with them.
+ */
+function choiceOptionsOf(raw: string[]): [string[], string] {
+  if (raw.length < 2 || raw.length > 10) {
+    return [[], "give between 2 and 10 options"];
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const option of raw) {
+    const trimmed = option.trim();
+    const length = [...trimmed].length;
+    if (length === 0) return [[], "an option cannot be empty"];
+    if (length > 60) return [[], "keep each option to 60 characters"];
+    if (seen.has(trimmed.toLowerCase())) {
+      return [[], "each option must be different"];
+    }
+    const why = contactRefusal(trimmed, "an option");
+    if (why) return [[], why];
+    seen.add(trimmed.toLowerCase());
+    out.push(trimmed);
+  }
+  return [out, ""];
+}
+
+/** An Idempotency-Key the API takes: 16-128 of `A-Za-z0-9_.:-`. */
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9_.:-]{16,128}$/;
 
 /** The thread for a booking, or `null` for one that has never been written in. */
 function threadFor(id: string): MockThread | null {
@@ -1687,11 +1799,56 @@ function bookingOf(id: string) {
       return {
         reference: party.reference,
         experience: slot.title,
+        slotId: slot.id,
         slot: { startsAt: slot.startsAt, timezone: slot.timezone },
       };
     }
   }
   return null;
+}
+
+/**
+ * The conversations `GET /message-threads` lists, with what each has unread:
+ * one walk the list, the inbox counts on `GET /me` and the manifest's
+ * per-party counts all read, so the three cannot disagree, as they cannot on
+ * the API (yuvoy-api#260, #282 item 6).
+ */
+function threadRows() {
+  return threads
+    .map((t) => {
+      const booking = bookingOf(t.bookingId);
+      const last = t.messages.at(-1);
+      if (!booking || !last) return null;
+      return {
+        bookingId: t.bookingId,
+        reference: booking.reference,
+        experience: booking.experience,
+        slotId: booking.slotId,
+        slot: booking.slot,
+        lastMessageAt: last.sentAt,
+        lastFrom: last.from,
+        unreadCount: t.unread,
+      };
+    })
+    .filter((r) => r !== null);
+}
+
+/** One booking's unread, as its conversation row says it; `0` with none. */
+function unreadOf(bookingId: string): number {
+  return threadRows().find((r) => r.bookingId === bookingId)?.unreadCount ?? 0;
+}
+
+/** `unreadCount` and `unreadConversations` on `GET /me`: the rows, added up. */
+function unreadTotals(request: Request): {
+  unreadCount: number;
+  unreadConversations: number;
+} {
+  const rows = isNewBusiness(request) ? [] : threadRows();
+  const unread = rows.filter((r) => r.unreadCount > 0);
+  return {
+    unreadCount: unread.reduce((n, r) => n + r.unreadCount, 0),
+    unreadConversations: unread.length,
+  };
 }
 
 /**
@@ -1937,6 +2094,7 @@ function isLiveBusiness(me: { id: string }): boolean {
 export function __resetOperatorMocks() {
   blackouts = [];
   attendance = {};
+  messageKeys.clear();
   codeAttempts = {};
   answered = {};
   calledOff = {};
@@ -3031,6 +3189,12 @@ export const handlers = [
       ...(account ? { account: accountWithFiles(account) } : {}),
       // Always present, every role, with no amount in it.
       payoutsHeld: payoutsHeldFor(request),
+      /*
+        Always present, `0` when none (yuvoy-api#282 item 6): the inbox
+        badge's numbers, counted here so the portal walks no conversations
+        to draw them.
+      */
+      ...unreadTotals(request),
     });
   }),
 
@@ -5043,57 +5207,58 @@ export const handlers = [
       questions?: Record<string, unknown>[];
     };
     const rows = body.questions ?? [];
+
+    /*
+      The API's rules and sentences (`normaliseQuestions`): every refusal at
+      once, keyed by the field, each a sentence. Since yuvoy-api#282 item 5 a
+      question or a choice holding a phone number, an email address or a
+      link is refused like a message, because every traveller reads it.
+    */
+    const invalid: Record<string, string> = {};
     if (rows.length > 10) {
-      return envelope("invalid_input", "Ten questions is the most.", 400, {
-        questions: ["at most 10"],
-      });
+      invalid.questions = "a listing can ask at most 10 questions";
+    }
+    const read = rows.map((row, i) => {
+      const at = `questions[${i}]`;
+      const text = String(row.text ?? "").trim();
+      const answerType = String(row.answerType ?? "").trim();
+      const length = [...text].length;
+      if (length === 0) invalid[`${at}.text`] = "write the question";
+      else if (length > 200) {
+        invalid[`${at}.text`] = "keep a question to 200 characters";
+      } else {
+        const why = contactRefusal(text, "a question");
+        if (why) invalid[`${at}.text`] = why;
+      }
+      const sent = Array.isArray(row.options)
+        ? (row.options as unknown[]).map((o) => String(o))
+        : [];
+      let options: string[] = [];
+      if (answerType === "choice") {
+        const [kept, why] = choiceOptionsOf(sent);
+        if (why) invalid[`${at}.options`] = why;
+        options = kept;
+      } else if (answerType === "short_text" || answerType === "yes_no") {
+        if (sent.length > 0) {
+          invalid[`${at}.options`] = "only a choice question has options";
+        }
+      } else {
+        invalid[`${at}.answerType`] = "must be short_text, choice or yes_no";
+      }
+      return { row, text, answerType, options };
+    });
+    if (Object.keys(invalid).length > 0) {
+      return envelope(
+        "invalid_input",
+        "some of these questions need fixing",
+        400,
+        invalid,
+      );
     }
 
     const existing = listingQuestions[found.id] ?? [];
     const saved: MockQuestion[] = [];
-    for (const [i, row] of rows.entries()) {
-      const text = String(row.text ?? "").trim();
-      const answerType = String(row.answerType ?? "");
-      if (!text || text.length > 200) {
-        return envelope("invalid_input", "A question we can ask.", 400, {
-          [`questions[${i}].text`]: ["1 to 200 characters"],
-        });
-      }
-      if (!["short_text", "choice", "yes_no"].includes(answerType)) {
-        return envelope("invalid_input", "An answer type we know.", 400, {
-          [`questions[${i}].answerType`]: ["short_text, choice or yes_no"],
-        });
-      }
-      const options = Array.isArray(row.options)
-        ? (row.options as string[]).map((o) => String(o).trim()).filter(Boolean)
-        : [];
-      if (answerType === "choice") {
-        const unique = new Set(options.map((o) => o.toLowerCase()));
-        if (
-          options.length < 2 ||
-          options.length > 10 ||
-          unique.size !== options.length
-        ) {
-          return envelope(
-            "invalid_input",
-            "Two to ten different choices.",
-            400,
-            {
-              [`questions[${i}].options`]: ["2 to 10, all different"],
-            },
-          );
-        }
-      } else if (options.length > 0) {
-        return envelope(
-          "invalid_input",
-          "Only a choice question has options.",
-          400,
-          {
-            [`questions[${i}].options`]: ["only on a choice question"],
-          },
-        );
-      }
-
+    for (const { row, text, answerType, options } of read) {
       const sameAsBefore = existing.find(
         (q) =>
           q.id === row.id &&
@@ -6038,10 +6203,16 @@ export const handlers = [
         arrived: recorded ? true : p.arrived,
         arrivedAt: recorded?.arrivedAt ?? p.arrivedAt,
         ...(cash ? { cash } : {}),
+        /*
+          The count the conversation list gives the same booking, `0` when
+          none (yuvoy-api#260). Absent on a hold: no booking, no conversation.
+        */
+        ...(p.bookingId ? { unreadCount: unreadOf(p.bookingId) } : {}),
       };
     });
 
     const giveBack = cashToGiveBackOf(slot);
+    const seats = departureSeats(slot);
 
     const guests = parties.reduce((n, p) => n + p.guests, 0);
 
@@ -6066,10 +6237,12 @@ export const handlers = [
         arrived: parties
           .filter((p) => p.arrived)
           .reduce((n, p) => n + (p.guests ?? 0), 0),
-        seatsSold: slot.sold,
+        // The same arithmetic `GET /slots` answers with, so the two agree.
+        seatsSold: seats.sold,
         // Counter sales recorded this session count, as they would.
-        seatsSoldOffline:
-          (slot.seatsSoldOffline ?? 0) + (offlineSold[slot.id] ?? 0),
+        seatsSoldOffline: seats.soldOffline,
+        // The departure's seats, the counter's already off (yuvoy-api#260).
+        seats: seats.seats,
       },
     });
   }),
@@ -6189,6 +6362,8 @@ export const handlers = [
               // Every row carries it, so a listing filter built from
               // `GET /experiences` lines up with these rows.
               experienceId: slot.experienceId,
+              // The departure, so a booking opens it (yuvoy-api#259).
+              slotId: slot.id,
               slot: { startsAt: slot.startsAt, timezone: slot.timezone },
               contact: { name: p.name },
               createdAt: new Date(
@@ -6271,6 +6446,7 @@ export const handlers = [
             guests: r.guests,
             experience: r.experience,
             experienceId: r.experienceId,
+            slotId: r.slotId,
             slot: { startsAt: r.startsAt, timezone: r.timezone },
             contact: { name: r.contactName },
             createdAt: r.requestedAt,
@@ -6390,6 +6566,94 @@ export const handlers = [
     */
 
     const id = String(params.id);
+
+    /*
+      The optional Idempotency-Key, as the API's middleware takes it (B4):
+      after the session, before the booking is even looked up. Scoped to the
+      person, and the request's fingerprint is the booking and the body as
+      sent, so a resend of the same words replays the first answer, and the
+      same key on other words is refused. Only a success is kept: a refusal
+      lets the key go, so the same request can run again.
+    */
+    const key = request.headers.get("Idempotency-Key");
+    if (key !== null && !IDEMPOTENCY_KEY.test(key)) {
+      return envelope(
+        "idempotency_key_malformed",
+        "Idempotency-Key must be 16-128 characters of A-Z a-z 0-9 _ . : -",
+        400,
+      );
+    }
+    const raw = await request.text();
+    const scope = key ? `${sessionUser(request)!.id}:${key}` : null;
+    const fingerprint = `${id}\n${raw}`;
+    const kept = scope ? messageKeys.get(scope) : undefined;
+    if (kept) {
+      if (kept.fingerprint !== fingerprint) {
+        return envelope(
+          "idempotency_key_reuse",
+          "that Idempotency-Key was already used for a different request",
+          409,
+        );
+      }
+      return HttpResponse.json(kept.message, {
+        status: 201,
+        headers: { "Idempotent-Replay": "true" },
+      });
+    }
+
+    let body: { text?: unknown };
+    try {
+      body = JSON.parse(raw) as { text?: unknown };
+    } catch {
+      return envelope("invalid_input", "We could not read that message.", 400, {
+        text: "required",
+      });
+    }
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+
+    // The API's own sentences (`readMessageText`), in its order.
+    const length = [...text].length;
+    if (length > 1000) {
+      return envelope(
+        "invalid_input",
+        `A message can be up to 1000 characters, and this one is ${length}. Shorten it and send it again.`,
+        400,
+        { text: "too long" },
+      );
+    }
+
+    const kind = contactDetailIn(text);
+    if (kind) {
+      /*
+        The message names the KIND and never repeats any of the text: "nothing
+        is stored, and the refusal names the kind without repeating any of it".
+        A refusal that echoed the number back would put it on a screen, which is
+        the thing the rule exists to prevent.
+      */
+      const out =
+        kind === "email"
+          ? "Take the address out"
+          : kind === "link"
+            ? "Take the link out"
+            : "Take the number out";
+      return envelope(
+        "invalid_input",
+        `Messages cannot include phone numbers, email addresses or links. This one looks like it has ${contactKindWords(kind)}. ${out} and send the message again.`,
+        400,
+        { text: "contact details", contactDetail: kind },
+      );
+    }
+
+    if (length === 0) {
+      return envelope("invalid_input", "Write something before sending.", 400, {
+        text: "required",
+      });
+    }
+
+    /*
+      The text is read before the booking, as the API's handler reads it, so
+      a refused message on a booking that is gone is the text's refusal.
+    */
     if (!bookingOf(id)) return envelope("not_found", "No such booking.", 404);
 
     const thread = threadFor(id);
@@ -6411,59 +6675,6 @@ export const handlers = [
       );
     }
 
-    const body = (await request.json()) as { text?: string };
-    const text = (body.text ?? "").trim();
-
-    if (text.length === 0) {
-      return HttpResponse.json(
-        {
-          error: {
-            code: "invalid_input",
-            message: "Write something first.",
-            details: { text: "required" },
-          },
-        },
-        { status: 400 },
-      );
-    }
-    if (text.length > 1000) {
-      return HttpResponse.json(
-        {
-          error: {
-            code: "invalid_input",
-            message: "That is longer than 1000 characters. Shorten it.",
-            details: { text: "too long" },
-          },
-        },
-        { status: 400 },
-      );
-    }
-
-    const kind = contactDetailIn(text);
-    if (kind) {
-      /*
-        The message names the KIND and never repeats any of the text — "nothing
-        is stored, and the refusal names the kind without repeating any of it".
-        A refusal that echoed the number back would put it on a screen, which is
-        the thing the rule exists to prevent.
-      */
-      return HttpResponse.json(
-        {
-          error: {
-            code: "invalid_input",
-            message:
-              kind === "phone"
-                ? "Messages cannot contain a phone number. Travellers reach you through Yuvoy, and this keeps it that way."
-                : kind === "email"
-                  ? "Messages cannot contain an email address. Travellers reach you through Yuvoy, and this keeps it that way."
-                  : "Messages cannot contain a link. Travellers reach you through Yuvoy, and this keeps it that way.",
-            details: { text: "contact details", contactDetail: kind },
-          },
-        },
-        { status: 400 },
-      );
-    }
-
     const message: MockMessage = {
       id: `msg_${Math.random().toString(36).slice(2, 10)}`,
       from: "operator",
@@ -6477,6 +6688,7 @@ export const handlers = [
     } else {
       threads.push({ bookingId: id, messages: [message], unread: 0 });
     }
+    if (scope) messageKeys.set(scope, { fingerprint, message });
     return HttpResponse.json(message, { status: 201 });
   }),
 
@@ -6517,28 +6729,29 @@ export const handlers = [
       return HttpResponse.json({ threads: [], complete: true });
     }
 
-    const rows = threads
-      .map((t) => {
-        const booking = bookingOf(t.bookingId);
-        const last = t.messages.at(-1);
-        if (!booking || !last) return null;
-        return {
-          bookingId: t.bookingId,
-          reference: booking.reference,
-          experience: booking.experience,
-          slot: booking.slot,
-          lastMessageAt: last.sentAt,
-          lastFrom: last.from,
-          unreadCount: t.unread,
-        };
-      })
-      .filter((r) => r !== null)
+    const params = new URL(request.url).searchParams;
+    /*
+      `unread=true` lists only the conversations with something unread
+      (yuvoy-api#282 item 6), in the same order and pages. Anything but
+      `true`, `false` or nothing is refused, as the API refuses it.
+    */
+    const unreadOnly = params.get("unread");
+    if (
+      unreadOnly !== null &&
+      unreadOnly !== "true" &&
+      unreadOnly !== "false"
+    ) {
+      return envelope("invalid_input", "unread is true or false", 400, {
+        unread: "true or false",
+      });
+    }
+    const rows = threadRows()
+      .filter((r) => unreadOnly !== "true" || r.unreadCount > 0)
       // "The one with the latest message first."
       .sort(
         (a, b) => Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt),
       );
 
-    const params = new URL(request.url).searchParams;
     const limitRaw = Number(params.get("limit"));
     const limit =
       Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 50;
@@ -6773,13 +6986,14 @@ export const handlers = [
           state: bookingStateOf(party),
           guests: party.guests,
           experience: slot.title,
-          /*
-            The contract sends the listing's id on a booking, and the portal
-            finds the booking's departure by it (until yuvoy-api#259). Left
-            off, the booking would simply never link to its departure here,
-            green in every test and broken against the API.
-          */
           experienceId: slot.experienceId,
+          /*
+            The departure itself, which the booking screen links to
+            (yuvoy-api#259). Before it, the portal found the departure by the
+            listing's id and the start time; `departure-of.ts` still does on
+            an API that sends none.
+          */
+          slotId: slot.id,
           slot: { startsAt: slot.startsAt, timezone: slot.timezone },
           contact: { name: party.name },
           createdAt: new Date(
@@ -6808,6 +7022,7 @@ export const handlers = [
         guests: req.guests,
         experience: req.experience,
         experienceId: req.experienceId,
+        slotId: req.slotId,
         slot: { startsAt: req.startsAt, timezone: req.timezone },
         contact: { name: req.contactName },
         createdAt: req.requestedAt,
@@ -7976,9 +8191,41 @@ export const handlers = [
     const found = partyOf(id);
     if (!found) return envelope("not_found", "No such booking.", 404);
 
-    const { outcome } = (await request.json()) as { outcome: string };
+    const body = (await request.json()) as {
+      outcome: string;
+      seenAt?: unknown;
+    };
+    const { outcome } = body;
     const slot = SLOTS.find((s) => s.id === found.slotId)!;
     const departed = Date.now() >= new Date(slot.startsAt).getTime();
+
+    /*
+      `seenAt`, yuvoy-api#263 (#292), read only on `arrived`, as the API
+      reads it: a string that is not an RFC 3339 time with its offset is a
+      400 naming it, and nothing is marked. A field that is not a string at
+      all fails the body's own read first, as it does there.
+    */
+    let seenAt: number | undefined;
+    if (outcome === "arrived" && body.seenAt !== undefined) {
+      if (typeof body.seenAt !== "string") {
+        return envelope("invalid_input", "we could not read that request", 400);
+      }
+      if (body.seenAt !== "") {
+        const at = RFC3339.test(body.seenAt) ? Date.parse(body.seenAt) : NaN;
+        if (!Number.isFinite(at)) {
+          return envelope(
+            "invalid_input",
+            "we could not read when they were seen",
+            400,
+            {
+              seenAt:
+                "a date-time with its offset, like 2026-10-07T06:30:00+05:30",
+            },
+          );
+        }
+        seenAt = at;
+      }
+    }
 
     const existing = attendance[id];
     if (existing && existing.outcome !== "arrived") {
@@ -7992,7 +8239,7 @@ export const handlers = [
 
     if (outcome === "arrived") {
       // Idempotent: a second tap keeps the first arrival time.
-      const arrivedAt = existing?.arrivedAt ?? new Date().toISOString();
+      const arrivedAt = existing?.arrivedAt ?? arrivalTime(slot, seenAt);
       attendance[id] = { outcome: "arrived", arrivedAt };
       return HttpResponse.json({ outcome: "arrived", arrivedAt });
     }

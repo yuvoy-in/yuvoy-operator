@@ -268,8 +268,10 @@ export function BankForm({
       {/*
         Said before the tap, which is what it is for: the consequence of
         raising a change. "The owner is messaged immediately" was the claim
-        here, and it is not true: the bank-change warning is phone only, by
-        design, and with no phone sender it is suppressed (yuvoy-operator#91).
+        here, and it is still not one to make. The warning was phone only and
+        suppressed with no phone sender (yuvoy-operator#91); since
+        yuvoy-api#227 it goes by email to every owner with an address when no
+        phone channel can carry it, and an owner with neither is told nothing.
         What stands is the window and the brake on this screen, so that is
         what it promises.
 

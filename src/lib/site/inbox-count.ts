@@ -17,10 +17,12 @@ export interface InboxCount {
   unread: ThreadRow[];
   /**
    * Unread messages by booking, for EVERY unread conversation the walk saw
-   * (not capped like `unread`): what a manifest row says beside a party
-   * ("2 new messages") until the manifest carries it (yuvoy-api#260).
+   * (not capped like `unread`), and only from the walk: an API that counts
+   * unread on `GET /me` is not walked (yuvoy-api#282 item 6), and its
+   * manifest counts each party itself (yuvoy-api#260). What a manifest row
+   * says beside a party ("2 new messages") on an API older than both.
    */
-  unreadByBooking: Record<string, number>;
+  unreadByBooking?: Record<string, number>;
 }
 
 /** How many unread conversations the walk keeps rows for. Home draws three. */

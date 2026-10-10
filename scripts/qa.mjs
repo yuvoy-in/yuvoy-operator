@@ -393,17 +393,71 @@ const HEADERS_IMPORTERS = new Map([
   ],
 ]);
 
-for (const [path, reason] of HEADERS_IMPORTERS) {
-  if (!reason || reason.length < 40) {
-    problems.push(
-      `scripts/qa.mjs: HEADERS_IMPORTERS entry "${path}" has no real reason.`,
-    );
+/*
+  Request headers, never a cookie (yuvoy-api#282 item 3). These read the
+  incoming request's headers and take nothing else from next/headers, which
+  is checked by name below: `headers()` is read only, so it cannot strand
+  anybody the way a cookie write from render does, and `cookies` stays in the
+  two modules above.
+*/
+const REQUEST_HEADER_READERS = new Map([
+  [
+    join("src", "lib", "api", "visitor.ts"),
+    "Reads Vercel's x-real-ip so the API's per-IP limits count the person, not Vercel.",
+  ],
+]);
+
+for (const [name, entries] of [
+  ["HEADERS_IMPORTERS", HEADERS_IMPORTERS],
+  ["REQUEST_HEADER_READERS", REQUEST_HEADER_READERS],
+]) {
+  for (const [path, reason] of entries) {
+    if (!reason || reason.length < 40) {
+      problems.push(
+        `scripts/qa.mjs: ${name} entry "${path}" has no real reason.`,
+      );
+    }
+    if (!existsSync(join(ROOT, path))) {
+      problems.push(
+        `scripts/qa.mjs: ${name} names "${path}", which does not exist`,
+      );
+    }
   }
-  if (!existsSync(join(ROOT, path))) {
-    problems.push(
-      `scripts/qa.mjs: HEADERS_IMPORTERS names "${path}", which does not exist`,
-    );
+}
+
+/**
+ * The names a module takes from `next/headers`. A namespace, a default
+ * import, a re-export or a dynamic import counts as `*`: anything at all.
+ */
+function namesFromNextHeaders(file) {
+  const s = code(file);
+  const names = [];
+  for (const m of s.matchAll(
+    /\b(import|export)\s+([^;]*?)\s*from\s*["']next\/headers["']/g,
+  )) {
+    const clause = m[2].replace(/^type\s+/, "");
+    const named = /\{([^}]*)\}/.exec(clause);
+    if (
+      m[1] === "export" ||
+      clause
+        .replace(/\{[^}]*\}/, "")
+        .replace(/,/g, "")
+        .trim()
+    ) {
+      names.push("*");
+    }
+    if (named) {
+      for (const part of named[1].split(",")) {
+        const imported = part
+          .trim()
+          .replace(/^type\s+/, "")
+          .split(/\s+as\s+/)[0];
+        if (imported) names.push(imported);
+      }
+    }
   }
+  if (/import\s*\(\s*["']next\/headers["']\s*\)/.test(s)) names.push("*");
+  return names;
 }
 
 const WRITES_MODULE = join("src", "lib", "auth", "session-writes.ts");
@@ -413,11 +467,21 @@ for (const f of files) {
   const specs = importsOf(f);
 
   if (specs.includes("next/headers") && !HEADERS_IMPORTERS.has(rel(f))) {
-    problems.push(
-      `${rel(f)}: imports next/headers. Cookie access lives in ` +
-        `src/lib/auth/session.ts (read) and session-writes.ts (write) only — ` +
-        `a write reachable from render throws and strands the operator.`,
-    );
+    const taken = namesFromNextHeaders(f);
+    if (!REQUEST_HEADER_READERS.has(rel(f))) {
+      problems.push(
+        `${rel(f)}: imports next/headers. Cookie access lives in ` +
+          `src/lib/auth/session.ts (read) and session-writes.ts (write) only — ` +
+          `a write reachable from render throws and strands the operator.`,
+      );
+    } else if (taken.length === 0 || taken.some((n) => n !== "headers")) {
+      problems.push(
+        `${rel(f)}: takes ${taken.join(", ") || "something"} from ` +
+          `next/headers. It may read request headers only; cookie access ` +
+          `lives in src/lib/auth/session.ts (read) and session-writes.ts ` +
+          `(write) only.`,
+      );
+    }
   }
 
   if (specs.some((spec) => /^@\/lib\/auth\/session-writes$/.test(spec))) {
@@ -2238,6 +2302,34 @@ for (const f of walk(join(ROOT, "e2e"))) {
     problems.push(
       `${rel(f)}: runs axe itself, so it can read a screen mid-fade. ` +
         `Use expectAccessible from ${AXE_CHECK}, which waits the motion out.`,
+    );
+  }
+}
+
+/* ------------- the e2e server's mock media host is its own ------------ */
+
+/*
+  The mock media host listened on 3201 whatever else did, and shrugged when
+  it could not. On a machine where another process held that port, every
+  upload the e2e server minted went to that process, and four upload walks
+  failed at four unrelated-looking lines, blocking every push from it
+  (yuvoy-operator#163). The run now takes a free port, and `MOCK_TUS_STRICT`
+  stops the e2e server when it still cannot have it. Both come from
+  `mockMediaHostEnv` in playwright.config.ts; without the flag a lost port is
+  silent again, and nothing else would notice it had gone.
+*/
+const PW_CONFIG = join(ROOT, "playwright.config.ts");
+if (existsSync(PW_CONFIG)) {
+  const config = code(PW_CONFIG);
+  if (
+    !/MOCK_TUS_STRICT:\s*"1"/.test(config) ||
+    !/\.\.\.mockMediaHostEnv\(\)/.test(config)
+  ) {
+    problems.push(
+      `playwright.config.ts: the e2e web server must take its env from ` +
+        `mockMediaHostEnv(), with MOCK_TUS_STRICT: "1". Without it, a mock ` +
+        `media host that lost its port fails the upload walks with no word ` +
+        `about the port (yuvoy-operator#163).`,
     );
   }
 }

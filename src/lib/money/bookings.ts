@@ -78,11 +78,18 @@ export interface BookingLine {
   guests: number;
   experience: string;
   /**
-   * The listing's id, which with `startsAt` finds the booking's departure
-   * until the API sends that departure's id (yuvoy-api#259). Absent when the
-   * API did not send it, never an empty stand-in.
+   * The listing's id, which with `startsAt` finds the booking's departure on
+   * an API that does not send `slotId`. Absent when the API did not send it,
+   * never an empty stand-in.
    */
   experienceId?: string;
+  /**
+   * The departure the booking is on (yuvoy-api#259): the same id
+   * `GET /slots` and the manifest use, so the booking opens its departure
+   * with no second read. Absent on an API from before it, never an empty
+   * stand-in; `departureOf` then finds it as it did.
+   */
+  slotId?: string;
   startsAt?: string;
   timezone: string;
   /** Free text in the contract — no enum — so it is shown, never branched on. */
@@ -192,6 +199,7 @@ export function toBookingLine(raw: OperatorBooking): BookingLine {
     guests: raw.guests ?? 0,
     experience: raw.experience ?? "",
     ...(raw.experienceId ? { experienceId: raw.experienceId } : {}),
+    ...(raw.slotId?.trim() ? { slotId: raw.slotId.trim() } : {}),
     startsAt: raw.slot?.startsAt,
     timezone: raw.slot?.timezone ?? "Asia/Kolkata",
     state: raw.state ?? "",

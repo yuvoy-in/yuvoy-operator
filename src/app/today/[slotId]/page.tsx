@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { readSessionToken, requireOperator } from "@/lib/auth/session";
 import { getManifest } from "@/lib/day/manifest";
+import { unreadByParty } from "@/lib/day/unread";
 import { orderParties, isHolding, type PartyForClient } from "@/lib/day/types";
 import { toBookingCash, type BookingCash } from "@/lib/money/bookings";
 import { toGiveBack } from "@/lib/money/give-back";
@@ -28,7 +29,6 @@ import { Screen } from "@/components/chrome/screen";
 import { Panel, panelClass } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
 import { LinkRing } from "@/components/ui/link-pending";
-import { readInbox } from "@/lib/site/inbox";
 import { backFrom, hereWith, withFrom } from "@/lib/site/back-to";
 import { KeptOnThisPhone } from "@/components/chrome/kept-on-this-phone";
 
@@ -104,13 +104,6 @@ export default async function ManifestPage({
 }) {
   const [{ slotId }, query] = await Promise.all([params, searchParams]);
   const { token, me } = await requireOperator();
-  /*
-    Who wrote, by booking, so a party's row can say "2 new messages" at the
-    jetty (audit 5.2). The walk the root layout already made for the inbox
-    (`cache`d for the request), so it costs nothing here; `null` draws no
-    flag rather than a zero nobody measured.
-  */
-  const inbox = readInbox(token);
 
   let manifest;
   try {
@@ -197,13 +190,22 @@ export default async function ManifestPage({
   // is impure and the React compiler refuses it — and a "has it departed yet"
   // that flips between two renders is a set of buttons appearing and vanishing
   // under a wet thumb.
-  const [at, { today }] = await Promise.all([now(), marketDays()]);
+  /*
+    And who wrote, by booking, so a party's row can say "2 new messages" at
+    the jetty (audit 5.2): off the manifest itself since yuvoy-api#260, the
+    inbox walk on an API from before it. `null` draws no flag rather than a
+    zero nobody measured.
+  */
+  const [at, { today }, unread] = await Promise.all([
+    now(),
+    marketDays(),
+    unreadByParty(token, manifest),
+  ]);
   const departed = startsAt ? hasDeparted(startsAt, at) : false;
 
   // Back goes where the operator came from (audit 5.8), the day by default.
   const back = backFrom(query.from, { href: "/today", label: "the day" });
   const here = hereWith(`/today/${slotId}`, query);
-  const unread = (await inbox)?.unreadByBooking ?? null;
   const bookingOf = (party: PartyForClient) =>
     party.bookingId
       ? {

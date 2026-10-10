@@ -1,5 +1,35 @@
 import { defineConfig, devices } from "@playwright/test";
-import { MOCK_TUS_PORT } from "./mocks/tus-port";
+import { firstFreeLoopbackPort } from "./mocks/free-port";
+import { DEFAULT_MOCK_TUS_PORT } from "./mocks/tus-port";
+
+/**
+ * The mock media host, for this run's web server: a port of its own, the
+ * origin the CSP must name, and a server that will not start without it.
+ *
+ * The port is the first free one from 3201. Fixed at 3201, it belonged to
+ * whichever process got there first: on a machine where something else held
+ * it, every upload the e2e server minted went to that process instead, and
+ * the four upload walks failed with nothing pointing at the port
+ * (yuvoy-operator#163). `MOCK_TUS_STRICT` makes the server stop and say so if
+ * the port is taken anyway, between this check and the server starting.
+ *
+ * Chosen here, before the server starts, because the build bakes the origin
+ * into the CSP and the server mints upload URLs with the port, so both are
+ * built from one number. Kept in `process.env`, so the workers, which load
+ * this file again, inherit it rather than choosing their own. A port set by
+ * hand wins.
+ */
+function mockMediaHostEnv() {
+  process.env.MOCK_TUS_PORT ??= String(
+    firstFreeLoopbackPort(DEFAULT_MOCK_TUS_PORT, DEFAULT_MOCK_TUS_PORT + 98),
+  );
+  const port = process.env.MOCK_TUS_PORT;
+  return {
+    MOCK_TUS_PORT: port,
+    MOCK_TUS_ORIGIN: `http://127.0.0.1:${port}`,
+    MOCK_TUS_STRICT: "1",
+  };
+}
 
 /**
  * End-to-end configuration.
@@ -49,12 +79,12 @@ export default defineConfig({
           which is exactly what happened on the first enforced run, and is the
           gate doing its job rather than a reason to loosen the policy.
 
-          Kept in step with `MOCK_TUS_PORT` by importing it rather than
-          retyping the number.
+          Kept in step with the server's `MOCK_TUS_PORT` by building both from
+          one number (`mockMediaHostEnv` above).
         */
         env: {
           NEXT_PUBLIC_API_MOCKING: "enabled",
-          MOCK_TUS_ORIGIN: `http://127.0.0.1:${MOCK_TUS_PORT}`,
+          ...mockMediaHostEnv(),
         },
       },
 });

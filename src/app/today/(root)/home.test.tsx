@@ -1,6 +1,12 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { Need } from "@/lib/home/needs";
 import type { RunDay } from "@/lib/home/day";
 import type { RequestView } from "@/lib/day/request-view";
@@ -30,7 +36,8 @@ vi.mock("@/app/calendar/actions", () => ({
 vi.mock("@/app/bookings/[id]/conversation-actions", () => ({
   reloadThread: (id: string) => reloadThread(id),
   markThreadRead: (id: string, upTo: string) => markThreadRead(id, upTo),
-  sendMessage: (id: string, text: string) => sendMessage(id, text),
+  sendMessage: (id: string, text: string, key?: string) =>
+    sendMessage(id, text, key),
   loadEarlier: vi.fn(),
 }));
 vi.mock("@/app/bookings/cash-actions", () => ({
@@ -473,8 +480,38 @@ describe("a guest, answered on Home", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByText("Sent to Sofia Alves.")).toBeInTheDocument();
-    expect(sendMessage).toHaveBeenCalledWith("bkg_card", "No problem.");
+    expect(sendMessage).toHaveBeenCalledWith(
+      "bkg_card",
+      "No problem.",
+      expect.stringMatching(/^msg_/),
+    );
     expect(screen.getByLabelText("Reply to Sofia")).toHaveValue("");
+  });
+
+  it("sends the same words again with the same key, so they arrive once", async () => {
+    // yuvoy-api#282 item 4: a send whose answer was lost can be sent again.
+    reloadThread.mockResolvedValue(THREAD);
+    sendMessage.mockResolvedValue({
+      ok: false,
+      message: "No signal. Nothing was sent. Try again.",
+    });
+    render(<NeedsYou {...props} needs={[MESSAGE]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Read and reply" }));
+    const box = await screen.findByLabelText("Reply to Sofia");
+    fireEvent.change(box, { target: { value: "On our way" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByRole("alert");
+    // Back to Send once the first has finished sending.
+    fireEvent.click(await screen.findByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2));
+    fireEvent.change(box, { target: { value: "On our way now" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(3));
+
+    const keys = sendMessage.mock.calls.map((call) => call[2]);
+    expect(keys[1]).toBe(keys[0]);
+    // Other words are another message, with a key of their own.
+    expect(keys[2]).not.toBe(keys[0]);
   });
 
   it("keeps the words when a message is refused, and says why", async () => {
