@@ -57,6 +57,12 @@ const securityHeaders = [
   { key: "Cache-Control", value: "no-store, must-revalidate" },
 ];
 
+/** Served from public/.well-known for the native app's universal links. */
+const APP_ASSOCIATION_FILES = [
+  "/.well-known/apple-app-site-association",
+  "/.well-known/assetlinks.json",
+];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
@@ -148,7 +154,18 @@ const nextConfig: NextConfig = {
       */
       mockUploadOrigin: process.env.MOCK_TUS_ORIGIN,
     });
-    return [{ source: "/(.*)", headers: [...securityHeaders, ...csp] }];
+    return [
+      { source: "/(.*)", headers: [...securityHeaders, ...csp] },
+      /*
+        The universal link and app link files (B12). Apple reads the first one
+        only as JSON and it has no extension, so without this it goes out as
+        application/octet-stream and iOS ignores it. Neither may redirect.
+      */
+      ...APP_ASSOCIATION_FILES.map((source) => ({
+        source,
+        headers: [{ key: "Content-Type", value: "application/json" }],
+      })),
+    ];
   },
   /**
    * Where Manage services used to be — yuvoy-operator#22.

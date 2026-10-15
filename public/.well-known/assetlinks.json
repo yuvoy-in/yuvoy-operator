@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "in.yuvoy.operator",
+      "sha256_cert_fingerprints": [
+        "6B:AF:2D:A4:F5:57:8F:E3:B1:52:5E:24:2A:F1:73:AE:7F:CC:08:9E:C6:99:6D:FC:02:0B:79:DC:9B:76:A4:B1"
+      ]
+    }
+  }
+]
