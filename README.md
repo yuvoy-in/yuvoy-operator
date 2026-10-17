@@ -628,3 +628,30 @@ instead. That is exactly what broke `yuvoy-app`'s first three deploys.
 code is delivered. The flow is built and exercised end to end against mocks; it cannot
 be exercised against the real API until the account exists. That is a commercial
 dependency tracked on `yuvoy-api#52`, not a frontend one.
+
+## Clone all seven repositories
+
+Yuvoy is one system in seven repositories. Clone every one you have access to,
+side by side in one folder, even if you work in only one of them. The team rules
+are in [`AGENTS.md`](AGENTS.md).
+
+| Repository       | What it is                                    | Built by  |
+| ---------------- | --------------------------------------------- | --------- |
+| `yuvoy-api`      | Go API, the source of truth for every app     | Hima      |
+| `yuvoy-admin`    | staff console                                 | Hima      |
+| `yuvoy-lens`     | internal view of the lead pipeline            | Hima      |
+| `yuvoy-mobile`   | the traveller app and the operator app (Expo) | Vishwanth |
+| `yuvoy-app`      | traveller web app, app.yuvoy.in               | Vishwanth |
+| `yuvoy-operator` | operator web portal, operators.yuvoy.in       | Vishwanth |
+| `yuvoy-web`      | yuvoy.in landing page                         | Vishwanth |
+
+```bash
+mkdir -p ~/yuvoy && cd ~/yuvoy
+git clone https://github.com/yuvoy-in/yuvoy-api.git
+git clone https://github.com/yuvoy-in/yuvoy-admin.git
+git clone https://github.com/yuvoy-in/yuvoy-lens.git
+git clone https://github.com/yuvoy-in/yuvoy-mobile.git
+git clone https://github.com/yuvoy-in/yuvoy-app.git
+git clone https://github.com/yuvoy-in/yuvoy-operator.git
+git clone https://github.com/yuvoy-in/yuvoy-web.git
+```
