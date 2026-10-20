@@ -1,0 +1,94 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "K8PFJNX7U8.in.yuvoy.operator"
+        ],
+        "components": [
+          {
+            "/": "/today"
+          },
+          {
+            "/": "/today/*"
+          },
+          {
+            "/": "/bookings"
+          },
+          {
+            "/": "/bookings/*"
+          },
+          {
+            "/": "/requests"
+          },
+          {
+            "/": "/calendar"
+          },
+          {
+            "/": "/capacity"
+          },
+          {
+            "/": "/cash"
+          },
+          {
+            "/": "/earnings"
+          },
+          {
+            "/": "/earnings/*"
+          },
+          {
+            "/": "/payouts"
+          },
+          {
+            "/": "/profile"
+          },
+          {
+            "/": "/account"
+          },
+          {
+            "/": "/account/*"
+          },
+          {
+            "/": "/services"
+          },
+          {
+            "/": "/services/*"
+          },
+          {
+            "/": "/reels"
+          },
+          {
+            "/": "/logo"
+          },
+          {
+            "/": "/story"
+          },
+          {
+            "/": "/team"
+          },
+          {
+            "/": "/team/*"
+          },
+          {
+            "/": "/notifications"
+          },
+          {
+            "/": "/messages"
+          },
+          {
+            "/": "/join"
+          },
+          {
+            "/": "/join/*"
+          },
+          {
+            "/": "/sign-in"
+          },
+          {
+            "/": "/signup"
+          }
+        ]
+      }
+    ]
+  }
+}
