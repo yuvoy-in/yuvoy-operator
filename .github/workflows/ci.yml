@@ -1,18 +1,24 @@
 name: CI
 
-# MANUAL ONLY, matching yuvoy-web and yuvoy-app.
+# Runs on every pull request into `main` or `dev`, and by hand.
 #
-# The same suite runs locally before every push (`pnpm verify`, wired to
-# .husky/pre-push), so running it here on every push and pull request pays for
-# the same answer twice. The org reached 90% of its 2,000 free Actions minutes
-# with 20 days of the cycle left, and there is no budget to spend past it.
+# The `main` and `dev` rulesets require `verify` to pass before a pull
+# request can merge (yuvoy-mobile#403, decision D-052). On `dev` the branch
+# must also be up to date with `dev`. On `main` that setting is off: release
+# merge commits never go back into `dev`, so every release PR would read as
+# behind. `main` deploys to production on every push, so this is the check
+# standing between a merge and the live site.
 #
-# **Keep this workflow.** It is the second opinion on a machine that is not the
-# author's, worth the minutes before a release or when a failure smells
-# environmental.
+# This was manual only from 14 Aug 2026, to save Actions minutes. That budget
+# belongs to the org's private repositories: this repository is public, so its
+# GitHub-hosted runs cost nothing. The pre-push hook (`pnpm verify`) still runs
+# the same suite before anything leaves the machine; this is the second opinion
+# on a machine that is not the author's.
 #
 #     gh workflow run CI --ref <branch>
 on:
+  pull_request:
+    branches: [main, dev]
   workflow_dispatch:
 
 concurrency:
