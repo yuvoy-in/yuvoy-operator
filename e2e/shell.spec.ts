@@ -168,6 +168,8 @@ test("a signed-out door carries no inbox", async ({ page }) => {
     "/signup",
     "/join",
     "/join/jn_reefdivers",
+    "/claim",
+    "/claim/example-reef-divers",
     "/no-such-page",
   ]) {
     await page.goto(path);
