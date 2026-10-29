@@ -60,7 +60,10 @@ export function ClaimScreen({ slug }: { slug: string | null }) {
         would stay inside this page and never reach the phone to hand on.
       */}
       {open ? (
-        <a href={open} className={buttonClass({ block: true, className: "mt-6" })}>
+        <a
+          href={open}
+          className={buttonClass({ block: true, className: "mt-6" })}
+        >
           Open in the app
         </a>
       ) : null}

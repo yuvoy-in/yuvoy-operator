@@ -70,9 +70,9 @@ for (const path of ["/claim", "/claim/"]) {
     const response = await page.goto(path);
     expect(response?.status()).toBe(200);
     await expectClaimPage(page);
-    await expect(page.getByRole("link", { name: "Open in the app" })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByRole("link", { name: "Open in the app" }),
+    ).toHaveCount(0);
     await expectAccessible(page, `the claim page at ${path}`);
   });
 }
