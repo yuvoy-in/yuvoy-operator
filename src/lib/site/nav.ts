@@ -268,9 +268,18 @@ export function isFocusedRoute(pathname: string | null | undefined): boolean {
   return FOCUSED_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+/**
+ * A bare prefix matches a whole path segment only, so `/claim` and
+ * `/claim/{slug}` are doors but a later `/claims` list, which needs a session,
+ * is not one by accident.
+ */
 export function isBareRoute(pathname: string | null | undefined): boolean {
   if (!pathname) return false;
-  return BARE_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  return BARE_ROUTE_PREFIXES.some(
+    (prefix) =>
+      pathname.startsWith(prefix) &&
+      [undefined, "/", "?"].includes(pathname[prefix.length]),
+  );
 }
 
 /**
