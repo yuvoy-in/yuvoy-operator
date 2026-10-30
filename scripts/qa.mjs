@@ -405,6 +405,10 @@ const REQUEST_HEADER_READERS = new Map([
     join("src", "lib", "api", "visitor.ts"),
     "Reads Vercel's x-real-ip so the API's per-IP limits count the person, not Vercel.",
   ],
+  [
+    join("src", "lib", "site", "visitor-platform.ts"),
+    "Reads User-Agent so the claim page hands an iPhone or an Android phone to Yuvoy Host (yuvoy-operator#171).",
+  ],
 ]);
 
 for (const [name, entries] of [

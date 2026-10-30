@@ -10,9 +10,27 @@ import { expectAccessible } from "./axe";
  * Runs in both projects, so case 3 (a phone) is the mobile one and case 4
  * (a computer) the desktop one. Signed out throughout: the person reading
  * it may have no account yet.
+ *
+ * "Open in the app" depends on the phone (manager decision, 29 Oct 13:07):
+ * the mobile project is an Android phone, so it gets an `intent://` link to
+ * Yuvoy Host; an iPhone gets the Smart App Banner and no button; a computer
+ * keeps the claim link.
  */
 
 const HEADING = "Claim this listing in Yuvoy Host";
+
+const IPHONE =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+
+/** What Open in the app links to in this project, for one slug. */
+function openHref(slug: string) {
+  const link = `https://operators.yuvoy.in/claim/${slug}`;
+  if (test.info().project.name !== "mobile") return link;
+  const fallback = encodeURIComponent(
+    "https://play.google.com/store/apps/details?id=in.yuvoy.operator",
+  );
+  return `intent://operators.yuvoy.in/claim/${slug}#Intent;scheme=https;package=in.yuvoy.operator;S.browser_fallback_url=${fallback};end`;
+}
 
 async function expectClaimPage(page: Page) {
   await expect(
@@ -42,10 +60,7 @@ test("a listing's claim link: both stores, and Open in the app on the same link"
   await expectClaimPage(page);
   await expect(
     page.getByRole("link", { name: "Open in the app" }),
-  ).toHaveAttribute(
-    "href",
-    "https://operators.yuvoy.in/claim/example-reef-divers",
-  );
+  ).toHaveAttribute("href", openHref("example-reef-divers"));
   // A signed-out door: no bounce to sign-in (`shell.spec.ts` pins no chrome).
   await expect(page).toHaveURL(/\/claim\/example-reef-divers$/);
   await expectAccessible(page, "the claim page");
@@ -57,10 +72,7 @@ test("an unknown slug is the same page, never a 404", async ({ page }) => {
   await expectClaimPage(page);
   await expect(
     page.getByRole("link", { name: "Open in the app" }),
-  ).toHaveAttribute(
-    "href",
-    "https://operators.yuvoy.in/claim/no-such-business-here",
-  );
+  ).toHaveAttribute("href", openHref("no-such-business-here"));
 });
 
 for (const path of ["/claim", "/claim/"]) {
@@ -76,3 +88,51 @@ for (const path of ["/claim", "/claim/"]) {
     await expectAccessible(page, `the claim page at ${path}`);
   });
 }
+
+test.describe("on an iPhone", () => {
+  test.use({ userAgent: IPHONE });
+
+  test("the Smart App Banner hands Yuvoy Host the claim link, with no button", async ({
+    page,
+  }) => {
+    const response = await page.goto("/claim/example-reef-divers");
+    expect(response?.status()).toBe(200);
+    await expectClaimPage(page);
+    await expect(
+      page.getByRole("link", { name: "Open in the app" }),
+    ).toHaveCount(0);
+    await expect(page.locator('meta[name="apple-itunes-app"]')).toHaveAttribute(
+      "content",
+      "app-id=6820854539, app-argument=https://operators.yuvoy.in/claim/example-reef-divers",
+    );
+    await expectAccessible(page, "the claim page on an iPhone");
+  });
+
+  test("/claim with no slug still offers the app, with nothing to open", async ({
+    page,
+  }) => {
+    await page.goto("/claim");
+    await expect(page.locator('meta[name="apple-itunes-app"]')).toHaveAttribute(
+      "content",
+      "app-id=6820854539",
+    );
+  });
+
+  /*
+    Safari reads the banner from the page's <head> as it arrives, and Next
+    streams some metadata into <body> once it resolves. So this reads the
+    HTML the server sends, not the DOM after scripts have run.
+  */
+  test("the banner is in the <head> the server sends", async ({ request }) => {
+    const response = await request.get("/claim/example-reef-divers", {
+      headers: { "user-agent": IPHONE },
+    });
+    const html = await response.text();
+    const headEnd = html.indexOf("</head>");
+    expect(headEnd).toBeGreaterThan(0);
+    const head = html.slice(0, headEnd);
+    expect(head).toMatch(
+      /<meta name="apple-itunes-app" content="app-id=6820854539, app-argument=https:\/\/operators\.yuvoy\.in\/claim\/example-reef-divers"\s*\/?>/,
+    );
+  });
+});

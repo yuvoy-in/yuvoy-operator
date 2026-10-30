@@ -1,25 +1,36 @@
 import { execFileSync } from "node:child_process";
 
 /**
- * Tries each port in turn with the call the mock media host itself makes,
- * and prints the first one that listens. Exits 1 when none does.
+ * Tries each port in turn with the calls the mock media host (127.0.0.1) and
+ * the e2e web server (no host) make, and prints the first one where both
+ * listen. Exits 1 when none does.
  */
 const PROBE = `
 const net = require("node:net");
 const [from, to] = process.argv.slice(1).map(Number);
+function listens(port, host, then, otherwise) {
+  const server = net.createServer();
+  server.once("error", otherwise);
+  server.listen(port, host, () => server.close(then));
+}
 (function attempt(port) {
   if (port > to) process.exit(1);
-  const server = net.createServer();
-  server.once("error", () => attempt(port + 1));
-  server.listen(port, "127.0.0.1", () => {
-    server.close(() => process.stdout.write(String(port)));
-  });
+  const next = () => attempt(port + 1);
+  listens(port, "127.0.0.1", () => {
+    listens(port, undefined, () => process.stdout.write(String(port)), next);
+  }, next);
 })(from);
 `;
 
 /**
- * The first port from `from` to `to` that a server may listen on at
- * 127.0.0.1, asked of the OS the same way the mock media host binds.
+ * The first port from `from` to `to` that a server may listen on, at
+ * 127.0.0.1 and with no host, asked of the OS the way the mock media host and
+ * the e2e web server bind.
+ *
+ * Both, because neither answer covers the other: on macOS 127.0.0.1 binds
+ * happily beside a server already listening on every address, and that server
+ * then answers the loopback requests (the stray server on 3200 in
+ * yuvoy-operator#171).
  *
  * For `playwright.config.ts`, which is evaluated synchronously and has to
  * know the host's port before it starts the server: the build bakes the
@@ -48,9 +59,7 @@ export function firstFreeLoopbackPort(from: number, to: number): number {
       { encoding: "utf8", timeout: 10_000 },
     );
   } catch {
-    throw new Error(
-      `No port from ${from} to ${to} is free on 127.0.0.1 for the mock media host.`,
-    );
+    throw new Error(`No port from ${from} to ${to} is free on 127.0.0.1.`);
   }
   const port = Number(answer);
   if (!Number.isInteger(port) || port < from || port > to) {

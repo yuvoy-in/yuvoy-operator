@@ -1,6 +1,10 @@
 import { Screen } from "@/components/chrome/screen";
 import { buttonClass } from "@/components/ui/button-class";
-import { HOST_APP_STORES, claimLink } from "@/lib/site/host-app";
+import {
+  HOST_APP_STORES,
+  openInAppLink,
+  type HostAppPlatform,
+} from "@/lib/site/host-app";
 
 /**
  * What `operators.yuvoy.in/claim/{slug}` shows on a phone or a computer
@@ -14,6 +18,8 @@ import { HOST_APP_STORES, claimLink } from "@/lib/site/host-app";
  * No API call, and the listing is never named: an unknown slug draws the
  * same page, and the app says "There is no listing to claim here." if it is
  * gone. With no slug at all there is nothing to open, so no Open in the app.
+ * On an iPhone the Smart App Banner takes the button's place, and on Android
+ * the button is an `intent://` link (`openInAppLink`).
  *
  * A signed-out door (`BARE_ROUTE_PREFIXES`): the person reading it may have
  * no account yet, and a session on this browser changes nothing here.
@@ -21,8 +27,14 @@ import { HOST_APP_STORES, claimLink } from "@/lib/site/host-app";
  * Replaced by the web claim page and the claims list with the web backfill
  * at the store release that carries the app's claim.
  */
-export function ClaimScreen({ slug }: { slug: string | null }) {
-  const open = claimLink(slug);
+export function ClaimScreen({
+  slug,
+  platform,
+}: {
+  slug: string | null;
+  platform: HostAppPlatform;
+}) {
+  const open = openInAppLink(slug, platform);
 
   return (
     <Screen nav="none" stageLabel="For operators" width="sm">
