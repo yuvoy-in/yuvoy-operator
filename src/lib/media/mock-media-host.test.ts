@@ -14,12 +14,18 @@ import { firstFreeLoopbackPort } from "../../../mocks/free-port";
  * everywhere else.
  */
 
-/** Holds a loopback port, as another mocked operator server would. */
-function hold(port: number): Promise<Server> {
+/**
+ * Holds a port, as another mocked operator server would: at 127.0.0.1, or
+ * with a null host on every address, as a stray `next start` does.
+ */
+function hold(
+  port: number,
+  host: string | null = "127.0.0.1",
+): Promise<Server> {
   return new Promise((resolve, reject) => {
     const server = createServer();
     server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => resolve(server));
+    server.listen(port, host ?? undefined, () => resolve(server));
   });
 }
 
@@ -45,6 +51,16 @@ describe("the first free loopback port", () => {
       await release(holder);
     }
     expect(firstFreeLoopbackPort(taken, taken)).toBe(taken);
+  });
+
+  it("passes over a port held on every address, as the stray server on 3200 was", async () => {
+    const taken = aFreePort();
+    const holder = await hold(taken, null);
+    try {
+      expect(firstFreeLoopbackPort(taken, taken + 20)).toBeGreaterThan(taken);
+    } finally {
+      await release(holder);
+    }
   });
 
   it("refuses a range that is not one", () => {
