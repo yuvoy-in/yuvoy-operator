@@ -48,9 +48,7 @@ export function firstFreeLoopbackPort(from: number, to: number): number {
       { encoding: "utf8", timeout: 10_000 },
     );
   } catch {
-    throw new Error(
-      `No port from ${from} to ${to} is free on 127.0.0.1 for the mock media host.`,
-    );
+    throw new Error(`No port from ${from} to ${to} is free on 127.0.0.1.`);
   }
   const port = Number(answer);
   if (!Number.isInteger(port) || port < from || port > to) {
