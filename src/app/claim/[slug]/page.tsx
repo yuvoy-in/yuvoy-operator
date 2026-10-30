@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { claimBanner, hostAppPlatform } from "@/lib/site/host-app";
+import { claimBanner } from "@/lib/site/host-app";
+import { visitorPlatform } from "@/lib/site/visitor-platform";
 import { ClaimScreen } from "../claim-screen";
 
 // Force-dynamic like every page here: see `app/join/(root)/page.tsx`.
@@ -17,6 +17,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /** The claim link a phone without Yuvoy Host lands on (yuvoy-operator#171). */
 export default async function ClaimPage({ params }: Props) {
   const { slug } = await params;
-  const platform = hostAppPlatform((await headers()).get("user-agent"));
+  const platform = await visitorPlatform();
   return <ClaimScreen slug={slug} platform={platform} />;
 }
