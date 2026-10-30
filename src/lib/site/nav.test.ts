@@ -47,6 +47,12 @@ describe("focused and bare routes", () => {
     ["/sign-in", "bare"],
     ["/signup", "bare"],
     ["/join", "bare"],
+    // A phone without Yuvoy Host, from the traveller app (yuvoy-operator#171).
+    ["/claim", "bare"],
+    ["/claim/example-reef-divers", "bare"],
+    ["/sign-in?next=%2Ftoday", "bare"],
+    // A bare prefix is a whole segment: a later claims list needs a session.
+    ["/claims", "root"],
     ["/today", "root"],
     ["/today?day=2026-09-03", "root"],
     ["/bookings", "root"],
