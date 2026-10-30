@@ -128,7 +128,9 @@ test.describe("on an iPhone", () => {
       headers: { "user-agent": IPHONE },
     });
     const html = await response.text();
-    const head = html.slice(0, html.indexOf("</head>"));
+    const headEnd = html.indexOf("</head>");
+    expect(headEnd).toBeGreaterThan(0);
+    const head = html.slice(0, headEnd);
     expect(head).toMatch(
       /<meta name="apple-itunes-app" content="app-id=6820854539, app-argument=https:\/\/operators\.yuvoy\.in\/claim\/example-reef-divers"\s*\/?>/,
     );

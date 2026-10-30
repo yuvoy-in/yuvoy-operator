@@ -36,20 +36,28 @@ export function claimLink(slug: string | null | undefined): string | null {
   return `${CLAIM_LINK_ORIGIN}/claim/${encodeURIComponent(trimmed)}`;
 }
 
-/**
- * Which phone is reading the claim page, from its User-Agent. iPadOS Safari
- * says it is a Mac, so an iPad is `other`: it still gets the Smart App
- * Banner, and the plain link beside it.
- */
 export type HostAppPlatform = "ios" | "android" | "other";
 
+/**
+ * Which phone is reading the claim page, from its User-Agent.
+ *
+ * `ios` is Safari on an iPhone only, because only Safari draws the Smart App
+ * Banner: Chrome, Firefox, Edge and the in-app browsers (Google, Facebook,
+ * Instagram) on an iPhone are `other` and keep the plain link. `android` is
+ * a browser that can follow an `intent://` link; an app's plain WebView
+ * (`; wv)`) cannot, so it is `other` too. iPadOS Safari says it is a Mac, so
+ * an iPad is `other`: it gets the banner and the plain link.
+ */
 export function hostAppPlatform(
   userAgent: string | null | undefined,
 ): HostAppPlatform {
   const ua = userAgent ?? "";
-  if (/Android/i.test(ua)) return "android";
-  if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
-  return "other";
+  if (/Android/i.test(ua)) return /; wv\)/.test(ua) ? "other" : "android";
+  if (!/iPhone|iPad|iPod/.test(ua)) return "other";
+  const safari = /Version\/[\d.]+ .*Safari\//.test(ua);
+  const otherBrowser =
+    /CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|FBAN|FBAV|Instagram/.test(ua);
+  return safari && !otherBrowser ? "ios" : "other";
 }
 
 /**

@@ -31,6 +31,22 @@ describe("hostAppPlatform", () => {
     expect(hostAppPlatform(DESKTOP)).toBe("other");
   });
 
+  it("is other on an iPhone browser that draws no banner", () => {
+    // Chrome, Firefox and Instagram's browser on an iPhone.
+    const chrome = IPHONE.replace("Version/18.0", "CriOS/130.0.6723.90");
+    const firefox = IPHONE.replace("Version/18.0", "FxiOS/132.0");
+    const instagram =
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 350.0.0.0.0";
+    for (const ua of [chrome, firefox, instagram]) {
+      expect(hostAppPlatform(ua)).toBe("other");
+    }
+  });
+
+  it("is other in an Android app's WebView, which cannot follow intent://", () => {
+    const webView = PIXEL.replace("Pixel 7)", "Pixel 7; wv)");
+    expect(hostAppPlatform(webView)).toBe("other");
+  });
+
   it("is other with no User-Agent at all", () => {
     expect(hostAppPlatform(null)).toBe("other");
     expect(hostAppPlatform("")).toBe("other");
