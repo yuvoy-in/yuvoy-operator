@@ -55,7 +55,11 @@ import {
   type MockSlot,
   type MockTeamMember,
 } from "./fixtures";
-import { CHECK_IN_CODES, mockNormaliseCode } from "./check-in-codes";
+import {
+  CHECK_IN_CODES,
+  mockCheckInRefusal,
+  mockNormaliseCode,
+} from "./check-in-codes";
 
 /**
  * The operator API, mocked.
@@ -8281,6 +8285,16 @@ export const handlers = [
       });
     }
 
+    const refused = mockCheckInRefusal(code);
+    if (refused) {
+      return envelope(
+        refused.code,
+        refused.message,
+        refused.status,
+        refused.details,
+      );
+    }
+
     const bookingId = CHECK_IN_CODES[code];
     const found = bookingId ? partyOf(bookingId) : null;
     if (!bookingId || !found) {
@@ -8303,7 +8317,8 @@ export const handlers = [
     if (existing && existing.outcome !== "arrived") {
       return envelope(
         "not_on_this_departure",
-        "This booking is already settled.",
+        // The store's own error, which the API sends as it is.
+        "this booking is not on the departure",
         409,
       );
     }

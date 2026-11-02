@@ -75,10 +75,19 @@ export function CheckInScreen() {
     const key = keys.current.keyFor(
       `${pending.reference ?? ""}.${pending.code}`,
     );
+    /*
+      Held while it goes. A session that died since the page drew sends the
+      action's own redirect to sign-in, and the link is no longer in the
+      address bar, so this is what brings it back. That redirect never
+      returns here; any answer that does clears it.
+    */
+    if (pending.reference)
+      holdCheckInLink(`${pending.reference}.${pending.code}`);
     const result = await callAction<CheckInResult>(
       () => checkInWithCode({ ...pending, key }),
       () => ({ ok: false, message: UNSENT, retry: true }),
     );
+    takeHeldCheckInLink();
     if (result.ok) {
       keys.current.clear();
       setState({ step: "done", arrived: result });
@@ -104,10 +113,16 @@ export function CheckInScreen() {
       link is read, taken and sent once.
     */
     let live = true;
-    queueMicrotask(() => {
+    function read(first: boolean) {
       if (!live) return;
       const hash = window.location.hash;
-      const link = readCheckInLink(hash) ?? takeHeldCheckInLink();
+      /*
+        The held link is always taken, and used only when the address has
+        none. Left behind, one held at sign-in would be sent on a later
+        reload with nobody tapping.
+      */
+      const held = first ? takeHeldCheckInLink() : null;
+      const link = readCheckInLink(hash) ?? held;
       if (hash) {
         // The code is not left in the address bar, the history or a share.
         window.history.replaceState(
@@ -117,10 +132,17 @@ export function CheckInScreen() {
         );
       }
       if (link) void send({ ...link, via: "portal_link" });
-      else setState({ step: "typing", notice: hash ? NOT_A_LINK : undefined });
-    });
+      else if (first || hash) {
+        setState({ step: "typing", notice: hash ? NOT_A_LINK : undefined });
+      }
+    }
+    queueMicrotask(() => read(true));
+    // A second QR opened in this same tab changes only the fragment.
+    const again = () => read(false);
+    window.addEventListener("hashchange", again);
     return () => {
       live = false;
+      window.removeEventListener("hashchange", again);
     };
   }, []);
 

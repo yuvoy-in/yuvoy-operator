@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { holdCheckInLink } from "@/lib/day/check-in-link";
 import { NOT_A_CODE, UNSENT, type CheckInResult } from "./check-in-result";
@@ -98,6 +98,75 @@ describe("opened from a traveller's link", () => {
     expect(checkInWithCode).toHaveBeenCalledWith(
       expect.objectContaining({ reference: "YV-4K2M9P7Q", via: "portal_link" }),
     );
+  });
+
+  it("lets go of a held link when the fragment has its own, so a reload cannot send it", async () => {
+    checkInWithCode.mockResolvedValue(ARRIVED);
+    holdCheckInLink("#YV-7K2Q4BCD.R4TW9HNE");
+    openAt("#YV-4K2M9P7Q.K7QM2XPA");
+    render(<CheckInScreen />);
+
+    expect(await screen.findByText("Asha Menon")).toBeInTheDocument();
+    expect(checkInWithCode).toHaveBeenCalledTimes(1);
+    expect(checkInWithCode).toHaveBeenCalledWith(
+      expect.objectContaining({ reference: "YV-4K2M9P7Q", code: "K7QM2XPA" }),
+    );
+    expect(sessionStorage.getItem("yvo.check-in")).toBeNull();
+  });
+
+  it("never sends a held link when the fragment is something else", async () => {
+    holdCheckInLink("#YV-7K2Q4BCD.R4TW9HNE");
+    openAt("#cash-owed");
+    render(<CheckInScreen />);
+
+    expect(await screen.findByLabelText("Check-in code")).toBeInTheDocument();
+    expect(checkInWithCode).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("yvo.check-in")).toBeNull();
+  });
+
+  it("holds the link while it goes, and lets it go on the answer", async () => {
+    let answer: (result: CheckInResult) => void = () => {};
+    checkInWithCode.mockReturnValue(
+      new Promise<CheckInResult>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    openAt("#YV-4K2M9P7Q.K7QM2XPA");
+    render(<CheckInScreen />);
+
+    expect(
+      await screen.findByText("Checking in K7QM-2XPA."),
+    ).toBeInTheDocument();
+    expect(JSON.parse(sessionStorage.getItem("yvo.check-in") ?? "{}")).toEqual(
+      expect.objectContaining({ reference: "YV-4K2M9P7Q", code: "K7QM2XPA" }),
+    );
+    await act(async () => answer(ARRIVED));
+    expect(await screen.findByText("Asha Menon")).toBeInTheDocument();
+    expect(sessionStorage.getItem("yvo.check-in")).toBeNull();
+  });
+
+  it("checks in a second link opened in the same tab", async () => {
+    checkInWithCode.mockResolvedValueOnce(ARRIVED).mockResolvedValueOnce({
+      ...ARRIVED,
+      bookingId: "bkg_2",
+      reference: "YV-7K2Q4BCD",
+      name: "Daniel Roy",
+    });
+    openAt("#YV-4K2M9P7Q.K7QM2XPA");
+    render(<CheckInScreen />);
+    expect(await screen.findByText("Asha Menon")).toBeInTheDocument();
+
+    openAt("#YV-7K2Q4BCD.R4TW9HNE");
+    act(() => {
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    expect(await screen.findByText("Daniel Roy")).toBeInTheDocument();
+    expect(checkInWithCode).toHaveBeenCalledTimes(2);
+    expect(checkInWithCode).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reference: "YV-7K2Q4BCD", code: "R4TW9HNE" }),
+    );
+    expect(window.location.hash).toBe("");
   });
 
   it("asks for the code when the fragment is not a check-in link", async () => {

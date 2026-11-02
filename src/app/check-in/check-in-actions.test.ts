@@ -203,15 +203,18 @@ describe("a refusal", () => {
 
   it("never sends again after a lost answer, and sends them to Today", async () => {
     const result = await answer(
-      refused(500, "idempotency_response_lost", "lost"),
+      refused(409, "idempotency_response_lost", "lost"),
     );
     expect(result).toMatchObject({ ok: false, byName: true, newKey: true });
     expect(result).not.toHaveProperty("retry");
   });
 
   it("takes a new key after one the API will not take again", async () => {
-    for (const code of ["idempotency_key_reuse", "idempotency_key_malformed"]) {
-      expect(await answer(refused(422, code, "no"))).toEqual({
+    for (const [status, code] of [
+      [409, "idempotency_key_reuse"],
+      [400, "idempotency_key_malformed"],
+    ] as const) {
+      expect(await answer(refused(status, code, "no"))).toEqual({
         ok: false,
         message: "That did not go. Nobody was checked in. Try again.",
         retry: true,
