@@ -15,9 +15,13 @@ import { holdCheckInLink } from "@/lib/day/check-in-link";
 export function HoldCheckInLink() {
   useEffect(() => {
     if (!holdCheckInLink(window.location.hash)) return;
-    // Held, so the code leaves this page's address bar and history entry.
+    /*
+      Held, so the code leaves this page's address bar and history entry.
+      `null`, never `history.state`: Next skips its own URL for a state that
+      carries its mark, and its next re-render writes the code back.
+    */
     window.history.replaceState(
-      window.history.state,
+      null,
       "",
       window.location.pathname + window.location.search,
     );

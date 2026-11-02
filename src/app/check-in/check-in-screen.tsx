@@ -125,9 +125,13 @@ export function CheckInScreen() {
       const held = first ? takeHeldCheckInLink() : null;
       const link = hash ? readCheckInLink(hash) : held;
       if (hash) {
-        // The code is not left in the address bar, the history or a share.
+        /*
+          The code is not left in the address bar, the history or a share.
+          `null`, never `history.state`: Next skips its own URL for a state
+          that carries its mark, and its next re-render writes the code back.
+        */
         window.history.replaceState(
-          window.history.state,
+          null,
           "",
           window.location.pathname + window.location.search,
         );

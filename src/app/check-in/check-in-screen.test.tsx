@@ -50,6 +50,9 @@ describe("opened from a traveller's link", () => {
   it("checks them in once, on its own, and clears the code from the address", async () => {
     checkInWithCode.mockResolvedValue(ARRIVED);
     openAt("#YV-4K2M9P7Q.K7QM2XPA");
+    // Next's own mark, as its router leaves on every entry it writes.
+    window.history.replaceState({ __NA: true }, "", window.location.href);
+    const replace = vi.spyOn(window.history, "replaceState");
     render(
       <StrictMode>
         <CheckInScreen />
@@ -57,6 +60,13 @@ describe("opened from a traveller's link", () => {
     );
 
     expect(await screen.findByText("Asha Menon")).toBeInTheDocument();
+    /*
+      With `null`, never the page's own state: Next's patched replaceState
+      skips its URL for a state with its mark, and would put the code back
+      on its next re-render (e2e/check-in.spec.ts).
+    */
+    expect(replace).toHaveBeenCalledWith(null, "", "/check-in");
+    replace.mockRestore();
     expect(screen.getByText("2 guests, YV-4K2M9P7Q")).toBeInTheDocument();
     expect(screen.getByText("Checked in at 07:00")).toBeInTheDocument();
     expect(
