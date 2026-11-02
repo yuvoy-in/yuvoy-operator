@@ -118,11 +118,12 @@ export function CheckInScreen() {
       const hash = window.location.hash;
       /*
         The held link is always taken, and used only when the address has
-        none. Left behind, one held at sign-in would be sent on a later
+        no fragment at all: never in place of another link or of any other
+        fragment. Left behind, one held at sign-in would be sent on a later
         reload with nobody tapping.
       */
       const held = first ? takeHeldCheckInLink() : null;
-      const link = readCheckInLink(hash) ?? held;
+      const link = hash ? readCheckInLink(hash) : held;
       if (hash) {
         // The code is not left in the address bar, the history or a share.
         window.history.replaceState(
