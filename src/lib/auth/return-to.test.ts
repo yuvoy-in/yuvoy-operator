@@ -10,6 +10,12 @@ describe("safeReturnPath — what it allows", () => {
     expect(safeReturnPath("/account")).toBe("/account");
   });
 
+  it("takes /check-in, so an operator signed out at the jetty lands back on it", () => {
+    // yuvoy-operator#175. The fragment is not part of `next`; it is held in
+    // the tab and taken back by the page.
+    expect(safeReturnPath("/check-in")).toBe("/check-in");
+  });
+
   it("keeps a query string, which is part of where somebody was", () => {
     expect(safeReturnPath("/today/slot_dawn?filter=held")).toBe(
       "/today/slot_dawn?filter=held",

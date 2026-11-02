@@ -55,6 +55,7 @@ import {
   type MockSlot,
   type MockTeamMember,
 } from "./fixtures";
+import { CHECK_IN_CODES, mockNormaliseCode } from "./check-in-codes";
 
 /**
  * The operator API, mocked.
@@ -8254,6 +8255,71 @@ export const handlers = [
 
     attendance[id] = { outcome, arrivedAt: existing?.arrivedAt };
     return HttpResponse.json({ outcome, arrivedAt: existing?.arrivedAt });
+  }),
+
+  /* -------------------------------------------------------- check-ins - */
+
+  /*
+    Check-in by code, yuvoy-operator#175, in the API's words
+    (host_check_in.go at a53d7b3a): a code that is not one of ours is 404, a
+    reference from the QR that is not the code's booking is 409, and a second
+    scan answers 200 with the first time and `alreadyCheckedIn`.
+  */
+  http.post(url("/check-ins"), async ({ request }) => {
+    const failed = requireSession(request);
+    if (failed) return failed;
+
+    const body = (await request.json()) as {
+      code?: unknown;
+      reference?: unknown;
+    };
+    const code =
+      typeof body.code === "string" ? mockNormaliseCode(body.code) : "";
+    if (code.length !== 8) {
+      return envelope("invalid_input", "we could not read that check-in", 400, {
+        code: "the eight characters the traveller shows, like K7QM-2XPA",
+      });
+    }
+
+    const bookingId = CHECK_IN_CODES[code];
+    const found = bookingId ? partyOf(bookingId) : null;
+    if (!bookingId || !found) {
+      return envelope(
+        "not_found",
+        "This code is not for one of your bookings.",
+        404,
+      );
+    }
+    const { party, slotId } = found;
+    if (body.reference !== undefined && body.reference !== party.reference) {
+      return envelope(
+        "check_in_code_mismatch",
+        `This code does not match booking ${String(body.reference)}. Check them in by name if it is them.`,
+        409,
+      );
+    }
+
+    const existing = attendance[bookingId];
+    if (existing && existing.outcome !== "arrived") {
+      return envelope(
+        "not_on_this_departure",
+        "This booking is already settled.",
+        409,
+      );
+    }
+    const before =
+      existing?.arrivedAt ?? (party.arrived ? party.arrivedAt : undefined);
+    const arrivedAt = before ?? new Date().toISOString();
+    attendance[bookingId] = { outcome: "arrived", arrivedAt };
+    return HttpResponse.json({
+      bookingId,
+      reference: party.reference,
+      name: party.name,
+      guests: party.guests,
+      slotId,
+      arrivedAt,
+      alreadyCheckedIn: before !== undefined,
+    });
   }),
 
   /* -------------------------------------------------------------- cash -- */

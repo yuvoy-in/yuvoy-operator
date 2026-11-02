@@ -2188,6 +2188,10 @@ for (const p of vendorProblems()) problems.push(p);
     ["src/app/bookings/cash-collect.tsx", "the amount opens with Took less"],
     ["src/app/calendar/departure-form.tsx", "opened by Add departures"],
     [
+      "src/app/check-in/check-in-screen.tsx",
+      "the server draws Reading the link; the code box comes after the fragment is read",
+    ],
+    [
       "src/app/join/[token]/join-token-form.tsx",
       "the code step, after the number is sent",
     ],

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignInForm } from "./sign-in-form";
+import { HoldCheckInLink } from "./hold-check-in-link";
 import { ACCOUNT_PATH, sessionState } from "@/lib/auth/session";
 import { HOME_PATH, safeReturnPath } from "@/lib/auth/return-to";
 import { Screen } from "@/components/chrome/screen";
@@ -78,6 +79,7 @@ export default async function SignInPage({
         No password. You sign in with a one-time code for your business.
       </p>
       <SignInForm next={next} />
+      {next === "/check-in" ? <HoldCheckInLink /> : null}
 
       {/*
         The way in for somebody who does not have an account yet — now a
