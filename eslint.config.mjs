@@ -108,6 +108,8 @@ const eslintConfig = defineConfig([
       "src/lib/site/offline-writes.ts",
       "src/lib/site/offline-writes.test.ts",
       "e2e/reels.spec.ts",
+      // Seeds one kept check-in so /check-in re-reads (yuvoy-operator#175).
+      "e2e/check-in.spec.ts",
     ],
     rules: {
       "no-restricted-syntax": [

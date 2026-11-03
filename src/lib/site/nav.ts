@@ -244,6 +244,12 @@ export const FOCUSED_ROUTE_PREFIXES = [
     INTO from it and close back out of.
   */
   "/account/",
+  /*
+    Where a traveller's check-in QR opens (yuvoy-operator#175). Gone into from
+    the phone's camera, closed back to Today. Listed here also makes it a
+    return path, so an operator signed out at the jetty lands back on it.
+  */
+  "/check-in",
 ] as const;
 
 /**

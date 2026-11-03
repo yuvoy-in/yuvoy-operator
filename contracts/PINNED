@@ -448,6 +448,33 @@ path=contracts/operator-openapi.yaml
 #
 # `git ls-remote` read master as 178d98912d87 immediately before pinning.
 
-ref=178d98912d879f1cf633fd5d60b404f63dcd78a7
+#
+# 3 Nov 2026. Forward from 178d98912d87 to a53d7b3a5d1f, for the check-in
+# link (yuvoy-operator#175). Nothing this portal reads is removed or changes
+# shape.
+#
+# Removals, read by set difference as before:
+#   - None. No path, operation or schema disappears. The 8 removed lines of
+#     the document are prose that was rewritten.
+#   - New paths: `/check-ins`, `/listing-claims` (four), `/creator-videos`
+#     (two). New on `/me`: `checkInByCode`, not in `required` for one release.
+#   - The error code enum gains `check_in_paused`, `check_in_not_today` and
+#     `check_in_code_mismatch`, among others.
+#
+# Consumed in this change:
+#   - `POST /check-ins` (`checkInByCode`) from the new `/check-in` page, the
+#     page the traveller's QR opens (yuvoy-app#218, yuvoy-mobile#367). Sent
+#     with `via: "portal_link"`, or `"typed"` from its box, and an
+#     `Idempotency-Key`.
+#
+# NOT consumed here:
+#   - `/me.checkInByCode`. It decides whether Check in entries show, and this
+#     change adds none; the page always asks the API, because the flag "changes
+#     what shows, not whether a scan works".
+#   - `/listing-claims` and `/creator-videos`.
+#
+# `git ls-remote` read master as a53d7b3a5d1f immediately before pinning.
+
+ref=a53d7b3a5d1ff73fa76263182e08a75d9e1685cb
 branch=master
-pinned_on=2026-10-10
+pinned_on=2026-11-03
