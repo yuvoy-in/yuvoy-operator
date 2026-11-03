@@ -18,3 +18,24 @@ for (const path of [
     expect(JSON.parse(await response.text())).toBeTruthy();
   });
 }
+
+/**
+ * yuvoy-operator#171: the served file, not only the one in public/, sends a
+ * claim link to the Host app, which declares /claim/ (yuvoy-mobile#427).
+ */
+test("the served apple-app-site-association links /claim and /claim/*", async ({
+  request,
+}) => {
+  const response = await request.get(
+    "/.well-known/apple-app-site-association",
+    {
+      maxRedirects: 0,
+    },
+  );
+  const aasa = JSON.parse(await response.text());
+  const paths = aasa.applinks.details[0].components.map(
+    (c: { "/": string }) => c["/"],
+  );
+  expect(paths).toContain("/claim");
+  expect(paths).toContain("/claim/*");
+});
