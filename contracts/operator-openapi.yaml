@@ -4,6 +4,13 @@ info:
   title: Yuvoy Operator API
   version: 1.0.0
   description: >
+    **Frozen (D-049, 21 Oct 2026).** This is the contract of the old prefix,
+    `/operator/v1`, which answers through a name shim until every app has moved
+    to `/host/v1`. New work goes in `host-openapi.yaml`, the same API under the
+    host names. This file does not change again; it is deleted with the old
+    prefix.
+
+
     The API behind operators.yuvoy.in — the portal an operator uses to run their
     business on Yuvoy.
 
@@ -123,6 +130,11 @@ tags:
       the money goes, and who else can get in. Everything here is what somebody
       holding a stolen session would go for, and none of it is ever urgent,
       which is what makes the friction affordable.
+  - name: claims
+    description: >
+      A business found on Yuvoy's directory of businesses not yet on Yuvoy
+      claims that listing as its own. It shows us how, and a person at Yuvoy
+      decides.
   - name: media
   - name: money
   - name: today
@@ -1927,6 +1939,223 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /listing-claims:
+    get:
+      tags: [claims]
+      summary: This business's claims
+      description: >
+        Every claim this business has made on a directory listing, newest
+        first. Any role. Another business's claims are never in it.
+      operationId: listMyListingClaims
+      responses:
+        "200":
+          description: The claims.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListingClaimList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [claims]
+      summary: Claim a listing on the directory
+      description: >
+        OWNER or ADMIN. A business that has not gone live yet may claim too.
+        Names the listing by its `slug` on the public directory, and how the
+        business will show it is its own. A person at Yuvoy decides, and the
+        owner is told by email.
+
+
+        `public_page_code` answers with `proofCode`: post it, as it is, on a
+        page the business controls (its own website, or its own social page
+        where its contact is published), never on the list we found the
+        listing on, and leave it there until the claim is decided. A person at
+        Yuvoy looks for it there; the API keeps the code and checks nothing
+        itself.
+        `email_domain` needs `sendListingClaimEmailCode` and
+        `verifyListingClaimEmailCode` before anybody can approve it, and is
+        refused for a listing with no website. `call_to_published_number`
+        and `documents` need nothing more here: our team calls the number on
+        the public page, or asks for the papers.
+
+
+        A listing that is removed, unknown, or not open to claims answers
+        `404`, and so does every claim while the directory is switched off.
+        One claim at a time waits on a listing, whoever made it. Five claims
+        a day from one business, then `429`.
+      operationId: createListingClaim
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ListingClaimInput" }
+      responses:
+        "201":
+          description: The claim, waiting for our team.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListingClaim" }
+        "400":
+          description: >-
+            `invalid_input`, with `details` naming the field. `details.proofMethod`
+            is `no_website` for `email_domain` on a listing with no website.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: >-
+            `forbidden`: OWNER or ADMIN only. `account_suspended` while the
+            business is suspended, closed or disqualified.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            `claim_already_open`: a claim on this listing is waiting for our
+            team, this business's or another's. `already_claimed`: a business
+            has claimed the listing already.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: >-
+            `rate_limited`: five claims from this business in the 24 hours
+            that began with the first of them. `Retry-After` is the seconds
+            until those 24 hours end. This is the only `429` on the claim
+            routes that sends it.
+          headers:
+            Retry-After: { schema: { type: integer, minimum: 1 } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /listing-claims/preview:
+    get:
+      tags: [claims]
+      summary: The listing a claim would name
+      description: >
+        Any role. The listing at `slug` on the directory as a claim would find
+        it: its name, the host of its own website, and whether a claim may be
+        made on it now. For the claim screen, before the claim exists. Like
+        the claim routes it does not read the `supply` release, so it answers
+        while the public directory is closed. A listing that is removed,
+        unknown, or not open to claims answers `404`, and so does every
+        preview while the directory is switched off.
+      operationId: previewListingClaim
+      parameters:
+        - name: slug
+          in: query
+          required: true
+          description: The listing's `slug` on the public directory.
+          schema: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "200":
+          description: The listing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListingClaimPreview" }
+        "400":
+          description: "`invalid_input`: no `slug`, or one longer than 200 characters."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /listing-claims/{id}/email-code:
+    post:
+      tags: [claims]
+      summary: Send a code to an address at the business's website
+      description: >
+        OWNER or ADMIN. For a waiting `email_domain` claim: a 6-digit code goes
+        to `email`, which must be at the listing's website domain: for a
+        website at `www.example.com`, an address `@example.com` or
+        `@www.example.com`. The address you sign in with is not proof, and the
+        address typed here is never kept, only a hash of it against the code.
+
+
+        Three codes an hour on one claim, then `429`. Past the hour's ceiling
+        on codes to addresses nobody has proven yet, the answer is still `204`
+        and nothing is sent: ask again later. Another business's claim, and an
+        unknown one, are `404`.
+      operationId: sendListingClaimEmailCode
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ListingClaimEmailCodeInput" }
+      responses:
+        "204": { description: "Sent, or held back past the hourly ceiling." }
+        "400":
+          description: >-
+            `invalid_input`. `details.email` is `not_at_website_host` when the
+            address is not at the listing's website domain.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: >-
+            `forbidden`: OWNER or ADMIN only. `account_suspended` while the
+            business is suspended, closed or disqualified.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            `proof_method_not_email`: the claim's `proofMethod` is not
+            `email_domain`. `conflict` with `details.reason` `not_waiting`: the
+            claim is decided or withdrawn.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /listing-claims/{id}/email-code/verify:
+    post:
+      tags: [claims]
+      summary: Confirm the code from that address
+      description: >
+        OWNER or ADMIN. The code from the email. A right one sets
+        `proofEmailVerifiedAt` on the claim, and our team can then approve it.
+        A wrong or expired code is `400 invalid_code`, and each try counts;
+        ten tries an hour on one claim, then `429`. Another business's claim,
+        and an unknown one, are `404`.
+      operationId: verifyListingClaimEmailCode
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ListingClaimEmailCodeVerifyInput" }
+      responses:
+        "204": { description: Confirmed. }
+        "400":
+          description: "`invalid_code`: wrong or expired. `invalid_input` for a code that is not six digits."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: >-
+            `forbidden`: OWNER or ADMIN only. `account_suspended` while the
+            business is suspended, closed or disqualified.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            `proof_method_not_email`: the claim's `proofMethod` is not
+            `email_domain`. `conflict` with `details.reason` `not_waiting`: the
+            claim is decided or withdrawn.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /me:
     get:
       tags: [auth]
@@ -1964,6 +2193,15 @@ paths:
                       ADMIN holds it because the role exists for an owner who is
                       off the island: one who could add a manager but not close a
                       date would be a stand-in for nothing.
+                  checkInByCode:
+                    type: boolean
+                    description: >-
+                      Whether staff turned check-in by code on for this business.
+                      Show the Check in entries only when true; nothing shows
+                      until staff turn it on. It changes what shows, not whether
+                      a scan works: a code already on a traveller's phone still
+                      checks them in after it is turned off. Always sent, false
+                      when off. Not in `required` for one release.
                   commissionRateBps:
                     type: integer
                     examples: [1500]
@@ -2337,7 +2575,12 @@ paths:
         message, and `account` with the business id (started selling, switched
         on and not yet bookable, stopped selling). Open it over the session to
         show anything more. Each push is sent beside the message on WhatsApp
-        or email, never instead of it.
+        or email, never instead of it. A new seat request push also carries
+        `categoryId: "request"`, the category the app shows Accept and Decline
+        on, and on an iPhone `interruptionLevel: "time-sensitive"` when, as the
+        push is sent, the request is still waiting and closes within the hour
+        (yuvoy-api#328).
+        No other push carries either.
 
 
         A suspended business is answered `403 account_suspended` here, as for
@@ -2348,7 +2591,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/DeviceRegistration" }
       responses:
-        "204": { description: Registered, or refreshed. }
+        "204": { description: "Registered, or refreshed." }
         "400":
           description: >-
             `invalid_push_token` for a token that is not an Expo push token;
@@ -2374,7 +2617,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/DeviceToken" }
       responses:
-        "204": { description: Stopped, or was never registered to you. }
+        "204": { description: "Stopped, or was never registered to you." }
         "400":
           description: As for `registerOperatorDevice`.
           content:
@@ -3223,6 +3466,62 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /check-ins:
+    post:
+      tags: [day]
+      summary: Check a party in from the code they show
+      operationId: checkInByCode
+      description: >-
+        Marks the booking arrived exactly as `markAttendance` with `arrived`
+        does, and records that the traveller's own code was shown. Idempotent:
+        a second scan answers 200 with `alreadyCheckedIn` and the first time.
+        A code that is not for one of your bookings answers 404, the same as
+        one that does not exist.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, minLength: 8, maxLength: 12, description: "Eight characters; case, spaces and hyphens ignored." }
+                reference: { type: string, pattern: "^YV-[0-9BCDFGHJKLMNPQRSTVWXYZ]{8}$", description: From the QR. Refused when it is not the code's booking. }
+                via: { type: string, enum: [app_scan, portal_link, typed] }
+                seenAt: { type: string, format: date-time, description: As on markAttendance. }
+      responses:
+        "200":
+          description: Checked in, now or earlier.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookingId, reference, name, guests, slotId, arrivedAt, alreadyCheckedIn]
+                properties:
+                  bookingId: { type: string }
+                  reference: { type: string }
+                  name: { type: string, description: The booking contact's name as on the manifest. }
+                  guests: { type: integer }
+                  slotId: { type: string }
+                  arrivedAt: { type: string, format: date-time }
+                  alreadyCheckedIn: { type: boolean }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            `check_in_not_today` (details.validOn names the day),
+            `check_in_code_mismatch` (the reference is another booking's),
+            `not_on_this_departure` (cancelled, declined or already settled),
+            or an idempotency conflict.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: "`check_in_paused`: the check-in kill switch is on."
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   /bookings/{id}/cancel:
     post:
       tags: [day]
@@ -3315,6 +3614,9 @@ paths:
             a no-show. `departure_started`: the departure has left.
             `refund_already_raised`: part of it has been refunded already, so it
             cannot be cancelled here; ask us to cancel it.
+            `stale_availability`: the traveller moved the booking to another
+            departure while this was sent; nothing was cancelled, so open it
+            again.
             `idempotency_key_reuse`, `idempotency_in_progress` or
             `idempotency_response_lost`: see the `Idempotency-Key` parameter.
           content:
@@ -6987,6 +7289,18 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/AccountSuspended" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            `conflict`, nothing recorded. `details.reason` says why.
+            `under_safety_review`: Yuvoy is looking at this clip for unsafe
+            practice, or found it showed unsafe practice and keeps it as
+            evidence. `not_resubmittable`: the clip was taken down or already
+            deleted at the provider, so there is nothing to review; upload it
+            again instead. A clip rejected for any other reason can still be
+            attested again, which sends it back for review.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /media/{id}/withdraw:
     post:
@@ -7009,6 +7323,11 @@ paths:
         The reason is a closed set because the counts matter —
         `people_in_it_objected` arriving repeatedly for one operator is a
         consent problem in how they film, not a series of unrelated takedowns.
+
+
+        A clip under a safety review cannot be taken down by the business: not
+        while the review is open, and not for the 90 days an upheld review keeps
+        it as evidence, until it is deleted at the provider. That is a 409.
       operationId: withdrawMedia
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -7037,6 +7356,90 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/AccountSuspended" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            `conflict` with `details.reason` `under_safety_review`: Yuvoy is
+            looking at this clip for unsafe practice, or found it showed unsafe
+            practice and keeps it as evidence until it is deleted. Nothing
+            changed. Show the message; the clip is not on Yuvoy either way.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /creator-videos:
+    get:
+      tags: [media]
+      summary: Travellers' videos on my listings
+      operationId: listTravellerVideosOnMyListings
+      description: >-
+        Videos that travellers who went on this business's listings posted
+        there and Yuvoy approved, newest first, up to 100. A video the business
+        took off its listing stays in the list with `hiddenFromListing: true`.
+        The business sees the traveller's first name only, as everyone does,
+        and never who they are beyond it. Any role may read it. Not gated by
+        any release: a business can always see what is on its listings.
+      responses:
+        "200":
+          description: The travellers' videos on this business's listings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/TravellerVideoOnMyListing" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503":
+          description: "`media_unavailable`: media is not configured on this service."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /creator-videos/{id}/listing-removal:
+    post:
+      tags: [media]
+      summary: Take a traveller's video off my listing
+      operationId: removeTravellerVideoFromMyListing
+      description: >-
+        The listing stops showing the video at once. The video itself stays on
+        the traveller's profile, and Yuvoy is told who took it down and why.
+        Asking again for one already off answers `204`. A video on another
+        business's listing, or one not published, answers `404`, the same as
+        one that does not exist. Any role may do it; a suspended business
+        cannot.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  enum: [not_our_trip, out_of_date, shows_something_wrong, other]
+                  description: Any other value is `400 invalid_input` with `details.reason`.
+                note:
+                  type: string
+                  maxLength: 500
+                  description: Optional. Longer than 500 characters is `400 invalid_input` with `details.note`.
+      responses:
+        "204":
+          description: Off the listing. No body.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AccountSuspended" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: "`media_unavailable`: media is not configured on this service."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /media/{id}/publish:
     post:
@@ -7231,8 +7634,8 @@ components:
         reach out to admin for help.", or for those two statuses "Your account
         has been closed. Please reach out to admin for help." and "Your account
         has been disqualified. Please reach out to admin for help.", and is safe
-        to show as it is. Reads still work, and so do attendance, cash
-        collected, cash given back, both relays, writing in the conversation on
+        to show as it is. Reads still work, and so do attendance, check-in
+        by code, cash collected, cash given back, both relays, writing in the conversation on
         a booking and marking it read, calling a departure off, cancelling a
         booking, declining a request, holding, restoring or removing somebody on
         the team, stopping a bank change, filing a document with its file,
@@ -7249,8 +7652,9 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     RateLimited:
       description: >-
-        `rate_limited`: too many requests. Wait a little and try again; there is
-        no `Retry-After` header. The sign-in routes (`/auth/signup`,
+        `rate_limited`: too many requests. Wait a little and try again. This
+        shared answer has no `Retry-After` header; a route whose limit sends
+        one, such as `createListingClaim`, describes its own `429`. The sign-in routes (`/auth/signup`,
         `/auth/otp`, `/auth/session`, `/auth/step-up`, `/auth/step-up/verify`,
         `/join/{token}/code`, `/join/{token}/accept` and `/team/accept`) share
         one budget, counted per phone number in the body and per session, with
@@ -7359,6 +7763,33 @@ components:
           maxLength: 219
           pattern: '^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]{10,200}\]$'
 
+    AppUpdateRule:
+      type: object
+      additionalProperties: false
+      required: [mode, minimumVersion, reason, changedAt]
+      description: One app and platform's update rule.
+      properties:
+        mode:
+          type: string
+          enum: ["off", soft, required]
+          description: >-
+            `off`: no prompt. `soft`: below `minimumVersion`, a prompt the
+            person can dismiss; the app stays usable. `required`: below
+            `minimumVersion`, the app is blocked on the update screen.
+        minimumVersion:
+          type: string
+          example: "1.4.0"
+          description: '`MAJOR.MINOR.PATCH`, no leading zeros. `0.0.0` only while `off`.'
+        reason:
+          type: [string, "null"]
+          enum: [general, security_fix, contract_break, null]
+          description: >-
+            Why staff set it. `required` always has `security_fix` or
+            `contract_break`. Null on a rule nobody has set.
+        changedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When staff last changed it. Null when the server has not read the rules yet.
     AppConfig:
       type: object
       additionalProperties: false
@@ -7371,10 +7802,27 @@ components:
           description: >-
             The oldest app build still served, per platform, as
             `MAJOR.MINOR.PATCH`. An app whose own version is lower shows an
-            update screen. `0.0.0` means no build is refused.
+            update screen. `0.0.0` means no build is refused. Kept for builds
+            older than `updatePolicy`: it carries a `required` rule's version
+            and never a `soft` one's, so an older build never treats a prompt
+            as a block. A build that reads `updatePolicy` ignores it.
           properties:
             ios: { type: string, example: "1.0.0" }
             android: { type: string, example: "1.0.0" }
+        updatePolicy:
+          type: object
+          additionalProperties: false
+          required: [ios, android]
+          description: >-
+            The update rule staff set for this app on each platform (D-052
+            plan C), changed in the console without a deploy and served at
+            most a minute late. A database fault keeps the last rule, and a
+            server that never read one sends `off`, so a fault never makes
+            the gate stricter. An API older than this sends no
+            `updatePolicy`: read that, or anything malformed, as `off`.
+          properties:
+            ios: { $ref: '#/components/schemas/AppUpdateRule' }
+            android: { $ref: '#/components/schemas/AppUpdateRule' }
         features:
           type: object
           additionalProperties: false
@@ -8214,6 +8662,35 @@ components:
             A sentence to render verbatim. Present only when
             `onSale` is false. Render this when you meet a
             `notOnSaleReason` you do not recognise.
+    TravellerVideoOnMyListing:
+      type: object
+      required: [id, listing, firstName, wentOn, hiddenFromListing]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The video, as `POST /creator-videos/{id}/listing-removal` takes it.
+        listing:
+          type: object
+          required: [experienceId, title]
+          properties:
+            experienceId: { type: string, format: uuid }
+            title: { type: string }
+        firstName:
+          type: string
+          description: >-
+            The traveller's first name as travellers see it. Empty when there
+            is none that can be shown; say "someone who went".
+        wentOn: { type: string, format: date, description: The day they went. }
+        caption: { type: string, description: Absent when they wrote none. }
+        poster:
+          type: string
+          format: uri
+          description: A still from the video. Absent only when the video host gives none.
+        hiddenFromListing:
+          type: boolean
+          description: True once this business took it off its listing.
+
     OperatorMedia:
       type: object
       properties:
@@ -8560,6 +9037,15 @@ components:
         maxPartySize: { type: integer }
         unitPricePaise: { type: integer, format: int64, nullable: true }
         pricingUnit: { type: string }
+        groupNoun:
+          type: string
+          enum: [group, boat]
+          readOnly: true
+          description: >-
+            What one per_group price buys. Read only when pricingUnit is
+            per_group; boat makes pricingUnitLabel read 'for the boat'. Set by
+            Yuvoy staff, not by the operator. Always present. Not in
+            `ListingEdit`: the draft save and revisions have no field for it.
         meetingPoint: { type: string }
         meetingLandmark:
           type: string
@@ -9001,6 +9487,10 @@ components:
                 # the full refund cancelling promises cannot be raised on top of
                 # it, so nothing was cancelled: ask us to cancel it.
                 - refund_already_raised
+                # Same route. The traveller moved the booking to another
+                # departure while the cancel was sent, so nothing was
+                # cancelled: open the booking again.
+                - stale_availability
                 # POST /bookings/{id}/cash-returned. The booking is not
                 # cancelled, was paid online, or has no cash recorded as taken,
                 # so there is no cash to give back; the message says which.
@@ -9059,6 +9549,28 @@ components:
                 # active OWNER or ADMIN and the business still trades, so
                 # closing the login would leave nobody who can run it.
                 - owner_must_hand_over
+                # POST /check-ins (R11-T1). check_in_paused is the 503 while
+                # the check-in kill switch is on: check the party in with
+                # Aboard. check_in_not_today is a 409 for a code outside its
+                # day, which details.validOn names. check_in_code_mismatch is a
+                # 409 for a reference that is not the code's booking.
+                - check_in_paused
+                - check_in_not_today
+                - check_in_code_mismatch
+                # Claiming a directory listing (R11-T3). POST /listing-claims,
+                # as a 409: a claim on this listing is already waiting for our
+                # team, this business's or another's.
+                - claim_already_open
+                # The same route, as a 409. A business has claimed the listing
+                # already, so there is nothing left to claim.
+                - already_claimed
+                # POST /listing-claims/{id}/email-code and its /verify, as a
+                # 409. The claim's proof is not an email code, so there is no
+                # code to send or confirm.
+                - proof_method_not_email
+                # POST /listing-claims/{id}/email-code/verify, as a 400. The
+                # code is wrong or expired; each try counts.
+                - invalid_code
             message: { type: string, description: Human-readable; safe to show. }
             details:
               type: object
@@ -9576,6 +10088,7 @@ components:
                   never ask about health, which stays with `screening`. Answers
                   are deleted 90 days after the trip, as `PartyQuestion`
                   describes.
+              checkedInByCode: { type: boolean, description: "True when this party's own code was used. Absent on a hold." }
               unreadCount:
                 type: integer
                 minimum: 0
@@ -10641,3 +11154,113 @@ components:
             its commission statements, a waived one counting as nothing. Never
             `GET /commission-owed`'s figure, which sums every completed cash trip
             billed or not, paid or not. `null` when it could not be read.
+
+    ListingClaimProofMethod:
+      type: string
+      enum: [email_domain, public_page_code, call_to_published_number, documents]
+      description: >-
+        How the business shows the listing is its own: a code sent to an
+        address at its website's domain, a code posted on a page it controls
+        (its own website or its own social page, never the list we found it
+        on), a call to the number it published, or its papers.
+
+    ListingClaimInput:
+      type: object
+      additionalProperties: false
+      required: [supplierSlug, proofMethod]
+      properties:
+        supplierSlug: { type: string, maxLength: 200, description: "The listing's `slug` on the public directory." }
+        proofMethod: { $ref: "#/components/schemas/ListingClaimProofMethod" }
+
+    ListingClaimEmailCodeInput:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: { type: string, maxLength: 254, description: "An address at the listing's website domain. Never kept." }
+
+    ListingClaimEmailCodeVerifyInput:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: { type: string, pattern: "^[0-9]{6}$" }
+
+    ListingClaim:
+      type: object
+      additionalProperties: false
+      description: >-
+        A claim on a listing, the shape staff see and the listing's
+        `websiteHost`. Every key is present except `operatorId` and
+        `operatorStatus`. A business's claim has no claimant person:
+        `claimantName` is the business's name, and `roleText`,
+        `contactEmail`, `proofUrl` and `note` are `null`.
+      required: [claimId, subjectKind, subjectId, subjectName, publicContact, claimantName, roleText, contactEmail,
+                 proofUrl, note, state, decisionCode, proofMethod, proofCode, proofEmailVerifiedAt, websiteHost,
+                 createdAt]
+      properties:
+        claimId: { type: string, format: uuid }
+        subjectKind: { type: string, enum: [club, supplier], description: "`supplier` on every claim here." }
+        subjectId: { type: string, format: uuid }
+        subjectName: { type: string, description: The name of the listing claimed. }
+        publicContact: { type: [string, "null"], description: "`null` for a business." }
+        claimantName: { type: [string, "null"], description: The claiming business's name. }
+        roleText: { type: [string, "null"] }
+        contactEmail: { type: [string, "null"] }
+        proofUrl: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        state: { type: string, enum: [waiting, approved, refused, withdrawn], description: "`withdrawn` when the listing was removed while the claim waited." }
+        decisionCode:
+          type: [string, "null"]
+          enum: [PROOF_CONFIRMED, PROOF_NOT_CONFIRMED, NOT_THE_GROUP, NOT_THE_BUSINESS, DUPLICATE, null]
+          description: "`PROOF_CONFIRMED` approved it; the others refused it. `null` until decided."
+        proofMethod: { oneOf: [{ $ref: "#/components/schemas/ListingClaimProofMethod" }, { type: "null" }] }
+        proofCode:
+          type: [string, "null"]
+          pattern: "^YUVOY-[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{6}$"
+          description: >-
+            The code to post on a page the business controls, its own website
+            or its own social page, never the list we found it on. Set only
+            for `public_page_code`.
+          example: YUVOY-7KQ4MX
+        proofEmailVerifiedAt:
+          type: [string, "null"]
+          format: date-time
+          description: >-
+            When the code sent to an address at the website's domain was
+            confirmed. `null` until then, and for every other method.
+        websiteHost: { $ref: "#/components/schemas/ListingWebsiteHost" }
+        operatorId: { type: string, format: uuid, description: The business that now holds the listing. Present only on an approved claim. }
+        operatorStatus: { type: string, description: "That business's status, such as `PROSPECT` or `LIVE`. Present only with `operatorId`." }
+        createdAt: { type: string, format: date-time }
+
+    ListingWebsiteHost:
+      type: [string, "null"]
+      description: >-
+        The domain of the listing's own website, for "Your address at {domain}":
+        an email proof's address must be at it, for `www.example.com` an
+        address `@example.com` or `@www.example.com`. Not
+        `SupplierListing.sourceHost`, the page the listing was found on.
+        `null` when the listing has no website (then `email_domain` is
+        refused) or was removed.
+      example: www.example.com
+    ListingClaimPreview:
+      type: object
+      additionalProperties: false
+      description: A listing on the directory as a claim would name it.
+      required: [name, websiteHost, claimable]
+      properties:
+        name: { type: string, description: The listing's name. }
+        websiteHost: { $ref: "#/components/schemas/ListingWebsiteHost" }
+        claimable:
+          type: boolean
+          description: >-
+            `true` when a claim may be made now. `false` once a business holds
+            the listing (a claim is `409 already_claimed`) and while a claim
+            waits on it, this business's or another's (`409 claim_already_open`).
+    ListingClaimList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ListingClaim" } }

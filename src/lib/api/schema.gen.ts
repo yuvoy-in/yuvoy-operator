@@ -641,6 +641,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/listing-claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This business's claims
+         * @description Every claim this business has made on a directory listing, newest first. Any role. Another business's claims are never in it.
+         */
+        get: operations["listMyListingClaims"];
+        put?: never;
+        /**
+         * Claim a listing on the directory
+         * @description OWNER or ADMIN. A business that has not gone live yet may claim too. Names the listing by its `slug` on the public directory, and how the business will show it is its own. A person at Yuvoy decides, and the owner is told by email.
+         *
+         *     `public_page_code` answers with `proofCode`: post it, as it is, on a page the business controls (its own website, or its own social page where its contact is published), never on the list we found the listing on, and leave it there until the claim is decided. A person at Yuvoy looks for it there; the API keeps the code and checks nothing itself. `email_domain` needs `sendListingClaimEmailCode` and `verifyListingClaimEmailCode` before anybody can approve it, and is refused for a listing with no website. `call_to_published_number` and `documents` need nothing more here: our team calls the number on the public page, or asks for the papers.
+         *
+         *     A listing that is removed, unknown, or not open to claims answers `404`, and so does every claim while the directory is switched off. One claim at a time waits on a listing, whoever made it. Five claims a day from one business, then `429`.
+         */
+        post: operations["createListingClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/listing-claims/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The listing a claim would name
+         * @description Any role. The listing at `slug` on the directory as a claim would find it: its name, the host of its own website, and whether a claim may be made on it now. For the claim screen, before the claim exists. Like the claim routes it does not read the `supply` release, so it answers while the public directory is closed. A listing that is removed, unknown, or not open to claims answers `404`, and so does every preview while the directory is switched off.
+         */
+        get: operations["previewListingClaim"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/listing-claims/{id}/email-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a code to an address at the business's website
+         * @description OWNER or ADMIN. For a waiting `email_domain` claim: a 6-digit code goes to `email`, which must be at the listing's website domain: for a website at `www.example.com`, an address `@example.com` or `@www.example.com`. The address you sign in with is not proof, and the address typed here is never kept, only a hash of it against the code.
+         *
+         *     Three codes an hour on one claim, then `429`. Past the hour's ceiling on codes to addresses nobody has proven yet, the answer is still `204` and nothing is sent: ask again later. Another business's claim, and an unknown one, are `404`.
+         */
+        post: operations["sendListingClaimEmailCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/listing-claims/{id}/email-code/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the code from that address
+         * @description OWNER or ADMIN. The code from the email. A right one sets `proofEmailVerifiedAt` on the claim, and our team can then approve it. A wrong or expired code is `400 invalid_code`, and each try counts; ten tries an hour on one claim, then `429`. Another business's claim, and an unknown one, are `404`.
+         */
+        post: operations["verifyListingClaimEmailCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -797,7 +887,7 @@ export interface paths {
          *
          *     **What reaches the phone follows your notification switches** (`/me/notifications`): a notice you turned off is not pushed either.
          *
-         *     **What a push carries.** A generic title and sentence with no traveller, business, listing, amount, date or reference in it, and `data: { type, id }`: `booking` with a booking id (a new booking, a traveller cancelling), `request` with the request's id (a new seat request), `message` with the booking id whose conversation has a new message, and `account` with the business id (started selling, switched on and not yet bookable, stopped selling). Open it over the session to show anything more. Each push is sent beside the message on WhatsApp or email, never instead of it.
+         *     **What a push carries.** A generic title and sentence with no traveller, business, listing, amount, date or reference in it, and `data: { type, id }`: `booking` with a booking id (a new booking, a traveller cancelling), `request` with the request's id (a new seat request), `message` with the booking id whose conversation has a new message, and `account` with the business id (started selling, switched on and not yet bookable, stopped selling). Open it over the session to show anything more. Each push is sent beside the message on WhatsApp or email, never instead of it. A new seat request push also carries `categoryId: "request"`, the category the app shows Accept and Decline on, and on an iPhone `interruptionLevel: "time-sensitive"` when, as the push is sent, the request is still waiting and closes within the hour (yuvoy-api#328). No other push carries either.
          *
          *     A suspended business is answered `403 account_suspended` here, as for any write the owner has not left open while suspended.
          */
@@ -1111,6 +1201,26 @@ export interface paths {
          *     Re-settling an already-settled booking is refused rather than silently overwritten: an operator who marks a no-show as completed by mistake needs to see that.
          */
         post: operations["markAttendance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/check-ins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a party in from the code they show
+         * @description Marks the booking arrived exactly as `markAttendance` with `arrived` does, and records that the traveller's own code was shown. Idempotent: a second scan answers 200 with `alreadyCheckedIn` and the first time. A code that is not for one of your bookings answers 404, the same as one that does not exist.
+         */
+        post: operations["checkInByCode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2400,8 +2510,50 @@ export interface paths {
          *     Asking twice succeeds: somebody requesting a clip come down that is already down should be told it is down, not told they did something wrong.
          *
          *     The reason is a closed set because the counts matter — `people_in_it_objected` arriving repeatedly for one operator is a consent problem in how they film, not a series of unrelated takedowns.
+         *
+         *     A clip under a safety review cannot be taken down by the business: not while the review is open, and not for the 90 days an upheld review keeps it as evidence, until it is deleted at the provider. That is a 409.
          */
         post: operations["withdrawMedia"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/creator-videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Travellers' videos on my listings
+         * @description Videos that travellers who went on this business's listings posted there and Yuvoy approved, newest first, up to 100. A video the business took off its listing stays in the list with `hiddenFromListing: true`. The business sees the traveller's first name only, as everyone does, and never who they are beyond it. Any role may read it. Not gated by any release: a business can always see what is on its listings.
+         */
+        get: operations["listTravellerVideosOnMyListings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/creator-videos/{id}/listing-removal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a traveller's video off my listing
+         * @description The listing stops showing the video at once. The video itself stays on the traveller's profile, and Yuvoy is told who took it down and why. Asking again for one already off answers `204`. A video on another business's listing, or one not published, answers `404`, the same as one that does not exist. Any role may do it; a suspended business cannot.
+         */
+        post: operations["removeTravellerVideoFromMyListing"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2499,13 +2651,41 @@ export interface components {
             kind: "expo";
             token: string;
         };
+        /** @description One app and platform's update rule. */
+        AppUpdateRule: {
+            /**
+             * @description `off`: no prompt. `soft`: below `minimumVersion`, a prompt the person can dismiss; the app stays usable. `required`: below `minimumVersion`, the app is blocked on the update screen.
+             * @enum {string}
+             */
+            mode: "off" | "soft" | "required";
+            /**
+             * @description `MAJOR.MINOR.PATCH`, no leading zeros. `0.0.0` only while `off`.
+             * @example 1.4.0
+             */
+            minimumVersion: string;
+            /**
+             * @description Why staff set it. `required` always has `security_fix` or `contract_break`. Null on a rule nobody has set.
+             * @enum {string|null}
+             */
+            reason: "general" | "security_fix" | "contract_break" | null;
+            /**
+             * Format: date-time
+             * @description When staff last changed it. Null when the server has not read the rules yet.
+             */
+            changedAt: string | null;
+        };
         AppConfig: {
-            /** @description The oldest app build still served, per platform, as `MAJOR.MINOR.PATCH`. An app whose own version is lower shows an update screen. `0.0.0` means no build is refused. */
+            /** @description The oldest app build still served, per platform, as `MAJOR.MINOR.PATCH`. An app whose own version is lower shows an update screen. `0.0.0` means no build is refused. Kept for builds older than `updatePolicy`: it carries a `required` rule's version and never a `soft` one's, so an older build never treats a prompt as a block. A build that reads `updatePolicy` ignores it. */
             minimumVersion: {
                 /** @example 1.0.0 */
                 ios: string;
                 /** @example 1.0.0 */
                 android: string;
+            };
+            /** @description The update rule staff set for this app on each platform (D-052 plan C), changed in the console without a deploy and served at most a minute late. A database fault keeps the last rule, and a server that never read one sends `off`, so a fault never makes the gate stricter. An API older than this sends no `updatePolicy`: read that, or anything malformed, as `off`. */
+            updatePolicy?: {
+                ios: components["schemas"]["AppUpdateRule"];
+                android: components["schemas"]["AppUpdateRule"];
             };
             features: {
                 /**
@@ -3026,6 +3206,34 @@ export interface components {
             /** @description A sentence to render verbatim. Present only when `onSale` is false. Render this when you meet a `notOnSaleReason` you do not recognise. */
             notOnSaleDetail?: string;
         };
+        TravellerVideoOnMyListing: {
+            /**
+             * Format: uuid
+             * @description The video, as `POST /creator-videos/{id}/listing-removal` takes it.
+             */
+            id: string;
+            listing: {
+                /** Format: uuid */
+                experienceId: string;
+                title: string;
+            };
+            /** @description The traveller's first name as travellers see it. Empty when there is none that can be shown; say "someone who went". */
+            firstName: string;
+            /**
+             * Format: date
+             * @description The day they went.
+             */
+            wentOn: string;
+            /** @description Absent when they wrote none. */
+            caption?: string;
+            /**
+             * Format: uri
+             * @description A still from the video. Absent only when the video host gives none.
+             */
+            poster?: string;
+            /** @description True once this business took it off its listing. */
+            hiddenFromListing: boolean;
+        };
         OperatorMedia: {
             id?: string;
             /**
@@ -3216,6 +3424,11 @@ export interface components {
             /** Format: int64 */
             unitPricePaise?: number | null;
             pricingUnit?: string;
+            /**
+             * @description What one per_group price buys. Read only when pricingUnit is per_group; boat makes pricingUnitLabel read 'for the boat'. Set by Yuvoy staff, not by the operator. Always present. Not in `ListingEdit`: the draft save and revisions have no field for it.
+             * @enum {string}
+             */
+            readonly groupNoun?: "group" | "boat";
             meetingPoint?: string;
             /**
              * @description What to look for at the meeting point, as saved with `PATCH /experiences/{id}` or a revision. Always present, and an empty string when none was written.
@@ -3341,7 +3554,7 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "account_suspended" | "idempotency_key_malformed" | "idempotency_key_reuse" | "idempotency_in_progress" | "idempotency_response_lost" | "operator_unavailable" | "invalid_push_token" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_refused" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "departure_started" | "different_day" | "time_taken" | "not_withdrawn" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked" | "already_reopened" | "closure_started" | "already_cancelled" | "booking_ended" | "refund_already_raised" | "nothing_to_give_back" | "cash_already_returned" | "documents_unavailable" | "document_locked" | "upload_not_arrived" | "document_refused" | "upload_closed" | "not_settled" | "messages_closed" | "invitation_unavailable" | "already_taken_back" | "counter_sales_below_zero" | "account_deletion_pending" | "owner_must_hand_over";
+                code: "invalid_input" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "method_not_allowed" | "internal_error" | "payload_too_large" | "unclassified_error" | "session_expired" | "account_not_active" | "account_suspended" | "idempotency_key_malformed" | "idempotency_key_reuse" | "idempotency_in_progress" | "idempotency_response_lost" | "operator_unavailable" | "invalid_push_token" | "would_strand_travellers" | "upload_in_progress" | "media_unavailable" | "media_refused" | "media_delivery_unavailable" | "invalid_reason_code" | "confirmation_required" | "invalid_role" | "already_current" | "step_up_required" | "request_not_open" | "operator_not_sellable" | "departure_has_not_started" | "already_called_off" | "change_already_in_progress" | "change_already_decided" | "cannot_invite" | "cannot_remove" | "cannot_change_access" | "already_off_sale" | "departure_started" | "different_day" | "time_taken" | "not_withdrawn" | "sale_in_progress" | "hero_taken" | "grant_ceiling_exceeded" | "unknown_intent" | "nobody_to_tell" | "too_many_updates" | "invalid_outcome" | "not_on_this_departure" | "invalid_reason" | "cannot_withdraw" | "details_locked" | "already_reopened" | "closure_started" | "already_cancelled" | "booking_ended" | "refund_already_raised" | "stale_availability" | "nothing_to_give_back" | "cash_already_returned" | "documents_unavailable" | "document_locked" | "upload_not_arrived" | "document_refused" | "upload_closed" | "not_settled" | "messages_closed" | "invitation_unavailable" | "already_taken_back" | "counter_sales_below_zero" | "account_deletion_pending" | "owner_must_hand_over" | "check_in_paused" | "check_in_not_today" | "check_in_code_mismatch" | "claim_already_open" | "already_claimed" | "proof_method_not_email" | "invalid_code";
                 /** @description Human-readable; safe to show. */
                 message: string;
                 /** @description Field-level messages, keyed by field name. */
@@ -3618,6 +3831,8 @@ export interface components {
                 screening?: components["schemas"]["PartyScreening"];
                 /** @description What the listing asks travellers and what this party answered. **Present only when there is something to show**: the listing asks a question, or this party answered one. These questions never ask about health, which stays with `screening`. Answers are deleted 90 days after the trip, as `PartyQuestion` describes. */
                 questions?: components["schemas"]["PartyQuestion"][];
+                /** @description True when this party's own code was used. Absent on a hold. */
+                checkedInByCode?: boolean;
                 /** @description This party's messages nobody at the business has read, the same count `GET /message-threads` gives the same booking, so a party who wrote "running late" shows on their line at the jetty. `0` when there is nothing unread or no conversation yet. **Absent on a hold**, which has no booking and so no conversation. */
                 unreadCount?: number;
                 /**
@@ -4157,6 +4372,92 @@ export interface components {
             /** @description What the business still owes Yuvoy now: the sum of `owedPaise` over its commission statements, a waived one counting as nothing. Never `GET /commission-owed`'s figure, which sums every completed cash trip billed or not, paid or not. `null` when it could not be read. */
             owedPaise: number | null;
         };
+        /**
+         * @description How the business shows the listing is its own: a code sent to an address at its website's domain, a code posted on a page it controls (its own website or its own social page, never the list we found it on), a call to the number it published, or its papers.
+         * @enum {string}
+         */
+        ListingClaimProofMethod: "email_domain" | "public_page_code" | "call_to_published_number" | "documents";
+        ListingClaimInput: {
+            /** @description The listing's `slug` on the public directory. */
+            supplierSlug: string;
+            proofMethod: components["schemas"]["ListingClaimProofMethod"];
+        };
+        ListingClaimEmailCodeInput: {
+            /** @description An address at the listing's website domain. Never kept. */
+            email: string;
+        };
+        ListingClaimEmailCodeVerifyInput: {
+            code: string;
+        };
+        /** @description A claim on a listing, the shape staff see and the listing's `websiteHost`. Every key is present except `operatorId` and `operatorStatus`. A business's claim has no claimant person: `claimantName` is the business's name, and `roleText`, `contactEmail`, `proofUrl` and `note` are `null`. */
+        ListingClaim: {
+            /** Format: uuid */
+            claimId: string;
+            /**
+             * @description `supplier` on every claim here.
+             * @enum {string}
+             */
+            subjectKind: "club" | "supplier";
+            /** Format: uuid */
+            subjectId: string;
+            /** @description The name of the listing claimed. */
+            subjectName: string;
+            /** @description `null` for a business. */
+            publicContact: string | null;
+            /** @description The claiming business's name. */
+            claimantName: string | null;
+            roleText: string | null;
+            contactEmail: string | null;
+            proofUrl: string | null;
+            note: string | null;
+            /**
+             * @description `withdrawn` when the listing was removed while the claim waited.
+             * @enum {string}
+             */
+            state: "waiting" | "approved" | "refused" | "withdrawn";
+            /**
+             * @description `PROOF_CONFIRMED` approved it; the others refused it. `null` until decided.
+             * @enum {string|null}
+             */
+            decisionCode: "PROOF_CONFIRMED" | "PROOF_NOT_CONFIRMED" | "NOT_THE_GROUP" | "NOT_THE_BUSINESS" | "DUPLICATE" | null;
+            proofMethod: components["schemas"]["ListingClaimProofMethod"] | null;
+            /**
+             * @description The code to post on a page the business controls, its own website or its own social page, never the list we found it on. Set only for `public_page_code`.
+             * @example YUVOY-7KQ4MX
+             */
+            proofCode: string | null;
+            /**
+             * Format: date-time
+             * @description When the code sent to an address at the website's domain was confirmed. `null` until then, and for every other method.
+             */
+            proofEmailVerifiedAt: string | null;
+            websiteHost: components["schemas"]["ListingWebsiteHost"];
+            /**
+             * Format: uuid
+             * @description The business that now holds the listing. Present only on an approved claim.
+             */
+            operatorId?: string;
+            /** @description That business's status, such as `PROSPECT` or `LIVE`. Present only with `operatorId`. */
+            operatorStatus?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * @description The domain of the listing's own website, for "Your address at {domain}": an email proof's address must be at it, for `www.example.com` an address `@example.com` or `@www.example.com`. Not `SupplierListing.sourceHost`, the page the listing was found on. `null` when the listing has no website (then `email_domain` is refused) or was removed.
+         * @example www.example.com
+         */
+        ListingWebsiteHost: string | null;
+        /** @description A listing on the directory as a claim would name it. */
+        ListingClaimPreview: {
+            /** @description The listing's name. */
+            name: string;
+            websiteHost: components["schemas"]["ListingWebsiteHost"];
+            /** @description `true` when a claim may be made now. `false` once a business holds the listing (a claim is `409 already_claimed`) and while a claim waits on it, this business's or another's (`409 claim_already_open`). */
+            claimable: boolean;
+        };
+        ListingClaimList: {
+            items: components["schemas"]["ListingClaim"][];
+        };
     };
     responses: {
         /** @description Something in the request needs fixing. */
@@ -4195,7 +4496,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description `account_suspended`: the business is suspended (D20), or its status is `OFFBOARDED` or `DISQUALIFIED` (D44), and this write is not one it may still make. The message is "Your account has been suspended. Please reach out to admin for help.", or for those two statuses "Your account has been closed. Please reach out to admin for help." and "Your account has been disqualified. Please reach out to admin for help.", and is safe to show as it is. Reads still work, and so do attendance, cash collected, cash given back, both relays, writing in the conversation on a booking and marking it read, calling a departure off, cancelling a booking, declining a request, holding, restoring or removing somebody on the team, stopping a bank change, filing a document with its file, signing out, ending one of your own sessions from the list, and closing your own login. */
+        /** @description `account_suspended`: the business is suspended (D20), or its status is `OFFBOARDED` or `DISQUALIFIED` (D44), and this write is not one it may still make. The message is "Your account has been suspended. Please reach out to admin for help.", or for those two statuses "Your account has been closed. Please reach out to admin for help." and "Your account has been disqualified. Please reach out to admin for help.", and is safe to show as it is. Reads still work, and so do attendance, check-in by code, cash collected, cash given back, both relays, writing in the conversation on a booking and marking it read, calling a departure off, cancelling a booking, declining a request, holding, restoring or removing somebody on the team, stopping a bank change, filing a document with its file, signing out, ending one of your own sessions from the list, and closing your own login. */
         AccountSuspended: {
             headers: {
                 [name: string]: unknown;
@@ -4213,7 +4514,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description `rate_limited`: too many requests. Wait a little and try again; there is no `Retry-After` header. The sign-in routes (`/auth/signup`, `/auth/otp`, `/auth/session`, `/auth/step-up`, `/auth/step-up/verify`, `/join/{token}/code`, `/join/{token}/accept` and `/team/accept`) share one budget, counted per phone number in the body and per session, with a looser ceiling per address (yuvoy-api#267). So repeated sign-in attempts for a number also use up its accept attempts, and people behind one mobile network address are not refused together. The relay and message routes count per address. */
+        /** @description `rate_limited`: too many requests. Wait a little and try again. This shared answer has no `Retry-After` header; a route whose limit sends one, such as `createListingClaim`, describes its own `429`. The sign-in routes (`/auth/signup`, `/auth/otp`, `/auth/session`, `/auth/step-up`, `/auth/step-up/verify`, `/join/{token}/code`, `/join/{token}/accept` and `/team/accept`) share one budget, counted per phone number in the body and per session, with a looser ceiling per address (yuvoy-api#267). So repeated sign-in attempts for a number also use up its accept attempts, and people behind one mobile network address are not refused together. The relay and message routes count per address. */
         RateLimited: {
             headers: {
                 [name: string]: unknown;
@@ -5722,6 +6023,232 @@ export interface operations {
             };
         };
     };
+    listMyListingClaims: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The claims. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingClaimList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createListingClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListingClaimInput"];
+            };
+        };
+        responses: {
+            /** @description The claim, waiting for our team. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingClaim"];
+                };
+            };
+            /** @description `invalid_input`, with `details` naming the field. `details.proofMethod` is `no_website` for `email_domain` on a listing with no website. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description `forbidden`: OWNER or ADMIN only. `account_suspended` while the business is suspended, closed or disqualified. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `claim_already_open`: a claim on this listing is waiting for our team, this business's or another's. `already_claimed`: a business has claimed the listing already. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `rate_limited`: five claims from this business in the 24 hours that began with the first of them. `Retry-After` is the seconds until those 24 hours end. This is the only `429` on the claim routes that sends it. */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewListingClaim: {
+        parameters: {
+            query: {
+                /** @description The listing's `slug` on the public directory. */
+                slug: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The listing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingClaimPreview"];
+                };
+            };
+            /** @description `invalid_input`: no `slug`, or one longer than 200 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    sendListingClaimEmailCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListingClaimEmailCodeInput"];
+            };
+        };
+        responses: {
+            /** @description Sent, or held back past the hourly ceiling. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `invalid_input`. `details.email` is `not_at_website_host` when the address is not at the listing's website domain. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description `forbidden`: OWNER or ADMIN only. `account_suspended` while the business is suspended, closed or disqualified. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `proof_method_not_email`: the claim's `proofMethod` is not `email_domain`. `conflict` with `details.reason` `not_waiting`: the claim is decided or withdrawn. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    verifyListingClaimEmailCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListingClaimEmailCodeVerifyInput"];
+            };
+        };
+        responses: {
+            /** @description Confirmed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `invalid_code`: wrong or expired. `invalid_input` for a code that is not six digits. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description `forbidden`: OWNER or ADMIN only. `account_suspended` while the business is suspended, closed or disqualified. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `proof_method_not_email`: the claim's `proofMethod` is not `email_domain`. `conflict` with `details.reason` `not_waiting`: the claim is decided or withdrawn. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
     getOperatorMe: {
         parameters: {
             query?: never;
@@ -5752,6 +6279,8 @@ export interface operations {
                          *     ADMIN holds it because the role exists for an owner who is off the island: one who could add a manager but not close a date would be a stand-in for nothing.
                          */
                         canManage?: boolean;
+                        /** @description Whether staff turned check-in by code on for this business. Show the Check in entries only when true; nothing shows until staff turn it on. It changes what shows, not whether a scan works: a code already on a traveller's phone still checks them in after it is turned off. Always sent, false when off. Not in `required` for one release. */
+                        checkInByCode?: boolean;
                         /**
                          * @description The share of the fare Yuvoy keeps on a booking this business makes now, in basis points: 1500 is 15%. Build a "you receive" preview from this rather than from a fixed figure. It is taken on the whole amount the traveller pays.
                          *
@@ -5973,7 +6502,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Registered */
+            /** @description Registered, or refreshed. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -6007,7 +6536,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Stopped */
+            /** @description Stopped, or was never registered to you. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -6657,6 +7186,85 @@ export interface operations {
             };
         };
     };
+    checkInByCode: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Optional. Client-generated, 16-128 characters of `A-Za-z0-9_.:-`: one key per tap, reused only to resend that same tap. Without it the request runs exactly as it always has.
+                 *
+                 *     With it, a resend of the same request (same method, path, query and body bytes) by the same signed-in person is answered with the first answer, its status and body unchanged, with the header `Idempotent-Replay: true`, and nothing is done twice. Only a 2xx answer is kept. After any other answer the key is free again, so a corrected request can be sent with it.
+                 *
+                 *     `400 idempotency_key_malformed`: the key is not in that format. `409 idempotency_key_reuse`: the key was already used for a different request. `409 idempotency_in_progress`: the first request with this key is still running; send it again after `Retry-After` seconds. `409 idempotency_response_lost`: the request was applied, but the service stopped before its answer was kept. Do not send it again: read the booking or the departure to see the result.
+                 *
+                 *     A key belongs to the business and the person who sent it. Another login, whatever its role, sending the same key is a separate request, and is checked and run as one. A request refused before it runs (no session, a role or suspension refusal, a rate limit) does not use the key. Keys are kept for 7 days; one older than that is treated as new.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Eight characters; case, spaces and hyphens ignored. */
+                    code: string;
+                    /** @description From the QR. Refused when it is not the code's booking. */
+                    reference?: string;
+                    /** @enum {string} */
+                    via?: "app_scan" | "portal_link" | "typed";
+                    /**
+                     * Format: date-time
+                     * @description As on markAttendance.
+                     */
+                    seenAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Checked in, now or earlier. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bookingId: string;
+                        reference: string;
+                        /** @description The booking contact's name as on the manifest. */
+                        name: string;
+                        guests: number;
+                        slotId: string;
+                        /** Format: date-time */
+                        arrivedAt: string;
+                        alreadyCheckedIn: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description `check_in_not_today` (details.validOn names the day), `check_in_code_mismatch` (the reference is another booking's), `not_on_this_departure` (cancelled, declined or already settled), or an idempotency conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description `check_in_paused`: the check-in kill switch is on. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     cancelOperatorBooking: {
         parameters: {
             query?: never;
@@ -6722,7 +7330,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description `already_cancelled`: there is nothing left to cancel, and nothing was refunded twice. `booking_ended`: it was declined, completed or marked a no-show. `departure_started`: the departure has left. `refund_already_raised`: part of it has been refunded already, so it cannot be cancelled here; ask us to cancel it. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
+            /** @description `already_cancelled`: there is nothing left to cancel, and nothing was refunded twice. `booking_ended`: it was declined, completed or marked a no-show. `departure_started`: the departure has left. `refund_already_raised`: part of it has been refunded already, so it cannot be cancelled here; ask us to cancel it. `stale_availability`: the traveller moved the booking to another departure while this was sent; nothing was cancelled, so open it again. `idempotency_key_reuse`, `idempotency_in_progress` or `idempotency_response_lost`: see the `Idempotency-Key` parameter. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -9156,6 +9764,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
+            /** @description `conflict`, nothing recorded. `details.reason` says why. `under_safety_review`: Yuvoy is looking at this clip for unsafe practice, or found it showed unsafe practice and keeps it as evidence. `not_resubmittable`: the clip was taken down or already deleted at the provider, so there is nothing to review; upload it again instead. A clip rejected for any other reason can still be attested again, which sends it back for review. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     withdrawMedia: {
@@ -9192,6 +9809,92 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["AccountSuspended"];
             404: components["responses"]["NotFound"];
+            /** @description `conflict` with `details.reason` `under_safety_review`: Yuvoy is looking at this clip for unsafe practice, or found it showed unsafe practice and keeps it as evidence until it is deleted. Nothing changed. Show the message; the clip is not on Yuvoy either way. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listTravellerVideosOnMyListings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The travellers' videos on this business's listings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["TravellerVideoOnMyListing"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description `media_unavailable`: media is not configured on this service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeTravellerVideoFromMyListing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description Any other value is `400 invalid_input` with `details.reason`.
+                     * @enum {string}
+                     */
+                    reason: "not_our_trip" | "out_of_date" | "shows_something_wrong" | "other";
+                    /** @description Optional. Longer than 500 characters is `400 invalid_input` with `details.note`. */
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Off the listing. No body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["AccountSuspended"];
+            404: components["responses"]["NotFound"];
+            /** @description `media_unavailable`: media is not configured on this service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     publishMedia: {

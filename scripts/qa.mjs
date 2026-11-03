@@ -1443,6 +1443,8 @@ const ALLOWED_LOCALSTORAGE = new Set([
   "src/lib/site/offline-writes.ts",
   "src/lib/site/offline-writes.test.ts",
   "e2e/reels.spec.ts",
+  // Seeds one kept check-in so /check-in re-reads (yuvoy-operator#175).
+  "e2e/check-in.spec.ts",
 ]);
 const OFFLINE_WRITES = join(SRC, "lib/site/offline-writes.ts");
 
@@ -2187,6 +2189,10 @@ for (const p of vendorProblems()) problems.push(p);
   const DRAWN_AFTER_A_TAP = new Map([
     ["src/app/bookings/cash-collect.tsx", "the amount opens with Took less"],
     ["src/app/calendar/departure-form.tsx", "opened by Add departures"],
+    [
+      "src/app/check-in/check-in-screen.tsx",
+      "the server draws Reading the link; the code box comes after the fragment is read",
+    ],
     [
       "src/app/join/[token]/join-token-form.tsx",
       "the code step, after the number is sent",
