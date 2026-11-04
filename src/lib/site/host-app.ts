@@ -20,9 +20,9 @@ export const HOST_APP_STORES = {
 
 /**
  * The address the app is handed a claim by: production's, always, never
- * this deployment's own. It is the link iOS and Android give to Yuvoy Host
- * once `/claim/*` is in this host's link files, and a preview's address is
- * one no phone hands to any app.
+ * this deployment's own. It is the link iOS and Android give to Yuvoy Host,
+ * since `/claim/*` is in this host's link files (yuvoy-operator#171), and a
+ * preview's address is one no phone hands to any app.
  */
 const CLAIM_LINK_ORIGIN = "https://operators.yuvoy.in";
 

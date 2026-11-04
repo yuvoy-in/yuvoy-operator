@@ -53,6 +53,9 @@ const LINKED = [
   "/messages",
   "/join",
   "/join/*",
+  // A listing claimed from the traveller app's "Claim in Yuvoy Host"
+  // (yuvoy-mobile#388); the app declares /claim/ (yuvoy-mobile#427).
+  "/claim/*",
   "/sign-in",
   "/signup",
 ];
@@ -83,14 +86,13 @@ describe("apple-app-site-association", () => {
   });
 
   /*
-    Not yet (yuvoy-operator#171). `/claim/*` goes in with the store build of
-    the app that has the claim screen (yuvoy-mobile#388): a phone handed the
-    link before then opens an app with nowhere to put it. Until then the
-    page at `/claim/{slug}` answers every phone.
+    yuvoy-operator#171: a claim of one listing opens in Yuvoy Host, as the
+    app's { pathPrefix: "/claim/" } does on Android. A bare /claim names no
+    listing and the app does not declare it, so it stays on the web page.
   */
-  it("does not link /claim until the app that claims ships", () => {
+  it("links every claim slug, and not the bare /claim", () => {
+    expect(LINKED).toContain("/claim/*");
     expect(LINKED).not.toContain("/claim");
-    expect(LINKED).not.toContain("/claim/*");
   });
 });
 
