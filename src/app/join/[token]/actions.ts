@@ -18,7 +18,7 @@ import { closedDoorMessage } from "@/lib/auth/closed-door";
  * The person here has no account, which is the entire point. All three
  * endpoints carry `security: []` in the contract for the same reason
  * `POST /auth/signup` does. Listed in `UNAUTHENTICATED_ACTIONS` in
- * `scripts/qa.mjs` with that reason written down.
+ * `scripts/qa/02-session-boundary.mjs` with that reason written down.
  *
  * ## The one that is not like the others
  *

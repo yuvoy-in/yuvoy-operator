@@ -202,7 +202,7 @@ for (const f of files) {
               `blocker, submit succeeds because the API defers it, and ` +
               `approval refuses days later about a control the operator does ` +
               `not have. Add it to the edit form, or to CREATE_ONLY in ` +
-              `scripts/qa.mjs with the reason it is identity rather than ` +
+              `scripts/qa/06-source-and-uploads.mjs with the reason it is identity rather than ` +
               `content.`,
           );
         }

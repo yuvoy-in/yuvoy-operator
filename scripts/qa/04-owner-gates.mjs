@@ -60,7 +60,7 @@ const READ_GATED_ON_MANAGE = new Map([
 for (const [segment, reason] of READ_GATED_ON_MANAGE) {
   if (!reason || reason.trim().length < 20) {
     problems.push(
-      `scripts/qa.mjs: READ_GATED_ON_MANAGE entry "${segment}" has no real reason.`,
+      `scripts/qa/04-owner-gates.mjs: READ_GATED_ON_MANAGE entry "${segment}" has no real reason.`,
     );
   }
 }
@@ -184,12 +184,12 @@ for (const [segment, reason] of READ_GATED_ON_MANAGE) {
     const [gapMethod, gapPath] = operation.split(" ");
     if (!reason || reason.length < 40) {
       problems.push(
-        `scripts/qa.mjs: PROSE_GAPS entry "${operation}" has no real reason.`,
+        `scripts/qa/04-owner-gates.mjs: PROSE_GAPS entry "${operation}" has no real reason.`,
       );
     }
     if (!lines.includes(`  ${gapPath}:`)) {
       problems.push(
-        `scripts/qa.mjs: PROSE_GAPS names ${operation}, which the contract no ` +
+        `scripts/qa/04-owner-gates.mjs: PROSE_GAPS names ${operation}, which the contract no ` +
           `longer has. A stale entry covers whatever is written at that path next.`,
       );
       continue;
@@ -198,7 +198,7 @@ for (const [segment, reason] of READ_GATED_ON_MANAGE) {
       NEEDS_MANAGE.some((e) => e.method === gapMethod && e.path === gapPath)
     ) {
       problems.push(
-        `scripts/qa.mjs: the contract now names the roles on ${operation}, so ` +
+        `scripts/qa/04-owner-gates.mjs: the contract now names the roles on ${operation}, so ` +
           `its PROSE_GAPS entry is stale. Remove it.`,
       );
       continue;
@@ -237,7 +237,7 @@ for (const [name, bucket] of Object.entries({
 })) {
   if (bucket.length < FLOORS[name]) {
     problems.push(
-      `scripts/qa.mjs: the contract parse found ${bucket.length} ${name} ` +
+      `scripts/qa/04-owner-gates.mjs: the contract parse found ${bucket.length} ${name} ` +
         `endpoints and expected at least ${FLOORS[name]}. Either the contract ` +
         `relaxed a permission — in which case every role description in ` +
         `src/lib/team/roles.ts is now a claim to re-check — or this parse ` +
@@ -253,7 +253,7 @@ if (OWNER_ONLY.length === 0 || NEEDS_MANAGE.length === 0) {
     reading its path from PINNED rather than assuming it.
   */
   problems.push(
-    `scripts/qa.mjs: the contract parse found ${OWNER_ONLY.length} OWNER-only ` +
+    `scripts/qa/04-owner-gates.mjs: the contract parse found ${OWNER_ONLY.length} OWNER-only ` +
       `and ${NEEDS_MANAGE.length} manager-only endpoints. One of those is ` +
       `zero, so this check is now asserting nothing.`,
   );

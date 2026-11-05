@@ -170,7 +170,9 @@ for (const p of vendorProblems()) problems.push(p);
   }
   for (const r of DRAWN_AFTER_A_TAP.keys()) {
     if (!existsSync(join(ROOT, r))) {
-      problems.push(`qa.mjs: DRAWN_AFTER_A_TAP lists ${r}, which is gone`);
+      problems.push(
+        `scripts/qa/08-copy-hydration-e2e.mjs: DRAWN_AFTER_A_TAP lists ${r}, which is gone`,
+      );
     }
   }
 }
