@@ -6,6 +6,7 @@ import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { firstProblem, signUpBody, signUpSchema } from "@/lib/auth/signup";
 import { codeSchema, exchangeCode, sendCode } from "@/lib/auth/code";
 import { writeSessionToken } from "@/lib/auth/session-writes";
+import { HOME_PATH, safeReturnPath } from "@/lib/auth/return-to";
 
 /**
  * O1 — an operator creates their own account, and is signed in at the end of
@@ -72,6 +73,13 @@ export interface SignUpState {
    * production — see `@/lib/auth/code`.
    */
   devCode?: string;
+  /**
+   * Where to land once signed in, from `/signup?next=` (a claim link opened
+   * signed out, yuvoy-operator#388). Carried through every step and checked
+   * again by `safeReturnPath` at the redirect: it comes back from the browser
+   * with the rest of the state, so it is never trusted as sent.
+   */
+  next?: string;
 }
 
 export async function createAccount(
@@ -95,10 +103,12 @@ export async function createAccount(
     relationship: String(form.get("relationship") ?? ""),
   };
   const attempt = (prev.attempt ?? 0) + 1;
+  const next = safeReturnPath(prev.next) ?? undefined;
   const refuse = (state: Omit<SignUpState, "values" | "attempt">) => ({
     ...state,
     values,
     attempt,
+    next,
   });
 
   const parsed = signUpSchema.safeParse(values);
@@ -159,6 +169,7 @@ export async function createAccount(
     phone: parsed.data.phone,
     devCode: sent.ok ? sent.devCode : undefined,
     message: sent.ok ? undefined : sent.message,
+    next,
   };
 }
 
@@ -171,7 +182,9 @@ export async function createAccount(
  */
 export async function resendCode(prev: SignUpState): Promise<SignUpState> {
   const phone = prev.phone ?? "";
-  if (!phone) return { step: "details", message: "Start again." };
+  if (!phone) {
+    return { step: "details", message: "Start again.", next: prev.next };
+  }
 
   const sent = await sendCode(phone);
   return {
@@ -195,7 +208,9 @@ export async function finishSignUp(
   form: FormData,
 ): Promise<SignUpState> {
   const phone = prev.phone ?? "";
-  if (!phone) return { step: "details", message: "Start again." };
+  if (!phone) {
+    return { step: "details", message: "Start again.", next: prev.next };
+  }
 
   const parsed = codeSchema.safeParse(String(form.get("code") ?? ""));
   if (!parsed.success) {
@@ -217,7 +232,8 @@ export async function finishSignUp(
     every page of the portal — a new account lands on a banner naming what is
     outstanding and who it is waiting on, which is the reassurance the old
     confirmation panel was trying and failing to give before they could see
-    anything.
+    anything. A claim link opened signed out goes back to its listing
+    instead (yuvoy-operator#388), the one place `next` can lead.
   */
-  redirect("/today");
+  redirect(safeReturnPath(prev.next) ?? HOME_PATH);
 }

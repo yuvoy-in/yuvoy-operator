@@ -13,6 +13,8 @@ import { readMe, readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
 import { Screen } from "@/components/chrome/screen";
 import { Chip } from "@/components/ui/chip";
 import { cn } from "@/lib/cn";
+import { canClaimListing } from "@/lib/claims/claims";
+import { ClaimsList, readClaims } from "./claims-list";
 import { Outstanding, Credentials } from "./verification-parts";
 
 export const metadata: Metadata = { title: "Verification" };
@@ -36,6 +38,9 @@ export const dynamic = "force-dynamic";
  * sentence is said once on this screen (a missing document's row names the
  * document and says it is needed, where it used to repeat the blocker), and
  * Business details links here instead of repeating the list.
+ *
+ * Last, the business's listing claims (yuvoy-operator#388), where "See your
+ * claims under Verification" leads after a claim is made.
  */
 export default async function VerificationPage() {
   const token = await readSessionToken();
@@ -74,6 +79,14 @@ export default async function VerificationPage() {
   */
   const canManage = Boolean(me?.canManage);
   const at = await now();
+  /*
+    Listing claims (yuvoy-operator#388) stand apart from the account's
+    standing, so they are read and drawn whether or not that read worked.
+    Only an OWNER or ADMIN sends or checks a code; a `GET /me` that failed
+    reads as neither.
+  */
+  const claims = await readClaims(token);
+  const canClaim = canClaimListing(me?.roles ?? []);
 
   return (
     <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>
@@ -154,6 +167,8 @@ export default async function VerificationPage() {
           <Credentials standing={standing} at={at} />
         </>
       )}
+
+      <ClaimsList read={claims} canAct={canClaim} />
     </Screen>
   );
 }

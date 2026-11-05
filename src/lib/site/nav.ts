@@ -255,8 +255,9 @@ export const FOCUSED_ROUTE_PREFIXES = [
 /**
  * BARE routes: no session, so no chrome at all. The three doors (signing up,
  * signing in, and accepting an invitation) draw the mark and nothing else,
- * and so does `/claim/{slug}`, the page a phone without Yuvoy Host lands on
- * from the traveller app (yuvoy-operator#171).
+ * and so does `/claim/{slug}`, the claim link from the traveller app
+ * (yuvoy-operator#171, the claim itself since #388), which a person with no
+ * account yet may open.
  *
  * `/signup` does not collide with `/sign-in` under `startsWith`: neither is a
  * prefix of the other. A test pins that, because a hyphen is a thin thing to
