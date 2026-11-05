@@ -2,7 +2,7 @@
    the order, and prints the report (yuvoy-operator#178). */
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, SRC, problems, files, code, rel } from "./context.mjs";
+import { ROOT, SRC, problems, walk, files, code, rel } from "./context.mjs";
 
 /* ------------ 14. no literal control characters in source ---------------- */
 
@@ -20,7 +20,15 @@ import { ROOT, SRC, problems, files, code, rel } from "./context.mjs";
  * Tab, newline and carriage return are the only ones a source file has any
  * business containing.
  */
-for (const f of [...files, join(ROOT, "scripts", "qa.mjs")]) {
+/*
+  The sweep's own code is in scripts/qa/ since the split (yuvoy-operator#178),
+  so those files are scanned too, as qa.mjs was when it held all of it.
+*/
+const QA_SOURCES = [
+  join(ROOT, "scripts", "qa.mjs"),
+  ...walk(join(ROOT, "scripts", "qa")).filter((f) => f.endsWith(".mjs")),
+];
+for (const f of [...files, ...QA_SOURCES]) {
   const raw = readFileSync(f, "utf8");
   const hit = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.exec(raw);
   if (hit) {
