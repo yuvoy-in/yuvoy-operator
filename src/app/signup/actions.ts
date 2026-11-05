@@ -30,8 +30,8 @@ import { HOME_PATH, safeReturnPath } from "@/lib/auth/return-to";
  * ## Why these actions have no `requireOperator()`
  *
  * There is no session yet; producing one is the point. Listed in
- * `UNAUTHENTICATED_ACTIONS` in `scripts/qa.mjs` with the reason written down,
- * so a further exemption cannot be added quietly.
+ * `UNAUTHENTICATED_ACTIONS` in `scripts/qa/02-session-boundary.mjs` with the
+ * reason written down, so a further exemption cannot be added quietly.
  *
  * ## One code path still creates every operator session
  *
