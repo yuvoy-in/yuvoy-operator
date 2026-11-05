@@ -67,7 +67,7 @@ const eslintConfig = defineConfig([
           selector:
             "MemberExpression[object.name='localStorage'], MemberExpression[object.object.name='window'][object.property.name='localStorage']",
           message:
-            "Do not use localStorage. Nothing in this portal is worth putting somewhere synchronous and XSS-readable: the session is an httpOnly cookie. The two exceptions are src/lib/media/slot-store.ts and src/lib/site/offline-writes.ts; see their headers, and scripts/qa.mjs, which keeps them from spreading.",
+            "Do not use localStorage. Nothing in this portal is worth putting somewhere synchronous and XSS-readable: the session is an httpOnly cookie. The two exceptions are src/lib/media/slot-store.ts and src/lib/site/offline-writes.ts; see their headers, and scripts/qa/05-gates-copy-storage.mjs, which keeps them from spreading.",
         },
       ],
     },
@@ -92,15 +92,16 @@ const eslintConfig = defineConfig([
 
       What must NEVER go in it is the upload URL, which IS a credential: "do
       not persist it client-side either". That is not left to this comment —
-      `scripts/qa.mjs` asserts both that this list has not grown and that
-      nothing URL-shaped is written.
+      `scripts/qa/05-gates-copy-storage.mjs` asserts both that this list has
+      not grown and that nothing URL-shaped is written.
 
       The second exception (owner ruling, 4 Oct 2026): `offline-writes.ts`
       keeps the check-ins and cash an operator records with no signal, so
       they survive the phone closing the app at the jetty and go when the
       signal is back (operator experiment D). Opaque ids, an amount and a
       time, and nothing else: no names, no reference, nothing that signs in.
-      `scripts/qa.mjs` fails the build if a field like that is written there.
+      `scripts/qa/05-gates-copy-storage.mjs` fails the build if a field like
+      that is written there.
     */
     files: [
       "src/lib/media/slot-store.ts",
