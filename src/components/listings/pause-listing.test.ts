@@ -23,7 +23,7 @@ vi.mock("next/cache", () => ({
   revalidatePath: (path: string) => revalidatePath(path),
 }));
 
-const { pauseListing } = await import("./actions");
+const { pauseListing } = await import("./pause-actions");
 
 /** The clock the message is written against: 11:30 in the market. */
 const NOW = Date.parse("2026-09-22T06:00:00Z");
