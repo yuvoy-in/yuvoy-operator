@@ -64,13 +64,21 @@ export function ClaimForm({
   const [method, setMethod] = useState<ClaimProofMethod | null>(null);
   const [noWebsite, setNoWebsite] = useState(false);
   const sending = useRef(false);
+  const [answered, setAnswered] = useState(state);
 
-  // Every answer frees the guard; a `400 no_website` greys the email proof.
+  // A `400 no_website` greys the email proof, set while rendering the new
+  // answer (not in an effect) so it is drawn in the same pass.
+  if (answered !== state) {
+    setAnswered(state);
+    if (state.noWebsite) {
+      setNoWebsite(true);
+      setMethod((m) => (m === "email_domain" ? null : m));
+    }
+  }
+
+  // Every answer frees the guard.
   useEffect(() => {
     sending.current = false;
-    if (!state.noWebsite) return;
-    setNoWebsite(true);
-    setMethod((m) => (m === "email_domain" ? null : m));
   }, [state]);
 
   const heading = (
