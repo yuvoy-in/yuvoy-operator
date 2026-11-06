@@ -52,3 +52,42 @@ describe("a sign-up that never came back", () => {
     );
   });
 });
+
+describe("signing up from a claim link (yuvoy-operator#388)", () => {
+  it("hands the listing on to the action and to the sign-in link", async () => {
+    createAccount.mockResolvedValue({ step: "details", message: "Try again." });
+    render(<SignUpForm next="/claim/example-reef-divers" />);
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/sign-in?next=%2Fclaim%2Fexample-reef-divers",
+    );
+    fireEvent.change(screen.getByLabelText("Your business name"), {
+      target: { value: "Reef Divers Havelock" },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: /I own it/ }));
+    fireEvent.change(screen.getByLabelText("Your name"), {
+      target: { value: "Priya Raut" },
+    });
+    fireEvent.change(screen.getByLabelText("Your phone number"), {
+      target: { value: "9000000101" },
+    });
+    fireEvent.change(screen.getByLabelText(/Email address/), {
+      target: { value: "priya@reefdivers.in" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Create/ }));
+    });
+    expect(createAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ next: "/claim/example-reef-divers" }),
+      expect.any(FormData),
+    );
+  });
+
+  it("with no listing, signs in plainly", () => {
+    render(<SignUpForm />);
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/sign-in",
+    );
+  });
+});
