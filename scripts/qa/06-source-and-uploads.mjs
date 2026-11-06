@@ -175,7 +175,7 @@ for (const f of files) {
     join(SRC, "app/account/listings/steps/selling.tsx"),
     join(SRC, "app/account/listings/steps/location.tsx"),
   ];
-  const editForm = join(SRC, "components/listings/listing-row.tsx");
+  const editForm = join(SRC, "components/listings/listing-edit-form.tsx");
 
   /* Blocker keys that are deliberately not editable, and why. */
   const CREATE_ONLY = new Set(["category", "destination"]);
@@ -195,8 +195,8 @@ for (const f of files) {
         const control = CONTROL_NAME[key] ?? key;
         if (onCreate.has(control) && !onEdit.has(control)) {
           problems.push(
-            `src/components/listings/listing-row.tsx: \`${key}\` blocks ` +
-              `publication and is settable in the builder (as ` +
+            `src/components/listings/listing-edit-form.tsx: \`${key}\` ` +
+              `blocks publication and is settable in the builder (as ` +
               `\`${control}\`) but not on the edit form. A listing that ` +
               `predates the field can then never clear it: the row names the ` +
               `blocker, submit succeeds because the API defers it, and ` +
