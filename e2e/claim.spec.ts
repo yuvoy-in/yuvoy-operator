@@ -2,14 +2,15 @@ import { test, expect, type Page } from "@playwright/test";
 import { expectAccessible } from "./axe";
 
 /**
- * `/claim/{slug}` on a phone or a computer without Yuvoy Host
- * (yuvoy-operator#171, cases 3 to 5). The traveller app's "Claim in Yuvoy
- * Host" opens it; with the app installed the phone hands it over and this
- * page never draws, which only a real phone can show.
+ * `/claim/{slug}` signed out, on a phone or a computer (yuvoy-operator#171,
+ * cases 3 to 5, and #388). The traveller app's "Claim in Yuvoy Host" opens
+ * it, and the person reading it may have no account yet, so it is a door:
+ * "Sign up or sign in to claim this listing", both carrying the link back,
+ * and the stores under it. The claim itself, signed in, is
+ * `claim-flow.spec.ts`.
  *
  * Runs in both projects, so case 3 (a phone) is the mobile one and case 4
- * (a computer) the desktop one. Signed out throughout: the person reading
- * it may have no account yet.
+ * (a computer) the desktop one.
  *
  * "Open in the app" depends on the phone (manager decision, 29 Oct 13:07):
  * the mobile project is an Android phone, so it gets an `intent://` link to
@@ -17,7 +18,7 @@ import { expectAccessible } from "./axe";
  * keeps the claim link.
  */
 
-const HEADING = "Claim this listing in Yuvoy Host";
+const HEADING = "Claim a listing";
 
 const IPHONE =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
@@ -32,14 +33,30 @@ function openHref(slug: string) {
   return `intent://operators.yuvoy.in/claim/${slug}#Intent;scheme=https;package=in.yuvoy.operator;S.browser_fallback_url=${fallback};end`;
 }
 
-async function expectClaimPage(page: Page) {
+/** The page with its stores; with a slug, the door that brings the person back to it. */
+async function expectClaimPage(page: Page, slug: string | null = null) {
   await expect(
     page.getByRole("heading", { level: 1, name: HEADING }),
   ).toBeVisible();
+  if (slug === null) {
+    await expect(
+      page.getByText("There is no listing to claim here."),
+    ).toBeVisible();
+  } else {
+    const next = encodeURIComponent(`/claim/${slug}`);
+    await expect(
+      page.getByText("Sign up or sign in to claim this listing"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Create an account" }),
+    ).toHaveAttribute("href", `/signup?next=${next}`);
+    await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      `/sign-in?next=${next}`,
+    );
+  }
   await expect(
-    page.getByText(
-      "Claiming happens in our app for businesses. Get Yuvoy Host, sign up or sign in as your business, then open this link again.",
-    ),
+    page.getByText("You can also claim in our app, Yuvoy Host."),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Yuvoy Host on the App Store" }),
@@ -52,12 +69,12 @@ async function expectClaimPage(page: Page) {
   );
 }
 
-test("a listing's claim link: both stores, and Open in the app on the same link", async ({
+test("a listing's claim link: the door, both stores, and Open in the app on the same link", async ({
   page,
 }) => {
   const response = await page.goto("/claim/example-reef-divers");
   expect(response?.status()).toBe(200);
-  await expectClaimPage(page);
+  await expectClaimPage(page, "example-reef-divers");
   await expect(
     page.getByRole("link", { name: "Open in the app" }),
   ).toHaveAttribute("href", openHref("example-reef-divers"));
@@ -66,10 +83,12 @@ test("a listing's claim link: both stores, and Open in the app on the same link"
   await expectAccessible(page, "the claim page");
 });
 
-test("an unknown slug is the same page, never a 404", async ({ page }) => {
+test("an unknown slug is the same door signed out, never a 404", async ({
+  page,
+}) => {
   const response = await page.goto("/claim/no-such-business-here");
   expect(response?.status()).toBe(200);
-  await expectClaimPage(page);
+  await expectClaimPage(page, "no-such-business-here");
   await expect(
     page.getByRole("link", { name: "Open in the app" }),
   ).toHaveAttribute("href", openHref("no-such-business-here"));
@@ -97,7 +116,7 @@ test.describe("on an iPhone", () => {
   }) => {
     const response = await page.goto("/claim/example-reef-divers");
     expect(response?.status()).toBe(200);
-    await expectClaimPage(page);
+    await expectClaimPage(page, "example-reef-divers");
     await expect(
       page.getByRole("link", { name: "Open in the app" }),
     ).toHaveCount(0);
