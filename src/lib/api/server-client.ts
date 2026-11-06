@@ -6,6 +6,7 @@ import {
   OperatorNetworkError,
   apiError,
   isErrorEnvelope,
+  retryAfterSeconds,
 } from "./errors";
 import { fetchWithin } from "./deadline";
 import { visitorAddressMiddleware } from "./visitor";
@@ -153,8 +154,10 @@ const errorMiddleware: Middleware = {
       // A non-JSON error body is itself information — fall through.
     }
 
+    const retryAfter = retryAfterSeconds(response.headers.get("retry-after"));
+
     if (isErrorEnvelope(body)) {
-      throw apiError(body, response.status, requestId);
+      throw apiError(body, response.status, requestId, retryAfter);
     }
 
     throw new OperatorApiError({
@@ -162,6 +165,7 @@ const errorMiddleware: Middleware = {
       message: `The server answered ${response.status}.`,
       status: response.status,
       requestId,
+      retryAfter,
     });
   },
 };
