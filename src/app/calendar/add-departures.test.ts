@@ -31,7 +31,7 @@ vi.mock("next/cache", () => ({
   revalidatePath: (path: string) => revalidatePath(path),
 }));
 
-const { addDepartures } = await import("./actions");
+const { addDepartures } = await import("./departure-actions");
 
 function form(weekdays: string[]): FormData {
   const f = new FormData();

@@ -9,7 +9,10 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { confirmSeats, type ConfirmSeatsState } from "@/app/calendar/actions";
+import {
+  confirmSeats,
+  type ConfirmSeatsState,
+} from "@/app/calendar/departure-actions";
 import type { Need } from "@/lib/home/needs";
 import type { RequestView } from "@/lib/day/request-view";
 import { changeSentences, needChanges } from "@/lib/home/changes";

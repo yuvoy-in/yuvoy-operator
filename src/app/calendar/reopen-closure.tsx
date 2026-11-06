@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { reopenClosure, type ReopenState } from "./actions";
+import { reopenClosure, type ReopenState } from "./departure-actions";
 import { Button } from "@/components/ui/button";
 import { sendForm } from "@/lib/actions/send-form";
 
