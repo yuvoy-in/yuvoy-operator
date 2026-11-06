@@ -33,11 +33,6 @@ export type ClaimLike = Pick<
   | "createdAt"
 >;
 
-/** OWNER or ADMIN may claim and send or check a code; MANAGER and STAFF only read the list. */
-export function canClaimListing(roles: readonly string[]): boolean {
-  return roles.includes("OWNER") || roles.includes("ADMIN");
-}
-
 /** For MANAGER and STAFF, in place of the proof options. */
 export function claimRoleLine(business: string | null | undefined): string {
   const who = business?.trim() ? business.trim() : "your business";

@@ -5,6 +5,7 @@ import {
   useActionState,
   useEffect,
   useId,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -17,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { fieldLabelClass, inputClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { sendForm } from "@/lib/actions/send-form";
 import { claimUnsent, emailFieldLabel } from "@/lib/claims/claims";
 import {
@@ -56,6 +58,15 @@ export function EmailSteps({
   const ids = useId();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const steps = useRef<HTMLDivElement>(null);
+  // The claims list draws these on the server: an address or a code typed
+  // before the page hydrated reaches the state, as `onChange` would have.
+  useChangedBeforeHydration(steps, (changed) => {
+    for (const field of changed) {
+      if (field.name === "email") setEmail(field.value);
+      if (field.name === "code") setCode(digitsOnly(field.value));
+    }
+  });
   const [sent, send, sending] = useActionState(
     sendForm<EmailStepState>(sendClaimCode, () => claimUnsent("send")),
     {},
@@ -65,9 +76,12 @@ export function EmailSteps({
     {},
   );
 
-  // A claim decided or withdrawn under the screen: what is on it is out of date.
+  // A claim decided or withdrawn under the screen: what is on it is out of
+  // date. Read again only with a signal, or Next loads the browser's "no
+  // internet" page in place of the portal.
   useEffect(() => {
-    if (sent.readAgain || checked.readAgain) router.refresh();
+    if (!sent.readAgain && !checked.readAgain) return;
+    if (navigator.onLine) router.refresh();
   }, [sent, checked, router]);
 
   const submit =
@@ -92,7 +106,11 @@ export function EmailSteps({
   const checkFailed = Boolean(checked.message) && !checking;
 
   return (
-    <div className="mt-4 flex flex-col gap-6" data-testid="claim-email">
+    <div
+      ref={steps}
+      className="mt-4 flex flex-col gap-6"
+      data-testid="claim-email"
+    >
       <form
         onSubmit={submit(send, sending, address !== "")}
         noValidate
@@ -163,9 +181,7 @@ export function EmailSteps({
           pattern="[0-9]*"
           maxLength={6}
           value={code}
-          onChange={(e) =>
-            setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-          }
+          onChange={(e) => setCode(digitsOnly(e.target.value))}
           aria-invalid={checkFailed}
           className={inputClass("mt-2 tabular-nums")}
         />
@@ -186,4 +202,9 @@ export function EmailSteps({
       </form>
     </div>
   );
+}
+
+/** What the code field keeps: digits, six at most. */
+function digitsOnly(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 6);
 }

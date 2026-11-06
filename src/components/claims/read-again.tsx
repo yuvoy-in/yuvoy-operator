@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
  */
 export function ReadAgain() {
   const router = useRouter();
-  const refresh = useCallback(() => router.refresh(), [router]);
+  const refresh = useCallback(() => {
+    if (navigator.onLine) router.refresh();
+  }, [router]);
   const { tryAgain, retrying, waiting } = useRetry(refresh);
   return (
     <>

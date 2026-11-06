@@ -14,6 +14,7 @@ import { ProofCode } from "@/components/claims/proof-code";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { choiceClass } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { sendForm } from "@/lib/actions/send-form";
 import { cn } from "@/lib/cn";
 import {
@@ -64,6 +65,12 @@ export function ClaimForm({
   const [method, setMethod] = useState<ClaimProofMethod | null>(null);
   const [noWebsite, setNoWebsite] = useState(false);
   const sending = useRef(false);
+  const proofs = useRef<HTMLFieldSetElement>(null);
+  // A proof picked before the page hydrated reaches the state.
+  useChangedBeforeHydration(proofs, ([chosen]) => {
+    const picked = PROOF_OPTIONS.find((o) => o.method === chosen.value);
+    if (picked) setMethod(picked.method);
+  });
   const [answered, setAnswered] = useState(state);
 
   // A `400 no_website` greys the email proof, set while rendering the new
@@ -146,7 +153,11 @@ export function ClaimForm({
       {heading}
       <form onSubmit={submit} noValidate className="mt-6" aria-busy={pending}>
         <input type="hidden" name="slug" value={slug} />
-        <fieldset className="flex flex-col gap-2" data-testid="claim-options">
+        <fieldset
+          ref={proofs}
+          className="flex flex-col gap-2"
+          data-testid="claim-options"
+        >
           {/* The phone names the group by its options alone; a screen reader still hears what it is for. */}
           <legend className="sr-only">Choose how to show it is yours</legend>
           {PROOF_OPTIONS.map((o) => {

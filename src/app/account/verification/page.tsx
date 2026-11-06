@@ -13,7 +13,7 @@ import { readMe, readSessionToken, SIGN_IN_PATH } from "@/lib/auth/session";
 import { Screen } from "@/components/chrome/screen";
 import { Chip } from "@/components/ui/chip";
 import { cn } from "@/lib/cn";
-import { canClaimListing } from "@/lib/claims/claims";
+import { canManageAccess } from "@/lib/team/access";
 import { ClaimsList, readClaims } from "./claims-list";
 import { Outstanding, Credentials } from "./verification-parts";
 
@@ -86,7 +86,7 @@ export default async function VerificationPage() {
     reads as neither.
   */
   const claims = await readClaims(token);
-  const canClaim = canClaimListing(me?.roles ?? []);
+  const canClaim = canManageAccess(me?.roles ?? []);
 
   return (
     <Screen nav={{ back: { href: "/account/settings", label: "settings" } }}>

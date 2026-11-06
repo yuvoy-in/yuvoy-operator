@@ -15,7 +15,6 @@ import {
   sessionState,
 } from "@/lib/auth/session";
 import {
-  canClaimListing,
   claimPath,
   claimRoleLine,
   type ClaimPreview,
@@ -27,6 +26,7 @@ import {
   STORE_LINE,
 } from "@/lib/claims/words";
 import { sentence } from "@/lib/format/sentence";
+import { canManageAccess } from "@/lib/team/access";
 import { readBusinessName } from "@/lib/site/business-name";
 import {
   HOST_APP_STORES,
@@ -126,7 +126,8 @@ export async function ClaimScreen({
     );
   }
 
-  const roleLine = canClaimListing(me.roles)
+  // OWNER or ADMIN may claim; MANAGER and STAFF are told who can.
+  const roleLine = canManageAccess(me.roles)
     ? null
     : claimRoleLine(await readBusinessName(token));
 

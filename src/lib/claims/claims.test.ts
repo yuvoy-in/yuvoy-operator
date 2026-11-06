@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { StalledError } from "@/lib/api/deadline";
 import {
-  canClaimListing,
   claimFailure,
   claimOutcome,
   claimPath,
@@ -14,6 +13,7 @@ import {
   isClaimPath,
   type ClaimLike,
 } from "./claims";
+import { canManageAccess } from "@/lib/team/access";
 import { REMOVED_LISTING } from "./words";
 
 /* The claim's rules (yuvoy-operator#388), read against the phone's words. */
@@ -40,11 +40,11 @@ const refusal = (
 
 describe("who may claim", () => {
   it("is an owner or an admin", () => {
-    expect(canClaimListing(["OWNER"])).toBe(true);
-    expect(canClaimListing(["ADMIN"])).toBe(true);
-    expect(canClaimListing(["MANAGER"])).toBe(false);
-    expect(canClaimListing(["STAFF"])).toBe(false);
-    expect(canClaimListing([])).toBe(false);
+    expect(canManageAccess(["OWNER"])).toBe(true);
+    expect(canManageAccess(["ADMIN"])).toBe(true);
+    expect(canManageAccess(["MANAGER"])).toBe(false);
+    expect(canManageAccess(["STAFF"])).toBe(false);
+    expect(canManageAccess([])).toBe(false);
   });
 
   it("tells the others who can, by the business's name", () => {
