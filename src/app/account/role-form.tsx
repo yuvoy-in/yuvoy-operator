@@ -2,7 +2,10 @@
 
 import { useActionState } from "react";
 import { useRouter } from "next/navigation";
-import { setMediaRole, type RoleState } from "@/components/media/actions";
+import {
+  setMediaRole,
+  type RoleState,
+} from "@/components/media/publish-actions";
 import { Button } from "@/components/ui/button";
 import { sendForm } from "@/lib/actions/send-form";
 

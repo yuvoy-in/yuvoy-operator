@@ -11,7 +11,7 @@ vi.mock("next/navigation", async (original) => ({
   ...(await original<typeof import("next/navigation")>()),
   usePathname: () => "/today/listing/exp_snorkel",
 }));
-vi.mock("./actions", () => ({
+vi.mock("./pause-actions", () => ({
   pauseListing: (prev: unknown, form: FormData) => pauseListing(prev, form),
   resumeListing: (prev: unknown, form: FormData) => resumeListing(prev, form),
 }));
