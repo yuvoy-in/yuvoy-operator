@@ -85,7 +85,11 @@ describe("where a claim stands", () => {
     );
     expect(
       claimStateLine(
-        claim({ state: "refused", decisionCode: "SOMETHING_NEW" }),
+        claim({
+          state: "refused",
+          // A code this app does not know yet, as a newer API could send.
+          decisionCode: "SOMETHING_NEW" as unknown as ClaimLike["decisionCode"],
+        }),
       ),
     ).toBe("Not approved");
     expect(claimStateLine(claim({ state: "withdrawn" }))).toBe(
