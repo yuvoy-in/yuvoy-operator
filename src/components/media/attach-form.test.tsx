@@ -11,7 +11,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 */
 
 const attachMedia = vi.fn();
-vi.mock("./actions", () => ({
+vi.mock("./publish-actions", () => ({
   attachMedia: (prev: unknown, form: FormData) => attachMedia(prev, form),
 }));
 

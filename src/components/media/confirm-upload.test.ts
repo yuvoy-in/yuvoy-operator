@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
-import { confirmUpload } from "./actions";
+import { confirmUpload } from "./upload-actions";
 
 /**
  * Asking whether an upload is ready: yuvoy-operator#157.

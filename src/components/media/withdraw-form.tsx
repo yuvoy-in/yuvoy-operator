@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { withdrawMedia, type WithdrawState } from "./actions";
+import { withdrawMedia, type WithdrawState } from "./rights-actions";
 import { WITHDRAW_REASONS } from "@/lib/media/rights";
 import { Button } from "@/components/ui/button";
 import { choiceClass } from "@/components/ui/input";

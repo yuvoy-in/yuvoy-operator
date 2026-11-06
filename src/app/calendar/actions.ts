@@ -478,7 +478,12 @@ const departureSchema = z.object({
   fromDate: z.string(),
   toDate: z.string(),
   times: z.array(z.string()).min(1).max(12),
-  weekdays: z.array(z.coerce.number().int().min(0).max(6)),
+  /*
+    At most seven: there are seven days, and a form can send the field as
+    many times as it likes. An uncapped array here is what zod's mrhx
+    advisory turns into memory use on the server.
+  */
+  weekdays: z.array(z.coerce.number().int().min(0).max(6)).max(7),
   seats: z.coerce.number().int().min(1).max(MAX_SEATS),
   /*
     Empty is not zero. The field is optional in the contract and "defaults to
@@ -514,6 +519,15 @@ export async function addDepartures(
   _prev: DepartureState,
   form: FormData,
 ): Promise<DepartureState> {
+  /*
+    Signed in first, before anything in the form is read. The parse is the
+    one step here that a visitor with no session could otherwise make the
+    server do, and somebody who may not manage departures is told that, not
+    which field to fix.
+  */
+  const { token, me } = await requireOperator();
+  if (!me.canManage) return { message: ROLE_REFUSAL };
+
   const parsed = departureSchema.safeParse({
     experienceId: form.get("experienceId"),
     fromDate: form.get("fromDate"),
@@ -562,9 +576,6 @@ export async function addDepartures(
   const { today } = await marketDays();
   const problem = departureProblem(plan, today);
   if (problem) return problem;
-
-  const { token, me } = await requireOperator();
-  if (!me.canManage) return { message: ROLE_REFUSAL };
 
   const asked = countDepartures(plan);
 

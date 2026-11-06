@@ -5,7 +5,7 @@ import {
   confirmUpload,
   createUploadIntent,
   type UploadIntent,
-} from "./actions";
+} from "./upload-actions";
 import {
   formatBytes,
   localRefusals,
