@@ -15,7 +15,11 @@ vi.mock("@/app/claim/actions", () => ({
   sendClaimCode: (prev: unknown, form: FormData) => sendClaimCode(prev, form),
   checkClaimCode: (prev: unknown, form: FormData) => checkClaimCode(prev, form),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+vi.mock("next/navigation", async (original) => ({
+  // The real control flow helpers, which a dropped request goes through.
+  ...(await original<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh }),
+}));
 
 const { EmailSteps } = await import("./email-steps");
 

@@ -14,7 +14,11 @@ vi.mock("./actions", () => ({
   sendClaimCode: vi.fn(async () => ({})),
   checkClaimCode: vi.fn(async () => ({})),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("next/navigation", async (original) => ({
+  // The real control flow helpers, which a dropped request goes through.
+  ...(await original<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 
 const { ClaimForm } = await import("./claim-form");
 

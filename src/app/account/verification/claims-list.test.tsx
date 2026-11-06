@@ -13,7 +13,11 @@ let answer: () => Promise<unknown> = async () => ({ data: { items: [] } });
 vi.mock("@/lib/api/server-client", () => ({
   operatorApi: () => ({ GET: () => answer() }),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("next/navigation", async (original) => ({
+  // The real control flow helpers, which a dropped request goes through.
+  ...(await original<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 vi.mock("@/app/claim/actions", () => ({
   createClaim: vi.fn(),
   sendClaimCode: vi.fn(async () => ({})),
