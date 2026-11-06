@@ -46,7 +46,7 @@ for (const f of walk(APP)) {
     `${rel(f)}: a route handler. This portal has no browser-callable API by ` +
       `design — reads are server renders, writes are Server Actions. If this ` +
       `one is genuinely needed, add it to ALLOWED_ROUTE_HANDLERS in ` +
-      `scripts/qa.mjs with the reason.`,
+      `scripts/qa/02-session-boundary.mjs with the reason.`,
   );
 }
 
@@ -205,12 +205,12 @@ for (const [name, entries] of [
   for (const [path, reason] of entries) {
     if (!reason || reason.length < 40) {
       problems.push(
-        `scripts/qa.mjs: ${name} entry "${path}" has no real reason.`,
+        `scripts/qa/02-session-boundary.mjs: ${name} entry "${path}" has no real reason.`,
       );
     }
     if (!existsSync(join(ROOT, path))) {
       problems.push(
-        `scripts/qa.mjs: ${name} names "${path}", which does not exist`,
+        `scripts/qa/02-session-boundary.mjs: ${name} names "${path}", which does not exist`,
       );
     }
   }
@@ -352,7 +352,7 @@ const UNAUTHENTICATED_ACTIONS = new Map([
 for (const [path, reason] of UNAUTHENTICATED_ACTIONS) {
   if (!reason || reason.length < 40) {
     problems.push(
-      `scripts/qa.mjs: UNAUTHENTICATED_ACTIONS entry "${path}" has no real ` +
+      `scripts/qa/02-session-boundary.mjs: UNAUTHENTICATED_ACTIONS entry "${path}" has no real ` +
         `reason. An action with no authorisation check needs one written down.`,
     );
   }
@@ -360,7 +360,7 @@ for (const [path, reason] of UNAUTHENTICATED_ACTIONS) {
     // A stale exemption is worse than none: it silently covers whatever is
     // written at that path next.
     problems.push(
-      `scripts/qa.mjs: UNAUTHENTICATED_ACTIONS names "${path}", which does not exist`,
+      `scripts/qa/02-session-boundary.mjs: UNAUTHENTICATED_ACTIONS names "${path}", which does not exist`,
     );
   }
 }

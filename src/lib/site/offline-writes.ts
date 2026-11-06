@@ -35,7 +35,7 @@ import { marketTime } from "@/lib/format/market-time";
  * portal's second exception to its localStorage ban (the first is the upload
  * slot), and it is narrow: the booking, the departure and the person as
  * opaque ids, the amount and the time. No names, no reference, nothing that
- * signs in or pays: the screens supply the names, and `scripts/qa.mjs` fails
+ * signs in or pays: the screens supply the names, and `scripts/qa/05-gates-copy-storage.mjs` fails
  * the build if a field like that is ever written here.
  *
  * Every read and write is guarded: private modes and full storage refuse it,

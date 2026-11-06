@@ -266,7 +266,7 @@ if (existsSync(eslintConfigPath)) {
     if (!ALLOWED_LOCALSTORAGE.has(f)) {
       problems.push(
         `eslint.config.mjs exempts ${f} from the localStorage ban, and ` +
-          `scripts/qa.mjs does not know about it. Widening that exception is ` +
+          `scripts/qa/05-gates-copy-storage.mjs does not know about it. Widening that exception is ` +
           `a decision, not an edit — add it here with its reason, or take it ` +
           `out of the eslint config.`,
       );
