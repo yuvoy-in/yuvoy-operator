@@ -5,7 +5,7 @@ import {
   completePhotoUpload,
   createPhotoIntent,
   type PhotoIntent,
-} from "./actions";
+} from "./photo-actions";
 import {
   formatBytes,
   refuses,
