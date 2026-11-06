@@ -14,9 +14,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: "Claim a listing", itunes: claimBanner(slug) };
 }
 
-/** The claim link a phone without Yuvoy Host lands on (yuvoy-operator#171). */
+/**
+ * The claim link, opened on a computer or a phone without Yuvoy Host: the
+ * claim itself (yuvoy-operator#388), where it was the stores alone (#171).
+ */
 export default async function ClaimPage({ params }: Props) {
   const { slug } = await params;
   const platform = await visitorPlatform();
-  return <ClaimScreen slug={slug} platform={platform} />;
+  return <ClaimScreen slug={slug.trim() || null} platform={platform} />;
 }
