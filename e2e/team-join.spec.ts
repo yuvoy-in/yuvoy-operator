@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { expectAccessible } from "./axe";
-import { DEV_CODE, OWNER, JOIN_TOKEN, signIn, invite } from "./team-kit";
+import { DEV_CODE, JOIN_TOKEN, signIn } from "./team-kit";
 
 /**
  * O5 — a dive shop is not one person.
