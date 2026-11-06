@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { attestRights, type AttestState } from "./actions";
+import { attestRights, type AttestState } from "./rights-actions";
 import { Submitted } from "./submitted";
 import {
   RIGHTS_STATEMENT,

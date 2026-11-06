@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { attachMedia, type AttachState } from "./actions";
+import { attachMedia, type AttachState } from "./publish-actions";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/ui/input";
 import { describeStatus } from "@/lib/services/listings";

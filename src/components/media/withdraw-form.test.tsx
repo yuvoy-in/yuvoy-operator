@@ -6,7 +6,7 @@ import { watchMotion } from "@/lib/motion/testing";
 const withdrawMedia = vi.fn<(prev: unknown, form: FormData) => Promise<object>>(
   async () => ({}),
 );
-vi.mock("./actions", () => ({
+vi.mock("./rights-actions", () => ({
   withdrawMedia: (prev: unknown, form: FormData) => withdrawMedia(prev, form),
 }));
 
