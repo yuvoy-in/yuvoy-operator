@@ -100,10 +100,13 @@ test("an owner proves it by email: a wrong address, a wrong code, then the right
   await proof(page, /Get a code at your business email/).check();
   await ask(page).click();
 
+  // Scoped to the email steps: Next's route announcer has the same role, so a
+  // page-wide `getByRole("alert")` is ambiguous.
+  const steps = page.getByTestId("claim-made");
   const address = page.getByLabel("Your address at claimtest.yuvoy.in");
   await address.fill("priya@gmail.com");
   await page.getByRole("button", { name: "Send code" }).click();
-  await expect(page.getByRole("alert")).toHaveText(
+  await expect(steps.getByRole("alert")).toHaveText(
     "Use an address at the listing's website.",
   );
   await expect(address).toHaveValue("priya@gmail.com");
@@ -119,7 +122,7 @@ test("an owner proves it by email: a wrong address, a wrong code, then the right
   const code = page.getByLabel("Enter the six-digit code");
   await code.fill("135791");
   await page.getByRole("button", { name: "Check code" }).click();
-  await expect(page.getByRole("alert")).toHaveText(
+  await expect(steps.getByRole("alert")).toHaveText(
     "That code did not work. Ask for a new one.",
   );
   await code.fill("246810");
