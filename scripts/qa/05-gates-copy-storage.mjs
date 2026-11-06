@@ -3,7 +3,16 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { gateJustification } from "./04-owner-gates.mjs";
-import { ROOT, SRC, APP, problems, files, code, rel } from "./context.mjs";
+import {
+  ROOT,
+  SRC,
+  APP,
+  problems,
+  walk,
+  files,
+  code,
+  rel,
+} from "./context.mjs";
 
 /* --------- 11b. a role gate the contract never asked for ---------------- */
 
