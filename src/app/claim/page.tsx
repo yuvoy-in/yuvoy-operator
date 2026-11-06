@@ -11,8 +11,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 /**
- * `/claim` with no listing in it: the same page, never a 404
- * (yuvoy-operator#171 case 5), with nothing to open in the app on any phone.
+ * `/claim` with no listing in it: never a 404 (yuvoy-operator#171 case 5).
+ * "There is no listing to claim here." and the stores, with nothing to open
+ * in the app on any phone (yuvoy-operator#388).
  */
 export default function ClaimWithoutSlugPage() {
   return <ClaimScreen slug={null} platform="other" />;

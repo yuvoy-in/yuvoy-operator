@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { SignInForm } from "./sign-in-form";
 import { HoldCheckInLink } from "./hold-check-in-link";
 import { ACCOUNT_PATH, sessionState } from "@/lib/auth/session";
-import { HOME_PATH, safeReturnPath } from "@/lib/auth/return-to";
+import { HOME_PATH, safeReturnPath, signInPathFor } from "@/lib/auth/return-to";
 import { Screen } from "@/components/chrome/screen";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -114,7 +114,7 @@ export default async function SignInPage({
       <p className="text-forest/70 leading-body mt-4 text-sm text-pretty">
         Not on Yuvoy yet?{" "}
         <Link
-          href="/signup"
+          href={signInPathFor(next, "/signup")}
           className="text-terra-deep tap-target font-bold underline underline-offset-4"
         >
           Create an account

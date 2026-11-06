@@ -19,6 +19,7 @@ import { WhereTheCodeGoes } from "@/app/sign-in/where-the-code-goes";
 import { callAction } from "@/lib/actions/call-action";
 import { fieldsOf } from "@/lib/actions/send-form";
 import { UNREACHABLE } from "@/lib/api/errors";
+import { signInPathFor } from "@/lib/auth/return-to";
 
 /**
  * Owning it and running it, and what each one actually gets you.
@@ -49,7 +50,7 @@ const RELATIONSHIPS = [
  * a form still on screen beside "enter your code" invites a second submission,
  * and a second submission here is somebody wondering whether the first worked.
  */
-export function SignUpForm() {
+export function SignUpForm({ next = null }: { next?: string | null } = {}) {
   const [state, act, pending] = useActionState<SignUpState, FormData>(
     (prev, form) =>
       callAction(
@@ -79,9 +80,10 @@ export function SignUpForm() {
                   "relationship",
                 ]),
                 attempt: (prev.attempt ?? 0) + 1,
+                next: prev.next,
               },
       ),
-    { step: "details" },
+    { step: "details", next: next ?? undefined },
   );
   /** The submit waits for a whole number. See `PhoneField`. */
   const [complete, setComplete] = useState(false);
@@ -369,7 +371,7 @@ export function SignUpForm() {
       <p className="border-paper-line text-forest/70 leading-body border-t pt-5 text-sm text-pretty">
         Already have an account?{" "}
         <Link
-          href="/sign-in"
+          href={signInPathFor(next)}
           className="text-terra-deep tap-target font-bold underline underline-offset-4"
         >
           Sign in

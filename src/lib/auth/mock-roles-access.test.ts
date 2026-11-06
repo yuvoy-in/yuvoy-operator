@@ -2,13 +2,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { server } from "../../../mocks/server";
 import { __resetOperatorMocks } from "../../../mocks/handlers";
-import {
-  OWNER,
-  STAFF,
-  ADMIN,
-  signIn,
-  call,
-} from "../../../mocks/mock-roles-kit";
+import { OWNER, ADMIN, signIn, call } from "../../../mocks/mock-roles-kit";
 
 const MANAGER_ID = "usr_manager_dev";
 const ADMIN_ID = "usr_admin_nisha";

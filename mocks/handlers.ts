@@ -60,6 +60,7 @@ import {
   mockCheckInRefusal,
   mockNormaliseCode,
 } from "./check-in-codes";
+import { claimHandlers, resetClaimMocks } from "./claims-handlers";
 
 /**
  * The operator API, mocked.
@@ -2134,6 +2135,7 @@ export function __resetOperatorMocks() {
   resetMockDocuments();
   photoIntents = {};
   photoIntentsById = {};
+  resetClaimMocks();
 }
 
 /**
@@ -8436,4 +8438,15 @@ export const handlers = [
       });
     },
   ),
+
+  /* ------------------------------------------- listing claims (#388) --- */
+  ...claimHandlers({
+    url,
+    sessionUser,
+    businessOf,
+    requireSession,
+    requireWritable,
+    listFailsFor: WIDE_READ_FAILS_ID,
+    everyStateFor: BANK_UNCONFIRMED_ID,
+  }),
 ];
