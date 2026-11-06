@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OperatorApiError, OperatorNetworkError } from "@/lib/api/errors";
 import { NOT_A_CODE, UNSENT } from "./check-in-result";
 import { checkInWithCode } from "./actions";
@@ -191,16 +191,6 @@ describe("a refusal", () => {
     });
   });
 
-  it("offers the same key again while the first is still being written", async () => {
-    expect(
-      await answer(refused(409, "idempotency_in_progress", "in progress")),
-    ).toMatchObject({ ok: false, retry: true });
-    const result = await answer(
-      refused(409, "idempotency_in_progress", "in progress"),
-    );
-    expect(result).not.toHaveProperty("newKey");
-  });
-
   it("never sends again after a lost answer, and sends them to Today", async () => {
     const result = await answer(
       refused(409, "idempotency_response_lost", "lost"),
@@ -238,5 +228,111 @@ describe("a refusal", () => {
       message: UNSENT,
       retry: true,
     });
+  });
+});
+
+/*
+  `409 idempotency_in_progress`: "send it again after `Retry-After` seconds".
+  The action waits that long (2 s when none could be read, never more than
+  5 s) and sends the same body under the same key once more. Nothing else is
+  ever sent twice.
+*/
+describe("a check-in still being written", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function inProgress(retryAfter?: number): OperatorApiError {
+    return new OperatorApiError({
+      status: 409,
+      code: "idempotency_in_progress",
+      message: "in progress",
+      retryAfter,
+    });
+  }
+
+  function send() {
+    return checkInWithCode({
+      code: "K7QM2XPA",
+      reference: "YV-4K2M9P7Q",
+      via: "portal_link",
+      key: KEY,
+    });
+  }
+
+  it("waits the API's Retry-After, then sends the same body under the same key", async () => {
+    post.mockRejectedValueOnce(inProgress(3));
+    post.mockResolvedValueOnce({ data: ARRIVED });
+    const result = send();
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(post).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await result).toEqual({ ok: true, ...ARRIVED });
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post.mock.calls[1]).toEqual(post.mock.calls[0]);
+    expect(post.mock.calls[1][1].params.header["Idempotency-Key"]).toBe(KEY);
+  });
+
+  it("waits 2 s when the API sent no Retry-After it could read", async () => {
+    post.mockRejectedValueOnce(inProgress());
+    post.mockResolvedValueOnce({ data: ARRIVED });
+    const result = send();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(post).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await result).toEqual({ ok: true, ...ARRIVED });
+  });
+
+  it("never waits more than 5 s, whatever Retry-After says", async () => {
+    post.mockRejectedValueOnce(inProgress(120));
+    post.mockResolvedValueOnce({ data: ARRIVED });
+    const result = send();
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(post).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await result).toEqual({ ok: true, ...ARRIVED });
+  });
+
+  it("sends again only once, then offers the same key on the screen", async () => {
+    post.mockRejectedValue(inProgress(1));
+    const result = send();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await result).toEqual({
+      ok: false,
+      message:
+        "That check-in is still on its way. Give it a moment, then try again. It only counts once.",
+      retry: true,
+    });
+    await vi.runAllTimersAsync();
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it("never sends again, or waits, on any other answer", async () => {
+    for (const err of [
+      refused(409, "idempotency_response_lost", "lost"),
+      refused(409, "idempotency_key_reuse", "no"),
+      new OperatorApiError({
+        status: 429,
+        code: "rate_limited",
+        message: "slow down",
+        retryAfter: 1,
+      }),
+      new OperatorApiError({
+        status: 503,
+        code: "check_in_paused",
+        message: "paused",
+        retryAfter: 1,
+      }),
+      new OperatorNetworkError(),
+    ]) {
+      post.mockReset();
+      post.mockRejectedValueOnce(err);
+      post.mockResolvedValueOnce({ data: ARRIVED });
+      expect(await send()).toMatchObject({ ok: false });
+      expect(post).toHaveBeenCalledTimes(1);
+    }
   });
 });
