@@ -231,7 +231,7 @@ import { ROOT, problems, files, code, rel } from "./context.mjs";
 
     if (declared.size < 20) {
       problems.push(
-        `scripts/qa.mjs: only ${declared.size} error codes parsed out of the ` +
+        `scripts/qa/07-schemas-and-errors.mjs: only ${declared.size} error codes parsed out of the ` +
           `contract. The enum has dozens, so the parse is broken and the ` +
           `branched-code check is passing over almost nothing.`,
       );
@@ -262,12 +262,12 @@ import { ROOT, problems, files, code, rel } from "./context.mjs";
     for (const [gap, reason] of UNDECLARED_CODES) {
       if (!reason || reason.length < 40) {
         problems.push(
-          `scripts/qa.mjs: UNDECLARED_CODES entry "${gap}" has no real reason.`,
+          `scripts/qa/07-schemas-and-errors.mjs: UNDECLARED_CODES entry "${gap}" has no real reason.`,
         );
       }
       if (declared.has(gap)) {
         problems.push(
-          `scripts/qa.mjs: the contract now declares "${gap}" in the error ` +
+          `scripts/qa/07-schemas-and-errors.mjs: the contract now declares "${gap}" in the error ` +
             `code enum, so its UNDECLARED_CODES entry is stale. Remove it.`,
         );
       }
