@@ -8,7 +8,7 @@ import {
   resumeListing,
   type PauseState,
   type ResumeState,
-} from "./actions";
+} from "./pause-actions";
 import { PAUSE_REASONS } from "@/lib/services/listings";
 import { helpHref } from "@/lib/help/types";
 import { Button } from "@/components/ui/button";
