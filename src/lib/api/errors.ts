@@ -33,6 +33,8 @@ export class OperatorApiError extends Error {
   readonly status: number;
   readonly details?: unknown;
   readonly requestId?: string;
+  /** The answer's `Retry-After`, in whole seconds, when it sent one. */
+  readonly retryAfter?: number;
 
   constructor(init: {
     code: string;
@@ -40,6 +42,7 @@ export class OperatorApiError extends Error {
     status: number;
     details?: unknown;
     requestId?: string;
+    retryAfter?: number;
   }) {
     super(init.message);
     this.name = "OperatorApiError";
@@ -47,6 +50,7 @@ export class OperatorApiError extends Error {
     this.status = init.status;
     this.details = init.details;
     this.requestId = init.requestId;
+    this.retryAfter = init.retryAfter;
   }
 
   /**
@@ -102,6 +106,7 @@ export function apiError(
   body: ErrorEnvelope,
   status: number,
   requestId?: string,
+  retryAfter?: number,
 ): OperatorApiError {
   return new OperatorApiError({
     code: body.error.code,
@@ -114,5 +119,18 @@ export function apiError(
         ? undefined
         : JSON.parse(JSON.stringify(body.error.details), dedashReviver),
     requestId: body.error.requestId ?? requestId,
+    retryAfter,
   });
+}
+
+/**
+ * A `Retry-After` header as whole seconds, or undefined when there is none.
+ *
+ * The API sends delay-seconds only (`Retry-After: 2` on
+ * `idempotency_in_progress`). The date form, and anything else, is left
+ * unread: the caller then waits its own default.
+ */
+export function retryAfterSeconds(value: string | null): number | undefined {
+  const text = value?.trim() ?? "";
+  return /^\d+$/.test(text) ? Number(text) : undefined;
 }

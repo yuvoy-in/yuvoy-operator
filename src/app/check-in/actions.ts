@@ -68,19 +68,54 @@ export async function checkInWithCode(input: {
       ? { header: { "Idempotency-Key": input.key } }
       : {};
 
-  try {
+  const send = async () => {
     const { data, error } = await operatorApi(token).POST("/check-ins", {
       params: { ...header },
       body,
     });
     if (error) throw error;
-    return { ok: true, ...data };
+    return data;
+  };
+
+  try {
+    return { ok: true, ...(await sendOnceMoreIfInProgress(send)) };
   } catch (err) {
     if (err instanceof OperatorNetworkError) {
       return { ok: false, message: UNSENT, retry: true };
     }
     if (err instanceof OperatorApiError) return refusal(err);
     throw err;
+  }
+}
+
+/*
+  `409 idempotency_in_progress` says the first send with this key is still
+  being written: "send it again after `Retry-After` seconds". The operator is
+  at the door with the guest, so that wait happens here, behind the screen's
+  "Checking in", and the same body goes once more under the same key. The
+  wait is the API's `Retry-After`, 2 s when it sent none we can read, and
+  never more than 5 s. Only that code is sent again, and only once: a second
+  "in progress" is answered to the screen, which offers the same key again.
+*/
+const IN_PROGRESS_WAIT_S = 2;
+const IN_PROGRESS_MAX_WAIT_S = 5;
+
+async function sendOnceMoreIfInProgress<T>(send: () => Promise<T>): Promise<T> {
+  try {
+    return await send();
+  } catch (err) {
+    if (
+      !(err instanceof OperatorApiError) ||
+      err.code !== "idempotency_in_progress"
+    ) {
+      throw err;
+    }
+    const seconds = Math.min(
+      err.retryAfter ?? IN_PROGRESS_WAIT_S,
+      IN_PROGRESS_MAX_WAIT_S,
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, seconds * 1000));
+    return send();
   }
 }
 
@@ -91,10 +126,10 @@ function refusal(err: OperatorApiError): CheckInResult {
   }
 
   /*
-    The key's own answers first. A resend while the first is still being
-    written waits and goes again under the same key. One whose answer was
-    lost is NOT sent again: it may have checked them in, and Today says so
-    either way. A key that cannot be used again is a fault of ours.
+    The key's own answers first. Still being written after the wait above:
+    the screen offers the same key again. One whose answer was lost is NOT
+    sent again: it may have checked them in, and Today says so either way.
+    A key that cannot be used again is a fault of ours.
   */
   if (err.code === "idempotency_in_progress") {
     return {
