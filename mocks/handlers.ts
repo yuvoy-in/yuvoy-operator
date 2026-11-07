@@ -5192,7 +5192,6 @@ export const handlers = [
   ...conversationHandlers({
     url,
     requireSession,
-    requireWritable,
     envelope,
     sessionUser,
     isNewBusiness,
