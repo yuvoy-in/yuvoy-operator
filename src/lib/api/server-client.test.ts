@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { operatorApi, READ_STALL_MS, WRITE_STALL_MS } from "./server-client";
-import { OperatorNetworkError } from "./errors";
+import { OperatorApiError, OperatorNetworkError } from "./errors";
 
 /**
  * The portal's one way to the API, when the API is slow, silent or failing
@@ -125,5 +125,49 @@ describe("a write", () => {
 
     expect(await write).toBeInstanceOf(OperatorNetworkError);
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("a refusal", () => {
+  const refusal = (status: number, body: string, headers: HeadersInit = {}) =>
+    new Response(body, { status, headers });
+  const envelope = JSON.stringify({
+    error: { code: "idempotency_in_progress", message: "still running" },
+  });
+
+  async function refused(answer: Response): Promise<OperatorApiError> {
+    vi.stubGlobal("fetch", network([answer]));
+    const caught = await operatorApi("tok")
+      .POST("/team", { body: { phone: "+919000000101", name: "Arun" } })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(caught).toBeInstanceOf(OperatorApiError);
+    return caught as OperatorApiError;
+  }
+
+  it("carries the answer's Retry-After in seconds (yuvoy-operator#175)", async () => {
+    const err = await refused(
+      refusal(409, envelope, {
+        "content-type": "application/json",
+        "retry-after": "2",
+      }),
+    );
+    expect(err.code).toBe("idempotency_in_progress");
+    expect(err.retryAfter).toBe(2);
+  });
+
+  it("carries it on an answer that is not the API's envelope too", async () => {
+    const err = await refused(refusal(503, "down", { "Retry-After": "4" }));
+    expect(err.code).toBe("internal_error");
+    expect(err.retryAfter).toBe(4);
+  });
+
+  it("carries none when the answer sent none", async () => {
+    const err = await refused(
+      refusal(409, envelope, { "content-type": "application/json" }),
+    );
+    expect(err.retryAfter).toBeUndefined();
   });
 });
