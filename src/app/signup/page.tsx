@@ -3,6 +3,7 @@ import { SignUpForm } from "./signup-form";
 import { Screen } from "@/components/chrome/screen";
 import { Panel } from "@/components/ui/panel";
 import { EMAIL_REQUIRED_AT_SIGNUP } from "@/lib/auth/signup";
+import { safeReturnPath } from "@/lib/auth/return-to";
 
 export const metadata: Metadata = { title: "Create an account" };
 
@@ -34,7 +35,17 @@ export const dynamic = "force-dynamic";
  * misunderstanding rather than explaining it afterwards — and the portal says
  * it again from `AccountStanding` the second they land.
  */
-export default function SignUpPage() {
+export default async function SignUpPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  /*
+    Where to land once the account is made: a claim link opened signed out
+    (yuvoy-operator#388). Checked here and again at the redirect, because
+    anybody can put a `next` in a link.
+  */
+  const next = safeReturnPath((await searchParams).next);
   return (
     /*
       A signed-out door, drawn like the other three (sign-in and both join
@@ -75,7 +86,7 @@ export default function SignUpPage() {
         </p>
       </Panel>
 
-      <SignUpForm />
+      <SignUpForm next={next} />
     </Screen>
   );
 }

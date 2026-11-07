@@ -19,6 +19,8 @@ vi.mock("@/app/today/[slotId]/actions", () => ({
 vi.mock("@/app/calendar/actions", () => ({
   setCapacity: vi.fn(async () => ({})),
   recordOfflineSale: vi.fn(async () => ({})),
+}));
+vi.mock("@/app/calendar/departure-actions", () => ({
   closeDeparture: (prev: unknown, form: FormData) => closeDeparture(prev, form),
 }));
 

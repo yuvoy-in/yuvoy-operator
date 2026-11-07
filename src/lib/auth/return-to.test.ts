@@ -10,6 +10,12 @@ describe("safeReturnPath — what it allows", () => {
     expect(safeReturnPath("/account")).toBe("/account");
   });
 
+  it("takes /check-in, so an operator signed out at the jetty lands back on it", () => {
+    // yuvoy-operator#175. The fragment is not part of `next`; it is held in
+    // the tab and taken back by the page.
+    expect(safeReturnPath("/check-in")).toBe("/check-in");
+  });
+
   it("keeps a query string, which is part of where somebody was", () => {
     expect(safeReturnPath("/today/slot_dawn?filter=held")).toBe(
       "/today/slot_dawn?filter=held",
@@ -72,6 +78,13 @@ describe("safeReturnPath — the open redirect it exists to stop", () => {
     expect(safeReturnPath("/")).toBeNull();
   });
 
+  it("takes a claim link, so a signed-out claim lands back on its listing", () => {
+    expect(safeReturnPath("/claim/example-reef-divers")).toBe(
+      "/claim/example-reef-divers",
+    );
+    expect(safeReturnPath("/claims")).toBeNull();
+  });
+
   it("refuses the doors that would loop", () => {
     // Returning to sign-in after signing in is a loop, and `/join` is not a
     // place to land holding a session.
@@ -96,6 +109,14 @@ describe("signInPathFor", () => {
     expect(signInPathFor("/today/slot_dawn")).toBe(
       "/sign-in?next=%2Ftoday%2Fslot_dawn",
     );
+  });
+
+  it("carries it to the sign-up door too, for a claim link opened signed out", () => {
+    // yuvoy-operator#388: "Create an account" comes back to the listing.
+    expect(signInPathFor("/claim/example-reef-divers", "/signup")).toBe(
+      "/signup?next=%2Fclaim%2Fexample-reef-divers",
+    );
+    expect(signInPathFor(null, "/signup")).toBe("/signup");
   });
 
   it("adds nothing when the destination is where sign-in lands anyway", () => {

@@ -11,7 +11,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 */
 
 const addDepartures = vi.fn();
-vi.mock("./actions", () => ({
+vi.mock("./departure-actions", () => ({
   addDepartures: (prev: unknown, form: FormData) => addDepartures(prev, form),
 }));
 

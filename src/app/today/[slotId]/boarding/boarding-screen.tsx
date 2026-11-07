@@ -12,8 +12,6 @@ import {
 import { markAttendance } from "../actions";
 import { PartyRow } from "../party-row";
 import {
-  boardable,
-  boardingFlags,
   boardingOrder,
   cashToTake,
   headcount,
@@ -21,10 +19,7 @@ import {
   type BoardingParty,
 } from "@/lib/day/boarding";
 import type { PartyForClient } from "@/lib/day/types";
-import { formatPaise } from "@/lib/format/money";
-import { cn } from "@/lib/cn";
 import { buttonClass } from "@/components/ui/button";
-import { CheckIcon, SunIcon } from "@/components/ui/icons";
 import { inputClass } from "@/components/ui/input";
 import { useChangedBeforeHydration } from "@/components/ui/use-changed-before-hydration";
 import { panelClass } from "@/components/ui/panel";
@@ -44,10 +39,9 @@ import {
   type Tops,
 } from "@/lib/motion/flip";
 import { MeasureBefore } from "@/lib/motion/measure-before";
-import { Roll } from "@/components/ui/roll";
-import { UndoWindow } from "@/components/ui/undo-window";
-import { createCheckInStore, HOLD_MS, type CheckIn } from "./check-in-store";
-import { SwipeRow } from "./swipe-row";
+import { createCheckInStore, type CheckIn } from "./check-in-store";
+import { BoardingCount, BoardingHeading } from "./boarding-heading";
+import { AboardRow, ToComeRow } from "./boarding-rows";
 
 /** One party, as the server hands it to boarding. */
 export interface BoardingRow {
@@ -261,48 +255,14 @@ export function BoardingScreen({
 
   return (
     <div ref={board} data-sun={sun ? "on" : "off"} className="pb-28 lg:pb-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          {/*
-            Pretty, so a meeting point that runs onto a second line takes
-            more than its last word with it (sun mode sets this larger). A
-            no-break space before each dot, so no line ever starts with one.
-          */}
-          <p className="label text-forest/75 text-pretty tabular-nums">
-            {[mode, time].filter(Boolean).join("\u00a0· ")}
-            {where ? (
-              <>
-                {"\u00a0· "}
-                <span className="voice-host">{where}</span>
-              </>
-            ) : null}
-          </p>
-          {/* The time on the board, untracked, and the name in the host's words. */}
-          <h1 className="font-display tracking-display leading-display mt-1 text-3xl text-balance">
-            {time ? (
-              <span className="font-board tracking-normal tabular-nums">
-                {time}
-              </span>
-            ) : null}
-            {time && experience ? " " : null}
-            {experience ? (
-              <span className="voice-host">{experience}</span>
-            ) : null}
-          </h1>
-        </div>
-        <button
-          type="button"
-          aria-pressed={sun}
-          onClick={() => setSun((on) => !on)}
-          className={cn(
-            buttonClass({ variant: "secondary", size: "md", block: false }),
-            "shrink-0 gap-1.5",
-          )}
-        >
-          <SunIcon className="size-4" />
-          Sun mode
-        </button>
-      </div>
+      <BoardingHeading
+        mode={mode}
+        time={time}
+        where={where}
+        experience={experience}
+        sun={sun}
+        setSun={setSun}
+      />
 
       <KeptOnThisPhone
         slotId={slotId}
@@ -311,49 +271,12 @@ export function BoardingScreen({
           rows.map((r) => [r.party.bookingId, r.party.name]),
         )}
       >
-        {/*
-        The number read at arm's length: guests aboard of guests booked.
-        Said again, politely, each time it moves.
-      */}
-        <p aria-live="polite" className="mt-6 flex items-baseline gap-2">
-          <span className="font-board text-7xl leading-none tabular-nums">
-            <Roll value={count.aboard} />
-          </span>{" "}
-          <span className="text-forest/80 text-2xl">of</span>{" "}
-          <span className="font-board text-7xl leading-none tabular-nums">
-            {count.booked}
-          </span>{" "}
-          <span className="text-2xl font-bold">aboard</span>
-        </p>
-        {/*
-        Joined with real separators, not a flex gap: a gap is space to the
-        eye and nothing to a screen reader, which read "2 parties to
-        come₹9,000 to take". Each fact holds together and the line breaks
-        only after a dot (a no-break space sits before it), so a wrap never
-        strands "sold" or opens a line with "·".
-      */}
-        <p className="text-forest/80 mt-3 text-base">
-          {[
-            <span key="come" className="whitespace-nowrap">
-              <b className="text-forest">{toCome.length}</b>{" "}
-              {toCome.length === 1 ? "party to come" : "parties to come"}
-            </span>,
-            ...(cash !== null && cash > 0
-              ? [
-                  <span key="cash" className="whitespace-nowrap">
-                    <b className="text-forest">{formatPaise(cash)}</b> to take
-                  </span>,
-                ]
-              : []),
-            ...(seats
-              ? [
-                  <span key="seats" className="whitespace-nowrap">
-                    {seats}
-                  </span>,
-                ]
-              : []),
-          ].flatMap((part, i) => (i === 0 ? [part] : ["\u00a0· ", part]))}
-        </p>
+        <BoardingCount
+          count={count}
+          toCome={toCome}
+          cash={cash}
+          seats={seats}
+        />
 
         {calledOff ? (
           <p className={panelClass("alert", "mt-5 p-4 text-base font-bold")}>
@@ -428,105 +351,17 @@ export function BoardingScreen({
                 {departed ? "To close out" : "To come"} · {toCome.length}
               </h2>
               <ul className="mt-2 space-y-2">
-                {toCome.filter(shown).map((party) => {
-                  const failed = checkIns[party.bookingId];
-                  const flags = boardingFlags(party);
-                  const spoken = [
-                    party.name,
-                    party.guests === 1 ? "1 guest" : `${party.guests} guests`,
-                    `reference ${party.reference}`,
-                    ...flags,
-                  ].join(", ");
-                  const can = canCheckIn && boardable(party);
-                  return (
-                    <li
-                      key={party.bookingId}
-                      data-party={party.bookingId}
-                      data-flip=""
-                    >
-                      <SwipeRow
-                        enabled={can}
-                        onCommit={() => checkIn(party.bookingId)}
-                      >
-                        <div
-                          className={panelClass(
-                            "raised",
-                            "flex min-h-[4.5rem] items-center gap-3 px-4 py-2",
-                          )}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setOpen(party.bookingId)}
-                            aria-label={`${spoken}. Open`}
-                            className="min-w-0 flex-1 py-1 text-left"
-                          >
-                            <span className="block text-lg leading-tight font-bold text-balance">
-                              {party.name}
-                            </span>
-                            <span className="text-forest/80 block text-sm">
-                              {party.guests === 1
-                                ? "1 guest"
-                                : `${party.guests} guests`}
-                              {/*
-                                The reference moves down whole rather than
-                                breaking at its own hyphen ("YV-" / "CANCEL2B"
-                                at 320px): it is what an operator reads
-                                against a phone at the jetty. An inline block
-                                still wraps inside if it is ever wider than
-                                the column, so it can never overflow.
-                              */}
-                              {"\u00a0· "}
-                              <span className="tracking-ref inline-block max-w-full slashed-zero tabular-nums">
-                                {party.reference}
-                              </span>
-                            </span>
-                            {flags.length > 0 ? (
-                              <span className="text-terra-deep mt-0.5 block text-sm font-bold">
-                                {flags.join("\u00a0· ")}
-                              </span>
-                            ) : null}
-                          </button>
-                          {departed ? (
-                            <button
-                              type="button"
-                              onClick={() => setOpen(party.bookingId)}
-                              aria-label={`Close out ${party.name}`}
-                              className={buttonClass({
-                                variant: "secondary",
-                                block: false,
-                                className: "h-16 shrink-0",
-                              })}
-                            >
-                              Close out
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => checkIn(party.bookingId)}
-                              disabled={!can}
-                              aria-label={`Aboard: check in ${party.name}`}
-                              className={buttonClass({
-                                block: false,
-                                className: "h-16 shrink-0 gap-1.5",
-                              })}
-                            >
-                              <CheckIcon className="size-5" />
-                              Aboard
-                            </button>
-                          )}
-                        </div>
-                      </SwipeRow>
-                      {failed?.phase === "failed" ? (
-                        <p
-                          role="alert"
-                          className="text-terra-deep mt-1 px-1 text-sm font-bold"
-                        >
-                          {party.name}: {failed.message}
-                        </p>
-                      ) : null}
-                    </li>
-                  );
-                })}
+                {toCome.filter(shown).map((party) => (
+                  <ToComeRow
+                    key={party.bookingId}
+                    party={party}
+                    checkIns={checkIns}
+                    canCheckIn={canCheckIn}
+                    departed={departed}
+                    setOpen={setOpen}
+                    checkIn={checkIn}
+                  />
+                ))}
               </ul>
             </section>
           ) : null}
@@ -541,69 +376,17 @@ export function BoardingScreen({
                 Aboard · {aboard.length}
               </h2>
               <ul className="mt-2 space-y-2">
-                {aboard.filter(shown).map((party) => {
-                  const state = checkIns[party.bookingId];
-                  const holding = state?.phase === "holding";
-                  return (
-                    <li
-                      key={party.bookingId}
-                      data-party={party.bookingId}
-                      data-flip=""
-                      className={panelClass(
-                        "done",
-                        "flex min-h-16 items-center gap-3 px-4 py-2",
-                      )}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setOpen(party.bookingId)}
-                        className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left"
-                      >
-                        <CheckIcon className="size-6 shrink-0" />
-                        <span className="min-w-0">
-                          <span className="block text-base leading-tight font-bold text-balance">
-                            {party.name}
-                          </span>
-                          <span className="text-forest/80 block text-sm">
-                            {party.guests === 1
-                              ? "1 guest"
-                              : `${party.guests} guests`}
-                            {"\u00a0· "}
-                            {holding
-                              ? "Checking in"
-                              : state?.phase === "sending"
-                                ? "Sending…"
-                                : keptHere.has(party.bookingId)
-                                  ? "Saved on this phone"
-                                  : "Aboard"}
-                          </span>
-                        </span>
-                      </button>
-                      {holding ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (store.undo(party.bookingId)) {
-                              move(party.bookingId);
-                            }
-                          }}
-                          className="border-forest/25 hover:border-forest dock-target text-button relative shrink-0 rounded-full border px-5 font-bold"
-                        >
-                          Undo
-                          {/*
-                          The five seconds in which Undo still works, as a
-                          hairline that empties under the word (O07 A).
-                        */}
-                          <UndoWindow
-                            until={state.until}
-                            hold={HOLD_MS}
-                            className="inset-x-5 bottom-2 h-0.5"
-                          />
-                        </button>
-                      ) : null}
-                    </li>
-                  );
-                })}
+                {aboard.filter(shown).map((party) => (
+                  <AboardRow
+                    key={party.bookingId}
+                    party={party}
+                    checkIns={checkIns}
+                    keptHere={keptHere}
+                    store={store}
+                    move={move}
+                    setOpen={setOpen}
+                  />
+                ))}
               </ul>
             </section>
           ) : null}

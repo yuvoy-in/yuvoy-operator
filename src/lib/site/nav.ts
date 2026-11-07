@@ -244,26 +244,49 @@ export const FOCUSED_ROUTE_PREFIXES = [
     INTO from it and close back out of.
   */
   "/account/",
+  /*
+    Where a traveller's check-in QR opens (yuvoy-operator#175). Gone into from
+    the phone's camera, closed back to Today. Listed here also makes it a
+    return path, so an operator signed out at the jetty lands back on it.
+  */
+  "/check-in",
 ] as const;
 
 /**
  * BARE routes: no session, so no chrome at all. The three doors (signing up,
- * signing in, and accepting an invitation) draw the mark and nothing else.
+ * signing in, and accepting an invitation) draw the mark and nothing else,
+ * and so does `/claim/{slug}`, the claim link from the traveller app
+ * (yuvoy-operator#171, the claim itself since #388), which a person with no
+ * account yet may open.
  *
  * `/signup` does not collide with `/sign-in` under `startsWith`: neither is a
  * prefix of the other. A test pins that, because a hyphen is a thin thing to
  * rest a route match on.
  */
-export const BARE_ROUTE_PREFIXES = ["/sign-in", "/signup", "/join"] as const;
+export const BARE_ROUTE_PREFIXES = [
+  "/sign-in",
+  "/signup",
+  "/join",
+  "/claim",
+] as const;
 
 export function isFocusedRoute(pathname: string | null | undefined): boolean {
   if (!pathname) return false;
   return FOCUSED_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+/**
+ * A bare prefix matches a whole path segment only, so `/claim` and
+ * `/claim/{slug}` are doors but a later `/claims` list, which needs a session,
+ * is not one by accident.
+ */
 export function isBareRoute(pathname: string | null | undefined): boolean {
   if (!pathname) return false;
-  return BARE_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  return BARE_ROUTE_PREFIXES.some(
+    (prefix) =>
+      pathname.startsWith(prefix) &&
+      [undefined, "/", "?"].includes(pathname[prefix.length]),
+  );
 }
 
 /**

@@ -76,6 +76,14 @@ const RETURNABLE = [
   */
   "/requests",
   "/capacity",
+  /*
+    The one door worth coming back to (yuvoy-operator#388). A claim link
+    opened signed out says "Sign up or sign in to claim this listing" and
+    sends the person round sign-in or sign-up; they should land back on the
+    listing they meant to claim, not on Today with the link lost. It is bare,
+    but it does not loop: signed in, it draws the claim rather than a door.
+  */
+  "/claim",
 ].map((path) =>
   // `FOCUSED_ROUTE_PREFIXES` carries trailing slashes (`/today/`) so it cannot
   // catch the tab root; the match below adds one back, so it is stripped here
@@ -141,7 +149,11 @@ export function safeReturnPath(raw: string | null | undefined): string | null {
   return allowed ? raw : null;
 }
 
-/** `/sign-in`, carrying where to come back to when that is worth doing. */
+/**
+ * `/sign-in`, carrying where to come back to when that is worth doing. With
+ * `/signup` as the door, the same for creating an account (a claim link
+ * opened signed out, yuvoy-operator#388).
+ */
 export function signInPathFor(
   target: string | null | undefined,
   signInPath = "/sign-in",
