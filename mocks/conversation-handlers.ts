@@ -15,7 +15,6 @@ import {
 export interface ConversationMockDeps {
   url: (path: string) => string;
   requireSession: (request: Request) => Response | null;
-  requireWritable: (request: Request) => Response | null;
   envelope: (
     code: string,
     message: string,
@@ -54,7 +53,6 @@ export function conversationHandlers(deps: ConversationMockDeps) {
   const {
     url,
     requireSession,
-    requireWritable,
     envelope,
     sessionUser,
     isNewBusiness,
