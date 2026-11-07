@@ -14,9 +14,11 @@ const reopenClosure = vi.fn();
 const addBlackout = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
-vi.mock("./actions", () => ({
+vi.mock("./departure-actions", () => ({
   reopenClosure: (prev: unknown, form: FormData) => reopenClosure(prev, form),
   closeDeparture: vi.fn(async () => ({})),
+}));
+vi.mock("./actions", () => ({
   addBlackout: (prev: unknown, form: FormData) => addBlackout(prev, form),
 }));
 

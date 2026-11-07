@@ -1,7 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { confirmSeats, type ConfirmSeatsState } from "@/app/calendar/actions";
+import {
+  confirmSeats,
+  type ConfirmSeatsState,
+} from "@/app/calendar/departure-actions";
 import { Button } from "@/components/ui/button";
 import { Panel, panelClass } from "@/components/ui/panel";
 import { sendForm } from "@/lib/actions/send-form";
