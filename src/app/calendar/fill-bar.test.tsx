@@ -13,6 +13,8 @@ vi.mock("./actions", () => ({
   setCapacity: (prev: unknown, form: FormData) => setCapacity(prev, form),
   recordOfflineSale: vi.fn(async () => ({})),
   takeBackOfflineSale: vi.fn(async () => ({})),
+}));
+vi.mock("./departure-actions", () => ({
   closeDeparture: vi.fn(async () => ({})),
 }));
 

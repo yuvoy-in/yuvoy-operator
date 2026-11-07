@@ -175,13 +175,13 @@ describe("trading a code for a session", () => {
     });
   });
 
-  it("does not repeat the server's 'the code we sent' on a 400", async () => {
+  it("says its own sentence on a 400, not the API's", async () => {
     /*
-      This screen is never told whether a code was sent, so the API's
-      sentence is not rendered here. Ours names the one thing to check.
+      The API's sentence is not rendered here (yuvoy-api#389 words it
+      "we need your number and the code"). Ours names the one thing to check.
     */
     post.mockRejectedValue(
-      refusal(400, "invalid_input", "we need your number and the code we sent"),
+      refusal(400, "invalid_input", "we need your number and the code"),
     );
     const result = await exchangeCode("+919000000101", "42");
     expect(result).toEqual({

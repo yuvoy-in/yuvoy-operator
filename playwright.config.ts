@@ -3,6 +3,17 @@ import { firstFreeLoopbackPort } from "./mocks/free-port";
 import { DEFAULT_MOCK_TUS_PORT } from "./mocks/tus-port";
 
 /**
+ * The port the e2e web server listens on: the first free one from 3200.
+ * Fixed at 3200, a stray server left there by an earlier run refused every
+ * test at start ("already used"), as on the 30 Oct push for
+ * yuvoy-operator#171. Kept in `process.env` like `MOCK_TUS_PORT` below, so
+ * the workers inherit it. A port set by hand wins.
+ */
+process.env.E2E_PORT ??= String(firstFreeLoopbackPort(3200, 3298));
+const E2E_PORT = process.env.E2E_PORT;
+const E2E_ORIGIN = `http://127.0.0.1:${E2E_PORT}`;
+
+/**
  * The mock media host, for this run's web server: a port of its own, the
  * origin the CSP must name, and a server that will not start without it.
  *
@@ -20,9 +31,18 @@ import { DEFAULT_MOCK_TUS_PORT } from "./mocks/tus-port";
  * hand wins.
  */
 function mockMediaHostEnv() {
-  process.env.MOCK_TUS_PORT ??= String(
-    firstFreeLoopbackPort(DEFAULT_MOCK_TUS_PORT, DEFAULT_MOCK_TUS_PORT + 98),
-  );
+  if (!process.env.MOCK_TUS_PORT) {
+    // Nothing listens on the web server's port yet, so the probe would hand
+    // it out again when that port is the first free one here.
+    let port = firstFreeLoopbackPort(
+      DEFAULT_MOCK_TUS_PORT,
+      DEFAULT_MOCK_TUS_PORT + 98,
+    );
+    if (String(port) === E2E_PORT) {
+      port = firstFreeLoopbackPort(port + 1, DEFAULT_MOCK_TUS_PORT + 98);
+    }
+    process.env.MOCK_TUS_PORT = String(port);
+  }
   const port = process.env.MOCK_TUS_PORT;
   return {
     MOCK_TUS_PORT: port,
@@ -53,7 +73,7 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
 
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3200",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? E2E_ORIGIN,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -68,8 +88,8 @@ export default defineConfig({
     : {
         // Mocks stay ON. There is no staging operator API, and pointing e2e at
         // production would mark real travellers as no-shows.
-        command: "pnpm build && pnpm start --port 3200",
-        url: "http://127.0.0.1:3200/sign-in",
+        command: `pnpm build && pnpm start --port ${E2E_PORT}`,
+        url: `${E2E_ORIGIN}/sign-in`,
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,
         /*

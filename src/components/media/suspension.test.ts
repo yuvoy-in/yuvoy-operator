@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OperatorApiError } from "@/lib/api/errors";
-import {
-  attachMedia,
-  attestRights,
-  setMediaRole,
-  withdrawMedia,
-} from "./actions";
+import { attachMedia, setMediaRole } from "./publish-actions";
+import { attestRights, withdrawMedia } from "./rights-actions";
 
 /**
  * A suspended business, refused on the clip writes: yuvoy-operator#90 f13.

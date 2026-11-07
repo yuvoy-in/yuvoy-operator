@@ -12,7 +12,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 */
 
 const attestRights = vi.fn();
-vi.mock("./actions", () => ({
+vi.mock("./rights-actions", () => ({
   attestRights: (prev: unknown, form: FormData) => attestRights(prev, form),
 }));
 
