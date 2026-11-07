@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 const confirmSeats = vi.fn();
 
-vi.mock("@/app/calendar/actions", () => ({
+vi.mock("@/app/calendar/departure-actions", () => ({
   confirmSeats: (prev: unknown, form: FormData) => confirmSeats(prev, form),
 }));
 

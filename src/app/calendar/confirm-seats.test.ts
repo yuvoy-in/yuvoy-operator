@@ -21,7 +21,7 @@ vi.mock("next/cache", () => ({
   revalidatePath: (path: string) => revalidatePath(path),
 }));
 
-const { confirmSeats } = await import("./actions");
+const { confirmSeats } = await import("./departure-actions");
 
 function form(experienceId?: string): FormData {
   const f = new FormData();

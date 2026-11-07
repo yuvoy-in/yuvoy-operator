@@ -22,7 +22,7 @@ vi.mock("@/app/bookings/actions", () => ({
   acceptRequest: (prev: unknown, form: FormData) => acceptRequest(prev, form),
   declineRequest: (prev: unknown, form: FormData) => declineRequest(prev, form),
 }));
-vi.mock("@/app/calendar/actions", () => ({
+vi.mock("@/app/calendar/departure-actions", () => ({
   confirmSeats: (prev: unknown, form: FormData) => confirmSeats(prev, form),
 }));
 vi.mock("@/app/bookings/[id]/conversation-actions", () => ({

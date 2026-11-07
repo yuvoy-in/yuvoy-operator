@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { addDepartures, type DepartureState } from "./actions";
+import { addDepartures, type DepartureState } from "./departure-actions";
 import type { OperatorListing } from "@/lib/day/types";
 import {
   DEFAULT_CUTOFF_HOURS,
