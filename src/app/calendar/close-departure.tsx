@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { closeDeparture, type CloseDepartureState } from "./actions";
+import { closeDeparture, type CloseDepartureState } from "./departure-actions";
 import { BLACKOUT_REASONS } from "@/lib/day/capacity-types";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/ui/use-confirm-focus";

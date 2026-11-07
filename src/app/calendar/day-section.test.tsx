@@ -9,9 +9,11 @@ vi.mock("./actions", () => ({
   setCapacity: vi.fn(async () => ({})),
   recordOfflineSale: vi.fn(async () => ({})),
   takeBackOfflineSale: vi.fn(async () => ({})),
+  addBlackout: vi.fn(async () => ({})),
+}));
+vi.mock("./departure-actions", () => ({
   closeDeparture: vi.fn(async () => ({})),
   reopenClosure: vi.fn(async () => ({})),
-  addBlackout: vi.fn(async () => ({})),
 }));
 
 const { DaySection } = await import("./day-section");
