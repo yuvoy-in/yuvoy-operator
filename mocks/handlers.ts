@@ -3,7 +3,6 @@ import { apiBaseUrl } from "../src/lib/api/server-client";
 import {
   MOCK_TUS_PORT,
   resetMockPhotos,
-  mockDocumentArrived,
   resetMockDocuments,
   resetMockUploads,
 } from "./tus-server";
@@ -17,13 +16,8 @@ import {
   BANK_UNCONFIRMED_CHANGES,
   BANK_UNCONFIRMED_ID,
   CHANGE_REQUESTS,
-  DEV_CODE,
   BUSINESS_NAME,
-  JOIN_TOKEN,
-  JOIN_URL,
-  LEAVING_PHONE,
   FAILING_ID,
-  OPERATOR,
   OTHER_MEMBERS,
   LIVE_OUTSTANDING_ID,
   PROSPECT_ID,
@@ -40,11 +34,6 @@ import {
   type MockSlot,
   type MockTeamMember,
 } from "./fixtures";
-import {
-  CHECK_IN_CODES,
-  mockCheckInRefusal,
-  mockNormaliseCode,
-} from "./check-in-codes";
 import { claimHandlers, resetClaimMocks } from "./claims-handlers";
 import { moneyHandlers } from "./money-handlers";
 import { bankChangeHandlers } from "./bank-change-handlers";
@@ -62,6 +51,11 @@ import {
   type MockStory,
   type MockStoryPhoto,
 } from "./story-handlers";
+import { teamHandlers } from "./team-handlers";
+import { authHandlers } from "./auth-handlers";
+import { profileHandlers, type MockProfile } from "./profile-handlers";
+import { documentFileHandlers } from "./document-file-handlers";
+import { checkInHandlers } from "./check-in-handlers";
 import { experienceHandlers, type MockExperience } from "./experience-handlers";
 import { scheduleHandlers } from "./schedule-handlers";
 
@@ -1109,30 +1103,6 @@ function situationOf(asset: MockMediaAsset): string {
       return "processing";
   }
 }
-
-/**
- * The business behind the account — `GET`/`PUT /profile`.
- *
- * Seeded HALF-FILLED on purpose. A complete profile makes the `missing` array
- * empty, and `missing` is the whole reason the contract names field names
- * rather than sending a boolean: "so a form can mark the specific rows." A
- * fixture with nothing outstanding cannot exercise that at all.
- */
-type MockProfile = {
-  displayName: string;
-  legalName?: string;
-  entityType?: string;
-  gstin?: string;
-  address: {
-    line1?: string;
-    line2?: string;
-    locality?: string;
-    region?: string;
-    postalCode?: string;
-    country?: string;
-  };
-  submittedAt?: string;
-};
 
 function seedProfile(): MockProfile {
   return {
@@ -2851,954 +2821,69 @@ const resumeHandler = (path: string) =>
   });
 
 export const handlers = [
-  /* -------------------------------------------------------------- auth --- */
-
-  /**
-   * O1 — an operator creates their own account.
-   *
-   * **The response is identical for a number that already has an account**,
-   * and this mock keeps it that way. A mock that 409'd a duplicate would let
-   * the portal ship a branch the real API never takes — and that branch would
-   * be the "is this phone a Yuvoy operator" oracle the endpoint is carefully
-   * not. So a duplicate creates nothing and answers exactly like a success.
-   *
-   * No session is minted, exactly as with `/team/accept`: they sign in through
-   * the ordinary flow afterwards.
-   */
-  http.post(url("/auth/signup"), async ({ request }) => {
-    const body = (await request.json()) as {
-      businessName?: string;
-      name?: string;
-      phone?: string;
-      relationship?: string;
-      email?: string;
-    };
-    const businessName = (body.businessName ?? "").trim();
-    const name = (body.name ?? "").trim();
-    const phone = (body.phone ?? "").trim();
-    /*
-      "Optional. Absent means `own`, which is what every sign-up meant before the
-      question was asked." The mock honours that rather than requiring it, so a
-      client that stops sending the field is not silently broken by the mock
-      being stricter than the API.
-    */
-    const relationship = body.relationship ?? "own";
-
-    if (
-      businessName.length < 2 ||
-      name.length < 2 ||
-      !/^\+[1-9]\d{7,14}$/.test(phone)
-    ) {
-      return envelope(
-        "invalid_input",
-        "A business name, a person and an E.164 number.",
-        400,
-      );
-    }
-
-    /*
-      "Anything else is refused with `400`, BEFORE the number is looked at, so the
-      refusal says nothing about whether the number has an account." The order
-      matters as much as the refusal: checking the phone first would make this a
-      way to ask whether a number is registered.
-    */
-    if (relationship !== "own" && relationship !== "run") {
-      return envelope("invalid_input", "Own it, or run it for the owner.", 400);
-    }
-
-    const taken = [...team, ...OTHER_MEMBERS, ...signups].some(
-      (m) => m.phone === phone,
-    );
-    if (!taken) {
-      signups.push({
-        id: `usr_signup_${Math.random().toString(36).slice(2, 10)}`,
-        name,
-        /*
-          "`own` makes them its OWNER. `run` makes them its ADMIN, and the
-          business has no owner until they invite one" (D15). The whole point of
-          asking the question, so the mock is what makes the answer observable:
-          `GET /me` is where a test can see which one it got.
-        */
-        roles: [relationship === "run" ? "ADMIN" : "OWNER"],
-        state: "active",
-        phone,
-      });
-    }
-
-    return HttpResponse.json({ next: "sign_in" }, { status: 202 });
+  ...authHandlers({
+    url,
+    requireSession,
+    envelope,
+    sessionUser,
+    sessionTokenFor,
+    canManage,
+    accountFor,
+    accountWithFiles,
+    payoutsHeldFor,
+    unreadTotals,
+    OFFBOARDED_PHONE,
+    CODE_ATTEMPT_LIMIT,
+    team: () => team,
+    signups: () => signups,
+    codeAttempts: () => codeAttempts,
   }),
 
-  // Answers identically for a number we know and one we do not. The mock keeps
-  // that property on purpose: a mock that 404s an unknown number would let a
-  // client ship a branch the real API never takes.
-  http.post(url("/auth/otp"), async () =>
-    HttpResponse.json(
-      { sent: true, expiresIn: 300, devCode: DEV_CODE },
-      { status: 202 },
-    ),
-  ),
-
-  http.post(url("/auth/session"), async ({ request }) => {
-    const body = (await request.json()) as { phone?: string; code?: string };
-    const phone = (body.phone ?? "").trim();
-    /*
-      An OFFBOARDED account, which "cannot sign in or use a session"
-      (`AccountNotActive`). The right code for the right number, refused
-      anyway, with the API's own sentence: the person is fine and the account
-      is not. No identity stood in for it, so the sign-in screen's answer to it
-      had never run, and it was "try again shortly" (yuvoy-operator#91).
-    */
-    if (phone === OFFBOARDED_PHONE && body.code === DEV_CODE) {
-      return envelope(
-        "account_not_active",
-        "this account cannot take bookings right now. Talk to us",
-        403,
-      );
-    }
-    /*
-      Over-attempted, as the contract declares. Five wrong codes and the
-      number is throttled — a 429, distinct from the one 401 every wrong,
-      expired or used code shares, because "wait a minute" is a different
-      next step from "ask for a new one". The mock never modelled it, so the
-      client shipped without its 429 branch ever running.
-    */
-    if ((codeAttempts[phone] ?? 0) >= CODE_ATTEMPT_LIMIT) {
-      return envelope(
-        "rate_limited",
-        "Too many attempts. Wait a minute and try again.",
-        429,
-      );
-    }
-    const member = [...team, ...OTHER_MEMBERS, ...signups].find(
-      (m) => !m.pending && m.phone === phone,
-    );
-    /*
-      A wrong code and a number nobody on the account owns answer identically.
-      `POST /auth/otp` above already refuses to distinguish known numbers from
-      unknown ones; a session endpoint that then said "no such user" would give
-      back the directory the OTP endpoint carefully withholds.
-    */
-    if (body.code !== DEV_CODE || !member) {
-      codeAttempts[phone] = (codeAttempts[phone] ?? 0) + 1;
-      return envelope("unauthorized", "That code did not work.", 401);
-    }
-    delete codeAttempts[phone];
-    return HttpResponse.json(
-      {
-        token: sessionTokenFor(member.id),
-        operatorId: OPERATOR.operatorId,
-        expiresAt: new Date(Date.now() + 30 * 864e5).toISOString(),
-      },
-      { status: 201 },
-    );
-  }),
-
-  http.delete(
-    url("/auth/session"),
-    async () => new HttpResponse(null, { status: 204 }),
-  ),
-
-  http.get(url("/me"), async ({ request }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-    const me = sessionUser(request)!;
-    const account = accountFor(me);
-
-    return HttpResponse.json({
-      id: me.id,
-      name: me.name,
-      roles: me.roles,
-      operatorId: OPERATOR.operatorId,
-      /*
-        Per-BUSINESS, like `operatorId` beside it — every colleague signed into
-        the same account sees the same slug. Always present: `operators.slug`
-        is `not null unique`.
-      */
-      slug: OPERATOR.slug,
-      commissionRateBps: OPERATOR.commissionRateBps,
-      canManage: canManage(me),
-      ...(account ? { account: accountWithFiles(account) } : {}),
-      // Always present, every role, with no amount in it.
-      payoutsHeld: payoutsHeldFor(request),
-      /*
-        Always present, `0` when none (yuvoy-api#282 item 6): the inbox
-        badge's numbers, counted here so the portal walks no conversations
-        to draw them.
-      */
-      ...unreadTotals(request),
-    });
-  }),
-
-  /* ------------------------------------------------------------- team --- */
-
-  /**
-   * What the response actually carries.
-   *
-   * `phone` is stripped here rather than never stored: the API knows the
-   * number — it is how the invitation was sent, and how "a number already
-   * belonging to any operator" is refused — and simply does not return it. A
-   * mock that returned one would let this portal ship a screen showing a
-   * number the real API never sends.
-   */
-  http.get(url("/team"), async ({ request }) => {
-    // Session only. `GET /team` has no role gate in the contract — every role
-    // may see who is on the account. The WRITES differ from each other now:
-    // inviting is OWNER or ADMIN, removing is still OWNER only.
-    const failed = requireSession(request);
-    if (failed) return failed;
-
-    /*
-      "Present only for a caller who can invite." Modelled rather than sent to
-      everybody, because the portal renders the link on exactly that signal —
-      a mock that always sent it would let a staff member's screen offer a join
-      link and nothing would catch it.
-    */
-    const roles = sessionUser(request)!.roles;
-    const canInvite = roles.includes("OWNER") || roles.includes("ADMIN");
-
-    return HttpResponse.json({
-      team: team.map(publicMember),
-      ...(canInvite
-        ? {
-            joinUrl: JOIN_URL,
-            joinNote:
-              "Send this to anybody you have added. The same link works for all of them, and only for a number you have already invited.",
-          }
-        : {}),
-    });
-  }),
-
-  http.post(url("/team"), async ({ request }) => {
-    const failed = requireInviter(request);
-    if (failed) return failed;
-    const shut = requireWritable(request);
-    if (shut) return shut;
-
-    const body = (await request.json()) as {
-      phone?: string;
-      name?: string;
-      email?: string;
-      role?: string;
-    };
-    const phone = (body.phone ?? "").trim();
-    const name = (body.name ?? "").trim();
-    const role = body.role ?? "";
-    // Trimmed and lowered, as the API does before it checks the shape.
-    const email = (body.email ?? "").trim().toLowerCase();
-
-    /*
-      One code, two fields, and `details` says which: the API answers
-      `invalid_input` with `{ phone: … }` or `{ email: … }`, and the portal puts
-      the sentence on the field it names. The messages are the API's own, lower
-      case and all, so the screen's capitalising is exercised.
-    */
-    if (!/^\+[1-9]\d{7,14}$/.test(phone) || name.length < 2) {
-      return envelope(
-        "invalid_input",
-        "we need their number with the country code",
-        400,
-        { phone: "for example +919000000101" },
-      );
-    }
-    if (
-      email !== "" &&
-      (email.length > 254 || !/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(email))
-    ) {
-      return envelope(
-        "invalid_input",
-        "that email address does not look right",
-        400,
-        { email: "for example ramesh@example.com" },
-      );
-    }
-
-    /*
-      `invalid_role` is "pick a role that EXISTS", and `role` may be left out,
-      which is STAFF. The four are all valid input; what varies is what they get.
-    */
-    if (role !== "" && !["OWNER", "ADMIN", "MANAGER", "STAFF"].includes(role)) {
-      return envelope("invalid_role", "No such role.", 400);
-    }
-
-    /*
-      **Everybody joins as STAFF, except an owner** (D15).
-
-      An invitation for ADMIN or MANAGER is "sent, not refused. The response says
-      `role: STAFF` and carries a `note` saying so, because a portal built before
-      D15 still offers those roles and the person inviting must be told what will
-      actually happen."
-
-      Modelled rather than refused, because the difference is invisible unless the
-      mock does it: a portal that asked for ADMIN and read back its own request
-      would tell an owner they had appointed a stand-in who is in fact staff.
-    */
-    const granted = role === "OWNER" ? "OWNER" : "STAFF";
-    const note =
-      role === "ADMIN" || role === "MANAGER"
-        ? `They join as staff. You can make them ${role === "ADMIN" ? "an admin" : "a manager"} from their row once they have joined.`
-        : undefined;
-
-    /*
-      ONE message for every refusal, and the mock keeps it that way on purpose.
-
-      "A number already belonging to any operator is refused with the same
-      message as any other failure, so this endpoint cannot be used to find out
-      which businesses are on Yuvoy." A mock that distinguished them would let
-      this portal ship a branch the real API never takes — and the branch would
-      be the enumeration oracle the endpoint exists to avoid being.
-
-      Inviting an OWNER is no longer one of those failures. "An ADMIN may invite
-      an owner as well as an OWNER may", because a business whose first person
-      runs it has none until somebody invites one.
-    */
-    const alreadyHere = team.some((m) => !m.pending && m.phone === phone);
-    if (alreadyHere) {
-      return envelope(
-        "cannot_invite",
-        "We could not send that invitation.",
-        409,
-      );
-    }
-
-    /*
-      "Re-inviting the same number replaces the open invitation rather than
-      adding one, so a revoked invite is not undone by an older code still
-      lying around."
-    */
-    team = team.filter((m) => !(m.pending && m.phone === phone));
-    team.push({
-      id: `inv_${Math.random().toString(36).slice(2, 10)}`,
-      name,
-      // What accepting will make them, which is not always what was asked for.
-      roles: [granted],
-      state: "invited",
-      pending: true,
-      phone,
-      // What `POST /join/{token}/code` reads to say whether a code can go.
-      ...(email ? { inviteEmail: email } : {}),
-    });
-
-    /*
-      `sent` read back, not asserted (yuvoy-api 67e3213, yuvoy-operator#91).
-
-      There is no WhatsApp sender, so the only thing that can carry an
-      invitation is the email address, and with none the message is written
-      suppressed: `sent: false`, and a `note` saying to add them again with an
-      email address. The API's own words since yuvoy-api#227 (it used to say to
-      pass on "the code yourself", which the inviter never has), and the same
-      override it makes: a role it did not grant as asked replaces the note,
-      because that is the sentence the inviter must not miss. It asserted
-      `true` for every invitation before, which is how an owner came to believe
-      a colleague had been told.
-    */
-    const sent = email !== "";
-    const notSent =
-      "We could not send that invitation to them. Add them again with an email address, so we have somewhere to send it.";
-
-    /*
-      `joinUrl` alongside the queued message, because "on an island the person
-      doing the inviting is usually standing next to the person being
-      invited". The portal used to drop this, which made inviting somebody a
-      dead end for the invitee.
-    */
-    return HttpResponse.json(
-      {
-        sent,
-        role: granted,
-        ...(note ? { note } : sent ? {} : { note: notSent }),
-        joinUrl: JOIN_URL,
-        devCode: DEV_CODE,
-      },
-      { status: 202 },
-    );
-  }),
-
-  /*
-    Unauthenticated by design — `security: []` in the contract, because
-    accepting an invitation is what somebody does BEFORE they have an account.
-
-    It now DOES mint a session (yuvoy-api#109): "the code they have just proved
-    is the same proof a session needs, so this answers with one — the same
-    `StartSession` call sign-in makes". Which means the field name changed too:
-    `accepted` is gone and `joined` replaced it, on a 201 rather than a 200.
-    That is a breaking change and the mock models it exactly, because a mock
-    still answering `accepted` would let the portal keep reading a field the
-    API no longer sends.
-  */
-  http.post(url("/team/accept"), async ({ request }) => {
-    const body = (await request.json()) as { phone?: string; code?: string };
-    const phone = (body.phone ?? "").trim();
-
-    const invite = team.find((m) => m.pending && m.phone === phone);
-    if (!invite || body.code !== DEV_CODE) {
-      // Wrong code, expired, used, and no invitation for that number all
-      // answer 401 with one message — the same rule sign-in follows.
-      return envelope("unauthorized", "That code did not work.", 401);
-    }
-
-    /*
-      The id changes, because it was the INVITATION's id and is now a user's.
-      Modelled rather than glossed: a client holding the old id and calling
-      DELETE gets a 404, which is exactly what the real API would do.
-    */
-    invite.id = `usr_${Math.random().toString(36).slice(2, 10)}`;
-    invite.pending = false;
-    invite.state = "active";
-
-    return HttpResponse.json(
-      {
-        joined: true,
-        token: sessionTokenFor(invite.id),
-        user: { id: invite.id, name: invite.name, roles: invite.roles },
-        operatorId: OPERATOR.operatorId,
-        next: "portal",
-      },
-      { status: 201 },
-    );
-  }),
-
-  /* --------------------------------------------------- join by link ----- */
-
-  /**
-   * One link per business, not one per invitation.
-   *
-   * Unauthenticated on purpose: "somebody who is not yet a user has to see who
-   * is asking before handing over a phone number." It says which business and
-   * nothing else — whoever opened the link has not identified themselves yet.
-   */
-  http.get(url("/join/:token"), async ({ params }) => {
-    if (String(params.token) !== JOIN_TOKEN) {
-      return envelope("not_found", "Not a link we recognise.", 404);
-    }
-    return HttpResponse.json({
-      businessName: BUSINESS_NAME,
-      next: "code",
-    });
-  }),
-
-  /**
-   * A number nobody invited is refused BEFORE anything is sent.
-   *
-   * "That this reveals whether a number was invited is deliberate: the
-   * alternative is a page that fires one-time codes at any phone somebody
-   * types." The mock keeps that property rather than answering identically for
-   * known and unknown numbers, because a client built against the softer
-   * behaviour would ship a screen that never says the useful thing.
-   */
-  http.post(url("/join/:token/code"), async ({ request, params }) => {
-    if (String(params.token) !== JOIN_TOKEN) {
-      return envelope("not_found", "Not a link we recognise.", 404);
-    }
-    const body = (await request.json()) as { phone?: string };
-    const phone = (body.phone ?? "").trim();
-
-    const invite = team.find((m) => m.pending && m.phone === phone);
-    if (!invite) {
-      return envelope(
-        "not_found",
-        `No invitation for that number at ${BUSINESS_NAME}. Ask its owner or an admin to add it.`,
-        404,
-      );
-    }
-
-    /*
-      One fixture number already works elsewhere, so the "this takes you off
-      another business" path is reachable. Without it that panel — and the
-      `confirmLeaving` it gates — would never render in any test.
-    */
-    const leaving =
-      phone === LEAVING_PHONE ? "Havelock Water Sports" : undefined;
-
-    /*
-      `sent` read back from what could be queued (yuvoy-api#227), where it used
-      to be `true` for everybody: with no phone sender an invitation made
-      without an email address has nowhere to send its code. Both sentences
-      can be true at once and then arrive together in `note`, the one about
-      the code first, in the API's own words.
-    */
-    const sent = Boolean(invite.inviteEmail);
-    const notes = [
-      ...(sent
-        ? []
-        : [
-            "We could not send your code. Ask whoever invited you to add you again with an email address, so we have somewhere to send it.",
-          ]),
-      ...(leaving
-        ? [
-            `Accepting removes you from ${leaving}. One number works with one business at a time.`,
-          ]
-        : []),
-    ];
-
-    return HttpResponse.json(
-      {
-        sent,
-        businessName: BUSINESS_NAME,
-        role: invite.roles[0] ?? "STAFF",
-        name: invite.name,
-        ...(leaving ? { leavingBusiness: leaving } : {}),
-        ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
-        devCode: DEV_CODE,
-      },
-      { status: 202 },
-    );
-  }),
-
-  http.post(url("/join/:token/accept"), async ({ request, params }) => {
-    if (String(params.token) !== JOIN_TOKEN) {
-      return envelope("not_found", "Not a link we recognise.", 404);
-    }
-    const body = (await request.json()) as {
-      phone?: string;
-      code?: string;
-      confirmLeaving?: boolean;
-    };
-    const phone = (body.phone ?? "").trim();
-
-    const invite = team.find((m) => m.pending && m.phone === phone);
-    if (!invite) {
-      return envelope("not_found", "No invitation for that number.", 404);
-    }
-    if (body.code !== DEV_CODE) {
-      /*
-        A wrong or used-up code is `409 cannot_invite`, in the API's own words
-        (`AcceptJoin`, `ErrInviteFailed`). This answered `401`, which the API
-        never sends here, so the 409 the portal misread as "confirm you are
-        leaving" never reached it in a test (yuvoy-operator#145).
-      */
-      return envelope(
-        "cannot_invite",
-        "we could not accept that invitation. Check the code and try again",
-        409,
-      );
-    }
-
-    /*
-      The 409 that is not a failure. Modelled rather than skipped: it is the
-      authoritative "ask them first", and a client that only handled the
-      advisory `leavingBusiness` from the code step would send an unconfirmed
-      accept and show an error for it.
-    */
-    if (phone === LEAVING_PHONE && !body.confirmLeaving) {
-      return envelope(
-        "confirmation_required",
-        "This number works with another business. Confirm to leave it.",
-        409,
-      );
-    }
-
-    // The id changes, because it was the INVITATION's id and is now a user's.
-    invite.id = `usr_${Math.random().toString(36).slice(2, 10)}`;
-    invite.pending = false;
-    invite.state = "active";
-
-    /*
-      The session, same as `/team/accept` (yuvoy-api#109). Both doors into a
-      team now agree about what accepting gets you — which is the whole reason
-      the API added it to both rather than one.
-    */
-    return HttpResponse.json(
-      {
-        joined: true,
-        token: sessionTokenFor(invite.id),
-        user: { id: invite.id, name: invite.name, roles: invite.roles },
-        operatorId: OPERATOR.operatorId,
-        next: "portal",
-      },
-      { status: 201 },
-    );
+  ...teamHandlers({
+    url,
+    requireSession,
+    requireInviter,
+    requireWritable,
+    envelope,
+    sessionUser,
+    publicMember,
+    sessionTokenFor,
+    team: () => team,
+    setTeam: (next) => {
+      team = next;
+    },
   }),
 
   /* ------------------------------------------------------------ media --- */
 
-  /* -------------------------------------------------- profile & documents - */
-
-  /**
-   * The business behind the account.
-   *
-   * `missing` is DERIVED here rather than stored, the same way the API derives
-   * it: a stored list is a second copy of the truth that goes stale the moment
-   * somebody fills a field in. The names match the PUT's own field names, so a
-   * form can mark the row it is about to ask for.
-   */
-  http.get(url("/profile"), async ({ request }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-    return HttpResponse.json(profileResponse());
-  }),
-
-  /**
-   * Save the whole document.
-   *
-   * Modelled as a REPLACE, not a merge — "a whole document, not a patch of
-   * single fields … partial writes would leave it half-saved in ways the
-   * completeness check then has to reason about." A mock that merged would let
-   * a client ship a form that omits a field and never notice it was cleared.
-   */
-  http.put(url("/profile"), async ({ request }) => {
-    const failed = requireManager(
-      request,
-      "only an owner, admin or manager can change the business details",
-    );
-    if (failed) return failed;
-
-    const body = (await request.json()) as Record<string, string | undefined>;
-    const required = [
-      "legalName",
-      "entityType",
-      "addressLine1",
-      "locality",
-      "region",
-      "postalCode",
-    ];
-    for (const field of required) {
-      if (!String(body[field] ?? "").trim()) {
-        return envelope("invalid_input", `${field} is required.`, 400);
-      }
-    }
-    const ENTITIES = [
-      "sole_proprietor",
-      "partnership",
-      "llp",
-      "private_limited",
-      "society",
-      "trust",
-    ];
-    if (!ENTITIES.includes(String(body.entityType))) {
-      return envelope("invalid_input", "Not an entity type we know.", 400);
-    }
-    // 15 characters, or absent. The checksum is the server's business.
-    if (body.gstin !== undefined && String(body.gstin).trim().length !== 15) {
-      return envelope("invalid_input", "A GSTIN is 15 characters.", 400);
-    }
-
-    /*
-      A LIVE business's change is RECORDED FOR REVIEW, not applied (D-032.3):
-      the verified documents were checked against the name and address on
-      file. 202 with no details, exactly as the API answers, and after the
-      validation above, which the API also runs first. Nothing on file
-      changes, so `GET /profile` goes on answering with the old details, and
-      the change is listed on `GET /change-requests` as `profile`, pending. The `409
-      details_locked` this replaced is no longer returned (yuvoy-api#222).
-    */
-    if (isLiveBusiness(sessionUser(request)!)) {
-      fileForReview(request, "profile", "Registered name and address");
-      return HttpResponse.json(
-        {
-          state: "in_review",
-          next: "We check a change to your registered name or address, because your verified documents were checked against what is on file. Your current details stay in place until we do.",
-        },
-        { status: 202 },
-      );
-    }
-
-    profile = {
-      ...profile,
-      legalName: body.legalName,
-      entityType: body.entityType,
-      gstin: body.gstin,
-      address: {
-        line1: body.addressLine1,
-        line2: body.addressLine2,
-        locality: body.locality,
-        region: body.region,
-        postalCode: body.postalCode,
-        country: body.country ?? "IN",
-      },
-      submittedAt: new Date().toISOString(),
-    };
-
-    return HttpResponse.json(profileResponse());
-  }),
-
-  /**
-   * File a document.
-   *
-   * **Always lands `pending`**, whatever the request says. "The state is fixed
-   * server-side … a self-service path to `verified` would make the credential
-   * gate decorative." A mock that honoured a client-supplied state would let
-   * exactly that ship.
-   *
-   * Sending the same kind twice replaces rather than stacks, which the screen
-   * warns about before the tap.
-   */
-  http.post(url("/credentials"), async ({ request }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-
-    const body = (await request.json()) as Record<string, string | undefined>;
-    const type = String(body.type ?? "");
-    const KINDS = [
-      "directorate_registration",
-      "instructor_cert",
-      "oxygen",
-      "equipment",
-      "boat",
-      "insurance",
-      "bank",
-      "gst",
-    ];
-    if (!KINDS.includes(type)) {
-      return envelope("invalid_input", "Not a document kind we know.", 400);
-    }
-
-    // Replaces, never stacks.
-    filedCredentials[type] = { state: "pending", expiresOn: body.expiresOn };
-
-    return HttpResponse.json(
-      { type, state: "pending", next: "we_check_it" },
-      { status: 201 },
-    );
-  }),
-
-  /* ------------------------------------------------- notifications ------ */
-
-  http.get(url("/me/notifications"), async ({ request }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-    return HttpResponse.json(switchesFor(sessionUser(request)!));
-  }),
-
-  http.put(url("/me/notifications"), async ({ request }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-    const me = sessionUser(request)!;
-    const body = (await request.json()) as {
-      switches?: { group?: string; on?: unknown }[];
-    };
-    const refusal = applySwitches(me, me, body.switches);
-    return refusal ?? HttpResponse.json(switchesFor(me));
-  }),
-
-  http.get(url("/team/:id/notifications"), async ({ request, params }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-    /*
-      OWNER or ADMIN, and NOT `canManage` — the narrowest gate on these routes.
-      "An owner and an admin control everybody's switches, and each person
-      controls their own." A MANAGER has `canManage` and is refused here, which
-      is why the mock cannot reuse `requireManager`.
-    */
-    const roles = sessionUser(request)!.roles;
-    if (!roles.includes("OWNER") && !roles.includes("ADMIN")) {
-      return envelope(
-        "forbidden",
-        "Only an owner or an admin can see somebody else's notifications.",
-        403,
-      );
-    }
-    const target = team.find((m) => m.id === String(params.id) && !m.pending);
-    // A pending row is an invitation, not a person, and answers 404 like any
-    // other id that names nobody.
-    if (!target) return envelope("not_found", "No such member.", 404);
-    return HttpResponse.json(switchesFor(target));
-  }),
-
-  http.put(url("/team/:id/notifications"), async ({ request, params }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-    const me = sessionUser(request)!;
-    if (!me.roles.includes("OWNER") && !me.roles.includes("ADMIN")) {
-      return envelope(
-        "forbidden",
-        "Only an owner or an admin can change somebody else's notifications.",
-        403,
-      );
-    }
-    const target = team.find((m) => m.id === String(params.id) && !m.pending);
-    if (!target) return envelope("not_found", "No such member.", 404);
-
-    const body = (await request.json()) as {
-      switches?: { group?: string; on?: unknown }[];
-    };
-    const refusal = applySwitches(me, target, body.switches);
-    return refusal ?? HttpResponse.json(switchesFor(target));
-  }),
-
-  /* ------------------------------------------------- document files ----- */
-
-  /**
-   * Sign a URL for the file behind a document — yuvoy-operator#46 item 3.
-   *
-   * "Only a pending document takes a file", which is the refusal the portal
-   * withholds the control for; modelled anyway, because the control is withheld
-   * on a render and the decision can change between that and the tap.
-   */
-  http.post(
-    url("/credentials/:id/upload-intents"),
-    async ({ request, params }) => {
-      const failed = requireSession(request);
-      if (failed) return failed;
-      /*
-        A service with no documents store, which is production today: every
-        upload intent answers `503 documents_unavailable` before anything else
-        is looked at (yuvoy-operator#93). Stood in for by the business waiting
-        on our review, the one identity whose pending document no upload test
-        needs to reach the bucket.
-      */
-      if (sessionUser(request)?.id === AWAITING_ID) {
-        return envelope(
-          "documents_unavailable",
-          "we cannot take documents just yet",
-          503,
-        );
-      }
-      /*
-        NOT `requireWritable`. A suspended business may still send a document
-        (#50), and refusing here would hold an operator at a state they are
-        being asked to clear.
-      */
-
-      const credentialId = String(params.id);
-      const body = (await request.json()) as {
-        filename?: string;
-        contentType?: string;
-        sizeBytes?: number;
-      };
-
-      const KINDS = ["application/pdf", "image/jpeg", "image/png"];
-      if (!KINDS.includes(String(body.contentType))) {
-        return envelope("invalid_input", "PDF, JPEG or PNG.", 400);
-      }
-      if (
-        !Number.isInteger(body.sizeBytes) ||
-        (body.sizeBytes ?? 0) <= 0 ||
-        (body.sizeBytes ?? 0) > 10 * 1024 * 1024
-      ) {
-        return envelope("invalid_input", "Up to 10 MB.", 400);
-      }
-
-      /*
-        A document already verified or rejected is locked, whether it was so
-        when the page rendered or became so while the operator was picking a
-        file: "a new file behind it would change the evidence under a decision
-        nobody re-made."
-      */
-      const credential = credentialOf(credentialId);
-      if (credential && credential.state !== "pending") {
-        return envelope(
-          "document_locked",
-          "This document has already been checked, so its file cannot change. File it again to send a different one.",
-          409,
-        );
-      }
-
-      const intentId = `int_${Math.random().toString(36).slice(2, 10)}`;
-      documentIntents[intentId] = {
-        credentialId,
-        filename: String(body.filename ?? "document"),
-        contentType: String(body.contentType),
-        sizeBytes: Number(body.sizeBytes),
-      };
-
-      return HttpResponse.json(
-        {
-          intentId,
-          /*
-            A DIFFERENT ORIGIN, as production is: "the file never passes through
-            this API". MSW runs in the Next process here, so a same-origin URL
-            would be intercepted and the browser's cross-origin upload — the
-            one the CSP's `connect-src` actually governs — would never happen.
-          */
-          uploadUrl: `http://127.0.0.1:${MOCK_TUS_PORT}/documents/${intentId}`,
-          method: "PUT",
-          /*
-            Signed headers, sent back "exactly as given". The metadata is what
-            `complete` looks for to know a URL minted here signed this file.
-          */
-          headers: {
-            "Content-Type": String(body.contentType),
-            "x-amz-meta-intent": intentId,
-            "x-amz-meta-credential": credentialId,
-          },
-          expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
-          maxBytes: 10 * 1024 * 1024,
-          next: "send_the_file",
-        },
-        { status: 201 },
-      );
+  ...profileHandlers({
+    url,
+    requireSession,
+    requireManager,
+    envelope,
+    sessionUser,
+    isLiveBusiness,
+    fileForReview,
+    profileResponse,
+    switchesFor,
+    applySwitches,
+    profile: () => profile,
+    setProfile: (next) => {
+      profile = next;
     },
-  ),
+    filedCredentials: () => filedCredentials,
+    team: () => team,
+  }),
 
-  /**
-   * Ask the bucket what actually arrived — yuvoy-operator#46 item 3.
-   *
-   * Every refusal here is modelled, because each is a different next step on
-   * screen and none of them would ever run against a mock that took the
-   * browser's word: the file that never arrived, the intent already used, and
-   * the file that is not the size it declared.
-   */
-  http.post(
-    url("/credentials/:id/upload-intents/:intentId/complete"),
-    async ({ request, params }) => {
-      const failed = requireSession(request);
-      if (failed) return failed;
-
-      const credentialId = String(params.id);
-      const intentId = String(params.intentId);
-      const intent = documentIntents[intentId];
-      if (!intent || intent.credentialId !== credentialId) {
-        return envelope("not_found", "No such upload.", 404);
-      }
-      if (intent.closed) {
-        return envelope(
-          "upload_closed",
-          "That upload was refused or replaced. Start a new one.",
-          409,
-        );
-      }
-
-      const arrived = mockDocumentArrived(intentId);
-      if (!arrived) {
-        // "The file has not reached the bucket yet, so send it first."
-        return envelope(
-          "upload_not_arrived",
-          "The file has not reached us yet.",
-          409,
-        );
-      }
-      if (arrived.bytes !== intent.sizeBytes) {
-        /*
-          Closed, and the retention sweep deletes it: "a file this refuses is
-          closed … start a new upload to send another." So the intent cannot be
-          completed a second time, which is what makes `upload_closed` reachable.
-        */
-        intent.closed = true;
-        return HttpResponse.json(
-          {
-            error: {
-              code: "document_refused",
-              message: "That file is not the size it said it was.",
-              details: { reason: "size_mismatch" },
-            },
-          },
-          { status: 400 },
-        );
-      }
-
-      const replacedPrevious = Boolean(documentFiles[credentialId]);
-      documentFiles[credentialId] = {
-        filename: intent.filename,
-        sizeBytes: intent.sizeBytes,
-        contentType: intent.contentType,
-      };
-
-      /*
-        "Called again after it succeeded, it answers the same thing again." The
-        intent is NOT closed here, so a retry on a dropped response is answered
-        rather than refused.
-      */
-      return HttpResponse.json({
-        credentialId,
-        hasFile: true,
-        filename: intent.filename,
-        sizeBytes: intent.sizeBytes,
-        contentType: intent.contentType,
-        replacedPrevious,
-        next: "we_check_it",
-      });
-    },
-  ),
+  ...documentFileHandlers({
+    url,
+    requireSession,
+    envelope,
+    sessionUser,
+    credentialOf,
+    documentIntents: () => documentIntents,
+    documentFiles: () => documentFiles,
+  }),
 
   ...storyHandlers({
     url,
@@ -4410,181 +3495,15 @@ export const handlers = [
     attendance: () => attendance,
   }),
 
-  /* -------------------------------------------------------- check-ins - */
-
-  /*
-    Check-in by code, yuvoy-operator#175, in the API's words
-    (host_check_in.go at a53d7b3a): a code that is not one of ours is 404, a
-    reference from the QR that is not the code's booking is 409, and a second
-    scan answers 200 with the first time and `alreadyCheckedIn`.
-  */
-  http.post(url("/check-ins"), async ({ request }) => {
-    const failed = requireSession(request);
-    if (failed) return failed;
-
-    const body = (await request.json()) as {
-      code?: unknown;
-      reference?: unknown;
-    };
-    const code =
-      typeof body.code === "string" ? mockNormaliseCode(body.code) : "";
-    if (code.length !== 8) {
-      return envelope("invalid_input", "we could not read that check-in", 400, {
-        code: "the eight characters the traveller shows, like K7QM-2XPA",
-      });
-    }
-
-    const refused = mockCheckInRefusal(code);
-    if (refused) {
-      return envelope(
-        refused.code,
-        refused.message,
-        refused.status,
-        refused.details,
-      );
-    }
-
-    const bookingId = CHECK_IN_CODES[code];
-    const found = bookingId ? partyOf(bookingId) : null;
-    if (!bookingId || !found) {
-      return envelope(
-        "not_found",
-        "This code is not for one of your bookings.",
-        404,
-      );
-    }
-    const { party, slotId } = found;
-    if (body.reference !== undefined && body.reference !== party.reference) {
-      return envelope(
-        "check_in_code_mismatch",
-        `This code does not match booking ${String(body.reference)}. Check them in by name if it is them.`,
-        409,
-      );
-    }
-
-    const existing = attendance[bookingId];
-    if (existing && existing.outcome !== "arrived") {
-      return envelope(
-        "not_on_this_departure",
-        // The store's own error, which the API sends as it is.
-        "this booking is not on the departure",
-        409,
-      );
-    }
-    const before =
-      existing?.arrivedAt ?? (party.arrived ? party.arrivedAt : undefined);
-    const arrivedAt = before ?? new Date().toISOString();
-    attendance[bookingId] = { outcome: "arrived", arrivedAt };
-    return HttpResponse.json({
-      bookingId,
-      reference: party.reference,
-      name: party.name,
-      guests: party.guests,
-      slotId,
-      arrivedAt,
-      alreadyCheckedIn: before !== undefined,
-    });
+  ...checkInHandlers({
+    url,
+    requireSession,
+    envelope,
+    partyOf,
+    bookingStateOf,
+    attendance: () => attendance,
+    cashTaken: () => cashTaken,
   }),
-
-  /* -------------------------------------------------------------- cash -- */
-
-  /**
-   * Taking the cash — yuvoy-operator#40 §1.
-   *
-   * The API's own rules, in the API's own order (`RecordCashCollected`):
-   *
-   *   1. not a cash booking → 409, "already paid online";
-   *   2. already recorded → the FIRST report, `alreadyRecorded: true`, the
-   *      amount never overwritten — checked before the state, so a retry on a
-   *      booking that has since been completed still gets its answer;
-   *   3. a booking that can no longer take money → 409;
-   *   4. more than the fare → 409, refused rather than trimmed.
-   *
-   * Not role-gated: "whoever is holding the phone at the gangway is who takes
-   * the cash." The messages are production's, lower case and all, because the
-   * screen renders them.
-   */
-  http.post(
-    url("/bookings/:id/cash-collected"),
-    async ({ request, params }) => {
-      const failed = requireSession(request);
-      if (failed) return failed;
-
-      const id = String(params.id);
-      const found = partyOf(id);
-      if (!found)
-        return envelope("not_found", "we could not find that booking", 404);
-
-      const { party } = found;
-      if (!party.cash) {
-        return envelope(
-          "conflict",
-          "this booking was already paid online — there is nothing to collect",
-          409,
-        );
-      }
-
-      const fare = party.cash.collectPaise;
-      const first =
-        cashTaken[id] ??
-        (party.cash.collected && party.cash.collectedAt
-          ? {
-              collectedPaise: party.cash.collectedPaise ?? fare,
-              collectedAt: party.cash.collectedAt,
-            }
-          : undefined);
-      if (first) {
-        return HttpResponse.json({
-          collectedPaise: first.collectedPaise,
-          shortfallPaise: fare - first.collectedPaise,
-          collectedAt: first.collectedAt,
-          state: bookingStateOf(party),
-          alreadyRecorded: true,
-        });
-      }
-
-      const state = bookingStateOf(party);
-      if (state !== "paid_pending_ops" && state !== "confirmed") {
-        return envelope(
-          "conflict",
-          `this booking is not on the departure: it is ${state}`,
-          409,
-        );
-      }
-
-      const body = (await request.json().catch(() => ({}))) as {
-        collectedPaise?: unknown;
-      };
-      let amount = fare;
-      if (body.collectedPaise !== undefined) {
-        if (
-          typeof body.collectedPaise !== "number" ||
-          !Number.isInteger(body.collectedPaise) ||
-          body.collectedPaise < 0
-        ) {
-          return envelope("invalid_input", "that is not an amount", 400);
-        }
-        amount = body.collectedPaise;
-      }
-      if (amount > fare) {
-        return envelope(
-          "conflict",
-          "that is more than the fare for this booking",
-          409,
-        );
-      }
-
-      const collectedAt = new Date().toISOString();
-      cashTaken[id] = { collectedPaise: amount, collectedAt };
-      return HttpResponse.json({
-        collectedPaise: amount,
-        shortfallPaise: fare - amount,
-        collectedAt,
-        state: "confirmed",
-        alreadyRecorded: false,
-      });
-    },
-  ),
 
   /* ------------------------------------------- listing claims (#388) --- */
   ...claimHandlers({
